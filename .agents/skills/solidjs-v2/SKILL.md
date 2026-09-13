@@ -9,26 +9,21 @@ Solid 2.0 differs from React and Solid 1.x in its component, reactivity, and
 async contracts. Check the installed package before relying on memory or this
 skill's rc.5 reference material.
 
-## Step 0 — confirm this is actually a v2 project
+## Read installed documentation first
 
-Check before applying anything below:
+Read `node_modules/solid-js/package.json` to confirm the installed version.
+Apply this skill only to Solid 2.x. Check the application's `tsconfig.json` for
+its JSX import source. Resolve these paths from the package owning the code;
+workspace dependencies may be installed there rather than at the repository root.
 
-- `package.json`: `solid-js` major is `2` (e.g. `2.0.0-rc.x`), and/or
-  `@solidjs/web` is a dependency.
-- `tsconfig.json`: `"jsxImportSource": "@solidjs/web"`.
+Before answering or editing, read the relevant sections of
+`node_modules/solid-js/CHEATSHEET.md`. This is the version-matched guide.
+Confirm signatures and exports in the installed `solid-js` and `@solidjs/web`
+packages. Use their runtime when declarations cannot establish behavior.
 
-If `solid-js` is `1.x` (imports like `solid-js/web`, `solid-js/store`), **stop —
-these rules do not apply**; that's a Solid 1.x project. If the task is to
-convert it, use the `solidjs-v2-migration` skill instead.
-
-This project uses rc.6. Its installed sources are authoritative, in this order:
-
-1. Public typings and package exports in `node_modules/solid-js` and
-   `node_modules/@solidjs/web`.
-2. Runtime behavior when the typings do not settle the question.
-3. `node_modules/solid-js/CHEATSHEET.md` for the package's version-matched API
-   guide.
-4. This skill's references, which were written against rc.5.
+The references below describe rc.5. Consult them for additional explanation,
+then verify any version-sensitive claim against the installed package. They do
+not override installed documentation, declarations, or observed runtime behavior.
 
 For a dev diagnostic code, read
 `node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md`. For reactive
@@ -37,20 +32,23 @@ rerun or cost evidence, read
 
 ## Work process
 
-1. Confirm the installed Solid version, JSX import source, and public exports
-   touched by the task. This step ends when each API to be used exists in the
-   installed package.
-2. Read every routed reference that matches the changed behavior. For each
-   changed reactive value, identify the scope that reads it, the event or action
-   that writes it, and the owner that controls its lifetime before editing.
-3. Implement the smallest complete behavior. This step ends when every changed
-   value has an explicit read, write, and lifetime path and the affected user
-   flow has no placeholder branch.
-4. Exercise the affected behavior and run the project's required checks. Resolve
-   relevant Solid diagnostics with the bundled repair guide. For a reactivity or
-   performance change, capture rerun evidence with the bundled agent-loop guide.
-   Work is complete when the behavior passes, required checks pass, and no
-   relevant diagnostic remains. Report any behavior that could not be exercised.
+For explanations, finish when the requested behavior is explained using installed
+sources, with any unverified behavior identified. Run a focused runtime check
+only when the sources leave a material question unresolved.
+
+For code changes:
+
+1. Read the installed documentation and routed references for the affected
+   behavior. Before editing, identify each changed value's source, tracking
+   scope, and lifetime owner. For mutable state, also identify its write sites.
+2. Implement the requested behavior. This step ends when those relationships
+   are accounted for and the requested flow has no placeholder branch.
+3. Exercise the affected behavior and run the project's required checks. Resolve
+   relevant diagnostics with the installed repair guide. For changes to reactive
+   behavior or performance, capture evidence with the installed agent-loop guide.
+   Finish when the affected behavior and required checks pass and no relevant
+   diagnostic remains. Report pre-existing failures and unverified behavior
+   explicitly instead of claiming they passed.
 
 ## The ten rules that prevent most bugs
 
@@ -118,9 +116,9 @@ Read the file matching the task before writing code in that area:
   `Loading` boundary defers the root mount; check the console for
   `ASYNC_OUTSIDE_LOADING_BOUNDARY`.
 - **Dev throws/warns with a diagnostic code** (`REACTIVE_WRITE_IN_OWNED_SCOPE`,
-  `STRICT_READ_UNTRACKED`, …) → table of codes and fixes at the bottom of
-  `references/reactivity.md`. Fix the cause; never silence with `ownedWrite`
-  for app state.
+  `STRICT_READ_UNTRACKED`, …) → read the installed
+  `node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md` and apply its
+  prescribed repair.
 - **Test asserts stale values** → missing `flush()` after writes, or reactive
   code created without an owner (`createRoot` in tests).
 - **An API from docs/examples doesn't exist** → prereleases drift; verify against

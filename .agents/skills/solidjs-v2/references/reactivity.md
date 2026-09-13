@@ -172,16 +172,13 @@ strict-read scope (component body) this is the more descriptive
 
 ## Passing reactive values to children — props are getters
 
-Pass the **value**, not the accessor: `<Counter value={count()} />`, and read
-`props.value` in the child. This does **not** lose reactivity — the misconception
-is to "preserve reactivity" by passing the accessor itself (`value={count}` +
-`props.value()`). That's unnecessary: props have **always** been getters in Solid
-(1.x and 2.0 alike — value-passing across the props boundary never changed). The
-compiler lowers the JSX prop to a lazy getter:
+For a value prop, pass `<Counter value={count()} />` and read `props.value`
+in the child's JSX, memo, or effect compute. The compiler supplies a getter,
+so the read subscribes in the child's tracking scope:
 
 ```jsx
 <Counter value={count()} />;
-// compiles to:
+// Equivalent prop getter:
 createComponent(Counter, {
   get value() {
     return count();
@@ -189,18 +186,9 @@ createComponent(Counter, {
 });
 ```
 
-So `value` is a getter; when the child reads `props.value` inside a tracked
-scope (JSX, memo, effect compute) the `count()` call runs _there_ and subscribes
-the child. Reactivity is preserved across the boundary without passing a
-function. Passing the accessor instead forces every consumer to call `props.x()`
-and is the pattern rule 5 forbids.
-
-```jsx
-// ✅ idiomatic
-<Counter value={count()} />               // child: <p>{props.value}</p>
-// ❌ misconception — works only with props.value(), don't
-<Counter value={count} />                 // child: <p>{props.value()}</p>
-```
+An accessor prop is valid when the component contract explicitly accepts one.
+Pass `count` to that prop and call it inside the child's tracking scope. Choose
+the form from the component's contract; value props need no accessor wrapper.
 
 The getter is a **JSX/compiler** feature. When you hand-build a props object and
 pass it to a function/hook/composable, it's a plain object literal — the compiler
@@ -218,9 +206,8 @@ useThing({
 useThing({ value: count }); // ✅ accessor as-is — hook calls opts.value()
 ```
 
-So the "pass the value, not the accessor" rule is specifically the **JSX props
-boundary**, where the compiler supplies the getter. Across a manual object you
-own the laziness — getter or accessor.
+At a JSX value-prop boundary, the compiler supplies the getter. Across a
+manual object, preserve laziness with an explicit getter or accessor.
 
 ## Lifecycle: `onSettled` (replaces `onMount`)
 
@@ -381,27 +368,7 @@ and isn't deferred by Suspense/hydration — not to avoid a flicker.
 
 ## Dev diagnostics
 
-Every dev-mode diagnostic has a code. The ones you'll hit, with the fix:
-
-| Code                                                         | Severity | Fix                                                                                                                                                                                                                                     |
-| ------------------------------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `REACTIVE_WRITE_IN_OWNED_SCOPE`                              | error    | Move write to handler/action/`onSettled`; derive with memo; `untrack` does not exempt writes and `ownedWrite` is only for internal state                                                                                                |
-| `ACTION_CALLED_IN_OWNED_SCOPE`                               | error    | Define the action wherever appropriate, but invoke it from a handler/effect callback/`onSettled`, not a component body or computation                                                                                                   |
-| `STRICT_READ_UNTRACKED`                                      | warn     | Read in JSX/memo/effect-compute, or wrap in `untrack`                                                                                                                                                                                   |
-| `PENDING_ASYNC_UNTRACKED_READ`                               | error    | Read async values (including a derived store before its first resolution) in a tracked scope (JSX/memo/compute)                                                                                                                         |
-| `ASYNC_OUTSIDE_LOADING_BOUNDARY`                             | warn     | FYI: root mount deferred until async settles; add `<Loading>` for explicit fallback. If the app "doesn't mount", check for this                                                                                                         |
-| `CLEANUP_IN_FORBIDDEN_SCOPE`                                 | error    | Return a cleanup function from `onSettled`/`createTrackedEffect` instead of `onCleanup`                                                                                                                                                 |
-| `SETTLED_CLEANUP_UNOWNED`                                    | error    | Don't return a cleanup from an out-of-band `onSettled` (event handler/tracked effect/nested `onSettled`); call the setup helper from the component body                                                                                 |
-| `PENDING_ASYNC_FORBIDDEN_SCOPE`                              | warn     | Don't read pending async in `onSettled`/tracked effect; use `createEffect`                                                                                                                                                              |
-| `MISSING_EFFECT_FN`                                          | error    | Pass the apply function: `createEffect(compute, apply)` — the single-argument form is invalid                                                                                                                                           |
-| `NO_OWNER_EFFECT` / `NO_OWNER_CLEANUP` / `NO_OWNER_BOUNDARY` | warn     | Create inside a component or `createRoot`                                                                                                                                                                                               |
-| `RUN_WITH_DISPOSED_OWNER`                                    | warn     | Don't reuse disposed owners                                                                                                                                                                                                             |
-| `REACTIVITY_HALTED`                                          | log      | An uncaught error halted reactivity; further writes/flushes are ignored. The causing error is always logged/rethrown alongside it. Wrap fallible code in an error boundary; `resetErrorHalt()` from `solid-js` is for tests/dev tooling |
-
-Programmatic access (tooling/tests): `DEV.diagnostics.subscribe(listener)` and
-`DEV.diagnostics.capture()` (returns `{ events, clear(), stop() }`).
-
-For repeatable diagnostic assertions and recompute budgets, use the published
-`@solidjs/diagnostics` harness (`captureArtifact`, `expectDiagnostic`,
-`expectNoDiagnostics`, `expectRerunBudget`, `expectNoWaste`) or its `/vitest`,
-`/browser`, and `/playwright` entries instead of scraping console text.
+Read `node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md` for the
+installed version's diagnostic codes and repairs. For capture and verification,
+read `node_modules/@solidjs/diagnostics/skills/agent-loops/SKILL.md`.
+Resolve package paths from the application being edited.
