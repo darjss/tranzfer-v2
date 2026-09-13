@@ -60,7 +60,7 @@ Portless assigns each app a port and injects it (`PORT`, `--port`, or Wrangler's
 
 One `portless.json` at the repo root names the apps. `turbo` is off; this repo does not use Turborepo.
 
-Direct Vite without Portless still works: `pnpm --filter @tranzfer/web dev`.
+Direct Vite without Portless still works: `vp run --filter @tranzfer/web dev`.
 
 ---
 
@@ -1109,6 +1109,51 @@ The most important line in this entire document is:
 > **Client → R2 for bytes. The API is the control plane.**
 
 Everything else exists to make that transfer safe, resumable, understandable, and billable.
+
+---
+
+# Installed versions (foundation)
+
+Pins as of the stack-deps change. Bump them on purpose, not by floating ranges.
+
+| Package                                      | Where    | Version       |
+| -------------------------------------------- | -------- | ------------- |
+| solid-js, @solidjs/web, @solidjs/diagnostics | web      | 2.0.0-rc.6    |
+| @solidjs/router                              | web      | 2.0.0-next.21 |
+| @solidjs/vite-plugin                         | web      | 3.0.0-next.38 |
+| elysia                                       | api      | 1.4.30        |
+| @elysiajs/eden                               | web      | 1.4.9         |
+| alchemy                                      | infra    | 2.0.0-beta.77 |
+| effect                                       | infra    | 4.0.0-rc.115  |
+| wrangler                                     | web, api | 4.131.1       |
+| @cloudflare/vite-plugin                      | web      | 1.54.8        |
+| tailwindcss, @tailwindcss/vite               | web      | 4.3.3         |
+| @tanstack/solid-form                         | web      | 1.33.5        |
+| @uppy/core                                   | web      | 6.0.1         |
+| @uppy/aws-s3                                 | web      | 6.1.0         |
+| @uppy/drop-target                            | web      | 5.0.0         |
+| dismatch                                     | web      | 2.6.0         |
+| better-result                                | web, api | 3.0.1         |
+| valibot                                      | web, api | 1.4.2         |
+| better-auth                                  | api      | 1.7.4         |
+| drizzle-orm                                  | api      | 0.45.2        |
+| drizzle-kit                                  | api      | 0.31.10       |
+| @polar-sh/sdk                                | api      | 0.49.0        |
+| portless                                     | root     | 0.15.6        |
+
+## Departures from the rest of this document
+
+**Kobalte 2 is not installed.** `@kobalte/core` on npm is still 0.13.x (Solid 1). The Solid 2 port is an unreleased PR. Native HTML until a Solid 2 Kobalte ships.
+
+**TanStack Solid Form is installed and unused.** `@tanstack/solid-store@0.11.1` (a dependency of the form package) still wants `solid-js@^1.6.0`. Do not import the form helpers until that peer is Solid 2.
+
+**Better Auth's optional `solid-js@^1` peer is ignored.** Auth stays on the API Worker. We are not using a Solid auth UI adapter.
+
+**Effect exists only in `infra`.** Alchemy v2's stack file is an Effect program. Application code does not import it.
+
+**Solid Primitives were not installed.** The list in this document is still à la carte, not a shopping list.
+
+**No `packages/contracts`, `packages/db`, or `packages/upload-core` yet.** Those folders wait for code that actually has to live there.
 
 ---
 
