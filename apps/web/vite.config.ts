@@ -1,7 +1,10 @@
 import { fileURLToPath } from "node:url";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import { fileRoutes } from "filesystem-routing/vite";
 import { defineConfig } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
+
+const workerSsr = process.env.VITEST ? [] : [cloudflare({ viteEnvironment: { name: "ssr" } })];
 
 export default defineConfig({
   staged: {
@@ -15,37 +18,26 @@ export default defineConfig({
   },
   // Turnkey streaming SSR: no index.html and no entry files — the plugin
   // generates the entries around src/App.tsx, wrapped in src/Document.tsx.
-  // `vite build` emits static client assets to dist/client and the request
-  // handler to dist/server; `npm start` serves both with server.js.
+  // Production serving is the Worker in src/worker.ts, which calls
+  // handleRequest from virtual:solid-ssr-handler. Client assets go to the
+  // Workers assets binding; hashed files are resolved through the Solid
+  // manifest.
   plugins: [
+    ...workerSsr,
     solid({
       start: {
-        // Fetch-style chain fronting every request: dispatches API routes.
         middleware: "./src/middleware.ts",
-        // Typed env is on by convention: ./env.ts is probed automatically
-        // and validated — server vars are read from process.env when the
-        // server boots, client vars are baked at build time. (Set
-        // `env: false` here to opt out.)
       },
-      // Set to false for a static shell + API server: pages render on the
-      // client while server functions, sessions, and API routes keep
-      // working. (Tests always compile with the client posture.)
       ssr: true,
-      // Dev-only agent/diagnostics surface: exposes capture control at
-      // /__solid/diagnostics on the dev server (see AGENTS.md). No-op in build.
       diagnostics: true,
-      // Compiles 'use server' functions into fetch calls on the client and
-      // serves them from the /_server endpoint. The configure module runs
-      // in the handler graph before any dispatch — it registers the
-      // router's single-flight collector (see src/server-config.ts).
-      serverFunctions: { configure: "./src/server-config.ts" },
-      // `extensions` makes @solidjs/vite-plugin also compile the `?pick=` route
-      // modules the fileRoutes plugin emits (their ids end in a query string).
+      serverFunctions: {
+        configure: "./src/server-config.ts",
+        // Let the Cloudflare plugin dispatch /_server in workerd so
+        // functions see Worker env/ctx the same as production.
+        ...(process.env.VITEST ? {} : { devMiddleware: false }),
+      },
       extensions: [".jsx", ".tsx"],
     }),
-    // `httpMethods` also scans route modules for GET/POST/... exports (API
-    // routes). One router serves both sides: handler modules — and the
-    // server-only code they import — never enter the client bundle.
     fileRoutes({ httpMethods: true, types: true }),
   ],
   server: {
