@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { cloudflare } from "@cloudflare/vite-plugin";
+import tailwindcss from "@tailwindcss/vite";
 import { fileRoutes } from "filesystem-routing/vite";
 import { defineConfig } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
@@ -24,6 +25,7 @@ export default defineConfig({
   // manifest.
   plugins: [
     ...workerSsr,
+    tailwindcss(),
     solid({
       start: {
         middleware: "./src/middleware.ts",
