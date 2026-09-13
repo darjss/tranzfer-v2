@@ -2,6 +2,8 @@
 
 This is a SolidJS 2.x project. Solid is not React: components run once (there is no re-render), reactivity is fine-grained through signals, and effects/memos have Solid-specific semantics. Do not port React patterns.
 
+Before writing, editing, or explaining Solid code, read `.agents/skills/solidjs-v2/SKILL.md` and the references it routes for the affected behavior. Installed rc.6 package typings, runtime, and `node_modules/solid-js/CHEATSHEET.md` take precedence over that skill's rc.5 reference material.
+
 ## Versioned skills (in node_modules — read on demand)
 
 The installed packages ship agent skills that match their exact installed versions:

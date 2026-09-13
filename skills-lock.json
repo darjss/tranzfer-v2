@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "solidjs-v2": {
+      "source": "khmm12/solidjs-v2-skills",
+      "sourceType": "github",
+      "skillPath": "skills/solidjs-v2/SKILL.md",
+      "computedHash": "a48e63cb7ff9f4c6463f3bfdc2bf06d1d273bbc1882decf4e67065102af23411"
+    }
+  }
+}
