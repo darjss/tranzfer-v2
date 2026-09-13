@@ -24,6 +24,7 @@ Use a pnpm workspace with root catalogs for shared dependency versions.
 
 ```text
 apps/*
+infra
 packages/*
 ```
 
@@ -39,6 +40,27 @@ Why:
 Do not introduce Turborepo/Nx unless the repository eventually demonstrates an actual need for them.
 
 The monorepo is small enough that package-manager workspaces are sufficient.
+
+## Local addresses
+
+Use **Portless** for named local URLs. From the repo root:
+
+```text
+vp run dev
+```
+
+That starts every app `dev` script through Portless without TLS (no port 443 / local CA). Addresses:
+
+```text
+http://tranzfer.localhost       apps/web
+http://api.tranzfer.localhost   apps/api
+```
+
+Portless assigns each app a port and injects it (`PORT`, `--port`, or Wrangler's flags). Do not hard-code `localhost:3000` in docs or scripts.
+
+One `portless.json` at the repo root names the apps. `turbo` is off; this repo does not use Turborepo.
+
+Direct Vite without Portless still works: `pnpm --filter @tranzfer/web dev`.
 
 ---
 
@@ -845,7 +867,11 @@ Do not use KV as a relational database.
 
 Use **Alchemy v2** to define Cloudflare infrastructure in TypeScript.
 
-Pin the exact Alchemy v2 version.
+Pin the exact Alchemy v2 version. Current pin: `alchemy@2.0.0-beta.77`.
+
+Alchemy v2's stack file is an Effect program. Effect is installed only in `infra` for that. Application packages do not import Effect.
+
+Until step 4 of the foundation plan wires Workers into Alchemy, `apps/api` uses Wrangler for local `wrangler dev`. That file is a local debug entry, not a second production source of truth.
 
 Alchemy is the authoritative source of Cloudflare infrastructure state.
 

@@ -37,12 +37,14 @@ Tranzfer is not a generic cloud drive, public file host, project manager, or dig
 
 ## Development
 
-This project uses Solid 2 and Vite+.
+This project uses Solid 2, Vite+, and a pnpm workspace. Apps live under `apps/`. Local URLs come from Portless.
 
 ```sh
 vp install
-vp dev
+vp run dev
 ```
+
+That serves the web app at `http://tranzfer.localhost` and the API at `http://api.tranzfer.localhost`. One app: `pnpm --filter @tranzfer/web dev` or `pnpm --filter @tranzfer/api dev`. Copy `apps/web/.env.example` to `apps/web/.env` and set `SESSION_SECRET` first.
 
 Before committing code, run:
 
@@ -51,4 +53,4 @@ vp check
 vp test
 ```
 
-The application is still a starter. Read the repository documents before replacing demo code or making architectural decisions.
+The transfer engine is not built yet. Read the repository documents before replacing demo code or making architectural decisions.
