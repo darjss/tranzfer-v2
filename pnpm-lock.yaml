@@ -240,6 +240,9 @@ importers:
         specifier: 1.4.2
         version: 1.4.2(typescript@5.9.3)
     devDependencies:
+      '@cloudflare/vite-plugin':
+        specifier: 1.54.8
+        version: 1.54.8(@types/node@26.4.1)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(typescript@5.9.3)(yaml@2.9.1))(wrangler@4.131.1(@cloudflare/workers-types@5.20260911.1)(@types/node@26.4.1))
       '@solidjs/diagnostics':
         specifier: 'catalog:'
         version: 2.0.0-rc.6(vitest@4.1.11)
@@ -279,6 +282,9 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(jsdom@25.0.1(supports-color@10.2.2))(typescript@5.9.3)(yaml@2.9.1)
+      wrangler:
+        specifier: 4.131.1
+        version: 4.131.1(@cloudflare/workers-types@5.20260911.1)(@types/node@26.4.1)
 
   infra:
     dependencies:
@@ -535,6 +541,13 @@ packages:
     peerDependenciesMeta:
       workerd:
         optional: true
+
+  '@cloudflare/vite-plugin@1.54.8':
+    resolution: {integrity: sha512-FuwhWzDg48bIKEj1fcNyS3K2aZeNhlVSPZueDVGrp2fOf+8c8rqaCj66+KUKHuMCqHMfwo2LRbJyGOz+NrKuYQ==}
+    hasBin: true
+    peerDependencies:
+      vite: ^6.1.0 || ^7.0.0 || ^8.0.0
+      wrangler: ^4.131.1
 
   '@cloudflare/workerd-darwin-64@1.20260901.1':
     resolution: {integrity: sha512-5nJCpnclV6cc5v3aZOewu+djFvNvm9A/owQ+WJ2G1450roeFHfZGsyW7vVjSRWx3v2iykfkviyJfGm9ApeFDGg==}
@@ -4400,6 +4413,20 @@ snapshots:
       unenv: 2.0.0-rc.24
     optionalDependencies:
       workerd: 1.20260911.1
+
+  '@cloudflare/vite-plugin@1.54.8(@types/node@26.4.1)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(typescript@5.9.3)(yaml@2.9.1))(wrangler@4.131.1(@cloudflare/workers-types@5.20260911.1)(@types/node@26.4.1))':
+    dependencies:
+      '@cloudflare/unenv-preset': 2.16.1(unenv@2.0.0-rc.24)(workerd@1.20260911.1)
+      miniflare: 5.20260911.0-alpha(@types/node@26.4.1)
+      unenv: 2.0.0-rc.24
+      vite: '@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(typescript@5.9.3)(yaml@2.9.1)'
+      workerd: 1.20260911.1
+      wrangler: 4.131.1(@cloudflare/workers-types@5.20260911.1)(@types/node@26.4.1)
+      ws: 8.21.0
+    transitivePeerDependencies:
+      - '@types/node'
+      - bufferutil
+      - utf-8-validate
 
   '@cloudflare/workerd-darwin-64@1.20260901.1':
     optional: true

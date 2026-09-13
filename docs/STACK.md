@@ -150,6 +150,12 @@ Use **Vite** for the web application.
 
 Keep the build setup boring.
 
+The web Worker is the production server. `@cloudflare/vite-plugin` owns the `ssr` Vite environment (`viteEnvironment: { name: "ssr" }`) so `vp dev` / `vp build` / `vp preview` run the Solid `handleRequest` export inside workerd. `src/worker.ts` is the Worker entry: it forwards each request to `virtual:solid-ssr-handler`. There is no Node `server.js`.
+
+Client assets are Workers static assets. HTML, server functions, and the demo `/api/*` filesystem routes go through the Worker (`assets.run_worker_first: true`). Canonical product HTTP still belongs on the Elysia API Worker, not these starter routes.
+
+`SESSION_SECRET` is still a process env var (the Solid env schema reads `process.env` at boot). Locally that is `apps/web/.env` for Vite plus `apps/web/.dev.vars` for workerd. `nodejs_compat` is on so that read works in the Worker.
+
 Do not introduce framework layers just to gain conventions that Tranzfer does not need.
 
 ---
