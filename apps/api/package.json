@@ -17,6 +17,7 @@
     "valibot": "1.4.2"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20260911.1",
     "drizzle-kit": "0.31.10",
     "typescript": "5.9.3",
     "wrangler": "4.131.1"

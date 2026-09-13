@@ -44,7 +44,7 @@ vp install
 vp run dev
 ```
 
-That serves the web app at `http://tranzfer.localhost` and the API at `http://api.tranzfer.localhost`. One app: `pnpm --filter @tranzfer/web dev` or `pnpm --filter @tranzfer/api dev`. Copy `apps/web/.env.example` to `apps/web/.env` and `apps/web/.dev.vars` and set `SESSION_SECRET` first.
+That serves the web app at `http://tranzfer.localhost` and the API at `http://api.tranzfer.localhost`. One app: `vp run --filter @tranzfer/web dev` or `vp run --filter @tranzfer/api dev`. Copy `apps/web/.env.example` to `apps/web/.env` and `apps/web/.dev.vars` and set `SESSION_SECRET` first.
 
 Before committing code, run:
 

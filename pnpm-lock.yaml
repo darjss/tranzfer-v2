@@ -227,6 +227,9 @@ importers:
         specifier: 1.4.2
         version: 1.4.2(typescript@5.9.3)
     devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20260911.1
+        version: 5.20260911.1
       drizzle-kit:
         specifier: 0.31.10
         version: 0.31.10

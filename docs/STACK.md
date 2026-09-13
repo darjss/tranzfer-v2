@@ -60,7 +60,7 @@ Portless assigns each app a port and injects it (`PORT`, `--port`, or Wrangler's
 
 One `portless.json` at the repo root names the apps. `turbo` is off; this repo does not use Turborepo.
 
-Direct Vite without Portless still works: `pnpm --filter @tranzfer/web dev`.
+Direct Vite without Portless still works: `vp run --filter @tranzfer/web dev`.
 
 ---
 
