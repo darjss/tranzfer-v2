@@ -1,0 +1,8 @@
+{
+  "name": "tranzfer",
+  "turbo": false,
+  "apps": {
+    "apps/web": { "name": "tranzfer" },
+    "apps/api": { "name": "api.tranzfer" }
+  }
+}
