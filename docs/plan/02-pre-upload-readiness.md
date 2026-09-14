@@ -1,7 +1,8 @@
 # Tooling and UI readiness before uploads
 
-Status: planned. This document authorizes no implementation by itself. Complete
-this phase before starting the first transfer flow in step 6 of
+Status: in progress. Step 1 (lint policy) is done. This document authorizes no
+implementation by itself beyond the step being executed. Complete this phase
+before starting the first transfer flow in step 6 of
 [01-foundation.md](01-foundation.md).
 
 The agreed scope is environment validation, stricter linting, verification and
@@ -79,6 +80,10 @@ upload operations out of this phase. Replacing the architecture is complete
 only when the old application libraries are removed and checks/builds pass.
 
 ## 1. Establish one lint policy
+
+Status: done. Root `vp lint` / `vp fmt --check` pass. `vp -C apps/web lint`
+uses the same `lint.config.ts`. Temporary probes failed on chained type
+assertions (anti-slop), `solid/reactivity`, and `effecttsgo/floating-effect`.
 
 The lint stack is locked:
 
@@ -258,7 +263,7 @@ Effect values into application Layers.
 Resolve these known discrepancies before claiming readiness:
 
 - Kobalte publishes `2.0.0-alpha.2` with exact Solid rc.3 peers; this app uses
-  rc.6. Check current releases and relevant fixes, then prove compatibility.
+  rc.8. Check current releases and relevant fixes, then prove compatibility.
   Do not suppress peer warnings and call the integration complete.
 - TanStack Solid Form is absent from the manifest although STACK.md says it is
   installed. Its researched store dependency requires Solid 1. Resolve the

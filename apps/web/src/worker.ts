@@ -1,27 +1,29 @@
 import { handleRequest } from "virtual:solid-ssr-handler";
 
-type WebEnv = {
+interface WebEnv {
   API?: {
-    fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+    fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   };
-};
+}
 
 export default {
   async fetch(request: Request, env: WebEnv) {
     const url = new URL(request.url);
     if (url.pathname === "/infra") {
       if (!env.API) {
-        return Response.json({ web: true, api: null }, { status: 503 });
+        return Response.json({ api: null, web: true }, { status: 503 });
       }
-      const health = await env.API.fetch(new URL("/health", request.url));
-      const bindings = await env.API.fetch(new URL("/infra", request.url));
+      const healthResponse = await env.API.fetch(new URL("/health", request.url));
+      const bindingsResponse = await env.API.fetch(new URL("/infra", request.url));
+      const api: unknown = await healthResponse.json();
+      const bindings: unknown = await bindingsResponse.json();
       return Response.json({
+        api,
+        bindings,
         web: true,
-        api: await health.json(),
-        bindings: await bindings.json(),
       });
     }
 
-    return handleRequest(request);
+    return await handleRequest(request);
   },
 };

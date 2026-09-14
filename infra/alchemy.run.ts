@@ -11,27 +11,24 @@ export default Alchemy.Stack(
     providers: Cloudflare.providers(),
     state: Alchemy.localState(),
   },
-  Effect.gen(function* () {
+  Effect.gen(function* provision() {
     const db = yield* Cloudflare.D1.Database("App");
     const files = yield* Cloudflare.R2.Bucket("Files");
 
     const api = yield* Cloudflare.Worker("Api", {
-      name: "tranzfer-api",
-      main: apiMain,
       compatibility: {
         date: "2026-09-13",
         flags: ["nodejs_compat"],
       },
       env: {
-        DB: db,
         BUCKET: files,
+        DB: db,
       },
+      main: apiMain,
+      name: "tranzfer-api",
     });
 
     const web = yield* Cloudflare.Website.Vite("Web", {
-      name: "tranzfer-web",
-      rootDir: webRoot,
-      main: "src/worker.ts",
       compatibility: {
         date: "2026-09-13",
         flags: ["nodejs_compat"],
@@ -40,6 +37,9 @@ export default Alchemy.Stack(
       env: {
         API: api,
       },
+      main: "src/worker.ts",
+      name: "tranzfer-web",
+      rootDir: webRoot,
     });
 
     return {
