@@ -21,13 +21,30 @@ STACK.md records this target architecture. The current manifests still contain
 the conventional application libraries pending implementation.
 
 - Keep Solid 2 for UI/reactivity and Uppy for browser multipart transport.
-- Use Effect for application workflows, typed expected failures, dependency
-  management, bounded concurrency, retries, resource lifetimes, and tracing.
-- Define RPC input, success, and expected-error schemas once in shared contracts.
-  Derive server handlers and client types from those contracts and validate data
-  at the network boundary. Do not duplicate DTOs or cast responses into types.
+  Do not run Effect in the browser for UI state, and do not wrap Uppy in
+  Stream or Atom.
+- Go all-in on the API Worker: Effect workflows, tagged failures, Layers at
+  real boundaries, Effect Schema, and Effect RPC over HTTP for the web and a
+  later desktop client. Define RPC input, success, and expected-error schemas
+  once in shared contracts. Derive handlers and clients from those contracts.
+- Host that Worker with [effect-cf](https://github.com/danieljvdm/effect-cf)
+  `Worker.make` / `makeFetchHandler` as the only fetch adapter. Alchemy still
+  deploys through `infra/alchemy.run.ts`. Do not run Alchemy's HTTP bridge and
+  effect-cf's handler as competing request runtimes.
+- `effect-cf` `rpc:` is Cloudflare Workers RPC (service-binding class methods).
+  That is not Effect RPC. Browser and desktop use `effect/unstable/rpc` over
+  HTTP (`RpcServer.toHttpEffect` in `fetch`).
 - Use HTTP endpoints for Better Auth, Polar webhooks, health checks, and browser
-  download links. Retain Better Auth, Drizzle + D1, R2, and Alchemy.
+  download links. Retain Better Auth and Alchemy.
+- Talk to R2 through Distilled S3 (`@distilled.cloud/aws`) with an R2 endpoint
+  override, `region: auto`, and S3 credentials. That path owns ListParts,
+  presign for Uppy, and multipart create/abort/complete. Do not install
+  `effect-cf` `R2.Tag` and do not send file bytes through Distilled `uploadPart`
+  or `putObject`. `@distilled.cloud/cloudflare` is the account REST API, not
+  object I/O.
+- Use Drizzle v1 RC with `drizzle-orm/effect-d1` and `@effect/sql-d1`. Provide
+  `D1Client` from the Worker binding (`effect-cf` `D1.sqlLayer` is the intended
+  adapter). Do not keep a second raw-SQL API beside Drizzle.
 - Replace Elysia/Eden, Better Result, and Valibot with the selected Effect
   facilities. Remove replaced packages rather than retaining parallel models.
 - Keep file bytes travelling directly between the client and R2. RPC coordinates
@@ -54,11 +71,12 @@ verified Effect 4 adapter. Preserve service requirements without `any` when
 implementing the integration.
 
 Implement the Effect/RPC foundation before environment/schema integration and
-deployment verification below. Establish the typed web-to-Worker connection
-using existing non-upload behavior. Verify success, schema rejection, and typed
-expected failure under the actual Worker runtime. Keep future upload operations
-out of this phase. Replacing the architecture is complete only when the old
-application libraries are removed and checks/builds pass.
+deployment verification below. Serve it through effect-cf on the API Worker.
+Establish the typed web-to-Worker connection using existing non-upload
+behavior. Verify success, schema rejection, typed expected failure, and a
+client-aborted first request that does not hang the isolate. Keep future
+upload operations out of this phase. Replacing the architecture is complete
+only when the old application libraries are removed and checks/builds pass.
 
 ## 1. Establish one lint policy
 
@@ -84,15 +102,40 @@ to satisfy lint. Any necessary exception must name the rule and explain the
 specific boundary; do not preemptively disable whole rule groups.
 
 Allow namespace imports used by Effect. Keep React-specific rules out of Solid
-code. Apply any additional Effect-specific rules only to Effect code and verify
-that they match the pinned Effect 4 APIs. Lint `apps/web/src/ui` along with
-the rest of the app. Exclude generated outputs by exact purpose, not broad UI
-or declaration-file exclusions. Keep formatting under Oxfmt.
+code. Lint `apps/web/src/ui` along with the rest of the app. Exclude generated
+outputs by exact purpose, not broad UI or declaration-file exclusions. Keep
+formatting under Oxfmt.
+
+Effect lint comes from the official `@effect/tsgo` Oxlint plugin (`effecttsgo`),
+documented in [Effect-TS/tsgo](https://github.com/Effect-TS/tsgo/blob/main/docs/README.md)
+and authored with the language-service diagnostics (Mattia Manzati). Enable
+type-aware Oxlint. Extend only `correctness` and `antipattern` presets, scoped
+to Effect application packages (`apps/api`, later `packages/contracts` and
+`packages/db`). Treat these as errors: `floating-effect`,
+`floating-effect-in-vitest`, `missing-effect-context`, `missing-effect-error`,
+`missing-layer-context`, `missing-star-in-yield-effect-gen`,
+`return-effect-in-gen`, `run-effect-inside-effect`, `try-catch-in-effect-gen`,
+`global-error-in-effect-catch`, `unknown-in-effect-catch`, `outdated-api`.
+
+Do not extend the full `recommended` or `effect-native` presets. Those warn on
+`global-fetch`, `global-date`, `process-env`, and `async-function` and will
+fight Solid, Uppy, T3 Env, and Worker bindings. Do not add
+`@effect/eslint-plugin` (dprint plus barrel imports only) or community Oxlint
+packs (`cevr/effect-oxlint`, `@mpsuesser/oxlint-plugin-effect`, `effect-rules`).
+Do not add ESLint for Effect.
+
+`effect-tsgo patch --oxlint` must match the Vite+/Oxlint/`oxlint-tsgolint`
+versions `@effect/tsgo` supports. If the patch fights Vite+, keep the same
+diagnostics in `@effect/language-service` for the editor and fail CI with
+`effect-tsgo diagnostics` until Oxlint can load the plugin. Duplicate LSP plus
+Oxlint diagnostics is not acceptable; turn language-service `diagnostics` off
+when Oxlint owns them.
 
 Complete when root and web commands enforce the same applicable rules, lint and
 format checks pass without editing files, and direct stdin checks demonstrate
-that a representative anti-slop violation and Solid v2 violation fail. Do not
-create test files just to assert configuration contents.
+that a representative anti-slop violation, Solid v2 violation, and Effect
+correctness violation fail. Do not create test files just to assert
+configuration contents.
 
 ## 2. Validate environment configuration with T3 Env
 
@@ -188,6 +231,30 @@ upfront in their owning package. The document's optional examples and explicit
 exclusions are not an installation list. Do not add empty packages, wrappers, or
 future desktop dependencies just to house installed libraries.
 
+Install and pin, in their owning packages:
+
+- `effect` and related packages at the same 4.x RC as infra (`4.0.0-rc.112`
+  when researched; bump together with Alchemy).
+- `effect-cf` for the Worker fetch runtime. Peer Effect RC must match.
+- `@distilled.cloud/aws` for S3/R2. Provide `FetchHttpClient`, `Region`,
+  `Endpoint`, and `Credentials` Layers. Prove ListParts and a presigned
+  UploadPart URL against real R2 before treating signing as done. If Distilled
+  path-style URLs fail R2, keep Distilled for ListParts and sign with
+  `aws4fetch`.
+- `drizzle-orm@1.0.0-rc.4` (npm tag `rc`) and matching `drizzle-kit@rc`, plus
+  `@effect/sql-d1` at the pinned Effect RC. Use `drizzle-orm/effect-d1`
+  (`SQLiteD1Drizzle.make` / `makeWithDefaults`). Official Effect docs are
+  Postgres-first; D1 Effect support landed in rc.4 as `effect-d1`. Do not stay
+  on `drizzle-orm@0.45.2`.
+- `drizzle-kit` `d1-http` migrate on rc.4 is reported broken for non-empty
+  journals ([issue 5952](https://github.com/drizzle-team/drizzle-orm/issues/5952)).
+  Apply migrations through a path that works on this stack (Wrangler/Alchemy
+  local execute, or a kit release that fixes `/raw` rows). Do not claim D1
+  readiness on an empty-database-only migrate.
+
+Pin compatible Effect 4 objects inside the Worker. Do not pass Alchemy's
+Effect values into application Layers.
+
 Resolve these known discrepancies before claiming readiness:
 
 - Kobalte publishes `2.0.0-alpha.2` with exact Solid rc.3 peers; this app uses
@@ -251,7 +318,14 @@ or commit those changes as part of this work.
 - [Kobalte Solid 2 Dialog work](https://github.com/kobaltedev/kobalte/pull/694)
 - [Effect architecture decision](https://github.com/darjss/tranzfer-v2/issues/7)
 - [Effect 4 source and release status](https://github.com/Effect-TS/effect)
+- [Effect TSGo Oxlint docs](https://github.com/Effect-TS/tsgo/blob/main/docs/README.md)
+- [effect-cf](https://github.com/danieljvdm/effect-cf)
+- [Distilled AWS / S3](https://github.com/alchemy-run/distilled)
+- [Drizzle v1.0.0-rc.4](https://github.com/drizzle-team/drizzle-orm/releases/tag/v1.0.0-rc.4)
+- [Drizzle Effect Postgres docs](https://orm.drizzle.team/docs/connect-effect-postgres)
+- [drizzle-kit d1-http migrate bug](https://github.com/drizzle-team/drizzle-orm/issues/5952)
 - [Solid integration example dependencies](https://github.com/solidjs/solid/blob/next/examples/effect/package.json)
+- [Local Effect decision notes](../research/effect-decision.md)
 
 Research date: 2026-09-14. Verify published versions and open PR status again at
 implementation time. Installed package documentation takes precedence over

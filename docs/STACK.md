@@ -514,6 +514,13 @@ File bytes travel directly between the client and R2, never through RPC.
 Keep ordinary HTTP endpoints for Better Auth, Polar webhooks, health checks, and
 browser download links. Do not introduce another RPC framework.
 
+Host the API Worker with **effect-cf** `Worker.make` / `makeFetchHandler`.
+Put Effect RPC in `fetch` via `RpcServer.toHttpEffect`. Do not use effect-cf
+`rpc:` for the public app protocol; that is Cloudflare Workers RPC.
+
+Talk to R2 with **Distilled S3** (`@distilled.cloud/aws`) against the R2 S3
+endpoint. Do not wrap `env.BUCKET` with effect-cf `R2.Tag`.
+
 Replace Elysia and Eden during the readiness phase. Contract validation and
 inferred client types do not prove authorization, idempotency, or persistence
 correctness; handlers must enforce those requirements explicitly.
@@ -577,7 +584,11 @@ Never store large file payloads in D1.
 
 ## Drizzle ORM
 
-Use **Drizzle ORM** with D1.
+Use **Drizzle ORM v1 RC** (`drizzle-orm@1.0.0-rc.4` when researched) with D1
+through `drizzle-orm/effect-d1` and `@effect/sql-d1`. Provide `D1Client` from
+the Worker binding (`effect-cf` `D1.sqlLayer`). Official Effect examples are
+Postgres (`drizzle-orm/effect-postgres`); D1's Effect driver shipped in rc.4.
+Stay on one query API. Do not keep Promise-based `drizzle-orm/d1` beside it.
 
 Drizzle owns:
 
@@ -892,6 +903,10 @@ Use **Oxlint through Vite+** with `ultracite/oxlint/core`, followed by
 for Solid code. Keep type-aware checks enabled and promote reactivity diagnostics
 to errors. Lint local UI components; do not exclude entire UI folders.
 
+On Effect packages, add official `@effect/tsgo` `correctness` and `antipattern`
+presets only. Do not enable the full `recommended` or `effect-native` presets
+on the web app. Do not add a second ESLint plugin for Effect.
+
 Fast feedback matters heavily in an agent-driven repository.
 
 Lint violations should fail CI.
@@ -1017,8 +1032,8 @@ flowchart LR
   Web -->|Signed multipart bytes| R2[Private R2 storage]
   Polar -->|HTTP webhooks| API
   API --> Auth[Better Auth]
-  API -->|Drizzle| D1
-  API -->|Authorize and sign storage operations| R2
+  API -->|Drizzle effect-d1| D1
+  API -->|Distilled S3 sign and ListParts| R2
   Maintenance[Future maintenance Worker] -->|Cleanup and reconciliation| R2
   Maintenance --> D1
   Desktop[Future desktop client] -.->|Effect RPC| API
@@ -1072,6 +1087,10 @@ runtime behavior before integrating it; do not suppress peer errors as a fix.
 
 TanStack Solid Form is not installed. Its researched store dependency requires
 Solid 1. Resolve Solid 2 and Effect Schema compatibility before using it.
+
+Readiness will install `effect-cf`, `@distilled.cloud/aws`, and
+`drizzle-orm` / `drizzle-kit` 1.0.0-rc.4 with `@effect/sql-d1`. Manifests still
+show `drizzle-orm@0.45.2` until that step.
 
 Better Auth stays on the API Worker. We do not use its Solid 1 UI adapter.
 
