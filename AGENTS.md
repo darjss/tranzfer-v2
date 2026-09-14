@@ -26,7 +26,15 @@ Name your signals/memos/effects (the `{ name: "..." }` option) — attribution r
 
 ## Repo layout, scripts, deploys
 
-pnpm workspace (`packageManager` is pinned in `package.json`; use `pnpm add` for dependencies, never another package manager — `catalog:` specifiers only resolve with pnpm). Packages: `apps/web` (Solid 2 site + Worker, `@tranzfer/web`), `apps/api` (Elysia Worker, `@tranzfer/api`), `infra` (Alchemy v2 stack, `@tranzfer/infra`).
+The selected application architecture is Effect 4 with Effect RPC and Effect
+Schema. See `docs/STACK.md` and `docs/plan/02-pre-upload-readiness.md` for the
+migration. Existing Elysia/Eden, Better Result, and Valibot packages await removal;
+do not extend their use. Solid owns UI reactivity, Uppy owns multipart transport,
+and persistent metadata plus R2 own recovery truth. Fiber interruption and UI
+disposal must not implicitly cancel durable uploads. Use shared RPC schemas for
+client/server contracts and keep file bytes out of RPC.
+
+pnpm workspace (`packageManager` is pinned in `package.json`; use `pnpm add` for dependencies, never another package manager — `catalog:` specifiers only resolve with pnpm). Packages: `apps/web` (Solid 2 site + Worker, `@tranzfer/web`), `apps/api` (API Worker, currently Elysia pending Effect RPC migration, `@tranzfer/api`), `infra` (Alchemy v2 stack, `@tranzfer/infra`).
 
 Run root scripts with `pnpm <script>`:
 

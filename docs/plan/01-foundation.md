@@ -6,6 +6,9 @@ compatibility, CI, deployment automation, and UI preparation belong to
 not claim those follow-ups are complete. Step 6 remains deferred until that plan
 passes its completion gates.
 
+The Elysia references below describe the original foundation work. The selected
+Effect RPC and Effect Schema architecture in STACK.md supersedes those choices.
+
 Build and deploy the workspace, install the agreed stack, and establish the
 visual direction before implementing uploads. The first milestone is a deployed,
 branded app shell with working infrastructure and local development.

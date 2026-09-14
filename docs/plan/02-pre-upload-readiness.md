@@ -17,8 +17,8 @@ The user selected this direction in [issue #7](https://github.com/darjss/tranzfe
 Do not build a comparative spike or reopen the architecture choice during this
 phase. Verify integrations while implementing the selected architecture.
 
-This decision supersedes STACK.md's conventional application-stack choices until
-that document is reconciled during implementation.
+STACK.md records this target architecture. The current manifests still contain
+the conventional application libraries pending implementation.
 
 - Keep Solid 2 for UI/reactivity and Uppy for browser multipart transport.
 - Use Effect for application workflows, typed expected failures, dependency
