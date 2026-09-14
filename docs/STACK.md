@@ -1065,9 +1065,9 @@ implementation.
 
 | Package                                      | Where       | Version       |
 | -------------------------------------------- | ----------- | ------------- |
-| solid-js, @solidjs/web, @solidjs/diagnostics | web         | 2.0.0-rc.6    |
-| @solidjs/router                              | web         | 2.0.0-next.21 |
-| @solidjs/vite-plugin                         | web         | 3.0.0-next.38 |
+| solid-js, @solidjs/web, @solidjs/diagnostics | web         | 2.0.0-rc.8    |
+| @solidjs/router                              | web         | 2.0.0-next.24 |
+| @solidjs/vite-plugin                         | web         | 3.0.0-next.43 |
 | elysia                                       | api         | 1.4.30        |
 | @elysiajs/eden                               | web         | 1.4.9         |
 | alchemy                                      | infra       | 2.0.0-beta.77 |
@@ -1094,7 +1094,7 @@ implementation.
 ## Pending implementation and compatibility
 
 Kobalte is not installed. The researched Solid 2 release is `2.0.0-alpha.2`,
-which pins Solid rc.3 while this app uses rc.6. Verify current releases and
+which pins Solid rc.3 while this app uses rc.8. Verify current releases and
 runtime behavior before integrating it; do not suppress peer errors as a fix.
 
 TanStack Solid Form is not installed. Its researched store dependency requires

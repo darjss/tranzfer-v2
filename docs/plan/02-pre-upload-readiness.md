@@ -263,7 +263,7 @@ Effect values into application Layers.
 Resolve these known discrepancies before claiming readiness:
 
 - Kobalte publishes `2.0.0-alpha.2` with exact Solid rc.3 peers; this app uses
-  rc.6. Check current releases and relevant fixes, then prove compatibility.
+  rc.8. Check current releases and relevant fixes, then prove compatibility.
   Do not suppress peer warnings and call the integration complete.
 - TanStack Solid Form is absent from the manifest although STACK.md says it is
   installed. Its researched store dependency requires Solid 1. Resolve the
