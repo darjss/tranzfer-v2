@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { fileRoutes } from "filesystem-routing/vite";
+import { prerender } from "prerender-crawler/vite";
 import { defineConfig } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
 
@@ -30,9 +31,7 @@ export default defineConfig({
     ...workerSsr,
     tailwindcss(),
     solid({
-      start: {
-        middleware: "./src/middleware.ts",
-      },
+      start: true,
       ssr: true,
       diagnostics: true,
       serverFunctions: {
@@ -43,7 +42,10 @@ export default defineConfig({
       },
       extensions: [".jsx", ".tsx"],
     }),
-    fileRoutes({ httpMethods: true, types: true }),
+    fileRoutes({ httpMethods: true, types: true, codeSplitting: false }),
+    // The landing is baked to dist/client/index.html at build; Workers static
+    // assets serve it ahead of the Worker. Every other route stays live SSR.
+    prerender({ mode: "hybrid", pages: ["/"], crawlLinks: false, emitPages: (p) => p === "/" }),
   ],
   server: {
     host: "127.0.0.1",

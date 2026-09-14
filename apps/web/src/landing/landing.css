@@ -1,0 +1,222 @@
+.rv {
+  opacity: 0;
+  translate: 0 14px;
+  transition:
+    opacity 0.6s var(--ease-smooth),
+    translate 0.6s var(--ease-smooth);
+  transition-delay: var(--d, 0ms);
+}
+.rv.in {
+  opacity: 1;
+  translate: none;
+}
+
+.flip {
+  display: inline-grid;
+  vertical-align: top;
+  overflow: hidden;
+  height: 1em;
+  color: var(--color-blue);
+  font-style: italic;
+}
+.flip > span {
+  grid-area: 1 / 1;
+  transform: translateY(110%);
+  opacity: 0;
+  transition:
+    transform 0.55s var(--ease-smooth),
+    opacity 0.3s;
+}
+.flip > span.on {
+  transform: none;
+  opacity: 1;
+}
+.flip > span.out {
+  transform: translateY(-110%);
+  opacity: 0;
+}
+
+.ticker {
+  overflow: hidden;
+  white-space: nowrap;
+  border-block: 1px solid var(--color-ink);
+  padding-block: 18px;
+  mask: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.ticker .marq {
+  display: inline-flex;
+  gap: 56px;
+  animation: marq 38s linear infinite;
+}
+.ticker span {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-mut);
+}
+.ticker span b {
+  color: var(--color-ink);
+  font-weight: 500;
+}
+
+.note .tape,
+.note::before {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: -18px;
+  width: 74px;
+  height: 22px;
+  rotate: -38deg;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.18) 0 2px, transparent 2px 5px),
+    rgba(236, 222, 170, 0.62);
+  clip-path: polygon(0 12%, 3% 0, 6% 14%, 97% 4%, 100% 20%, 98% 100%, 94% 88%, 4% 96%, 0 82%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  z-index: 2;
+  mix-blend-mode: multiply;
+}
+.note::before {
+  left: auto;
+  right: -18px;
+  rotate: 38deg;
+}
+.note .ph::after {
+  content: attr(data-gb);
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 4px 8px;
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+}
+@media (hover: hover) {
+  .note:hover {
+    rotate: 0deg;
+    transform: translateY(-10px) scale(1.03);
+    box-shadow:
+      0 50px 80px -40px rgba(23, 24, 28, 0.6),
+      0 0 0 1px rgba(0, 0, 0, 0.08);
+    z-index: 2;
+  }
+}
+.note.rv {
+  transform: translateY(40px) rotate(calc(var(--r) * 3));
+  opacity: 0;
+  transition:
+    transform 0.9s var(--ease-spring),
+    opacity 0.5s,
+    rotate 0.5s var(--ease-spring);
+  transition-delay: var(--d, 0ms);
+}
+.note.rv.in {
+  transform: none;
+  opacity: 1;
+}
+
+.halo {
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  rotate: -12deg;
+  background: radial-gradient(
+    circle,
+    transparent 58%,
+    rgba(120, 80, 30, 0.16) 60%,
+    rgba(120, 80, 30, 0.05) 66%,
+    transparent 70%
+  );
+}
+.halo::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    transparent 58%,
+    rgba(120, 80, 30, 0.09) 60%,
+    transparent 64%
+  );
+  translate: 6px 4px;
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes redraw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes drift {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -10px;
+  }
+}
+@keyframes bob {
+  50% {
+    transform: translateY(-6px) rotate(-4deg);
+  }
+}
+@keyframes marq {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand .bar {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .ink path,
+  .ink ellipse {
+    stroke-dashoffset: 0;
+    transition: none;
+  }
+  .hand {
+    opacity: 0.85;
+    translate: none;
+    transition: none;
+  }
+  .rv,
+  .still,
+  .chip,
+  .note {
+    transition: none;
+    opacity: 1;
+    transform: none;
+    translate: none;
+    animation: none;
+  }
+  .marq,
+  .ico {
+    animation: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .stack {
+    --rx: 0 !important;
+    --ry: 0 !important;
+  }
+  .scatter .still {
+    translate: none !important;
+  }
+}
