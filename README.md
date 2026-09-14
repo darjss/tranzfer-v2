@@ -14,6 +14,11 @@ That is the product promise:
 
 This repository is the clean rewrite of Tranzfer. It currently contains the Solid 2 application foundation and the engineering contracts for the product. The transfer engine is not built yet.
 
+The selected application architecture is Effect 4 with Effect RPC and Effect
+Schema for shared, validated client/server contracts. Solid 2 and Uppy retain UI
+and multipart transport ownership. The migration from Elysia/Eden, Better Result,
+and Valibot is planned, not implemented.
+
 The first real milestone is a 100 GB transfer. The next is a 350 GB transfer that survives deliberate network failures, browser restarts, expired authorization, and interrupted multipart uploads.
 
 ## Product rules
@@ -34,6 +39,7 @@ Tranzfer is not a generic cloud drive, public file host, project manager, or dig
 - [`docs/SOUL.md`](docs/SOUL.md) explains why Tranzfer exists and how work on it should feel.
 - [`docs/RELIABILITY.md`](docs/RELIABILITY.md) defines the transfer and recovery contract.
 - [`docs/STACK.md`](docs/STACK.md) records the intended technical stack and its boundaries.
+- [`docs/plan/02-pre-upload-readiness.md`](docs/plan/02-pre-upload-readiness.md) tracks the Effect migration, lint policy, CI/deployments, environment validation, and UI preparation before uploads.
 
 ## Development
 
@@ -44,7 +50,7 @@ vp install
 vp run dev
 ```
 
-That serves the web app at `http://tranzfer.localhost` and the API at `http://api.tranzfer.localhost`. One app: `vp run --filter @tranzfer/web dev` or `vp run --filter @tranzfer/api dev`. Copy `apps/web/.env.example` to `apps/web/.env` and `apps/web/.dev.vars` and set `SESSION_SECRET` first.
+That serves the web app at `http://tranzfer.localhost` and the API at `http://api.tranzfer.localhost`. One app: `vp run --filter @tranzfer/web dev` or `vp run --filter @tranzfer/api dev`. See `apps/web/.env.example` for current public configuration. The current app has no required `SESSION_SECRET`; T3 Env integration is planned.
 
 Before committing code, run:
 
@@ -53,7 +59,7 @@ vp check
 vp run test
 ```
 
-Deploy Cloudflare resources from this checkout (not a worktree). `SESSION_SECRET` must be in the environment (`openssl rand -base64 32`). Plan first, then apply:
+Deploy Cloudflare resources from this checkout (not a worktree). Use the configured Cloudflare credentials. Plan first, then apply:
 
 ```sh
 vp run plan

@@ -1,6 +1,12 @@
 # STACK.md
 
-# Tranzfer v2 Stack
+# Tranzfer v2 stack
+
+Architecture selected on 2026-09-14: Effect 4, Effect RPC, and Effect Schema.
+[Issue #7](https://github.com/darjss/tranzfer-v2/issues/7) records the decision.
+[The readiness plan](plan/02-pre-upload-readiness.md) tracks implementation.
+This document describes the target architecture. The installed-version section
+records the current packages, including libraries awaiting removal.
 
 This document describes the intentionally small technical stack for Tranzfer v2.
 
@@ -152,9 +158,9 @@ Keep the build setup boring.
 
 The web Worker is the production server. `@cloudflare/vite-plugin` owns the `ssr` Vite environment (`viteEnvironment: { name: "ssr" }`) so `vp dev` / `vp build` / `vp preview` run the Solid `handleRequest` export inside workerd. `src/worker.ts` is the Worker entry: it forwards each request to `virtual:solid-ssr-handler`. There is no Node `server.js`.
 
-Client assets are Workers static assets (assets-first: hashed files never hit the Worker). HTML, server functions, and the demo `/api/*` filesystem routes go through the Worker. Canonical product HTTP still belongs on the Elysia API Worker, not these starter routes.
+Client assets are Workers static assets (assets-first: hashed files never hit the Worker). HTML, server functions, and the demo `/api/*` filesystem routes go through the Worker. Canonical product operations belong on the dedicated API Worker through Effect RPC.
 
-`SESSION_SECRET` is still a process env var (the Solid env schema reads `process.env` at boot). Locally that is `apps/web/.env` for Vite plus `apps/web/.dev.vars` for workerd. `nodejs_compat` is on so that read works in the Worker.
+Environment validation will use T3 Env with Effect Schema. Separate public build-time values from Worker runtime secrets and typed service bindings. Validate only configuration the app actually needs.
 
 Do not introduce framework layers just to gain conventions that Tranzfer does not need.
 
@@ -248,7 +254,7 @@ Upload mechanics remain Uppy's responsibility.
 
 ## Forms
 
-Use **TanStack Form** with **Valibot**.
+Use **TanStack Form** with **Effect Schema**, once the Solid 2 adapter and schema integration are verified.
 
 Forms are generic state machines that we do not need to hand-roll.
 
@@ -265,7 +271,7 @@ reset/default values
 async validation when needed
 ```
 
-Valibot owns runtime validation schemas.
+Effect Schema owns runtime validation schemas.
 
 Do not build a parallel internal form framework.
 
@@ -279,7 +285,7 @@ Do not create a giant abstraction layer over TanStack Form.
 
 Do **not** add TanStack Query initially.
 
-Use Solid 2's native async/reactive primitives and direct Eden calls.
+Use Solid 2's native async/reactive primitives and the typed Effect RPC client. Keep Solid responsible for UI state; do not add Effect Atom.
 
 Tranzfer does not currently need a second client-side cache system with query keys, invalidation policy, garbage collection, and hydration machinery.
 
@@ -323,25 +329,17 @@ Do not turn every boolean into a tagged union for sport.
 
 # Validation and contracts
 
-## Valibot
+## Effect Schema
 
-Use **Valibot** for runtime schemas.
+Use **Effect Schema** for RPC inputs, success values, expected errors, form
+validation, and serialized boundary data. Infer TypeScript types from schemas
+rather than maintaining parallel DTOs. Validate network data at runtime.
 
-Valibot is the default validation library for:
+Use `@t3-oss/env-core` with Effect Schema's supported Standard Schema integration
+for environment validation. Verify the pinned versions together. Keep Cloudflare
+binding objects separately typed and keep server secrets out of client schemas.
 
-```text
-API request bodies
-API responses where runtime validation matters
-shared public DTOs
-form validation
-serialized boundary data
-```
-
-Prefer schemas that are portable across web, API, and future desktop clients.
-
-Do not introduce a second schema library without a concrete requirement.
-
-No TypeBox.
+Replace Valibot during the readiness phase. Do not retain a second schema system.
 
 ---
 
@@ -359,22 +357,23 @@ billing-plan identifiers
 serialized result shapes
 public API request/response models
 shared domain enums/unions
-Valibot schemas used across boundaries
+Effect schemas and RPC operation contracts
 ```
 
 `packages/contracts` must not import:
 
 ```text
-Elysia
+API handler implementations
 Drizzle
 Cloudflare bindings
 application handlers
 UI code
 ```
 
-Elysia consumes contracts.
+Effect RPC handlers and clients consume the same operation contracts.
 
-Contracts do not know Elysia exists.
+Contracts may import Effect Schema and RPC declarations. They must not import
+server handlers, service implementations, or database details.
 
 Prefer plain TypeScript where runtime validation is unnecessary.
 
@@ -481,7 +480,7 @@ It must not import:
 
 ```text
 solid-js
-Elysia
+API handler implementations
 Drizzle
 Cloudflare bindings
 UI components
@@ -499,113 +498,73 @@ Do not invent plugin systems or transport abstractions before they are needed.
 
 # API
 
-## Elysia
+## Effect 4 and RPC
 
-Use **Elysia** for the canonical HTTP API.
+Use **Effect 4** for application workflows and **Effect RPC** for first-party
+web-to-API operations. The dedicated Cloudflare API Worker owns the server.
+Solid remains the UI/reactivity system. Uppy remains the multipart transport.
 
-The API runs on a dedicated Cloudflare Worker.
+Define each operation's input, success, and expected-error schemas once in
+`packages/contracts`. Implement handlers against that contract and derive the
+client from it. Do not duplicate request/response types or cast network replies.
+Keep contracts free of server-only implementations and secrets.
 
-The web application is a client of that API.
+RPC coordinates creation, authorization, signing, recovery, and finalization.
+File bytes travel directly between the client and R2, never through RPC.
+Keep ordinary HTTP endpoints for Better Auth, Polar webhooks, health checks, and
+browser download links. Do not introduce another RPC framework.
 
-Do not mount Tranzfer's canonical domain API inside the Solid web application.
+Host the API Worker with **effect-cf** `Worker.make` / `makeFetchHandler`.
+Put Effect RPC in `fetch` via `RpcServer.toHttpEffect`. Do not use effect-cf
+`rpc:` for the public app protocol; that is Cloudflare Workers RPC.
 
-Elysia owns:
+Talk to R2 with **Distilled S3** (`@distilled.cloud/aws`) against the R2 S3
+endpoint. Do not wrap `env.BUCKET` with effect-cf `R2.Tag`.
 
-- routing
-- HTTP validation
-- authentication integration
-- request/response boundaries
-- API composition
-- OpenAPI generation
+Replace Elysia and Eden during the readiness phase. Contract validation and
+inferred client types do not prove authorization, idempotency, or persistence
+correctness; handlers must enforce those requirements explicitly.
 
-Elysia does **not** own the domain.
+## Workflows and dependencies
 
-Business behavior should remain understandable independently of the HTTP framework.
+Use `Effect.gen` or `Effect.fn` for meaningful application workflows. Use
+services and Layers at external boundaries such as persistence, storage, and
+authentication. Keep pure calculations as ordinary functions. Do not create a
+service for every helper or a parallel dependency-injection framework.
 
-This is especially important because Cloudflare support is a transport/runtime concern, not something that should infect every package.
+Run Effects at application entry points. Keep runtime calls out of domain
+functions. Use bounded concurrency and retry policies where application code
+owns the operation. Uppy still owns part-upload concurrency and retry behavior;
+do not wrap it in another retry loop or Stream solely for consistency.
 
-Use explicit request and response schemas for meaningful API boundaries.
+Fibers, runtimes, and scopes are process-local. Durable metadata in D1 and
+IndexedDB reconstructs work after process loss. R2 remains authoritative for
+uploaded parts. A disposed component or interrupted fiber must never implicitly
+abort a remote multipart upload. Explicit authorized cancellation owns that
+operation. Finalizers release process resources, not durable transfers.
 
-Do not depend on filesystem-based type-generation features that are incompatible with the Worker runtime.
-
----
-
-## Eden
-
-Use **Eden Treaty** for first-party TypeScript API clients.
-
-The Elysia application type is the canonical typed HTTP surface for:
-
-```text
-web
-future desktop app
-internal TypeScript tooling
-```
-
-Conceptually:
-
-```text
-Solid Web ───┐
-             ├── Eden ──► Elysia API
-Desktop ─────┘
-```
-
-Do not introduce a second RPC framework.
-
-Do not add oRPC merely to recreate a contract boundary that Elysia + explicit portable schemas + Eden already provide.
-
-For future non-TypeScript clients, OpenAPI is the interoperability boundary.
+Pin compatible Effect 4 versions and verify the Worker and Solid integrations.
+The RPC modules are under `effect/unstable`; accept and manage that upgrade cost.
+The official Solid example uses Effect 3, so adapt it against installed APIs and
+preserve typed service requirements without `any`. Do not add an Atom state layer.
 
 ---
 
 # Expected errors
 
-## Better Result
+Use Effect's typed error channel for expected domain failures. Define tagged
+errors for distinct handling decisions such as authorization expiry, missing
+file access, file mismatch, expired multipart state, and quota exhaustion.
+Serialize public failures through the RPC error schemas. Keep internal defects
+and secret details out of client responses.
 
-Use **better-result** for expected domain failures.
+Retry only failures whose operation is safe to repeat. Reconcile uncertain
+completion against remote truth before retrying destructive or finalizing work.
+Unexpected programmer defects remain defects; do not disguise every exception
+as an expected business failure.
 
-Expected failure is data.
-
-Examples:
-
-```text
-TransferExpired
-TransferNotFound
-UploadAlreadyCompleted
-QuotaExceeded
-InvalidMultipartState
-SubscriptionRequired
-PermissionDenied
-```
-
-Prefer:
-
-```ts
-Result<T, TransferError>;
-```
-
-over throwing exceptions for normal business outcomes.
-
-Errors should generally be tagged:
-
-```ts
-type TransferError =
-  | {
-      _tag: "TransferExpired";
-      transferId: string;
-    }
-  | {
-      _tag: "QuotaExceeded";
-      limit: number;
-      requested: number;
-    };
-```
-
-This combines naturally with `dismatch`.
-
-Use exceptions for genuinely exceptional programmer/runtime failures.
-
-Do not write Java-style try/catch soup.
+Replace Better Result during the readiness phase. Keep one application error
+model rather than wrapping Effects in a second Result abstraction.
 
 ---
 
@@ -625,7 +584,11 @@ Never store large file payloads in D1.
 
 ## Drizzle ORM
 
-Use **Drizzle ORM** with D1.
+Use **Drizzle ORM v1 RC** (`drizzle-orm@1.0.0-rc.4` when researched) with D1
+through `drizzle-orm/effect-d1` and `@effect/sql-d1`. Provide `D1Client` from
+the Worker binding (`effect-cf` `D1.sqlLayer`). Official Effect examples are
+Postgres (`drizzle-orm/effect-postgres`); D1's Effect driver shipped in rc.4.
+Stay on one query API. Do not keep Promise-based `drizzle-orm/d1` beside it.
 
 Drizzle owns:
 
@@ -782,7 +745,7 @@ Turnstile
 
 ## apps/api
 
-Dedicated Elysia API Worker.
+Dedicated Effect RPC API Worker, with HTTP endpoints for auth, webhooks, health, and downloads.
 
 Responsibilities include:
 
@@ -875,7 +838,7 @@ Use **Alchemy v2** to define Cloudflare infrastructure in TypeScript.
 
 Pin the exact Alchemy v2 version. Current pin: `alchemy@2.0.0-beta.77`.
 
-Alchemy v2's stack file is an Effect program. Effect is installed only in `infra` for that. Application packages do not import Effect.
+Alchemy v2's stack file is an Effect program. Application code also uses Effect 4. Keep Alchemy's pinned requirements separate from application version selection. Review workspace-wide overrides during migration and do not pass version-specific Effect objects between incompatible runtimes.
 
 Alchemy is the authoritative source of Cloudflare infrastructure state. `apps/api/wrangler.jsonc` is a local debug entry (`wrangler dev` / Portless) with simulated D1 and R2, not a second production source of truth.
 
@@ -885,7 +848,7 @@ The `tranzfer` stack in `infra/alchemy.run.ts` currently creates:
 D1 database App
 R2 bucket Files (private)
 API Worker tranzfer-api (D1 + R2 bindings)
-web Worker tranzfer-web (service binding API, SESSION_SECRET, custom domain tranzfer.app)
+web Worker tranzfer-web (service binding API, custom domain tranzfer.app)
 workers.dev URLs
 ```
 
@@ -935,7 +898,14 @@ Types exist to make changes safer and behavior easier to understand.
 
 ## oxlint
 
-Use **oxlint** for linting.
+Use **Oxlint through Vite+** with `ultracite/oxlint/core`, followed by
+`ultracite/oxlint/anti-slop`. Use `eslint-plugin-solid/configs/v2-strict`
+for Solid code. Keep type-aware checks enabled and promote reactivity diagnostics
+to errors. Lint local UI components; do not exclude entire UI folders.
+
+On Effect packages, add official `@effect/tsgo` `correctness` and `antipattern`
+presets only. Do not enable the full `recommended` or `effect-native` presets
+on the web app. Do not add a second ESLint plugin for Effect.
 
 Fast feedback matters heavily in an agent-driven repository.
 
@@ -1032,15 +1002,13 @@ Redis
 Turborepo
 Nx
 
-Effect
-
 microservices
 generic event buses
-dependency injection frameworks
+additional dependency injection frameworks
 internal plugin architectures
 ```
 
-TanStack Form is intentionally present because forms are a generic state machine we do not want to reimplement.
+TanStack Form is selected for form state management, pending compatible Solid 2 and Effect Schema integration.
 
 "No microservices" means:
 
@@ -1058,45 +1026,18 @@ The repository should remain small enough to fit inside somebody's head.
 
 # The architecture in one picture
 
-```text
-                         ┌───────────────────┐
-                         │       Polar       │
-                         └─────────┬─────────┘
-                                   │ webhooks
-                                   ▼
-
-┌──────────────┐   Eden   ┌────────────────────┐
-│              ├─────────►│                    │
-│  Solid 2 Web │          │   Elysia API       │
-│              │          │   Worker           │
-└──────┬───────┘          │                    │
-       │                  ├────────┬───────────┤
-       │                  │        │
-       │ signed multipart │        ▼
-       │                  │       D1
-       │                  │
-       ▼                  └──────► Better Auth
-┌──────────────┐
-│      R2      │
-│ huge bytes   │
-└──────────────┘
-        ▲
-        │
-        │ cleanup / reconciliation / queue work
-        │
-┌───────┴────────────┐
-│ Maintenance Worker│
-└────────────────────┘
-
-Future, after validation:
-
-┌──────────────────┐
-│ Desktop / Electron│
-└────────┬─────────┘
-         │ Eden
-         ├──────────────► Elysia API Worker
-         │
-         └─ signed bytes ► R2
+```mermaid
+flowchart LR
+  Web[Solid 2 web + Uppy] -->|Effect RPC| API[Effect API Worker]
+  Web -->|Signed multipart bytes| R2[Private R2 storage]
+  Polar -->|HTTP webhooks| API
+  API --> Auth[Better Auth]
+  API -->|Drizzle effect-d1| D1
+  API -->|Distilled S3 sign and ListParts| R2
+  Maintenance[Future maintenance Worker] -->|Cleanup and reconciliation| R2
+  Maintenance --> D1
+  Desktop[Future desktop client] -.->|Effect RPC| API
+  Desktop -.->|Signed bytes| R2
 ```
 
 The most important line in this entire document is:
@@ -1109,7 +1050,10 @@ Everything else exists to make that transfer safe, resumable, understandable, an
 
 # Installed versions (foundation)
 
-Pins as of the stack-deps change. Bump them on purpose, not by floating ranges.
+Current manifest snapshot, before the Effect application migration. Elysia, Eden,
+Better Result, and Valibot remain installed pending replacement. Effect is
+currently installed only in infrastructure. Bump versions deliberately; the
+application Effect version will be selected during implementation.
 
 | Package                                      | Where    | Version       |
 | -------------------------------------------- | -------- | ------------- |
@@ -1123,7 +1067,6 @@ Pins as of the stack-deps change. Bump them on purpose, not by floating ranges.
 | wrangler                                     | web, api | 4.131.1       |
 | @cloudflare/vite-plugin                      | web      | 1.54.8        |
 | tailwindcss, @tailwindcss/vite               | web      | 4.3.3         |
-| @tanstack/solid-form                         | web      | 1.33.5        |
 | @uppy/core                                   | web      | 6.0.1         |
 | @uppy/aws-s3                                 | web      | 6.1.0         |
 | @uppy/drop-target                            | web      | 5.0.0         |
@@ -1136,19 +1079,34 @@ Pins as of the stack-deps change. Bump them on purpose, not by floating ranges.
 | @polar-sh/sdk                                | api      | 0.49.0        |
 | portless                                     | root     | 0.15.6        |
 
-## Departures from the rest of this document
+## Pending implementation and compatibility
 
-**Kobalte 2 is not installed.** `@kobalte/core` on npm is still 0.13.x (Solid 1). The Solid 2 port is an unreleased PR. Native HTML until a Solid 2 Kobalte ships.
+Kobalte is not installed. The researched Solid 2 release is `2.0.0-alpha.2`,
+which pins Solid rc.3 while this app uses rc.6. Verify current releases and
+runtime behavior before integrating it; do not suppress peer errors as a fix.
 
-**TanStack Solid Form is installed and unused.** `@tanstack/solid-store@0.11.1` (a dependency of the form package) still wants `solid-js@^1.6.0`. Do not import the form helpers until that peer is Solid 2.
+TanStack Solid Form is not installed. Its researched store dependency requires
+Solid 1. Resolve Solid 2 and Effect Schema compatibility before using it.
 
-**Better Auth's optional `solid-js@^1` peer is ignored.** Auth stays on the API Worker. We are not using a Solid auth UI adapter.
+Readiness will install `effect-cf`, `@distilled.cloud/aws`, and
+`drizzle-orm` / `drizzle-kit` 1.0.0-rc.4 with `@effect/sql-d1`. Manifests still
+show `drizzle-orm@0.45.2` until that step.
 
-**Effect exists only in `infra`.** Alchemy v2's stack file is an Effect program. Application code does not import it. Pinned to `4.0.0-rc.112` because that is alchemy@2.0.0-beta.77's floor (`Config.string`, `Config.redacted`, `Flag.string`). Newer Effect 4 RCs dropped those names.
+Better Auth stays on the API Worker. We do not use its Solid 1 UI adapter.
 
-**Solid Primitives were not installed.** The list in this document is still à la carte, not a shopping list.
+Effect is currently pinned to `4.0.0-rc.112` in infrastructure for
+`alchemy@2.0.0-beta.77`. This describes the existing installation, not a
+restriction against the selected Effect application architecture.
 
-**No `packages/contracts`, `packages/db`, or `packages/upload-core` yet.** Those folders wait for code that actually has to live there.
+Solid Primitives for intersection observation, mouse input, and timers are
+installed. Other primitives remain optional and require an actual use.
+
+`packages/contracts`, `packages/db`, and `packages/upload-core` do not exist yet.
+Create them when their first real contracts or implementation need those boundaries.
+
+Ultracite core, its bundled anti-slop preset, Solid v2 strict enforcement, T3 Env,
+and CI/deployment automation are planned in the readiness phase. Existing lint
+configuration does not yet implement that complete policy.
 
 ---
 
