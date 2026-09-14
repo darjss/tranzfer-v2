@@ -720,7 +720,7 @@ type TransferState =
   | { tag: "failed"; error: TransferError };
 ```
 
-Use `dismatch` where exhaustive matching improves clarity.
+Use Effect `Match` / tagged enums where exhaustive matching improves clarity.
 
 ---
 

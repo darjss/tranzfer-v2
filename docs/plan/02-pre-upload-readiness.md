@@ -256,6 +256,10 @@ Install and pin, in their owning packages:
   Apply migrations through a path that works on this stack (Wrangler/Alchemy
   local execute, or a kit release that fixes `/raw` rows). Do not claim D1
   readiness on an empty-database-only migrate.
+- `unplugin-icons` and `@iconify-json/ph` in `apps/web` for Phosphor Bold
+  chrome icons. Do not install Lucide, Tabler, or `solid-icons`. Keep brand
+  and notebook SVGs custom. Prove a Solid 2 import and `currentColor` render
+  before treating the set as ready.
 
 Pin compatible Effect 4 objects inside the Worker. Do not pass Alchemy's
 Effect values into application Layers.
@@ -289,7 +293,9 @@ Proposed initial set: native Button and form fields, plus Kobalte Dialog,
 AlertDialog, Popover, Tooltip, DropdownMenu, Select, and Tabs. Confirm the exact
 set against the next upload screens and the compatible Kobalte release before
 implementation. Use native elements for buttons, inputs, and layout. Keep
-headless-component wrappers small and preserve their typed APIs.
+headless-component wrappers small and preserve their typed APIs. Chrome icons
+are Phosphor Bold via `unplugin-icons`. Duotone only for empty or hero
+moments, using `--color-blue` and `--color-ink`.
 
 Check keyboard navigation, focus trapping and restoration, labels, disabled and
 error states, small screens, and reduced motion where motion exists. Exercise
@@ -321,6 +327,8 @@ or commit those changes as part of this work.
 - [vit-store deployment proposal](https://github.com/darjss/vit-store/pull/121)
 - [T3 Env](https://github.com/t3-oss/t3-env)
 - [Kobalte Solid 2 Dialog work](https://github.com/kobaltedev/kobalte/pull/694)
+- [Phosphor Icons](https://phosphoricons.com/)
+- [unplugin-icons](https://github.com/unplugin/unplugin-icons)
 - [Effect architecture decision](https://github.com/darjss/tranzfer-v2/issues/7)
 - [Effect 4 source and release status](https://github.com/Effect-TS/effect)
 - [Effect TSGo Oxlint docs](https://github.com/Effect-TS/tsgo/blob/main/docs/README.md)

@@ -48,7 +48,8 @@ for package scripts (`dev`, `test`, `build`, `plan`, `deploy`). Vite+ docs:
 the API Worker, and `infra` the Alchemy stack.
 
 After code changes run `vp check`, existing tests with `vp run test`, and the
-relevant `vp run build`.
+relevant `vp run build`. Local URLs go through Portless. Read
+`.agents/skills/portless/SKILL.md` before starting or debugging `vp run dev`.
 
 Deploy only from the main checkout through `infra/alchemy.run.ts`, which owns
 both apps and production resources. Run `vp run build`, `vp run plan`, then

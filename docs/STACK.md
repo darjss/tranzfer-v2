@@ -24,9 +24,10 @@ It is not allowed to become a museum of interesting tools.
 
 ## Package manager
 
-**pnpm**
-
-Use a pnpm workspace with root catalogs for shared dependency versions.
+**pnpm** is the lockfile and workspace. **Vite+** (`vp`) is how humans and
+agents run commands. `vp install` / `vp add` still drive pnpm. `vp check` and
+`vp run` are the day-to-day surface. Do not document a parallel `pnpm run`
+habit.
 
 ```text
 apps/*
@@ -66,7 +67,7 @@ Portless assigns each app a port and injects it (`PORT`, `--port`, or Wrangler's
 
 One `portless.json` at the repo root names the apps. `turbo` is off; this repo does not use Turborepo.
 
-Direct Vite without Portless still works: `vp run --filter @tranzfer/web dev`.
+Everyday local serving is `vp run dev` (Portless). `vp run --filter @tranzfer/web dev` and `vp dev` skip the proxy and land on 3000 or the next free 3001–3003. Agents must open `http://tranzfer.localhost`, not those ports. See `.agents/skills/portless/SKILL.md`.
 
 ---
 
@@ -150,11 +151,12 @@ Use Solid's reactive model directly and keep state close to the feature that own
 
 ---
 
-## Vite
+## Vite+
 
-Use **Vite** for the web application.
+Use **Vite+** (`vp`) and **Vite** for the web application.
 
-Keep the build setup boring.
+Keep the build setup boring. `filesystem-routing`, `@solidjs/meta`, and
+`prerender-crawler` are the site wiring. That is not SolidStart.
 
 The web Worker is the production server. `@cloudflare/vite-plugin` owns the `ssr` Vite environment (`viteEnvironment: { name: "ssr" }`) so `vp dev` / `vp build` / `vp preview` run the Solid `handleRequest` export inside workerd. `src/worker.ts` is the Worker entry: it forwards each request to `virtual:solid-ssr-handler`. There is no Node `server.js`.
 
@@ -185,6 +187,15 @@ Keep design tokens and global primitives small and deliberate.
 Avoid giant component abstraction systems.
 
 Create reusable components when reuse is real.
+
+---
+
+## Class names
+
+Use **cva** (`cva` 1.x, not `class-variance-authority`) and **cnfast** for
+variant classes and `cn()`. They already replaced v1's `clsx` + `tailwind-merge`
+
+- CVA. Pin exact versions. Do not add those three packages back.
 
 ---
 
@@ -226,6 +237,23 @@ No Corvu for now.
 No React UI ecosystem.
 
 Do not reproduce the dependency soup from Tranzfer v1.
+
+---
+
+## Icons
+
+Chrome icons are **Phosphor Bold** outlines, `currentColor`, one family.
+Wire them with `unplugin-icons` and `@iconify-json/ph` so Vite tree-shakes
+glyphs. Do not install `solid-icons` (it ships every pack, including Lucide).
+
+Match Archivo semibold and the landing's round 2.2–2.8 strokes. Regular and
+thin weights look broken next to the CTAs. Duotone is allowed only for empty
+or hero moments, tinted with `--color-blue` and `--color-ink`. Keep the brand
+mark, word underline, asterisks, and notebook scribbles as the custom SVGs they
+already are.
+
+Do not use Lucide, Tabler, Heroicons, Iconoir, Remix Icon, Material Symbols, or
+MingCute for product chrome.
 
 ---
 
@@ -303,27 +331,15 @@ Introduce a table library only if the product genuinely grows into complex sorti
 
 ---
 
-## dismatch
+## Matching
 
-Use **dismatch** for exhaustive matching of meaningful tagged unions and state machines.
+Use Effect for exhaustive matching. `Data.TaggedEnum` for internal state
+machines, `Schema.TaggedUnion` plus `.match` for boundary-crossing unions, and
+`Match` for literal branching in Effect code. Upload-core tagged states belong
+here, not a second matcher.
 
-Especially useful for things such as:
-
-```ts
-type TransferState =
-  | { tag: "idle" }
-  | { tag: "preparing" }
-  | { tag: "uploading"; progress: Progress }
-  | { tag: "paused"; progress: Progress }
-  | { tag: "retrying"; attempt: number }
-  | { tag: "finalizing" }
-  | { tag: "complete"; transferId: string }
-  | { tag: "failed"; error: UploadError };
-```
-
-Use matching where it makes control flow clearer.
-
-Do not turn every boolean into a tagged union for sport.
+`dismatch` is installed and awaiting removal with Valibot and Better Result. Do
+not extend its use. Do not turn every boolean into a tagged union for sport.
 
 ---
 
@@ -458,6 +474,13 @@ The upload implementation must support:
 Chunk sizing must respect the 10,000-part limit.
 
 Do not return to the v1 pattern of hard-coded 25 MB pieces and pre-signing every URL at the beginning.
+
+Local file identity uses the platform: slice the `File` and hash with Web Crypto.
+Do not load hundreds of gigabytes into RAM and do not add `spark-md5`. If Web
+Crypto streaming is too slow on huge cards, `hash-wasm` is the allowed extra.
+Magic-byte allowlisting may use `file-type` when that gate ships. Turnstile is
+the abuse widget (siteverify over `fetch`); do not add a second captcha SDK.
+The global `turnstile-spin` skill is the setup path when that work starts.
 
 ---
 
@@ -619,7 +642,21 @@ Prefer platform primitives such as:
 crypto.randomUUID();
 ```
 
-No TypeID dependency.
+No TypeID. No `@paralleldrive/cuid2`. No nanoid unless UUID is proven wrong.
+
+In Effect workflows use **Effect DateTime**. At non-Effect edges use `Date` or
+`Temporal`. No `date-fns`, Luxon, or Dayjs.
+
+Outgoing HTTP in Effect code uses Effect `FetchHttpClient` and Distilled S3.
+Polar's SDK talks to Polar. No `ky`, `ofetch`, `axios`, or a default `aws4fetch`
+dependency. If Distilled path-style presign fails against R2, Distilled still
+owns ListParts and `aws4fetch` is the documented signing fallback.
+
+Log at Worker and CLI entry with Effect's logger. No Axiom, Sentry, or a second
+telemetry SDK until a transfer-reliability need names one.
+
+Browser durable session metadata uses IndexedDB through the platform API. No
+Dexie or `idb` until the platform API is actually the problem.
 
 ---
 
@@ -696,6 +733,10 @@ Do not encode pricing assumptions deep into business logic.
 Use stable internal plan identifiers and map external Polar product IDs through configuration.
 
 Do not turn the pricing model into a matrix of tiny add-ons before customers demand it.
+
+Keep Polar off the browser bundle. Checkout glue may use `@polar-sh/better-auth`
+on the API if that plugin stays Cloudflare-compatible. Entitlements stay in
+D1, reconciled from webhooks.
 
 ---
 
@@ -907,8 +948,8 @@ On Effect packages, add official `@effect/tsgo` `correctness` and `antipattern`
 presets only. Do not enable the full `recommended` or `effect-native` presets
 on the web app. Do not add a second ESLint plugin for Effect.
 
-Root and web `vp lint` share `lint.config.ts`. `pnpm prepare` runs
-`effect-tsgo patch --no-typescript --oxlint` so Oxlint 1.82.0 and
+Root and web `vp lint` share `lint.config.ts`. The `prepare` script runs
+`vp config` and `effect-tsgo patch --no-typescript --oxlint` so Oxlint 1.82.0 and
 `oxlint-tsgolint` 7.0.2001 match `@effect/tsgo` 0.45.0. Type-aware rules are
 on. Full `typeCheck` during lint is off, and `vite.config.ts` may assert the
 lint object: Vite+ types OxlintConfig from oxlint 1.81 while the workspace
@@ -988,13 +1029,38 @@ Next.js
 SolidStart
 
 TypeBox
+drizzle-typebox
 TypeID
+cuid2
+nanoid
+date-fns
+Luxon
+Dayjs
+ky
+ofetch
+axios
+Dexie
+idb
+clsx
+tailwind-merge
+class-variance-authority
+dismatch
+better-result
+Valibot
+Elysia
+Eden
 Playwright
 
 TanStack Query
 TanStack Table
 
 Corvu
+Lucide
+Tabler Icons
+Heroicons
+Iconoir
+Remix Icon
+solid-icons
 additional UI ecosystems
 
 oRPC
@@ -1082,6 +1148,8 @@ implementation.
 | @uppy/core                                   | web         | 6.0.1         |
 | @uppy/aws-s3                                 | web         | 6.1.0         |
 | @uppy/drop-target                            | web         | 5.0.0         |
+| cva                                          | web         | 1.0.0-beta.8  |
+| cnfast                                       | web         | 0.2.0         |
 | dismatch                                     | web         | 2.6.0         |
 | better-result                                | web, api    | 3.0.1         |
 | valibot                                      | web, api    | 1.4.2         |
@@ -1096,6 +1164,10 @@ implementation.
 Kobalte is not installed. The researched Solid 2 release is `2.0.0-alpha.2`,
 which pins Solid rc.3 while this app uses rc.8. Verify current releases and
 runtime behavior before integrating it; do not suppress peer errors as a fix.
+
+Phosphor is not installed. Readiness installs `unplugin-icons` and
+`@iconify-json/ph` in `apps/web` and uses Bold outlines. Pin versions at
+install time.
 
 TanStack Solid Form is not installed. Its researched store dependency requires
 Solid 1. Resolve Solid 2 and Effect Schema compatibility before using it.
@@ -1118,7 +1190,8 @@ Create them when their first real contracts or implementation need those boundar
 
 Ultracite core, its bundled anti-slop preset, Solid v2 strict, and Effect
 `correctness`/`antipattern` lint are installed. T3 Env and CI/deployment
-automation remain planned.
+automation remain planned. `dismatch`, Better Result, Valibot, Elysia, and Eden
+remain installed pending Effect replacement. Do not extend them.
 
 ---
 
