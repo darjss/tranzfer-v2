@@ -65,8 +65,13 @@ type checks pass, and any departure from STACK.md is recorded with its reason.
 ## 4. Define infrastructure and deploy the apps
 
 Use Alchemy as the infrastructure source of truth for the web Worker, API Worker,
-R2, D1, bindings, and required routing. Review the infrastructure plan before
-applying changes. Keep deployment in the main checkout.
+R2, D1, bindings, and required routing (`tranzfer.app` on the web Worker). Review
+the infrastructure plan before applying changes. Keep deployment in the main
+checkout.
+
+Stack file: `infra/alchemy.run.ts`. Commands: `vp run plan`, `vp run deploy`.
+The API exposes `/health` and `/infra` (D1 `SELECT 1` + R2 put/get/delete).
+The web Worker `/infra` calls those over the `API` service binding.
 
 Deploy every app introduced in this milestone. Create a maintenance Worker when
 it has an actual cleanup job, rather than deploying an empty service.

@@ -50,7 +50,16 @@ Before committing code, run:
 
 ```sh
 vp check
-vp test
+vp run test
 ```
+
+Deploy Cloudflare resources from this checkout (not a worktree). `SESSION_SECRET` must be in the environment (`openssl rand -base64 32`). Plan first, then apply:
+
+```sh
+vp run plan
+vp run deploy
+```
+
+That creates D1, R2, both Workers, the bindings, and attaches `tranzfer.app` to the web Worker. After deploy, `GET /health` on the API URL and `GET /infra` on the web URL (service-binding hop into D1/R2) are the runtime checks. Production web: `https://tranzfer.app`.
 
 The transfer engine is not built yet. Read the repository documents before replacing demo code or making architectural decisions.

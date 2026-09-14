@@ -21,6 +21,10 @@ catalog:
   "@solidjs/diagnostics": 2.0.0-rc.6
 overrides:
   vite@*: "catalog:"
+  effect: 4.0.0-rc.112
+  "@effect/platform": 4.0.0-rc.112
+  "@effect/platform-node": 4.0.0-rc.112
+  "@effect/platform-node-shared": 4.0.0-rc.112
 peerDependencyRules:
   allowAny:
     - vite
@@ -28,4 +32,10 @@ peerDependencyRules:
     vite: "*"
 allowBuilds:
   esbuild: true
+  msgpackr-extract: false
   workerd: true
+packageExtensions:
+  alchemy:
+    dependencies:
+      "@effect/platform-node": "4.0.0-rc.112"
+      effect: "4.0.0-rc.112"
