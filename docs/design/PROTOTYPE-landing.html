@@ -1,0 +1,1091 @@
+<!doctype html>
+<!-- PROTOTYPE, throwaway. Static file, open directly. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tranzfer. Footage that arrives.</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0f0e0c;
+        --bg2: #161412;
+        --ink: #ece6da;
+        --ink2: #9b948a;
+        --ink3: #514c45;
+        --line: #26231f;
+        --acc: #ff5a1f;
+        --ok: #9ad36a;
+        --ease: cubic-bezier(0.23, 1, 0.32, 1);
+        --ease2: cubic-bezier(0.77, 0, 0.175, 1);
+        --serif: "Fraunces", Georgia, serif;
+        --sans: "Instrument Sans", system-ui, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.5 var(--sans);
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.05;
+        mix-blend-mode: overlay;
+        z-index: 50;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 0 28px;
+      }
+      .mono {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ink2);
+      }
+      .serif {
+        font-family: var(--serif);
+      }
+      em {
+        font-style: italic;
+        font-weight: 300;
+      }
+
+      /* nav */
+      nav {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        backdrop-filter: blur(12px);
+        background: color-mix(in oklab, var(--bg) 70%, transparent);
+        border-bottom: 1px solid var(--line);
+      }
+      nav .wrap {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 60px;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .logo i {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--acc);
+        box-shadow: 0 0 0 0 var(--acc);
+        animation: tally 2.4s ease-in-out infinite;
+      }
+      @keyframes tally {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(255, 90, 31, 0.5);
+        }
+        50% {
+          box-shadow: 0 0 0 7px rgba(255, 90, 31, 0);
+        }
+      }
+      nav ul {
+        display: flex;
+        gap: 28px;
+        list-style: none;
+        font-size: 14px;
+        color: var(--ink2);
+      }
+      nav ul a {
+        transition: color 0.15s ease;
+      }
+      nav ul a:hover {
+        color: var(--ink);
+      }
+
+      /* buttons */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 13px 20px;
+        border-radius: 999px;
+        background: var(--ink);
+        color: var(--bg);
+        font-weight: 600;
+        font-size: 15px;
+        transition:
+          transform 0.16s var(--ease),
+          background 0.2s ease;
+      }
+      .btn:hover {
+        background: #fff;
+      }
+      .btn:active {
+        transform: scale(0.96);
+      }
+      .btn.acc {
+        background: var(--acc);
+        color: #1a0a03;
+      }
+      .btn.acc:hover {
+        background: #ff7442;
+      }
+      .btn.ghost {
+        background: transparent;
+        color: var(--ink);
+        box-shadow: inset 0 0 0 1px var(--line);
+      }
+      .btn.ghost:hover {
+        background: var(--bg2);
+      }
+      .btn svg {
+        width: 16px;
+        height: 16px;
+        transition: transform 0.2s var(--ease);
+      }
+      .btn:hover svg {
+        transform: translateX(3px);
+      }
+
+      /* hero */
+      .hero {
+        padding: 96px 0 72px;
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 64px;
+        align-items: end;
+        position: relative;
+      }
+      .hero::before {
+        content: "";
+        position: absolute;
+        inset: -200px -40% auto;
+        height: 600px;
+        pointer-events: none;
+        background: radial-gradient(ellipse at 30% 40%, rgba(255, 90, 31, 0.14), transparent 55%);
+      }
+      h1 {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: clamp(48px, 7.4vw, 108px);
+        line-height: 0.94;
+        letter-spacing: -0.035em;
+        font-variation-settings: "opsz" 144;
+      }
+      h1 em {
+        color: var(--acc);
+      }
+      .lede {
+        color: var(--ink2);
+        font-size: 19px;
+        max-width: 46ch;
+        margin: 28px 0 36px;
+        text-wrap: pretty;
+      }
+      .ctas {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .hint {
+        margin-top: 16px;
+        font-size: 13px;
+        color: var(--ink3);
+      }
+
+      /* live demo */
+      .demo {
+        background: var(--bg2);
+        border-radius: 20px;
+        padding: 22px;
+        box-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.05) inset,
+          0 40px 100px -40px rgba(0, 0, 0, 0.9),
+          0 0 0 1px var(--line);
+        position: relative;
+      }
+      .demo header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 18px;
+      }
+      .demo .file {
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .demo .file small {
+        display: block;
+        color: var(--ink2);
+        font-weight: 400;
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--mono);
+        font-size: 12px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+        transition:
+          background 0.3s ease,
+          color 0.3s ease;
+      }
+      .status::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--ok);
+        transition: background 0.3s ease;
+      }
+      .demo.down .status {
+        background: rgba(255, 90, 31, 0.12);
+        color: var(--acc);
+      }
+      .demo.down .status::before {
+        background: var(--acc);
+        animation: blink 0.7s steps(1) infinite;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0.2;
+        }
+      }
+      .big {
+        font-family: var(--serif);
+        font-size: clamp(56px, 7vw, 92px);
+        line-height: 1;
+        letter-spacing: -0.04em;
+        font-variation-settings: "opsz" 144;
+        font-variant-numeric: tabular-nums;
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .big span {
+        font-size: 22px;
+        color: var(--ink2);
+        font-family: var(--sans);
+        letter-spacing: 0;
+      }
+      .track {
+        height: 8px;
+        border-radius: 4px;
+        background: #0b0a09;
+        margin: 22px 0 14px;
+        overflow: hidden;
+        position: relative;
+      }
+      .track i {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 0;
+        background: var(--ink);
+        border-radius: 4px;
+        transition:
+          width 0.1s linear,
+          background 0.3s ease;
+      }
+      .demo.down .track i {
+        background: var(--acc);
+      }
+      .track b {
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+          90deg,
+          transparent 0 6px,
+          rgba(0, 0, 0, 0.35) 6px 7px
+        );
+        pointer-events: none;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--ink2);
+      }
+      .stats div b {
+        display: block;
+        color: var(--ink);
+        font-weight: 500;
+        font-size: 15px;
+        margin-top: 2px;
+        font-variant-numeric: tabular-nums;
+      }
+      .stats .re b {
+        color: var(--ok);
+      }
+      .kill {
+        margin-top: 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        border-top: 1px solid var(--line);
+        padding-top: 16px;
+      }
+      .kill p {
+        font-size: 13px;
+        color: var(--ink2);
+      }
+      .kill .btn {
+        padding: 10px 14px;
+        font-size: 13px;
+      }
+      .log {
+        position: absolute;
+        left: 22px;
+        right: 22px;
+        bottom: -14px;
+        transform: translateY(8px);
+        opacity: 0;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--ink2);
+        transition:
+          opacity 0.3s var(--ease),
+          transform 0.3s var(--ease);
+      }
+      .log.on {
+        opacity: 1;
+        transform: none;
+      }
+
+      /* strip */
+      .strip {
+        border-block: 1px solid var(--line);
+        padding: 22px 0;
+        display: flex;
+        gap: 48px;
+        overflow: hidden;
+        white-space: nowrap;
+        mask: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+      }
+      .strip div {
+        display: flex;
+        gap: 48px;
+        animation: marq 40s linear infinite;
+      }
+      .strip span {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--ink2);
+      }
+      .strip span::before {
+        content: "";
+        display: inline-block;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--acc);
+        margin-right: 14px;
+        vertical-align: middle;
+      }
+      @keyframes marq {
+        to {
+          transform: translateX(-50%);
+        }
+      }
+
+      /* chaos section */
+      section {
+        padding: 120px 0;
+      }
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 22px;
+      }
+      .eyebrow::before {
+        content: "";
+        width: 28px;
+        height: 1px;
+        background: var(--acc);
+      }
+      h2 {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: clamp(36px, 5vw, 68px);
+        line-height: 1;
+        letter-spacing: -0.03em;
+        max-width: 20ch;
+        text-wrap: balance;
+      }
+      .chaos {
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 80px;
+      }
+      .chaos .sticky {
+        position: sticky;
+        top: 120px;
+        align-self: start;
+      }
+      .chaos .sticky p {
+        color: var(--ink2);
+        margin-top: 20px;
+        max-width: 40ch;
+      }
+      .rail {
+        margin-top: 40px;
+      }
+      .rail .num {
+        font-family: var(--serif);
+        font-size: 72px;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+      .rail .num span {
+        font-size: 20px;
+        color: var(--ink2);
+        font-family: var(--sans);
+      }
+      .rail .track {
+        margin: 16px 0 8px;
+      }
+      .rail .track i {
+        width: calc(var(--p, 0) * 1%);
+        transition: none;
+      }
+      .rail .mono {
+        display: flex;
+        justify-content: space-between;
+      }
+      .fails {
+        display: grid;
+        gap: 14px;
+      }
+      .fail {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 24px 26px;
+        background: var(--bg2);
+        display: grid;
+        grid-template-columns: 44px 1fr auto;
+        gap: 20px;
+        align-items: start;
+      }
+      .fail .k {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--ink3);
+        padding-top: 4px;
+      }
+      .fail h3 {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 26px;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+      }
+      .fail p {
+        color: var(--ink2);
+        font-size: 14px;
+        margin-top: 8px;
+        max-width: 44ch;
+      }
+      .fail .r {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--ok);
+        white-space: nowrap;
+        padding-top: 6px;
+      }
+
+      /* how */
+      .how {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2px;
+        background: var(--line);
+        border-radius: 20px;
+        overflow: hidden;
+        margin-top: 56px;
+      }
+      .how div {
+        background: var(--bg);
+        padding: 36px 32px 40px;
+        min-height: 300px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .how .mono {
+        color: var(--acc);
+      }
+      .how h3 {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 30px;
+        letter-spacing: -0.02em;
+        margin: 60px 0 12px;
+        line-height: 1.05;
+      }
+      .how p {
+        color: var(--ink2);
+        font-size: 15px;
+      }
+
+      /* quote */
+      .quote {
+        text-align: center;
+      }
+      .quote blockquote {
+        font-family: var(--serif);
+        font-weight: 300;
+        font-style: italic;
+        font-size: clamp(28px, 4vw, 52px);
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        max-width: 26ch;
+        margin: 0 auto 28px;
+        text-wrap: balance;
+      }
+      .quote cite {
+        font-style: normal;
+        color: var(--ink2);
+        font-size: 14px;
+      }
+
+      /* pricing */
+      .plans {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-top: 56px;
+      }
+      .plan {
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 30px;
+        background: var(--bg2);
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        transition:
+          transform 0.3s var(--ease),
+          border-color 0.3s ease;
+      }
+      @media (hover: hover) {
+        .plan:hover {
+          transform: translateY(-4px);
+          border-color: #3a352e;
+        }
+      }
+      .plan.hot {
+        border-color: var(--acc);
+        background: linear-gradient(180deg, rgba(255, 90, 31, 0.08), transparent 40%), var(--bg2);
+      }
+      .plan h3 {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ink2);
+        display: flex;
+        justify-content: space-between;
+      }
+      .plan h3 span {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--acc);
+      }
+      .price {
+        font-family: var(--serif);
+        font-size: 56px;
+        letter-spacing: -0.04em;
+        line-height: 1;
+      }
+      .price small {
+        font-size: 16px;
+        color: var(--ink2);
+        font-family: var(--sans);
+        letter-spacing: 0;
+      }
+      .plan ul {
+        list-style: none;
+        padding: 0;
+        color: var(--ink2);
+        font-size: 14px;
+        display: grid;
+        gap: 9px;
+        flex: 1;
+      }
+      .plan li::before {
+        content: "—";
+        color: var(--ink3);
+        margin-right: 10px;
+      }
+      .plan .btn {
+        justify-content: center;
+      }
+
+      /* final */
+      .final {
+        text-align: center;
+        padding: 160px 0 140px;
+        position: relative;
+      }
+      .final::before {
+        content: "";
+        position: absolute;
+        inset: auto -30% -300px;
+        height: 600px;
+        pointer-events: none;
+        background: radial-gradient(ellipse at 50% 100%, rgba(255, 90, 31, 0.18), transparent 60%);
+      }
+      .final h2 {
+        margin: 0 auto 32px;
+      }
+      footer {
+        border-top: 1px solid var(--line);
+        padding: 32px 0 48px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+        color: var(--ink2);
+      }
+      footer ul {
+        display: flex;
+        gap: 24px;
+        list-style: none;
+      }
+
+      /* reveal */
+      .rv {
+        opacity: 0;
+        transform: translateY(18px);
+        filter: blur(4px);
+        transition:
+          opacity 0.7s var(--ease),
+          transform 0.7s var(--ease),
+          filter 0.7s var(--ease);
+        transition-delay: var(--d, 0ms);
+      }
+      .rv.in {
+        opacity: 1;
+        transform: none;
+        filter: none;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .rv {
+          transform: none;
+          filter: none;
+          transition: opacity 0.3s;
+        }
+        .strip div,
+        .logo i {
+          animation: none;
+        }
+        .btn svg {
+          transition: none;
+        }
+      }
+      @media (max-width: 900px) {
+        .hero,
+        .chaos {
+          grid-template-columns: 1fr;
+          gap: 40px;
+        }
+        .chaos .sticky {
+          position: static;
+        }
+        .how,
+        .plans {
+          grid-template-columns: 1fr;
+        }
+        section {
+          padding: 80px 0;
+        }
+        .hero {
+          padding-top: 56px;
+        }
+        .fail {
+          grid-template-columns: 1fr;
+        }
+        .fail .r {
+          padding: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <div class="wrap">
+        <a class="logo" href="#"><i></i>tranzfer</a>
+        <ul>
+          <li><a href="#chaos">Reliability</a></li>
+          <li><a href="#how">How it works</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="#">Sign in</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <main class="wrap">
+      <section class="hero" style="padding-bottom: 88px">
+        <div>
+          <p class="mono rv">Large-file delivery for people who make things</p>
+          <h1 class="rv" style="--d: 80ms">Footage that<br /><em>arrives.</em></h1>
+          <p class="lede rv" style="--d: 160ms">
+            Send 350 GB of raw footage to your editor. Close the laptop. Lose the Wi-Fi. Refresh the
+            tab. Tranzfer keeps going from the last byte that landed, and never asks you to start
+            over.
+          </p>
+          <div class="ctas rv" style="--d: 240ms">
+            <a class="btn acc" href="#"
+              >Send 100 GB free
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M3 8h10M9 4l4 4-4 4" /></svg
+            ></a>
+            <a class="btn ghost" href="#how">See how it survives</a>
+          </div>
+          <p class="hint rv" style="--d: 320ms">
+            No account for your editor. Links expire on purpose.
+          </p>
+        </div>
+
+        <div class="demo rv" id="demo" style="--d: 200ms">
+          <header>
+            <div class="file">EP04_A-Cam_Card.mxf<small>Uploading to Marcus · Berlin</small></div>
+            <span class="status" id="status">live</span>
+          </header>
+          <div class="big"><span id="gb">0.0</span><span>of 350 GB</span></div>
+          <div class="track"><i id="fill"></i><b></b></div>
+          <div class="stats">
+            <div>Speed<b id="spd">0 Mbps</b></div>
+            <div>Remaining<b id="eta">--</b></div>
+            <div class="re">Re-uploaded<b>0 bytes</b></div>
+          </div>
+          <div class="kill">
+            <p>Don't trust us. Break it.</p>
+            <button class="btn ghost" id="kill">Kill the Wi-Fi</button>
+          </div>
+          <div class="log" id="log"></div>
+        </div>
+      </section>
+    </main>
+
+    <div class="strip"><div id="strip"></div></div>
+
+    <main class="wrap">
+      <section id="chaos" class="chaos">
+        <div class="sticky">
+          <p class="eyebrow mono rv">Everything that goes wrong</p>
+          <h2 class="rv" style="--d: 80ms">
+            The transfer is the job.<br />The tab is just watching.
+          </h2>
+          <p class="rv" style="--d: 160ms">
+            Every chunk is checkpointed on the way to storage. When something breaks, we ask the
+            remote side what already exists, verify your file hasn't changed, and send only what's
+            missing.
+          </p>
+          <div class="rail rv" style="--d: 240ms">
+            <div class="num"><span id="railgb">0</span> <span>GB landed</span></div>
+            <div class="track"><i id="railfill"></i><b></b></div>
+            <div class="mono"><span>Scroll to keep uploading</span><span>Restarts: 0</span></div>
+          </div>
+        </div>
+        <div class="fails">
+          <article class="fail rv">
+            <span class="k">01</span>
+            <div>
+              <h3>The Wi-Fi dies.</h3>
+              <p>
+                Café router reboots at 38%. Uppy retries with backoff, the API re-signs the part,
+                and the next chunk goes out when the line is back.
+              </p>
+            </div>
+            <span class="r">continues</span>
+          </article>
+          <article class="fail rv">
+            <span class="k">02</span>
+            <div>
+              <h3>The laptop sleeps.</h3>
+              <p>
+                Lid closed for the train. On wake we list parts already in R2 and reconcile against
+                your local file before sending anything.
+              </p>
+            </div>
+            <span class="r">continues</span>
+          </article>
+          <article class="fail rv">
+            <span class="k">03</span>
+            <div>
+              <h3>The tab gets refreshed.</h3>
+              <p>
+                The upload identity is persisted locally. Pick the same file again and the session
+                resumes from the last completed part.
+              </p>
+            </div>
+            <span class="r">continues</span>
+          </article>
+          <article class="fail rv">
+            <span class="k">04</span>
+            <div>
+              <h3>A signed URL expires.</h3>
+              <p>
+                URLs are signed lazily, per part, right before they're needed. A stale one is just
+                requested again.
+              </p>
+            </div>
+            <span class="r">continues</span>
+          </article>
+          <article class="fail rv">
+            <span class="k">05</span>
+            <div>
+              <h3>A part fails checksum.</h3>
+              <p>
+                That single part is re-sent. Not the file. Verification is per chunk and once more
+                at the end.
+              </p>
+            </div>
+            <span class="r">re-sends 1 part</span>
+          </article>
+          <article class="fail rv">
+            <span class="k">06</span>
+            <div>
+              <h3>You come back tomorrow.</h3>
+              <p>
+                Still there. Resume, finish, send the link. Your editor downloads at full speed with
+                the checksum to prove it's the file you meant.
+              </p>
+            </div>
+            <span class="r">done</span>
+          </article>
+        </div>
+      </section>
+
+      <section id="how">
+        <p class="eyebrow mono rv">How it works</p>
+        <h2 class="rv" style="--d: 80ms">Three steps. <em>Zero babysitting.</em></h2>
+        <div class="how">
+          <div class="rv">
+            <span class="mono">01</span>
+            <div>
+              <h3>Drop the cards.</h3>
+              <p>
+                Whole camera cards, folders, 400 GB. Bytes go from your browser straight to storage,
+                never through our servers.
+              </p>
+            </div>
+          </div>
+          <div class="rv" style="--d: 80ms">
+            <span class="mono">02</span>
+            <div>
+              <h3>Walk away.</h3>
+              <p>
+                Real speed, real ETA. Every chunk is checkpointed. Whatever happens to your
+                connection, nothing already sent is sent twice.
+              </p>
+            </div>
+          </div>
+          <div class="rv" style="--d: 160ms">
+            <span class="mono">03</span>
+            <div>
+              <h3>Send one link.</h3>
+              <p>
+                Your editor clicks and downloads. No account. The link expires when the job is done
+                and the files delete themselves.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="quote">
+        <blockquote class="rv">
+          "I closed the lid at 62%, got on a plane, opened it in Lisbon, and it just... kept going."
+        </blockquote>
+        <cite class="rv" style="--d: 100ms">Documentary DP, 1.2 TB delivered in one week</cite>
+      </section>
+
+      <section id="pricing">
+        <p class="eyebrow mono rv">Pricing</p>
+        <h2 class="rv" style="--d: 80ms">Pay for the work. <em>Not per gigabyte.</em></h2>
+        <div class="plans">
+          <div class="plan rv">
+            <h3>Free</h3>
+            <div class="price">$0</div>
+            <ul>
+              <li>100 GB per transfer</li>
+              <li>7-day links</li>
+              <li>Resumable uploads</li>
+              <li>Checksum verified</li>
+            </ul>
+            <a class="btn ghost" href="#">Start free</a>
+          </div>
+          <div class="plan hot rv" style="--d: 80ms">
+            <h3>Pro <span>most editors</span></h3>
+            <div class="price">$29<small>/mo</small></div>
+            <ul>
+              <li>1 TB per transfer</li>
+              <li>30-day links</li>
+              <li>Password and expiry controls</li>
+              <li>Priority throughput</li>
+              <li>Delivery history</li>
+            </ul>
+            <a class="btn acc" href="#">Start Pro</a>
+          </div>
+          <div class="plan rv" style="--d: 160ms">
+            <h3>Studio</h3>
+            <div class="price">$99<small>/mo</small></div>
+            <ul>
+              <li>Unlimited transfer size</li>
+              <li>Team seats</li>
+              <li>Recurring editor inbox</li>
+              <li>Auto-download to a folder</li>
+            </ul>
+            <a class="btn ghost" href="#">Talk to us</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="final">
+        <p class="mono rv">The next cut starts when the footage lands</p>
+        <h2 class="rv" style="--d: 80ms; margin-top: 20px">Send something <em>enormous.</em></h2>
+        <a class="btn acc rv" style="--d: 160ms" href="#"
+          >Send 100 GB free
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M3 8h10M9 4l4 4-4 4" /></svg
+        ></a>
+      </section>
+
+      <footer>
+        <span>© 2026 Tranzfer. Confidence is the brand.</span>
+        <ul>
+          <li><a href="#">Security</a></li>
+          <li><a href="#">Privacy</a></li>
+          <li><a href="#">Status</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </footer>
+    </main>
+
+    <script src="PROTOTYPE-switcher.js"></script>
+    <script>
+      // reveal on scroll
+      const io = new IntersectionObserver(
+        (es) =>
+          es.forEach((e) => {
+            if (e.isIntersecting) {
+              e.target.classList.add("in");
+              io.unobserve(e.target);
+            }
+          }),
+        { rootMargin: "-60px 0px" },
+      );
+      document.querySelectorAll(".rv").forEach((el) => io.observe(el));
+
+      // marquee
+      const items = [
+        "EP04_A-Cam 214 GB → Berlin",
+        "Coast_Film_LOG 350 GB → Lisbon",
+        "River_Below_Dailies 96 GB → Ulaanbaatar",
+        "Studio_Session_RAW 286 GB → NYC",
+        "Travel_Series_EP03 402 GB → Seoul",
+      ];
+      strip.innerHTML = [...items, ...items].map((t) => `<span>${t}</span>`).join("");
+
+      // live demo: fake upload, killable
+      const TOTAL = 350,
+        gbEl = gb,
+        fill = document.getElementById("fill"),
+        demo = document.getElementById("demo");
+      let sent = 0,
+        down = false,
+        speed = 0,
+        last = performance.now(),
+        logT;
+      const say = (m) => {
+        log.textContent = m;
+        log.classList.add("on");
+        clearTimeout(logT);
+        logT = setTimeout(() => log.classList.remove("on"), 3200);
+      };
+      function tick(now) {
+        const dt = (now - last) / 1000;
+        last = now;
+        if (!down) {
+          speed += (680 - speed) * Math.min(1, dt * 1.5) + (Math.random() - 0.5) * 20;
+          sent = Math.min(TOTAL, sent + (speed / 8 / 1000) * dt * 40);
+        } else speed = Math.max(0, speed - speed * dt * 4);
+        if (sent >= TOTAL) {
+          sent = 0;
+          say("Delivered. Checksum matched. Starting the next card.");
+        }
+        gbEl.textContent = sent.toFixed(1);
+        fill.style.width = (sent / TOTAL) * 100 + "%";
+        spd.textContent = down ? "—" : Math.round(speed) + " Mbps";
+        eta.textContent = down
+          ? "reconnecting"
+          : Math.max(1, Math.round((TOTAL - sent) / ((speed / 8 / 1000) * 40) / 60)) + " min";
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+      kill.onclick = () => {
+        if (down) return;
+        down = true;
+        demo.classList.add("down");
+        status.textContent = "offline";
+        kill.textContent = "Reconnecting…";
+        const at = sent.toFixed(1);
+        say(`Connection lost at ${at} GB. Holding position.`);
+        setTimeout(() => {
+          down = false;
+          demo.classList.remove("down");
+          status.textContent = "live";
+          kill.textContent = "Kill it again";
+          say(`Back online. Resumed at ${at} GB. Re-uploaded: 0 bytes.`);
+        }, 2600);
+      };
+
+      // scroll-driven rail: fills across the chaos section, never resets
+      const chaos = document.getElementById("chaos");
+      function rail() {
+        const r = chaos.getBoundingClientRect(),
+          h = r.height - innerHeight,
+          p = Math.min(1, Math.max(0, -r.top / h));
+        railfill.style.width = p * 100 + "%";
+        railgb.textContent = Math.round(p * 350);
+      }
+      addEventListener("scroll", rail, { passive: true });
+      rail();
+    </script>
+  </body>
+</html>

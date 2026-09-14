@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+  <!-- source frame, open where the footage leaves -->
+  <path d="M14 14.5A3.5 3.5 0 0 0 10.5 11h-5A3.5 3.5 0 0 0 2 14.5v5A3.5 3.5 0 0 0 5.5 23h5a3.5 3.5 0 0 0 3.5-3.5" stroke="#2740c4" stroke-opacity=".4"/>
+  <!-- destination frame, open where it arrives -->
+  <path d="M18 17.5a3.5 3.5 0 0 0 3.5 3.5h5a3.5 3.5 0 0 0 3.5-3.5v-5A3.5 3.5 0 0 0 26.5 9h-5A3.5 3.5 0 0 0 18 12.5" stroke="#2740c4"/>
+  <!-- the shoot, arriving whole -->
+  <path d="M6 16h20M23.2 13.2 26 16l-2.8 2.8" stroke="#17181c"/>
+</svg>

@@ -4,13 +4,10 @@ type WebEnv = {
   API?: {
     fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
   };
-  SESSION_SECRET?: string;
 };
 
 export default {
   async fetch(request: Request, env: WebEnv) {
-    if (env.SESSION_SECRET) process.env.SESSION_SECRET = env.SESSION_SECRET;
-
     const url = new URL(request.url);
     if (url.pathname === "/infra") {
       if (!env.API) {

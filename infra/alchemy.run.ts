@@ -1,6 +1,5 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
-import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 
 const webRoot = new URL("../apps/web", import.meta.url).pathname;
@@ -40,7 +39,6 @@ export default Alchemy.Stack(
       domain: "tranzfer.app",
       env: {
         API: api,
-        SESSION_SECRET: Config.redacted("SESSION_SECRET"),
       },
     });
 

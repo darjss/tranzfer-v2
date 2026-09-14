@@ -1,0 +1,807 @@
+<!doctype html>
+<!-- PROTOTYPE, throwaway. Variant: instrument panel / Rams-grade utilitarian -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tranzfer — Throughput</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #e9e9e6;
+        --panel: #f6f6f4;
+        --ink: #161616;
+        --mut: #77776f;
+        --line: #c9c9c2;
+        --acc: #1d5cff;
+        --amber: #e08a00;
+        --ok: #1e8f4e;
+        --mono: "IBM Plex Mono", ui-monospace, monospace;
+        --sans: "IBM Plex Sans", system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font: 15px/1.5 var(--sans);
+        -webkit-font-smoothing: antialiased;
+        background-image:
+          linear-gradient(var(--line) 1px, transparent 1px),
+          linear-gradient(90deg, var(--line) 1px, transparent 1px);
+        background-size: 48px 48px;
+        background-position: center top;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+      .mono {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--mut);
+      }
+      nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        height: 56px;
+        border-bottom: 1px solid var(--ink);
+        background: var(--bg);
+      }
+      nav b {
+        font-family: var(--mono);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      nav ul {
+        display: flex;
+        gap: 24px;
+        list-style: none;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--ink);
+        color: #fff;
+        padding: 11px 16px;
+        border-radius: 4px;
+        font-family: var(--mono);
+        font-size: 13px;
+        font-weight: 500;
+        transition:
+          transform 0.12s ease,
+          background 0.15s;
+      }
+      .btn:hover {
+        background: #000;
+      }
+      .btn:active {
+        transform: scale(0.97);
+      }
+      .btn.acc {
+        background: var(--acc);
+      }
+      .btn.acc:hover {
+        background: #0f48d6;
+      }
+      .btn.o {
+        background: var(--panel);
+        color: var(--ink);
+        box-shadow: inset 0 0 0 1px var(--ink);
+      }
+      .btn.o:hover {
+        background: #fff;
+      }
+      /* hero */
+      .hero {
+        padding: 64px 0 48px;
+        display: grid;
+        grid-template-columns: 1fr 1.25fr;
+        gap: 40px;
+        align-items: stretch;
+      }
+      h1 {
+        font-weight: 500;
+        font-size: clamp(38px, 5vw, 64px);
+        line-height: 1.02;
+        letter-spacing: -0.03em;
+        text-wrap: balance;
+      }
+      .lede {
+        color: var(--mut);
+        font-size: 17px;
+        max-width: 42ch;
+        margin: 22px 0 28px;
+      }
+      .spec {
+        margin-top: 40px;
+        border-top: 1px solid var(--ink);
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .spec div {
+        padding: 12px 0;
+        border-right: 1px solid var(--line);
+        padding-right: 12px;
+      }
+      .spec div:last-child {
+        border: 0;
+      }
+      .spec b {
+        display: block;
+        font-family: var(--mono);
+        font-size: 22px;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+        margin-top: 2px;
+        font-variant-numeric: tabular-nums;
+      }
+      /* panel */
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--ink);
+        border-radius: 6px;
+        padding: 0;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        box-shadow:
+          0 1px 0 #fff inset,
+          0 24px 48px -32px rgba(0, 0, 0, 0.35);
+      }
+      .panel header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--line);
+        align-items: center;
+      }
+      .panel header b {
+        font-family: var(--mono);
+        font-weight: 500;
+        font-size: 13px;
+      }
+      .panel header small {
+        display: block;
+        color: var(--mut);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+      .led {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .led::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--ok);
+        box-shadow:
+          0 0 0 2px #fff,
+          0 0 0 3px var(--line);
+        transition: background 0.2s;
+      }
+      .panel.down .led::before {
+        background: var(--amber);
+        animation: bl 0.6s steps(1) infinite;
+      }
+      @keyframes bl {
+        50% {
+          opacity: 0.25;
+        }
+      }
+      .scope {
+        position: relative;
+        padding: 18px;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 10px;
+      }
+      .read {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+      .read div {
+        font-family: var(--mono);
+      }
+      .read span {
+        display: block;
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--mut);
+      }
+      .read b {
+        font-size: 26px;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.1;
+      }
+      .read .a b {
+        color: var(--acc);
+      }
+      .read .g b {
+        color: var(--ok);
+      }
+      canvas {
+        width: 100%;
+        height: 220px;
+        display: block;
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 3px;
+      }
+      .tape {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 18px;
+        border-top: 1px solid var(--line);
+        align-items: center;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      .tape button {
+        font: inherit;
+        font-family: var(--mono);
+        font-size: 12px;
+        background: #fff;
+        border: 1px solid var(--ink);
+        border-radius: 4px;
+        padding: 8px 12px;
+        cursor: pointer;
+        transition:
+          transform 0.12s,
+          background 0.15s;
+      }
+      .tape button:hover {
+        background: var(--bg);
+      }
+      .tape button:active {
+        transform: scale(0.97);
+      }
+      .tape .msg {
+        color: var(--mut);
+      }
+      /* sections */
+      section {
+        padding: 88px 0;
+        border-top: 1px solid var(--ink);
+      }
+      .sec {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        gap: 40px;
+      }
+      h2 {
+        font-weight: 500;
+        font-size: clamp(28px, 3.6vw, 44px);
+        letter-spacing: -0.03em;
+        line-height: 1.05;
+        max-width: 22ch;
+        text-wrap: balance;
+      }
+      .list {
+        border-top: 1px solid var(--ink);
+      }
+      .item {
+        display: grid;
+        grid-template-columns: 64px 1fr 220px 120px;
+        gap: 20px;
+        padding: 20px 0;
+        border-bottom: 1px solid var(--line);
+        align-items: baseline;
+      }
+      .item .k {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--mut);
+      }
+      .item h3 {
+        font-weight: 500;
+        font-size: 19px;
+        letter-spacing: -0.01em;
+      }
+      .item p {
+        color: var(--mut);
+        font-size: 14px;
+        margin-top: 4px;
+        max-width: 52ch;
+      }
+      .item .bar {
+        height: 6px;
+        background: var(--line);
+        border-radius: 3px;
+        position: relative;
+        overflow: hidden;
+        align-self: center;
+      }
+      .item .bar i {
+        position: absolute;
+        inset: 0 auto 0 0;
+        background: var(--ink);
+        width: var(--w);
+      }
+      .item .bar em {
+        position: absolute;
+        inset: 0 auto 0 var(--w);
+        width: 2px;
+        background: var(--amber);
+      }
+      .item .r {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--ok);
+        text-align: right;
+      }
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1px;
+        background: var(--ink);
+        border: 1px solid var(--ink);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .steps div {
+        background: var(--panel);
+        padding: 26px 24px 30px;
+        min-height: 220px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .steps h3 {
+        font-weight: 500;
+        font-size: 20px;
+        margin-top: 40px;
+      }
+      .steps p {
+        color: var(--mut);
+        font-size: 14px;
+        margin-top: 6px;
+      }
+      .plans {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+      .plan {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .plan.hot {
+        border-color: var(--acc);
+        box-shadow: 0 0 0 1px var(--acc);
+      }
+      .plan h3 {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--mut);
+        display: flex;
+        justify-content: space-between;
+      }
+      .plan .p {
+        font-family: var(--mono);
+        font-size: 44px;
+        font-weight: 500;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+      .plan .p small {
+        font-size: 14px;
+        color: var(--mut);
+      }
+      .plan ul {
+        list-style: none;
+        padding: 0;
+        display: grid;
+        gap: 8px;
+        font-size: 14px;
+        color: var(--mut);
+        flex: 1;
+      }
+      .plan li::before {
+        content: "·";
+        margin-right: 8px;
+      }
+      .final {
+        text-align: center;
+      }
+      .final h2 {
+        margin: 0 auto 24px;
+      }
+      footer {
+        border-top: 1px solid var(--ink);
+        padding: 24px 0 56px;
+        display: flex;
+        justify-content: space-between;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--mut);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .rv {
+        opacity: 0;
+        transform: translateY(10px);
+        transition:
+          opacity 0.45s ease-out,
+          transform 0.45s ease-out;
+        transition-delay: var(--d, 0ms);
+      }
+      .rv.in {
+        opacity: 1;
+        transform: none;
+      }
+      @media (max-width: 900px) {
+        .hero,
+        .sec,
+        .steps,
+        .plans {
+          grid-template-columns: 1fr;
+        }
+        .item {
+          grid-template-columns: 1fr;
+        }
+        .item .r {
+          text-align: left;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .rv {
+          transition: none;
+          opacity: 1;
+          transform: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <nav>
+        <b>TRANZFER</b>
+        <ul>
+          <li><a href="#events">Events</a></li>
+          <li><a href="#how">Method</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="#">Sign in</a></li>
+        </ul>
+      </nav>
+
+      <section class="hero" style="border: 0">
+        <div>
+          <p class="mono rv">Large-file delivery · creators → editors</p>
+          <h1 class="rv" style="--d: 60ms; margin-top: 14px">
+            Move 350 GB. Break the connection. Watch it keep going.
+          </h1>
+          <p class="lede rv" style="--d: 120ms">
+            Footage goes from your browser straight to storage in checkpointed parts. Wi-Fi, sleep,
+            refresh, expired URL: none of them cost you a byte you already sent.
+          </p>
+          <div class="rv" style="--d: 180ms; display: flex; gap: 10px; flex-wrap: wrap">
+            <a class="btn acc" href="#">Send 100 GB free →</a
+            ><a class="btn o" href="#events">Event log</a>
+          </div>
+          <div class="spec rv" style="--d: 240ms">
+            <div><span class="mono">Re-upload on failure</span><b>0 B</b></div>
+            <div><span class="mono">Parts per file</span><b>≤10,000</b></div>
+            <div><span class="mono">Verified</span><b>per part</b></div>
+          </div>
+        </div>
+
+        <div class="panel rv" id="panel" style="--d: 120ms">
+          <header>
+            <div><b>EP04_A-Cam_Card.mxf</b><small>→ Marcus · Berlin · multipart · R2</small></div>
+            <span class="led" id="led">link up</span>
+          </header>
+          <div class="scope">
+            <div class="read">
+              <div class="a"><span>Landed</span><b id="gb">0.0</b></div>
+              <div><span>of</span><b>350 GB</b></div>
+              <div><span>Throughput</span><b id="spd">0</b></div>
+              <div class="g"><span>Re-sent</span><b>0 B</b></div>
+            </div>
+            <canvas id="c" width="1200" height="440"></canvas>
+          </div>
+          <div class="tape">
+            <span class="msg" id="msg">Area under the curve only ever grows.</span
+            ><button id="kill">Cut the link</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="events">
+        <div class="sec">
+          <div>
+            <p class="mono">Event log</p>
+            <h2 class="rv">One job. Six failures. Zero restarts.</h2>
+          </div>
+          <div class="list">
+            <div class="item rv" style="--w: 11%">
+              <span class="k">09:12</span>
+              <div>
+                <h3>Wi-Fi dropped</h3>
+                <p>Retry with backoff. Part re-signed. Next part sent when the line returned.</p>
+              </div>
+              <div class="bar"><i></i><em></em></div>
+              <span class="r">continue</span>
+            </div>
+            <div class="item rv" style="--w: 40%">
+              <span class="k">10:40</span>
+              <div>
+                <h3>Laptop slept</h3>
+                <p>
+                  On wake: ListParts against storage, local file verified unchanged, only missing
+                  parts queued.
+                </p>
+              </div>
+              <div class="bar"><i></i><em></em></div>
+              <span class="r">continue</span>
+            </div>
+            <div class="item rv" style="--w: 63%">
+              <span class="k">12:03</span>
+              <div>
+                <h3>Tab refreshed</h3>
+                <p>
+                  Upload identity persisted locally. Same file re-selected. Resumed at part 2,199.
+                </p>
+              </div>
+              <div class="bar"><i></i><em></em></div>
+              <span class="r">continue</span>
+            </div>
+            <div class="item rv" style="--w: 63%">
+              <span class="k">12:05</span>
+              <div>
+                <h3>Signed URL expired</h3>
+                <p>URLs are signed lazily, right before each part. Requested a fresh one.</p>
+              </div>
+              <div class="bar"><i></i><em></em></div>
+              <span class="r">continue</span>
+            </div>
+            <div class="item rv" style="--w: 89%">
+              <span class="k">14:31</span>
+              <div>
+                <h3>Part failed checksum</h3>
+                <p>Re-sent one 100 MB part. Not 311 GB.</p>
+              </div>
+              <div class="bar"><i></i><em></em></div>
+              <span class="r">re-send ×1</span>
+            </div>
+            <div class="item rv" style="--w: 100%">
+              <span class="k">15:16</span>
+              <div>
+                <h3>Delivered</h3>
+                <p>
+                  Final checksum matched. Link issued, expires in 7 days. Editor pulled at 900 Mbps.
+                </p>
+              </div>
+              <div class="bar"><i></i><em></em></div>
+              <span class="r">done</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="how">
+        <div class="sec">
+          <div>
+            <p class="mono">Method</p>
+            <h2 class="rv">Client to storage. The API only signs.</h2>
+          </div>
+          <div class="steps">
+            <div class="rv">
+              <span class="mono">01</span>
+              <div>
+                <h3>Drop the cards</h3>
+                <p>
+                  Whole camera cards. Browser uploads directly to R2 in multipart chunks sized to
+                  the file.
+                </p>
+              </div>
+            </div>
+            <div class="rv" style="--d: 70ms">
+              <span class="mono">02</span>
+              <div>
+                <h3>Walk away</h3>
+                <p>Every part is checkpointed. Progress, speed and ETA are real, not estimated.</p>
+              </div>
+            </div>
+            <div class="rv" style="--d: 140ms">
+              <span class="mono">03</span>
+              <div>
+                <h3>Send one link</h3>
+                <p>
+                  No editor account. Checksum on download. Files delete themselves when the link
+                  expires.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing">
+        <div class="sec">
+          <div>
+            <p class="mono">Pricing</p>
+            <h2 class="rv">Flat rate. No per-GB meter.</h2>
+          </div>
+          <div class="plans">
+            <div class="plan rv">
+              <h3>Free</h3>
+              <div class="p">$0</div>
+              <ul>
+                <li>100 GB per transfer</li>
+                <li>7-day links</li>
+                <li>Resumable uploads</li>
+              </ul>
+              <a class="btn o" href="#">Start free</a>
+            </div>
+            <div class="plan hot rv" style="--d: 70ms">
+              <h3>Pro <span style="color: var(--acc)">recommended</span></h3>
+              <div class="p">$29<small>/mo</small></div>
+              <ul>
+                <li>1 TB per transfer</li>
+                <li>30-day links</li>
+                <li>Password + expiry</li>
+                <li>Priority throughput</li>
+              </ul>
+              <a class="btn acc" href="#">Start Pro</a>
+            </div>
+            <div class="plan rv" style="--d: 140ms">
+              <h3>Studio</h3>
+              <div class="p">$99<small>/mo</small></div>
+              <ul>
+                <li>Unlimited size</li>
+                <li>Team seats</li>
+                <li>Recurring editor inbox</li>
+              </ul>
+              <a class="btn o" href="#">Talk to us</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="final">
+        <p class="mono">Ready</p>
+        <h2 class="rv" style="margin-top: 10px">Send something enormous.</h2>
+        <a class="btn acc rv" style="--d: 80ms" href="#">Send 100 GB free →</a>
+      </section>
+      <footer>
+        <span>© 2026 Tranzfer</span
+        ><span>Client → R2 for bytes. The API is the control plane.</span>
+      </footer>
+    </div>
+    <script src="PROTOTYPE-switcher.js"></script>
+    <script>
+      const io = new IntersectionObserver(
+        (es) =>
+          es.forEach((e) => {
+            if (e.isIntersecting) {
+              e.target.classList.add("in");
+              io.unobserve(e.target);
+            }
+          }),
+        { rootMargin: "-40px" },
+      );
+      document.querySelectorAll(".rv").forEach((el) => io.observe(el));
+      // oscilloscope
+      const ctx = c.getContext("2d"),
+        W = c.width,
+        H = c.height,
+        N = 240,
+        hist = new Array(N).fill(0);
+      let sent = 0,
+        down = false,
+        spdv = 0,
+        last = performance.now(),
+        t = 0;
+      function draw() {
+        ctx.clearRect(0, 0, W, H);
+        ctx.strokeStyle = "#e4e4df";
+        ctx.lineWidth = 1;
+        for (let y = 0; y < H; y += H / 5) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(W, y);
+          ctx.stroke();
+        }
+        // filled area = bytes landed (never drops)
+        ctx.beginPath();
+        ctx.moveTo(0, H);
+        hist.forEach((v, i) => ctx.lineTo((i / (N - 1)) * W, H - (v / 900) * H * 0.85));
+        ctx.lineTo(W, H);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(29,92,255,.10)";
+        ctx.fill();
+        ctx.beginPath();
+        hist.forEach((v, i) => {
+          const x = (i / (N - 1)) * W,
+            y = H - (v / 900) * H * 0.85;
+          i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        });
+        ctx.strokeStyle = down ? "#e08a00" : "#1d5cff";
+        ctx.lineWidth = 2.5;
+        ctx.lineJoin = "round";
+        ctx.stroke();
+        const lx = W - 2,
+          ly = H - (hist[N - 1] / 900) * H * 0.85;
+        ctx.fillStyle = down ? "#e08a00" : "#1d5cff";
+        ctx.beginPath();
+        ctx.arc(lx, ly, 5, 0, 7);
+        ctx.fill();
+        ctx.font = '500 22px "IBM Plex Mono"';
+        ctx.fillStyle = "#77776f";
+        ctx.fillText("Mbps", 14, 30);
+      }
+      function tick(now) {
+        const dt = (now - last) / 1000;
+        last = now;
+        t += dt;
+        if (!down) {
+          spdv +=
+            (640 + Math.sin(t * 1.3) * 60 + (Math.random() - 0.5) * 40 - spdv) *
+            Math.min(1, dt * 2);
+          sent = Math.min(350, sent + dt * 2.2);
+        } else spdv = Math.max(0, spdv - spdv * dt * 6);
+        if (sent >= 350) {
+          sent = 0;
+          msg.textContent = "Delivered. Checksum matched. Next card.";
+        }
+        hist.push(spdv);
+        hist.shift();
+        gb.textContent = sent.toFixed(1);
+        spd.textContent = down ? "—" : Math.round(spdv);
+        draw();
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+      kill.onclick = () => {
+        if (down) return;
+        down = true;
+        panel.classList.add("down");
+        led.textContent = "link down";
+        const at = sent.toFixed(1);
+        msg.textContent = `Link cut at ${at} GB. Holding. No bytes discarded.`;
+        kill.textContent = "Reconnecting…";
+        setTimeout(() => {
+          down = false;
+          panel.classList.remove("down");
+          led.textContent = "link up";
+          msg.textContent = `Resumed at ${at} GB. Re-sent 0 B.`;
+          kill.textContent = "Cut it again";
+        }, 2600);
+      };
+    </script>
+  </body>
+</html>
