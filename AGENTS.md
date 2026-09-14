@@ -34,6 +34,36 @@ and persistent metadata plus R2 own recovery truth. Fiber interruption and UI
 disposal must not implicitly cancel durable uploads. Use shared RPC schemas for
 client/server contracts and keep file bytes out of RPC.
 
+### Effect skills and version authority
+
+For Effect setup, read `.agents/skills/effect-ts/SKILL.md`. Before writing or
+explaining Effect code, read the owning package's installed `effect/AGENTS.md`
+completely, then follow its relevant topic links and inspect its source/types.
+Resolve Effect from the package being changed. Today infrastructure owns the
+installed copy at `infra/node_modules/effect`; after migration, application
+packages may resolve a different version. Do not use infrastructure docs as
+authority for a different application release or install/upgrade Effect merely
+to obtain documentation. Package installation follows the readiness plan.
+
+Use `.agents/skills/effect/SKILL.md` and its matching references for supplemental
+v4 patterns. Project decisions and installed package APIs take precedence over
+its examples. In particular:
+
+- Keep T3 Env with Effect Schema as the configuration boundary. Supply validated
+  values to services rather than adding a second environment schema via Config.
+- Keep ordinary named exports and inferred types unless a real contract needs
+  more. Do not adopt self-exporting module namespaces, redundant interfaces,
+  generic error wrappers, or separate test services by default.
+- Stream, Cache, and scoped background work require an actual application need.
+  They do not replace Solid state, Uppy mechanics, or durable recovery metadata.
+  Worker work must respect its request/event lifetime; a fiber is not a job queue.
+- New test files and test-only helpers still require explicit user approval.
+  Use existing project test commands, not commands from another repository.
+
+These skills do not establish RPC or Solid integration compatibility. Verify
+those APIs and lifetimes against the selected package versions when implementing
+them. Do not copy Effect 3 or effect-smol examples into Effect 4 without checking.
+
 pnpm workspace (`packageManager` is pinned in `package.json`; use `pnpm add` for dependencies, never another package manager — `catalog:` specifiers only resolve with pnpm). Packages: `apps/web` (Solid 2 site + Worker, `@tranzfer/web`), `apps/api` (API Worker, currently Elysia pending Effect RPC migration, `@tranzfer/api`), `infra` (Alchemy v2 stack, `@tranzfer/infra`).
 
 Run root scripts with `pnpm <script>`:
