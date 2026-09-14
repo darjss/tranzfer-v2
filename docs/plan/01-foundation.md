@@ -1,5 +1,11 @@
 # Foundation before uploads
 
+Status: foundation phase closed by user decision. Remaining tooling, dependency
+compatibility, CI, deployment automation, and UI preparation belong to
+[02-pre-upload-readiness.md](02-pre-upload-readiness.md). Closing this phase does
+not claim those follow-ups are complete. Step 6 remains deferred until that plan
+passes its completion gates.
+
 Build and deploy the workspace, install the agreed stack, and establish the
 visual direction before implementing uploads. The first milestone is a deployed,
 branded app shell with working infrastructure and local development.
