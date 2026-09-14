@@ -41,14 +41,16 @@ keep Solid state and Uppy progress out of Atom/Stream abstractions.
 
 ## Commands and deploys
 
-Use pnpm. `apps/web` is the Solid site/Worker, `apps/api` the API Worker, and
-`infra` the Alchemy stack. See package scripts and README for setup.
+Run every command through `vp`. `vp install`, `vp add`, and `vp remove` for
+dependencies. `vp <name>` for built-ins (`check`, `lint`, `fmt`). `vp run <name>`
+for package scripts (`dev`, `test`, `build`, `plan`, `deploy`). Vite+ docs:
+`node_modules/vite-plus/docs`. `apps/web` is the Solid site/Worker, `apps/api`
+the API Worker, and `infra` the Alchemy stack.
 
-Run `pnpm check`, existing tests with `pnpm test`, and relevant builds after code
-changes. `vp <name>` selects built-ins; `vp run <name>` selects project scripts.
-Vite+ documentation is in `node_modules/vite-plus/docs`.
+After code changes run `vp check`, existing tests with `vp run test`, and the
+relevant `vp run build`.
 
 Deploy only from the main checkout through `infra/alchemy.run.ts`, which owns
-both apps and production resources. Run `pnpm build`, `pnpm plan`, then
-`pnpm run deploy`. App Wrangler configs are for local development, not separate
+both apps and production resources. Run `vp run build`, `vp run plan`, then
+`vp run deploy`. App Wrangler configs are for local development, not separate
 production deploys. Preserve the user's existing generated-file changes.
