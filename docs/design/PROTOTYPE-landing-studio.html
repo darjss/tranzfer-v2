@@ -1,10 +1,11 @@
 <!doctype html>
-<!-- PROTOTYPE, throwaway. Variant: studio v2. Uploader is visual only. Photos from picsum.photos -->
+<!-- PROTOTYPE, throwaway. Variant: studio v2. Uploader is visual only. Photos: generated stills in assets/ (webp, from 'assset pics gen/') -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Tranzfer — Send the whole shoot</title>
+    <link rel="icon" type="image/svg+xml" href="logo/tranzfer-mark.svg" />
     <link
       href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,600&family=IBM+Plex+Mono:wght@400;500&family=Caveat:wght@500;600&display=swap"
       rel="stylesheet"
@@ -69,10 +70,65 @@
         position: relative;
         z-index: 5;
       }
-      nav b {
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
         font-weight: 700;
         font-size: 20px;
         letter-spacing: -0.02em;
+        color: var(--ink);
+      }
+      .brand > svg {
+        width: 34px;
+        height: 34px;
+        margin-top: 2px;
+      }
+      .brand .word {
+        position: relative;
+        line-height: 1;
+      }
+      .brand .word svg {
+        position: absolute;
+        left: -1px;
+        bottom: -3px;
+        height: 6px;
+        width: 100%;
+        overflow: visible;
+      }
+      .brand .bar {
+        stroke-dasharray: 1;
+        stroke-dashoffset: 1;
+        animation: draw 0.5s var(--ease) forwards;
+      }
+      .brand .bar:last-of-type {
+        animation-duration: 0.25s;
+        animation-delay: 0.4s;
+      }
+      .brand .word .bar {
+        animation-delay: 0.7s;
+      }
+      .brand:hover .bar {
+        animation-name: redraw;
+      }
+      @keyframes draw {
+        to {
+          stroke-dashoffset: 0;
+        }
+      }
+      @keyframes redraw {
+        from {
+          stroke-dashoffset: 1;
+        }
+        to {
+          stroke-dashoffset: 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .brand .bar {
+          animation: none;
+          stroke-dashoffset: 0;
+        }
       }
       nav ul {
         display: flex;
@@ -606,16 +662,27 @@
         border-radius: 999px;
         backdrop-filter: blur(6px);
       }
-      .note .tape {
+      .note .tape,
+      .note::before {
+        content: "";
         position: absolute;
-        top: -12px;
-        left: 50%;
-        translate: -50% 0;
-        width: 88px;
-        height: 26px;
-        background: rgba(255, 224, 130, 0.75);
-        rotate: -3deg;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        top: -9px;
+        left: -18px;
+        width: 74px;
+        height: 22px;
+        rotate: -38deg;
+        background:
+          repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.18) 0 2px, transparent 2px 5px),
+          rgba(236, 222, 170, 0.62);
+        clip-path: polygon(0 12%, 3% 0, 6% 14%, 97% 4%, 100% 20%, 98% 100%, 94% 88%, 4% 96%, 0 82%);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+        z-index: 2;
+        mix-blend-mode: multiply;
+      }
+      .note::before {
+        left: auto;
+        right: -18px;
+        rotate: 38deg;
       }
       .note h3 {
         font-weight: 600;
@@ -1043,7 +1110,39 @@
   <body>
     <div class="wrap">
       <nav>
-        <b>tranzfer</b>
+        <a class="brand" href="#" aria-label="Tranzfer">
+          <svg
+            viewBox="0 0 32 32"
+            fill="none"
+            stroke-width="2.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path
+              d="M14 14.5A3.5 3.5 0 0 0 10.5 11h-5A3.5 3.5 0 0 0 2 14.5v5A3.5 3.5 0 0 0 5.5 23h5a3.5 3.5 0 0 0 3.5-3.5"
+              stroke="var(--blue)"
+              stroke-opacity=".4"
+            />
+            <path
+              d="M18 17.5a3.5 3.5 0 0 0 3.5 3.5h5a3.5 3.5 0 0 0 3.5-3.5v-5A3.5 3.5 0 0 0 26.5 9h-5A3.5 3.5 0 0 0 18 12.5"
+              stroke="var(--blue)"
+            />
+            <path class="bar" pathLength="1" d="M6 16h20" stroke="currentColor" />
+            <path class="bar" pathLength="1" d="M23.2 13.2 26 16l-2.8 2.8" stroke="currentColor" />
+          </svg>
+          <span class="word"
+            >tranzfer<svg viewBox="0 0 60 6" preserveAspectRatio="none" aria-hidden="true">
+              <path
+                class="bar"
+                pathLength="1"
+                d="M1 4.6c10-1.6 22-2.4 36-2.2"
+                stroke="var(--blue)"
+                stroke-width="2.4"
+                stroke-linecap="round"
+              /></svg
+          ></span>
+        </a>
         <ul>
           <li><a href="#desk">What survives</a></li>
           <li><a href="#how">How it works</a></li>
@@ -1130,14 +1229,14 @@
               --d: 0.15s;
             "
           >
-            <img src="https://picsum.photos/seed/tz1/400/267" alt="" />
+            <img src="assets/neon-crosswalk.webp" alt="" />
           </div>
           <div
             class="still"
             data-l="b-cam · 188 gb"
             style="--w: 130px; --x: 35%; --y: 3%; --r: 7deg; --dx: 80px; --dy: -220px; --d: 0.3s"
           >
-            <img src="https://picsum.photos/seed/tz2/400/267" alt="" />
+            <img src="assets/frozen-wilds.webp" alt="" />
           </div>
           <div
             class="still"
@@ -1153,14 +1252,14 @@
               --d: 0.45s;
             "
           >
-            <img src="https://picsum.photos/seed/tz3/300/450" alt="" />
+            <img src="assets/coast-road.webp" alt="" />
           </div>
           <div
             class="still"
             data-l="audio · 2 gb"
             style="--w: 110px; --x: 41%; --y: 84%; --r: -12deg; --dx: 120px; --dy: 220px; --d: 0.6s"
           >
-            <img src="https://picsum.photos/seed/tz4/400/267" alt="" />
+            <img src="assets/hiker-sea.webp" alt="" />
           </div>
         </div>
         <div style="position: relative; z-index: 2">
@@ -1217,7 +1316,7 @@
               </div>
               <div class="chips">
                 <div class="chip" style="--d: 0.5s">
-                  <img src="https://picsum.photos/seed/tz1/88/88" alt="" />
+                  <img src="assets/neon-crosswalk.webp" alt="" />
                   <div><b>EP04_A-Cam</b><small>214 GB · 1,842 clips</small></div>
                   <span class="ok"
                     ><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
@@ -1225,7 +1324,7 @@
                   ></span>
                 </div>
                 <div class="chip" style="--d: 0.65s">
-                  <img src="https://picsum.photos/seed/tz2/88/88" alt="" />
+                  <img src="assets/frozen-wilds.webp" alt="" />
                   <div><b>EP04_B-Cam</b><small>188 GB · 1,204 clips</small></div>
                   <span class="ok"
                     ><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
@@ -1233,7 +1332,7 @@
                   ></span>
                 </div>
                 <div class="chip" style="--d: 0.8s">
-                  <img src="https://picsum.photos/seed/tz3/88/88" alt="" />
+                  <img src="assets/coast-road.webp" alt="" />
                   <div><b>Drone_Day2</b><small>61 GB · 97 clips</small></div>
                   <span class="ok"
                     ><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
@@ -1286,7 +1385,7 @@
           <article class="note rv" style="--r: -3deg">
             <span class="tape"></span>
             <div class="ph" data-gb="38 GB landed">
-              <img src="https://picsum.photos/seed/f1/600/450" alt="" />
+              <img src="assets/wrong-01-cafe-wifi.webp" alt="" />
             </div>
             <h3>Café Wi-Fi died</h3>
             <p>It waited for the connection, then carried on from the same spot.</p>
@@ -1295,7 +1394,7 @@
           <article class="note rv" style="--r: 2deg; --d: 80ms">
             <span class="tape"></span>
             <div class="ph" data-gb="141 GB landed">
-              <img src="https://picsum.photos/seed/f2/600/450" alt="" />
+              <img src="assets/wrong-02-train-sleep.webp" alt="" />
             </div>
             <h3>Laptop slept on the train</h3>
             <p>On wake it checked what had already arrived and picked up from there.</p>
@@ -1304,7 +1403,7 @@
           <article class="note rv" style="--r: -1.5deg; --d: 160ms">
             <span class="tape"></span>
             <div class="ph" data-gb="220 GB landed">
-              <img src="https://picsum.photos/seed/f3/600/450" alt="" />
+              <img src="assets/wrong-03-refreshed-tab.webp" alt="" />
             </div>
             <h3>Someone refreshed the tab</h3>
             <p>Choose the same file again and it resumes. No new upload.</p>
@@ -1313,7 +1412,7 @@
           <article class="note rv" style="--r: 2.5deg; --d: 240ms">
             <span class="tape"></span>
             <div class="ph" data-gb="221 GB landed">
-              <img src="https://picsum.photos/seed/f4/600/450" alt="" />
+              <img src="assets/wrong-04-overnight.webp" alt="" />
             </div>
             <h3>Left it overnight</h3>
             <p>
@@ -1325,7 +1424,7 @@
           <article class="note rv" style="--r: -2deg; --d: 320ms">
             <span class="tape"></span>
             <div class="ph" data-gb="311 GB landed">
-              <img src="https://picsum.photos/seed/f5/600/450" alt="" />
+              <img src="assets/wrong-05-damaged-piece.webp" alt="" />
             </div>
             <h3>One piece arrived damaged</h3>
             <p>Tranzfer noticed and re-sent that piece. About 100 MB, not 311 GB.</p>
@@ -1334,7 +1433,7 @@
           <article class="note rv" style="--r: 1.5deg; --d: 400ms">
             <span class="tape"></span>
             <div class="ph" data-gb="350 GB · done">
-              <img src="https://picsum.photos/seed/f6/600/450" alt="" />
+              <img src="assets/wrong-06-delivered.webp" alt="" />
             </div>
             <h3>Delivered</h3>
             <p>Verified bit for bit. Marcus got one link and downloaded at full speed.</p>
@@ -1353,7 +1452,7 @@
         </div>
         <div class="steps">
           <div class="step rv">
-            <img src="https://picsum.photos/seed/s1/700/900" alt="" />
+            <img src="assets/video-edit.webp" alt="" />
             <div>
               <span class="n">01</span>
               <h3>Drop the cards</h3>
@@ -1361,7 +1460,7 @@
             </div>
           </div>
           <div class="step rv" style="--d: 80ms">
-            <img src="https://picsum.photos/seed/s2/700/900" alt="" />
+            <img src="assets/loft-packing.webp" alt="" />
             <div>
               <span class="n">02</span>
               <h3>Close the laptop</h3>
@@ -1369,7 +1468,7 @@
             </div>
           </div>
           <div class="step rv" style="--d: 160ms">
-            <img src="https://picsum.photos/seed/s3/700/900" alt="" />
+            <img src="assets/filmmaker.webp" alt="" />
             <div>
               <span class="n">03</span>
               <h3>Send one link</h3>
@@ -1386,7 +1485,7 @@
         <span class="hand blue" style="left: 38%; top: 8%; --r: -6deg; --d: 0.7s"
           >same. except mine<br />was a train.</span
         >
-        <div class="pic rv"><img src="https://picsum.photos/seed/q1/800/1000" alt="" /></div>
+        <div class="pic rv"><img src="assets/mountain-studio.webp" alt="" /></div>
         <div>
           <blockquote class="rv" style="--d: 80ms">
             "I closed the lid at 62%, got on a plane, opened it in Lisbon, and it just kept going."
@@ -1473,11 +1572,15 @@
         <span class="hand red" style="left: 14%; top: 72%; --r: -6deg; --d: 1.2s"
           >fine. you win.<br />sending B-cam.</span
         >
-        <div class="still in" data-l="wrap day" style="--w: 160px; --x: 2%; --y: 10%; --r: -8deg">
-          <img src="https://picsum.photos/seed/e1/400/267" alt="" />
+        <div
+          class="still in"
+          data-l="wrap day"
+          style="--w: 120px; --ar: 2/3; --x: 2%; --y: 10%; --r: -8deg"
+        >
+          <img src="assets/morning-packing.webp" alt="" />
         </div>
         <div class="still in" data-l="pickup" style="--w: 140px; --x: 84%; --y: 55%; --r: 9deg">
-          <img src="https://picsum.photos/seed/e2/400/267" alt="" />
+          <img src="assets/night-travel.webp" alt="" />
         </div>
         <p class="mono">Ready when you are</p>
         <h2 class="rv">Send something <i>enormous.</i></h2>
