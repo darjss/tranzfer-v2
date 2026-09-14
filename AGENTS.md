@@ -6,6 +6,8 @@ speculative abstractions, or new test files/helpers without explicit approval.
 ## Read first
 
 - Architecture: `docs/STACK.md`. Current work: `docs/plan/02-pre-upload-readiness.md`.
+- Product: `docs/SOUL.md`. Long-term direction: `docs/VISION.md`. Do not build
+  later phases until Phase 0 reliability is proven.
 - Transfer behavior: `docs/RELIABILITY.md`. Solid owns UI, Uppy owns multipart
   transport, and persistent metadata plus R2 own recovery. UI disposal or fiber
   interruption must never implicitly abort remote uploads.
