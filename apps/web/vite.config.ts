@@ -5,7 +5,10 @@ import { fileRoutes } from "filesystem-routing/vite";
 import { defineConfig } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
 
-const workerSsr = process.env.VITEST ? [] : [cloudflare({ viteEnvironment: { name: "ssr" } })];
+const workerSsr =
+  process.env.VITEST || process.env.ALCHEMY_CLOUDFLARE_VITE_INJECTED === "1"
+    ? []
+    : [cloudflare({ viteEnvironment: { name: "ssr" } })];
 
 export default defineConfig({
   staged: {

@@ -5,11 +5,14 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "plan": "alchemy plan"
+    "plan": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js plan",
+    "deploy": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js deploy",
+    "destroy": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js destroy"
   },
   "dependencies": {
+    "@effect/platform-node": "4.0.0-rc.112",
     "alchemy": "2.0.0-beta.77",
-    "effect": "4.0.0-rc.115"
+    "effect": "4.0.0-rc.112"
   },
   "devDependencies": {
     "typescript": "5.9.3"

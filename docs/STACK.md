@@ -152,7 +152,7 @@ Keep the build setup boring.
 
 The web Worker is the production server. `@cloudflare/vite-plugin` owns the `ssr` Vite environment (`viteEnvironment: { name: "ssr" }`) so `vp dev` / `vp build` / `vp preview` run the Solid `handleRequest` export inside workerd. `src/worker.ts` is the Worker entry: it forwards each request to `virtual:solid-ssr-handler`. There is no Node `server.js`.
 
-Client assets are Workers static assets. HTML, server functions, and the demo `/api/*` filesystem routes go through the Worker (`assets.run_worker_first: true`). Canonical product HTTP still belongs on the Elysia API Worker, not these starter routes.
+Client assets are Workers static assets (assets-first: hashed files never hit the Worker). HTML, server functions, and the demo `/api/*` filesystem routes go through the Worker. Canonical product HTTP still belongs on the Elysia API Worker, not these starter routes.
 
 `SESSION_SECRET` is still a process env var (the Solid env schema reads `process.env` at boot). Locally that is `apps/web/.env` for Vite plus `apps/web/.dev.vars` for workerd. `nodejs_compat` is on so that read works in the Worker.
 
@@ -877,24 +877,19 @@ Pin the exact Alchemy v2 version. Current pin: `alchemy@2.0.0-beta.77`.
 
 Alchemy v2's stack file is an Effect program. Effect is installed only in `infra` for that. Application packages do not import Effect.
 
-Until step 4 of the foundation plan wires Workers into Alchemy, `apps/api` uses Wrangler for local `wrangler dev`. That file is a local debug entry, not a second production source of truth.
+Alchemy is the authoritative source of Cloudflare infrastructure state. `apps/api/wrangler.jsonc` is a local debug entry (`wrangler dev` / Portless) with simulated D1 and R2, not a second production source of truth.
 
-Alchemy is the authoritative source of Cloudflare infrastructure state.
-
-Infrastructure should include the resources required by the product:
+The `tranzfer` stack in `infra/alchemy.run.ts` currently creates:
 
 ```text
-Workers
-R2 buckets
-D1 databases
-Queues
-KV namespaces if needed
-bindings
-service bindings
-scheduled triggers
-domains
-CORS configuration
+D1 database App
+R2 bucket Files (private)
+API Worker tranzfer-api (D1 + R2 bindings)
+web Worker tranzfer-web (service binding API, SESSION_SECRET, custom domain tranzfer.app)
+workers.dev URLs
 ```
+
+Queues, KV, scheduled triggers, and R2 CORS wait until a product path needs them.
 
 Do not maintain overlapping infrastructure truth in Wrangler configuration.
 
@@ -1124,7 +1119,7 @@ Pins as of the stack-deps change. Bump them on purpose, not by floating ranges.
 | elysia                                       | api      | 1.4.30        |
 | @elysiajs/eden                               | web      | 1.4.9         |
 | alchemy                                      | infra    | 2.0.0-beta.77 |
-| effect                                       | infra    | 4.0.0-rc.115  |
+| effect                                       | infra    | 4.0.0-rc.112  |
 | wrangler                                     | web, api | 4.131.1       |
 | @cloudflare/vite-plugin                      | web      | 1.54.8        |
 | tailwindcss, @tailwindcss/vite               | web      | 4.3.3         |
@@ -1149,7 +1144,7 @@ Pins as of the stack-deps change. Bump them on purpose, not by floating ranges.
 
 **Better Auth's optional `solid-js@^1` peer is ignored.** Auth stays on the API Worker. We are not using a Solid auth UI adapter.
 
-**Effect exists only in `infra`.** Alchemy v2's stack file is an Effect program. Application code does not import it.
+**Effect exists only in `infra`.** Alchemy v2's stack file is an Effect program. Application code does not import it. Pinned to `4.0.0-rc.112` because that is alchemy@2.0.0-beta.77's floor (`Config.string`, `Config.redacted`, `Flag.string`). Newer Effect 4 RCs dropped those names.
 
 **Solid Primitives were not installed.** The list in this document is still à la carte, not a shopping list.
 
