@@ -24,6 +24,8 @@
     "@uppy/core": "6.0.1",
     "@uppy/drop-target": "5.0.0",
     "better-result": "3.0.1",
+    "cnfast": "^0.2.0",
+    "cva": "1.0.0-beta.8",
     "dismatch": "2.6.0",
     "solid-js": "catalog:",
     "valibot": "1.4.2"

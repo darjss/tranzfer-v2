@@ -42,7 +42,7 @@ export default defineConfig({
       },
       extensions: [".jsx", ".tsx"],
     }),
-    fileRoutes({ httpMethods: true, types: true }),
+    fileRoutes({ httpMethods: true, types: true, codeSplitting: false }),
     // The landing is baked to dist/client/index.html at build; Workers static
     // assets serve it ahead of the Worker. Every other route stays live SSR.
     prerender({ mode: "hybrid", pages: ["/"], crawlLinks: false, emitPages: (p) => p === "/" }),

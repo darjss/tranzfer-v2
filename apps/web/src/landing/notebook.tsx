@@ -5,13 +5,13 @@ import type { ParentProps } from "solid-js";
 
 type Tone = "" | "blue" | "red";
 
-const tone = { "": "", blue: "text-blue", red: "text-rust" } satisfies Record<Tone, string>;
+const tone = { "": "text-ink", blue: "text-blue", red: "text-rust" } satisfies Record<Tone, string>;
 
 export function Hand(props: ParentProps<{ tone?: Tone; style: string }>) {
   return (
     <span
       class={[
-        "hand pointer-events-none absolute z-3 hidden translate-y-1.5 rotate-[var(--r,-4deg)] font-hand text-[22px] leading-[1.1] font-semibold text-ink opacity-0 transition-[opacity,translate] duration-500 ease-smooth [transition-delay:var(--d,0s)] lg:block [&.in]:translate-y-0 [&.in]:opacity-55 [&_s]:opacity-70 [&_s]:decoration-2",
+        "hand pointer-events-none absolute z-3 hidden translate-y-1.5 rotate-[var(--r,-4deg)] font-hand text-[22px] leading-[1.1] font-semibold opacity-0 transition-[opacity,translate] duration-500 ease-smooth [transition-delay:var(--d,0s)] lg:block [&.in]:translate-y-0 [&.in]:opacity-55 [&_s]:opacity-70 [&_s]:decoration-2",
         tone[props.tone ?? ""],
       ]}
       style={props.style}
@@ -25,7 +25,7 @@ export function Ink(props: ParentProps<{ tone?: Tone; style: string; viewBox: st
   return (
     <svg
       class={[
-        "ink pointer-events-none absolute z-3 hidden overflow-visible text-ink opacity-80 lg:block *:fill-none *:stroke-current *:stroke-[2.2] *:transition-[stroke-dashoffset] *:duration-[1.3s] *:ease-[cubic-bezier(.6,0,.2,1)] *:[stroke-dasharray:var(--len,600)] *:[stroke-dashoffset:var(--len,600)] *:[stroke-linecap:round] *:[stroke-linejoin:round] *:[transition-delay:var(--d,0s)] [&.in>*]:[stroke-dashoffset:0]",
+        "ink pointer-events-none absolute z-3 hidden overflow-visible opacity-80 lg:block *:fill-none *:stroke-current *:stroke-[2.2] *:transition-[stroke-dashoffset] *:duration-[1.3s] *:ease-[cubic-bezier(.6,0,.2,1)] *:[stroke-dasharray:var(--len,600)] *:[stroke-dashoffset:var(--len,600)] *:[stroke-linecap:round] *:[stroke-linejoin:round] *:[transition-delay:var(--d,0s)] [&.in>*]:[stroke-dashoffset:0]",
         tone[props.tone ?? ""],
       ]}
       style={props.style}

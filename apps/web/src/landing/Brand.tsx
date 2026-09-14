@@ -1,5 +1,5 @@
 // Nav logo: two open frames, one arrow, underline draws on load (keyframes
-// `draw`/`redraw` live in App.css). Source of truth for the mark is
+// `draw`/`redraw` live in landing.css). Source of truth for the mark is
 // docs/design/logo/tranzfer-mark.svg.
 
 const bar = "bar [stroke-dasharray:1] [stroke-dashoffset:1] group-hover:[animation-name:redraw]";

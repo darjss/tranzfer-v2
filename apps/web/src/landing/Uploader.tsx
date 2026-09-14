@@ -1,8 +1,8 @@
 import { For } from "solid-js";
+import { Button } from "../ui/Button";
 import coastRoad from "./assets/coast-road.webp";
 import frozenWilds from "./assets/frozen-wilds.webp";
 import neonCrosswalk from "./assets/neon-crosswalk.webp";
-import { btn, btnFill } from "./styles";
 
 // Visual-only hero uploader. This is a static picture of the finished state
 // on purpose: the real uploader (Uppy + R2 multipart, per RELIABILITY.md)
@@ -89,9 +89,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
           </div>
           <footer class="mt-[18px] flex items-center justify-between border-t border-line pt-4">
             <small class="font-mono text-[13px] text-mut">463 GB · link lives 7 days</small>
-            <a class={[btn, btnFill]} href="#" style="padding: 11px 16px; font-size: 14px">
-              Send it
-            </a>
+            <Button size="sm">Send it</Button>
           </footer>
         </div>
       </div>

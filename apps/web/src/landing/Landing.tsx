@@ -1,11 +1,12 @@
-import { For, createSignal, onSettled } from "solid-js";
+import { For, createEffect, createSignal, onSettled } from "solid-js";
 import { createViewportObserver } from "@solid-primitives/intersection-observer";
 import { type MousePosition, createMousePosition } from "@solid-primitives/mouse";
 import { createTimer } from "@solid-primitives/timer";
 import Brand from "./Brand";
 import Uploader from "./Uploader";
 import { ArrowIcon, Asterisk, Blob, Hand, Ink, Ring, Still } from "./notebook";
-import { btn, btnFill, btnOutline } from "./styles";
+import { Button } from "../ui/Button";
+import "./landing.css";
 import coastRoad from "./assets/coast-road.webp";
 import filmmaker from "./assets/filmmaker.webp";
 import frozenWilds from "./assets/frozen-wilds.webp";
@@ -299,9 +300,9 @@ export default function Landing() {
               up where it stopped.
             </p>
             <div class="rv flex flex-wrap items-center gap-[26px]" style="--d:200ms">
-              <a class={[btn, btnFill]} href="#">
+              <Button>
                 Send 100 GB free <ArrowIcon />
-              </a>
+              </Button>
               <a
                 class="border-b border-ink/25 pb-0.5 text-[15px] font-semibold text-ink transition-[border-color] duration-200 hover:border-ink [&_span]:inline-block [&_span]:transition-[translate] [&_span]:duration-250 [&_span]:ease-smooth [&:hover_span]:translate-x-1"
                 href="#desk"
@@ -481,18 +482,17 @@ export default function Landing() {
               {(p, i) => (
                 <div
                   class={[
-                    "plan rv flex flex-col gap-[18px] rounded-[20px] bg-panel p-8 ring-1 ring-line transition-[translate,box-shadow,rotate] duration-350 ease-smooth hover:-translate-y-1.5 hover:shadow-[0_0_0_1px_var(--color-line),0_40px_60px_-40px_rgba(23,24,28,.5)]",
-                    {
-                      "bg-ink text-paper ring-0 shadow-[0_40px_80px_-40px_rgba(23,24,28,.9)] -rotate-[1.5deg] pb-10 hover:rotate-0 hover:shadow-[0_40px_80px_-40px_rgba(23,24,28,.9)]":
-                        p.hot,
-                    },
+                    "plan rv flex flex-col gap-[18px] rounded-[20px] p-8 transition-[translate,box-shadow,rotate] duration-350 ease-smooth",
+                    p.hot
+                      ? "bg-ink pb-10 text-paper shadow-[0_40px_80px_-40px_rgba(23,24,28,.9)] -rotate-[1.5deg] hover:rotate-0"
+                      : "bg-panel ring-1 ring-line hover:-translate-y-1.5 hover:shadow-[0_0_0_1px_var(--color-line),0_40px_60px_-40px_rgba(23,24,28,.5)]",
                   ]}
                   style={`--d:${i() * 70}ms`}
                 >
                   <h3
                     class={[
-                      "flex justify-between text-[13px] font-medium text-mut",
-                      { "text-[#a9a79e]": p.hot },
+                      "flex justify-between text-[13px] font-medium",
+                      p.hot ? "text-[#a9a79e]" : "text-mut",
                     ]}
                   >
                     {p.h} {p.tag && <span class="text-[#8fa1ff]">{p.tag}</span>}
@@ -503,15 +503,13 @@ export default function Landing() {
                   </div>
                   <ul
                     class={[
-                      "grid flex-1 list-none gap-[9px] p-0 text-[15px] text-mut [&_li]:before:mr-2.5 [&_li]:before:opacity-50 [&_li]:before:content-['—']",
-                      { "text-[#c9c6bc]": p.hot },
+                      "grid flex-1 list-none gap-[9px] p-0 text-[15px] [&_li]:before:mr-2.5 [&_li]:before:opacity-50 [&_li]:before:content-['—']",
+                      p.hot ? "text-[#c9c6bc]" : "text-mut",
                     ]}
                   >
                     <For each={p.items}>{(it) => <li>{it}</li>}</For>
                   </ul>
-                  <a class={[btn, "justify-center", p.hot ? btnFill : btnOutline]} href="#">
-                    {p.cta}
-                  </a>
+                  <Button variant={p.hot ? "fill" : "outline"}>{p.cta}</Button>
                 </div>
               )}
             </For>
@@ -540,9 +538,9 @@ export default function Landing() {
           <h2 class={["rv relative z-1 mx-auto mt-3.5 mb-[30px]", h2]}>
             Send something <i>enormous.</i>
           </h2>
-          <a class={[btn, btnFill, "rv relative z-1"]} style="--d:80ms" href="#">
+          <Button class="rv relative z-1" style="--d:80ms">
             Send 100 GB free <ArrowIcon />
-          </a>
+          </Button>
         </section>
         <footer class="flex justify-between border-t border-ink pt-7 pb-[60px] text-[13px] text-mut">
           <span>© 2026 Tranzfer</span>
@@ -570,9 +568,15 @@ export default function Landing() {
   const reveal = observe((e) => {
     if (e.isIntersecting) e.target.classList.add("in");
   });
+  createEffect(
+    () => mounted(),
+    (isUp) => {
+      if (!isUp) return;
+      for (const el of root?.querySelectorAll(".rv,.chip,.ink,.hand") ?? []) reveal(el);
+    },
+  );
   onSettled(() => {
     setMounted(true);
-    for (const el of root?.querySelectorAll(".rv,.chip,.ink,.hand") ?? []) reveal(el);
   });
 
   return view;
