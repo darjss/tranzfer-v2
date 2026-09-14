@@ -21,8 +21,8 @@ const app = new Elysia({ adapter: CloudflareAdapter })
   .compile();
 
 export default {
-  fetch(request: Request, workerEnv: ApiEnv) {
+  async fetch(request: Request, workerEnv: ApiEnv) {
     env = workerEnv;
-    return app.fetch(request);
+    return await app.fetch(request);
   },
 };

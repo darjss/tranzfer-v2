@@ -38,7 +38,7 @@ export function Ink(props: ParentProps<{ tone?: Tone; style: string; viewBox: st
 
 export const Asterisk = (props: { tone?: Tone; style: string }) => (
   <Ink tone={props.tone} style={props.style} viewBox="0 0 34 34">
-    <path d="M17 3v28M4 10l26 14M30 10 4 24" style="--len: 120; --d: 1.1s" />
+    <path d="M17 3v28M4 10l26 14M30 10 4 24" style={{ "--d": "1.1s", "--len": "120" }} />
   </Ink>
 );
 
@@ -57,7 +57,7 @@ export function Still(props: { src: string; label: string; style: string; in?: b
     <div
       class={[
         "still pointer-events-none absolute top-(--y) left-(--x) w-(--w) aspect-[var(--ar,3/2)] overflow-hidden rounded-md bg-white px-1.5 pt-1.5 pb-[22px] shadow-[0_30px_60px_-30px_rgba(23,24,28,.55),0_0_0_1px_rgba(0,0,0,.06)] rotate-(--r) transform-[translate(var(--dx,0),var(--dy,0))_scale(.6)] opacity-0 [transition:transform_1.1s_var(--ease-spring),opacity_.6s_ease] [transition-delay:var(--d)] [animation-delay:var(--d)] after:absolute after:bottom-[5px] after:left-2 after:font-mono after:text-[9px] after:tracking-[.08em] after:uppercase after:text-mut after:content-[attr(data-l)] [&.in]:animate-[drift_7s_ease-in-out_infinite] [&.in]:opacity-100 [&.in]:transform-[translate(0,0)_scale(1)]",
-        { in: !!props.in },
+        { in: props.in === true },
       ]}
       data-l={props.label}
       style={props.style}

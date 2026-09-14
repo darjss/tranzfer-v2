@@ -5,92 +5,74 @@ import { fileRoutes } from "filesystem-routing/vite";
 import { prerender } from "prerender-crawler/vite";
 import { defineConfig } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
+import { webLint } from "../../lint.config";
+
+const envFlag = (value: string | undefined) => value !== undefined && value !== "";
 
 const workerSsr =
-  process.env.VITEST || process.env.ALCHEMY_CLOUDFLARE_VITE_INJECTED === "1"
+  envFlag(process.env.VITEST) || process.env.ALCHEMY_CLOUDFLARE_VITE_INJECTED === "1"
     ? []
     : [cloudflare({ viteEnvironment: { name: "ssr" } })];
 
 export default defineConfig({
-  staged: {
-    "*": "vp check --fix",
+  build: {
+    assetsInlineLimit: 0,
+    target: "esnext",
   },
-  fmt: {},
-  lint: {
-    jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
-    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
-    options: { typeAware: true, typeCheck: true },
+  fmt: {
+    ignorePatterns: ["**/file-routes.d.ts", "**/solid-env.d.ts"],
   },
-  // Turnkey streaming SSR: no index.html and no entry files — the plugin
-  // generates the entries around src/App.tsx, wrapped in src/Document.tsx.
-  // Production serving is the Worker in src/worker.ts, which calls
-  // handleRequest from virtual:solid-ssr-handler. Client assets go to the
-  // Workers assets binding; hashed files are resolved through the Solid
-  // manifest.
+  // SAFETY: Vite+ types `lint` against oxlint 1.81. Runtime is 1.82.0 so
+  // @effect/tsgo 0.45.0 can patch Oxlint and oxlint-tsgolint.
+  lint: webLint as never,
   plugins: [
     ...workerSsr,
     tailwindcss(),
     solid({
-      start: true,
-      ssr: true,
       diagnostics: true,
-      serverFunctions: {
-        configure: "./src/server-config.ts",
-        // Let the Cloudflare plugin dispatch /_server in workerd so
-        // functions see Worker env/ctx the same as production.
-        ...(process.env.VITEST ? {} : { devMiddleware: false }),
-      },
       extensions: [".jsx", ".tsx"],
+      serverFunctions: envFlag(process.env.VITEST)
+        ? { configure: "./src/server-config.ts" }
+        : { configure: "./src/server-config.ts", devMiddleware: false },
+      ssr: true,
+      start: true,
     }),
-    fileRoutes({ httpMethods: true, types: true, codeSplitting: false }),
-    // The landing is baked to dist/client/index.html at build; Workers static
-    // assets serve it ahead of the Worker. Every other route stays live SSR.
-    prerender({ mode: "hybrid", pages: ["/"], crawlLinks: false, emitPages: (p) => p === "/" }),
+    fileRoutes({ codeSplitting: false, httpMethods: true, types: true }),
+    prerender({ crawlLinks: false, emitPages: (p) => p === "/", mode: "hybrid", pages: ["/"] }),
   ],
   server: {
     host: "127.0.0.1",
     port: 3000,
   },
+  staged: {
+    "*": "vp check --fix",
+  },
   test: {
     globals: false,
-    setupFiles: ["./vitest-setup.ts"],
-    // Two projects because they need different halves of the framework:
-    // component tests run in a DOM against the browser build (the test
-    // pipeline's default posture), while server-runtime tests (the session
-    // suite) run in node against the real server build.
     projects: [
       {
         extends: true,
         test: {
-          name: "client",
           environment: "jsdom",
           include: ["src/**/*.test.tsx"],
+          name: "client",
         },
       },
       {
         extends: true,
         test: {
-          name: "server",
-          // environment:'node' projects get the server posture from the
-          // plugin automatically: server resolve conditions, the framework
-          // inlined, and ssr codegen.
-          environment: "node",
-          include: ["src/server/**/*.test.ts"],
           alias: [
-            // Tests run outside the turnkey server: the plugin's env module
-            // is stubbed with the same contract (live process.env reads).
             {
               find: "virtual:env/server",
-              replacement: fileURLToPath(new URL("./vitest-env-server-stub.ts", import.meta.url)),
+              replacement: fileURLToPath(new URL("vitest-env-server-stub.ts", import.meta.url)),
             },
           ],
+          environment: "node",
+          include: ["src/server/**/*.test.ts"],
+          name: "server",
         },
       },
     ],
-  },
-  build: {
-    target: "esnext",
-    // Keep images as asset files instead of inlining them into the JS bundle.
-    assetsInlineLimit: 0,
+    setupFiles: ["./vitest-setup.ts"],
   },
 });

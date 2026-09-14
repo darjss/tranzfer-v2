@@ -10,9 +10,9 @@ import neonCrosswalk from "./assets/neon-crosswalk.webp";
 // grow fake progress state here.
 
 const files = [
-  { name: "EP04_A-Cam", meta: "214 GB · 1,842 clips", thumb: neonCrosswalk },
-  { name: "EP04_B-Cam", meta: "188 GB · 1,204 clips", thumb: frozenWilds },
-  { name: "Drone_Day2", meta: "61 GB · 97 clips", thumb: coastRoad },
+  { meta: "214 GB · 1,842 clips", name: "EP04_A-Cam", thumb: neonCrosswalk },
+  { meta: "188 GB · 1,204 clips", name: "EP04_B-Cam", thumb: frozenWilds },
+  { meta: "61 GB · 97 clips", name: "Drone_Day2", thumb: coastRoad },
 ];
 
 const ghost =

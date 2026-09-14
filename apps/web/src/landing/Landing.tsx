@@ -1,6 +1,7 @@
 import { For, createEffect, createSignal, onSettled } from "solid-js";
 import { createViewportObserver } from "@solid-primitives/intersection-observer";
-import { type MousePosition, createMousePosition } from "@solid-primitives/mouse";
+import { createMousePosition } from "@solid-primitives/mouse";
+import type { MousePosition } from "@solid-primitives/mouse";
 import { createTimer } from "@solid-primitives/timer";
 import Brand from "./Brand";
 import Uploader from "./Uploader";
@@ -28,110 +29,109 @@ const words = ["shoot.", "night.", "card.", "season."];
 
 const stills = [
   {
-    src: neonCrosswalk,
     label: "a-cam · 214 gb",
+    src: neonCrosswalk,
     style: "--w:140px;--x:-11%;--y:4%;--r:-9deg;--dx:-200px;--dy:-120px;--d:.15s",
   },
   {
-    src: frozenWilds,
     label: "b-cam · 188 gb",
+    src: frozenWilds,
     style: "--w:130px;--x:35%;--y:3%;--r:7deg;--dx:80px;--dy:-220px;--d:.3s",
   },
   {
-    src: coastRoad,
     label: "drone · 61 gb",
+    src: coastRoad,
     style: "--w:110px;--ar:2/3;--x:-12%;--y:74%;--r:6deg;--dx:-180px;--dy:200px;--d:.45s",
   },
   {
-    src: hikerSea,
     label: "audio · 2 gb",
+    src: hikerSea,
     style: "--w:110px;--x:41%;--y:84%;--r:-12deg;--dx:120px;--dy:220px;--d:.6s",
   },
 ];
 
 const failures = [
   {
-    src: wrong1,
     gb: "38 GB landed",
     h: "Café Wi-Fi died",
     p: "It waited for the connection, then carried on from the same spot.",
     r: "Continued",
     rot: -3,
+    src: wrong1,
   },
   {
-    src: wrong2,
     gb: "141 GB landed",
     h: "Laptop slept on the train",
     p: "On wake it checked what had already arrived and picked up from there.",
     r: "Continued",
     rot: 2,
+    src: wrong2,
   },
   {
-    src: wrong3,
     gb: "220 GB landed",
     h: "Someone refreshed the tab",
     p: "Choose the same file again and it resumes. No new upload.",
     r: "Continued",
     rot: -1.5,
+    src: wrong3,
   },
   {
-    src: wrong4,
     gb: "221 GB landed",
     h: "Left it overnight",
     p: "Sessions don't time out on you. Open the lid the next morning and it's still where you left it.",
     r: "Continued",
     rot: 2.5,
+    src: wrong4,
   },
   {
-    src: wrong5,
     gb: "311 GB landed",
     h: "One piece arrived damaged",
     p: "Tranzfer noticed and re-sent that piece. About 100 MB, not 311 GB.",
     r: "Fixed itself",
     rot: -2,
+    src: wrong5,
   },
   {
-    src: wrong6,
     gb: "350 GB · done",
     h: "Delivered",
     p: "Verified bit for bit. Marcus got one link and downloaded at full speed.",
     r: "Done",
     rot: 1.5,
+    src: wrong6,
   },
 ];
 
 const steps = [
   {
-    src: videoEdit,
     h: "Drop the cards",
     p: "Whole camera cards, folders, 400 GB. Drag them in and walk away.",
+    src: videoEdit,
   },
   {
-    src: loftPacking,
     h: "Close the laptop",
     p: "Real speed, real time remaining. Nothing you've already sent is sent twice.",
+    src: loftPacking,
   },
   {
-    src: filmmaker,
     h: "Send one link",
     p: "Your editor clicks and downloads. No account. The link expires and the files delete themselves.",
+    src: filmmaker,
   },
 ];
 
 const plans = [
   {
-    h: "Free",
-    price: "$0",
-    per: "",
-    items: ["100 GB per transfer", "Links live 7 days", "Resumes after any failure"],
     cta: "Start free",
+    h: "Free",
     hot: false,
+    items: ["100 GB per transfer", "Links live 7 days", "Resumes after any failure"],
+    per: "",
+    price: "$0",
   },
   {
+    cta: "Start Pro",
     h: "Pro",
-    tag: "Most editors",
-    price: "$29",
-    per: "/mo",
+    hot: true,
     items: [
       "1 TB per transfer",
       "Links live 30 days",
@@ -139,21 +139,22 @@ const plans = [
       "Faster lane on busy days",
       "Delivery history",
     ],
-    cta: "Start Pro",
-    hot: true,
+    per: "/mo",
+    price: "$29",
+    tag: "Most editors",
   },
   {
+    cta: "Talk to us",
     h: "Studio",
-    price: "$99",
-    per: "/mo",
+    hot: false,
     items: [
       "No size limit",
       "Seats for the whole team",
       "A standing inbox for your regular editors",
       "Files land straight in their folder",
     ],
-    cta: "Talk to us",
-    hot: false,
+    per: "/mo",
+    price: "$99",
   },
 ];
 
@@ -173,20 +174,29 @@ const head = "mb-16 max-w-[60ch]";
 const h2 =
   "mt-3.5 text-balance text-[clamp(34px,4.6vw,60px)] leading-none font-semibold tracking-[-0.04em] [&_i]:italic [&_i]:text-blue";
 
+interface MousePos {
+  current?: MousePosition;
+}
+
 export default function Landing() {
   const [word, setWord] = createSignal(0, { name: "hero-word" });
   const [prev, setPrev] = createSignal(-1, { name: "hero-word-prev" });
   const [mounted, setMounted] = createSignal(false, { name: "mounted" });
 
   let root: HTMLDivElement | undefined;
-  let pos: MousePosition | undefined;
+  const mouse: MousePos = {};
   const tilt = () =>
-    pos?.sourceType
-      ? { x: pos.x / innerWidth - 0.5, y: pos.y / innerHeight - 0.5 }
-      : { x: 0, y: 0 };
+    mouse.current?.sourceType === undefined
+      ? { x: 0, y: 0 }
+      : { x: mouse.current.x / innerWidth - 0.5, y: mouse.current.y / innerHeight - 0.5 };
 
   const view = (
-    <div ref={(el) => (root = el)} class="overflow-x-clip">
+    <div
+      ref={(el) => {
+        root = el;
+      }}
+      class="overflow-x-clip"
+    >
       <div class="relative mx-auto max-w-[1180px] px-7">
         <nav class="relative z-5 flex h-16 items-center justify-between border-b border-ink">
           <Brand />
@@ -495,11 +505,16 @@ export default function Landing() {
                       p.hot ? "text-[#a9a79e]" : "text-mut",
                     ]}
                   >
-                    {p.h} {p.tag && <span class="text-[#8fa1ff]">{p.tag}</span>}
+                    {p.h}{" "}
+                    {p.tag !== undefined && p.tag !== "" ? (
+                      <span class="text-[#8fa1ff]">{p.tag}</span>
+                    ) : null}
                   </h3>
                   <div class="font-mono text-[52px] leading-none font-medium tracking-[-0.04em]">
                     {p.price}
-                    {p.per && <small class="text-[15px] tracking-normal text-mut">{p.per}</small>}
+                    {p.per === "" ? null : (
+                      <small class="text-[15px] tracking-normal text-mut">{p.per}</small>
+                    )}
                   </div>
                   <ul
                     class={[
@@ -557,22 +572,30 @@ export default function Landing() {
     () => {
       setPrev(word());
       setWord((w) => (w + 1) % words.length);
-      setTimeout(() => setPrev(-1), 600);
+      setTimeout(() => {
+        setPrev(-1);
+      }, 600);
     },
     2600,
     setInterval,
   );
   // Pointer parallax; App.css zeroes it on coarse pointers.
-  pos = createMousePosition(undefined, { touch: false });
+  mouse.current = createMousePosition(undefined, { touch: false });
   const [observe] = createViewportObserver({ rootMargin: "-40px" });
   const reveal = observe((e) => {
-    if (e.isIntersecting) e.target.classList.add("in");
+    if (e.isIntersecting) {
+      e.target.classList.add("in");
+    }
   });
   createEffect(
     () => mounted(),
     (isUp) => {
-      if (!isUp) return;
-      for (const el of root?.querySelectorAll(".rv,.chip,.ink,.hand") ?? []) reveal(el);
+      if (!isUp) {
+        return;
+      }
+      for (const el of root?.querySelectorAll(".rv,.chip,.ink,.hand") ?? []) {
+        reveal(el);
+      }
     },
   );
   onSettled(() => {

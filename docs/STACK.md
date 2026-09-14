@@ -907,6 +907,13 @@ On Effect packages, add official `@effect/tsgo` `correctness` and `antipattern`
 presets only. Do not enable the full `recommended` or `effect-native` presets
 on the web app. Do not add a second ESLint plugin for Effect.
 
+Root and web `vp lint` share `lint.config.ts`. `pnpm prepare` runs
+`effect-tsgo patch --no-typescript --oxlint` so Oxlint 1.82.0 and
+`oxlint-tsgolint` 7.0.2001 match `@effect/tsgo` 0.45.0. Type-aware rules are
+on. Full `typeCheck` during lint is off, and `vite.config.ts` may assert the
+lint object: Vite+ types OxlintConfig from oxlint 1.81 while the workspace
+pins 1.82.0 for `@effect/tsgo`.
+
 Fast feedback matters heavily in an agent-driven repository.
 
 Lint violations should fail CI.
@@ -1052,32 +1059,37 @@ Everything else exists to make that transfer safe, resumable, understandable, an
 
 Current manifest snapshot, before the Effect application migration. Elysia, Eden,
 Better Result, and Valibot remain installed pending replacement. Effect is
-currently installed only in infrastructure. Bump versions deliberately; the
-application Effect version will be selected during implementation.
+installed in infrastructure and at the workspace root for Effect lint. Bump
+versions deliberately; the application Effect version will be selected during
+implementation.
 
-| Package                                      | Where    | Version       |
-| -------------------------------------------- | -------- | ------------- |
-| solid-js, @solidjs/web, @solidjs/diagnostics | web      | 2.0.0-rc.6    |
-| @solidjs/router                              | web      | 2.0.0-next.21 |
-| @solidjs/vite-plugin                         | web      | 3.0.0-next.38 |
-| elysia                                       | api      | 1.4.30        |
-| @elysiajs/eden                               | web      | 1.4.9         |
-| alchemy                                      | infra    | 2.0.0-beta.77 |
-| effect                                       | infra    | 4.0.0-rc.112  |
-| wrangler                                     | web, api | 4.131.1       |
-| @cloudflare/vite-plugin                      | web      | 1.54.8        |
-| tailwindcss, @tailwindcss/vite               | web      | 4.3.3         |
-| @uppy/core                                   | web      | 6.0.1         |
-| @uppy/aws-s3                                 | web      | 6.1.0         |
-| @uppy/drop-target                            | web      | 5.0.0         |
-| dismatch                                     | web      | 2.6.0         |
-| better-result                                | web, api | 3.0.1         |
-| valibot                                      | web, api | 1.4.2         |
-| better-auth                                  | api      | 1.7.4         |
-| drizzle-orm                                  | api      | 0.45.2        |
-| drizzle-kit                                  | api      | 0.31.10       |
-| @polar-sh/sdk                                | api      | 0.49.0        |
-| portless                                     | root     | 0.15.6        |
+| Package                                      | Where       | Version       |
+| -------------------------------------------- | ----------- | ------------- |
+| solid-js, @solidjs/web, @solidjs/diagnostics | web         | 2.0.0-rc.6    |
+| @solidjs/router                              | web         | 2.0.0-next.21 |
+| @solidjs/vite-plugin                         | web         | 3.0.0-next.38 |
+| elysia                                       | api         | 1.4.30        |
+| @elysiajs/eden                               | web         | 1.4.9         |
+| alchemy                                      | infra       | 2.0.0-beta.77 |
+| effect                                       | infra, root | 4.0.0-rc.112  |
+| ultracite                                    | root        | 7.11.1        |
+| @effect/tsgo                                 | root        | 0.45.0        |
+| oxlint                                       | root, web   | 1.82.0        |
+| oxlint-tsgolint                              | root        | 7.0.2001      |
+| wrangler                                     | web, api    | 4.131.1       |
+| @cloudflare/vite-plugin                      | web         | 1.54.8        |
+| tailwindcss, @tailwindcss/vite               | web         | 4.3.3         |
+| @uppy/core                                   | web         | 6.0.1         |
+| @uppy/aws-s3                                 | web         | 6.1.0         |
+| @uppy/drop-target                            | web         | 5.0.0         |
+| dismatch                                     | web         | 2.6.0         |
+| better-result                                | web, api    | 3.0.1         |
+| valibot                                      | web, api    | 1.4.2         |
+| better-auth                                  | api         | 1.7.4         |
+| drizzle-orm                                  | api         | 0.45.2        |
+| drizzle-kit                                  | api         | 0.31.10       |
+| @polar-sh/sdk                                | api         | 0.49.0        |
+| portless                                     | root        | 0.15.6        |
 
 ## Pending implementation and compatibility
 
@@ -1104,9 +1116,9 @@ installed. Other primitives remain optional and require an actual use.
 `packages/contracts`, `packages/db`, and `packages/upload-core` do not exist yet.
 Create them when their first real contracts or implementation need those boundaries.
 
-Ultracite core, its bundled anti-slop preset, Solid v2 strict enforcement, T3 Env,
-and CI/deployment automation are planned in the readiness phase. Existing lint
-configuration does not yet implement that complete policy.
+Ultracite core, its bundled anti-slop preset, Solid v2 strict, and Effect
+`correctness`/`antipattern` lint are installed. T3 Env and CI/deployment
+automation remain planned.
 
 ---
 

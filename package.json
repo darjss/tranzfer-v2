@@ -20,13 +20,17 @@
     "plan": "vp run --filter @tranzfer/infra plan",
     "deploy": "vp run --filter @tranzfer/infra deploy",
     "destroy": "vp run --filter @tranzfer/infra destroy",
-    "prepare": "vp config"
+    "prepare": "vp config && effect-tsgo patch --no-typescript --oxlint"
   },
   "devDependencies": {
+    "@effect/tsgo": "0.45.0",
+    "effect": "4.0.0-rc.112",
     "eslint-plugin-solid": "0.18.0",
     "oxlint": "1.82.0",
+    "oxlint-tsgolint": "7.0.2001",
     "portless": "0.15.6",
     "typescript": "5.9.3",
+    "ultracite": "7.11.1",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
