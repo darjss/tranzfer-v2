@@ -30,16 +30,15 @@ pnpm workspace (`packageManager` is pinned in `package.json`; use `pnpm add` for
 
 Run root scripts with `pnpm <script>`:
 
-| Script                              | What it does                                                                                                                          |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `dev`                               | Portless proxy in front of both apps (`dev:web`, `dev:api` run one)                                                                   |
-| `build` / `build:web` / `build:api` | Production builds; web prerenders `/` to `apps/web/dist/client/index.html` via `prerender-crawler`                                    |
-| `check`, `lint`, `fmt`, `test`      | Vite+ format + lint + typecheck (`check --fix` to autofix), tests                                                                     |
-| `plan`                              | Alchemy diff of the Cloudflare stack, no changes applied                                                                              |
-| `deploy`                            | Alchemy deploys the whole `tranzfer` stack: D1, R2, API Worker (`tranzfer-api`), web Worker + assets (`tranzfer-web`, `tranzfer.app`) |
-| `destroy`                           | Tears the stack down                                                                                                                  |
+| Script                              | What it does                                                                                       |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `dev`                               | Portless proxy in front of both apps (`dev:web`, `dev:api` run one)                                |
+| `build` / `build:web` / `build:api` | Production builds; web prerenders `/` to `apps/web/dist/client/index.html` via `prerender-crawler` |
+| `check`, `lint`, `fmt`, `test`      | Vite+ format + lint + typecheck (`check --fix` to autofix), tests                                  |
+| `plan`                              | Alchemy diff of the Cloudflare stack, no changes applied                                           |
+| `deploy` / `destroy`                | Alchemy apply / tear-down (use `pnpm run deploy` — bare `pnpm deploy` is reserved by pnpm)         |
 
-Web and API deploy together — the stack in `infra/alchemy.run.ts` is the only production source of truth and binds `API` (service binding) into the web Worker. `apps/api/wrangler.jsonc` is for local `wrangler dev` only. Alchemy state is local (`infra/.alchemy`, gitignored); Cloudflare auth comes from the usual `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` env or a `wrangler login` session. Run `pnpm plan` before `pnpm deploy`, and `pnpm build` first when touching `apps/web` (the deploy builds too, but `build` surfaces prerender errors faster).
+Web and API deploy together — the stack in `infra/alchemy.run.ts` is the only production source of truth and binds `API` (service binding) into the web Worker. `apps/api/wrangler.jsonc` is for local `wrangler dev` only. Alchemy state is local (`infra/.alchemy`, gitignored); Cloudflare auth comes from the usual `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` env or a `wrangler login` session. Run `pnpm plan` before `pnpm run deploy`, and `pnpm build` first when touching `apps/web` (the deploy builds too, but `build` surfaces prerender errors faster).
 
 Solid SSR footgun seen in this repo: never wrap `onSettled` (or any owner-creating primitive) in `if (!isServer)`. The server stubs consume a hydration id so client keys stay aligned; guarding them shifts every key and hydration fails at the first element (`Hydration tag mismatch`). Third-party primitives that do this internally must be created after the component's JSX.
 
