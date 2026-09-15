@@ -2,7 +2,7 @@
   "name": "tranzfer",
   "turbo": false,
   "apps": {
-    "apps/web": { "name": "tranzfer" },
-    "apps/api": { "name": "api.tranzfer" }
+    "apps/web": { "name": "tranzfer", "appPort": 3000 },
+    "apps/api": { "name": "api.tranzfer", "appPort": 8787 }
   }
 }

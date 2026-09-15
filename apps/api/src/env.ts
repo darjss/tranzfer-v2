@@ -9,6 +9,12 @@ export interface ApiEnv {
   DB: D1Database;
 }
 
+declare global {
+  namespace Cloudflare {
+    interface Env extends ApiEnv {}
+  }
+}
+
 createEnv({
   emptyStringAsUndefined: true,
   runtimeEnv: {},

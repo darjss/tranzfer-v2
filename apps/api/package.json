@@ -13,11 +13,9 @@
     "@t3-oss/env-core": "0.13.11",
     "@tranzfer/contracts": "workspace:*",
     "better-auth": "1.7.4",
-    "better-result": "3.0.1",
     "drizzle-orm": "0.45.2",
     "effect": "4.0.0-rc.115",
-    "effect-cf": "0.43.0",
-    "elysia": "1.4.30"
+    "effect-cf": "0.43.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260911.1",

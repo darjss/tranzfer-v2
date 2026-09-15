@@ -23,6 +23,10 @@ const effectErrorRules = {
   // Effect contracts declare several Schema.TaggedError / RpcGroup classes per
   // file, and the TaggedError factory call trips the throw-new-error heuristic.
   "max-classes-per-file": "off",
+  // Cloudflare.Env is an empty interface designed for declaration merging.
+  "typescript/no-empty-interface": "off",
+  "typescript/no-empty-object-type": "off",
+  "typescript/no-namespace": "off",
   "unicorn/throw-new-error": "off",
 } as const;
 
