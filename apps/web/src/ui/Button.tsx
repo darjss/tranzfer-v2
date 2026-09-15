@@ -1,4 +1,6 @@
+import { omit } from "solid-js";
 import type { ParentProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { cva } from "./cn";
 import type { VariantProps } from "./cn";
 
@@ -22,16 +24,12 @@ const button = cva({
 });
 
 export function Button(
-  props: ParentProps<
-    VariantProps<typeof button> & {
-      href?: string;
-      class?: string;
-      style?: string;
-    }
-  >,
+  props: ParentProps<VariantProps<typeof button> & JSX.AnchorHTMLAttributes<HTMLAnchorElement>>,
 ) {
+  const rest = omit(props, "children", "class", "href", "size", "style", "variant");
   return (
     <a
+      {...rest}
       class={button({ class: props.class, size: props.size, variant: props.variant })}
       href={props.href ?? "#"}
       style={props.style}
