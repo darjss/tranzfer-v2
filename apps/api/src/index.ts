@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
 
+import { loadApiEnv } from "./env.ts";
 import type { ApiEnv } from "./env.ts";
 
 // Bindings are isolate-scoped; the Worker env object is the same on every
@@ -22,7 +23,7 @@ const app = new Elysia({ adapter: CloudflareAdapter })
 
 export default {
   async fetch(request: Request, workerEnv: ApiEnv) {
-    env = workerEnv;
+    env = loadApiEnv(workerEnv);
     return await app.fetch(request);
   },
 };

@@ -20,6 +20,7 @@
     "@solidjs/meta": "1.0.0-next.2",
     "@solidjs/router": "2.0.0-next.24",
     "@solidjs/web": "catalog:",
+    "@t3-oss/env-core": "0.13.11",
     "@uppy/aws-s3": "6.1.0",
     "@uppy/core": "6.0.1",
     "@uppy/drop-target": "5.0.0",
@@ -27,8 +28,8 @@
     "cnfast": "^0.2.0",
     "cva": "1.0.0-beta.8",
     "dismatch": "2.6.0",
-    "solid-js": "catalog:",
-    "valibot": "1.4.2"
+    "effect": "4.0.0-rc.112",
+    "solid-js": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.54.8",
