@@ -218,10 +218,10 @@ stage-derived, the `production` stage created fresh `tranzfer-App-production-*`
 and `tranzfer-files-production-*` resources; the previous `live_darjs` storage
 held no app data (empty D1, probe-only R2 usage) and remains as orphaned
 resources pending deletion. Workers `tranzfer-api`/`tranzfer-web` were adopted
-by name. CI auth uses the `ALCHEMY_HOME` secret on the `production` GitHub
-environment (a tarball of `~/.alchemy` config, profile, and OAuth credentials),
-materialized by the deploy workflow — no Cloudflare API token is needed.
-`CLOUDFLARE_ACCOUNT_ID` is a repo variable.
+by name. CI auth uses a scoped `CLOUDFLARE_API_TOKEN` secret on the `production`
+GitHub environment (Workers/D1/R2/Secrets Store edit on the account,
+Workers Routes on the tranzfer.app zone) plus `CLOUDFLARE_ACCOUNT_ID` as a
+repo variable. The environment allows deploys from `main` only.
 
 Use `infra/alchemy.run.ts` as the only production stack. Deploy web and API
 together after verification succeeds for the same commit on `main`. Support a
@@ -248,9 +248,9 @@ rolls back database or infrastructure changes.
 
 Manual recovery: deploy from the main checkout with `vp run deploy`. If remote
 state is lost, `alchemy provider cloudflare bootstrap` reprovisions the store
-and `deploy --adopt` re-imports existing resources. If the `ALCHEMY_HOME` OAuth
-credential expires or is revoked, refresh it by re-uploading a fresh tarball of
-`~/.alchemy` to the `production` environment secret.
+and `deploy --adopt` re-imports existing resources. If the
+`CLOUDFLARE_API_TOKEN` secret is revoked or expires, mint a replacement in the
+Cloudflare dashboard and update the `production` environment secret.
 
 Complete when the shared-state migration preserves existing resources and a
 verified commit deploys through Actions with passing post-deploy checks.

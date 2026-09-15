@@ -26,12 +26,9 @@ jobs:
         with:
           node-version: "24"
           cache: true
-      - name: Restore Alchemy credentials
-        env:
-          ALCHEMY_HOME: ${{ secrets.ALCHEMY_HOME }}
-        run: |
-          mkdir -p ~/.alchemy
-          echo "$ALCHEMY_HOME" | base64 -d | tar xz -C ~/.alchemy
       - run: vp run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       - name: Health check
         run: curl -fsS --retry 5 --retry-all-errors --retry-delay 3 https://tranzfer.app/infra | jq -e '.api.ok and .bindings.d1 and .bindings.r2 and .web'
