@@ -173,7 +173,12 @@ server secrets. Verify these cases directly without adding test files.
 
 ## 3. Add GitHub Actions verification
 
-Run verification on pull requests and pushes to `main`. Use the pinned package
+Status: in progress. The first workflow runs `vp check` on pull requests only.
+Browser/runtime smoke checks, test runs, schema-rejection probes, and
+failure-injection verification are deferred by user decision until core product
+functionality lands.
+
+Run verification on pull requests. Use the pinned package
 manager, a compatible pinned Node version, and frozen lockfile installation.
 Cache dependency downloads, not successful validation results. Keep the same
 commands runnable locally.
@@ -181,12 +186,10 @@ commands runnable locally.
 Required checks cover:
 
 - Formatting without autofix and the complete lint policy.
-- Type checking web, API, and infrastructure, including generated framework
-  declarations needed by a clean checkout. Do not assume a root lint command
-  proves every TypeScript project was checked.
-- Type checking shared RPC contracts and their server/client consumers. Verify
-  that an invalid request and incompatible handler response fail type checking,
-  and malformed network input fails runtime schema validation.
+- Type checking web, API, infrastructure, and the shared RPC contracts with
+  their server and client consumers, including generated framework declarations
+  needed by a clean checkout. Do not assume a root lint command proves every
+  TypeScript project was checked.
 - Production builds of both apps, including web prerendering and Worker bundling.
 - Existing tests when present. The research snapshot has test setup but no
   matching test files; an empty run must not be reported as test coverage.
@@ -199,10 +202,9 @@ required verification result so adding jobs cannot accidentally bypass merge
 requirements. Configure branch protection when implementation scope and account
 permissions allow it; report any remaining account-side setup explicitly.
 
-Complete when a clean checkout passes all required checks and intentional
-formatting, lint, and type errors fail the relevant checks. Use stdin or temporary
-changes that are removed afterward. New test/spec files and test-only helpers
-still require explicit user approval under AGENTS.md.
+Complete when a clean checkout passes the required check on a pull request.
+New test/spec files and test-only helpers still require explicit user approval
+under AGENTS.md.
 
 ## 4. Add deployments after verification
 
