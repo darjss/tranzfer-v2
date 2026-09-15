@@ -20,6 +20,10 @@ const effectErrorRules = {
   "effecttsgo/run-effect-inside-effect": "error",
   "effecttsgo/try-catch-in-effect-gen": "error",
   "effecttsgo/unknown-in-effect-catch": "error",
+  // Effect contracts declare several Schema.TaggedError / RpcGroup classes per
+  // file, and the TaggedError factory call trips the throw-new-error heuristic.
+  "max-classes-per-file": "off",
+  "unicorn/throw-new-error": "off",
 } as const;
 
 const vitePlusPlugin = {
@@ -103,7 +107,7 @@ export const lintConfig = (paths: {
 };
 
 export const rootLint = lintConfig({
-  api: ["apps/api/**"],
+  api: ["apps/api/**", "packages/contracts/**"],
   components: ["apps/web/**/*.tsx"],
   web: ["apps/web/**"],
 });

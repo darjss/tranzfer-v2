@@ -21,6 +21,7 @@
     "@solidjs/router": "2.0.0-next.24",
     "@solidjs/web": "catalog:",
     "@t3-oss/env-core": "0.13.11",
+    "@tranzfer/contracts": "workspace:*",
     "@uppy/aws-s3": "6.1.0",
     "@uppy/core": "6.0.1",
     "@uppy/drop-target": "5.0.0",
