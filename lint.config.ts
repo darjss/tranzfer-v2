@@ -63,7 +63,7 @@ export const lintConfig = (paths: {
     extends: [core, antiSlop],
     ignorePatterns: [...(core.ignorePatterns ?? []), ...generatedIgnores],
     jsPlugins: [vitePlusPlugin, ...(antiSlop.jsPlugins ?? [])],
-    options: { typeAware: true, typeCheck: false },
+    options: { typeAware: true, typeCheck: true },
     overrides: [
       {
         files: paths.web,
