@@ -2,7 +2,6 @@
   "name": "tranzfer",
   "turbo": false,
   "apps": {
-    "apps/web": { "name": "tranzfer" },
-    "apps/api": { "name": "api.tranzfer" }
+    "infra": { "name": "tranzfer", "appPort": 3000 }
   }
 }

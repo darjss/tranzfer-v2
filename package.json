@@ -6,12 +6,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "portless --no-tls",
-    "dev:web": "vp run --filter @tranzfer/web dev",
-    "dev:api": "vp run --filter @tranzfer/api dev",
+    "dev": "portless",
     "build": "vp run -r build",
     "build:web": "vp run --filter @tranzfer/web build",
-    "build:api": "vp run --filter @tranzfer/api build",
     "start": "vp run --filter @tranzfer/web start",
     "test": "vp run --filter @tranzfer/web test",
     "lint": "vp lint",
@@ -24,7 +21,7 @@
   },
   "devDependencies": {
     "@effect/tsgo": "0.45.0",
-    "effect": "4.0.0-rc.112",
+    "effect": "4.0.0-rc.115",
     "eslint-plugin-solid": "0.18.0",
     "oxlint": "1.82.0",
     "oxlint-tsgolint": "7.0.2001",

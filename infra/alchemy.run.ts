@@ -16,10 +16,12 @@ export default Alchemy.Stack(
     const files = yield* Cloudflare.R2.Bucket("Files");
 
     const api = yield* Cloudflare.Worker("Api", {
+      // Newest date the bundled workerd in `alchemy dev` accepts; prod supports it too.
       compatibility: {
-        date: "2026-09-13",
+        date: "2026-09-08",
         flags: ["nodejs_compat"],
       },
+      dev: { port: 8787 },
       env: {
         BUCKET: files,
         DB: db,
@@ -30,14 +32,14 @@ export default Alchemy.Stack(
 
     const web = yield* Cloudflare.Website.Vite("Web", {
       compatibility: {
-        date: "2026-09-13",
+        date: "2026-09-08",
         flags: ["nodejs_compat"],
       },
+      dev: { port: 3000 },
       domain: "tranzfer.app",
       env: {
         API: api,
       },
-      main: "src/worker.ts",
       name: "tranzfer-web",
       rootDir: webRoot,
     });

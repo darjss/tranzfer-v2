@@ -19,6 +19,10 @@ export default defineConfig({
     assetsInlineLimit: 0,
     target: "esnext",
   },
+  environments: {
+    // The ssr bundle runs in workerd, where `cloudflare:*` modules are builtins.
+    ssr: { build: { rolldownOptions: { external: [/^cloudflare:/u] } } },
+  },
   fmt: {
     ignorePatterns: ["**/file-routes.d.ts", "**/solid-env.d.ts"],
   },
@@ -35,7 +39,7 @@ export default defineConfig({
         ? { configure: "./src/server-config.ts" }
         : { configure: "./src/server-config.ts", devMiddleware: false },
       ssr: true,
-      start: true,
+      start: { middleware: "./src/middleware.ts" },
     }),
     fileRoutes({ codeSplitting: false, httpMethods: true, types: true }),
     prerender({ crawlLinks: false, emitPages: (p) => p === "/", mode: "hybrid", pages: ["/"] }),

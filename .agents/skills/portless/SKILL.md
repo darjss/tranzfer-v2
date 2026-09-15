@@ -18,26 +18,36 @@ From the repo root:
 vp run dev
 ```
 
-That is `portless --no-tls`. Plain HTTP, no local CA, no port 443. Hosts:
+That is `portless` running the single `tranzfer` app in `portless.json`, which
+runs `alchemy dev` from `infra/alchemy.run.ts` (stage `dev_$USER`, local workerd
+with D1/R2 simulators under `infra/.alchemy/local`, bindings owned by the stack).
+The proxy serves TLS. Hosts:
 
 ```text
-http://tranzfer.localhost       apps/web
-http://api.tranzfer.localhost   apps/api
+https://tranzfer.localhost       web Worker on :3000
+https://api.tranzfer.localhost   api Worker on :8787
 ```
 
-`portless.json` names those hosts. `turbo` is false. Do not turn it on.
+The api host is a static alias, registered once with `portless alias
+api.tranzfer 8787`. `turbo` is false. Do not turn it on.
 
-One app through the proxy: `cd apps/web && vp run dev` still needs Portless in
-front. Root `vp run dev` is the default.
+From an agent shell, start detached so tool timeouts cannot kill it:
+
+```text
+pkill -f alchemy/bin/exec; pkill -f "cli.js dev"
+setsid -f sh -c 'cd /home/darjs/dev/tranzfer2 && exec vp run dev > /tmp/dev.log 2>&1 < /dev/null'
+```
+
+Worker logs live under `infra/.alchemy/log/<stage>/{Api,Web}`.
 
 ## Do not
 
-- `vp dev`, `vp run --filter @tranzfer/web dev`, or `wrangler dev` as the
-  everyday server. Those bind Vite's `server.port` (3000) or the next free
-  3001–3003. Agents then open the wrong tab.
+- `vp dev` or `vp run --filter @tranzfer/web dev` as the everyday server. Those
+  bind Vite's `server.port` (3000) or the next free 3001–3003. Agents then open
+  the wrong tab.
 - Hard-code `localhost:3000` in docs, CORS, OAuth, or `.env`.
 - `npx` / `dlx` Portless. Use the workspace package.
-- TLS/`portless trust` for this repo. `--no-tls` is the contract.
+- `portless trust` for this repo. The proxy already serves TLS; use `curl -k`.
 - `--lan`, `--tailscale`, `--ngrok`, or Funnel unless the user asked to share.
 
 ## How the proxy works here

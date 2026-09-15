@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "dev": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js dev --no-input",
     "plan": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js plan",
     "deploy": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js deploy --yes",
     "destroy": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js destroy --yes"

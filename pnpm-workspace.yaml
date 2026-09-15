@@ -10,9 +10,11 @@
 packages:
   - apps/*
   - infra
+  - packages/*
 minimumReleaseAgeExclude:
   - solid-js
   - "@solidjs/*"
+  - effect-cf@0.43.0
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@0.3.1
   vite-plus: 0.3.1
@@ -21,10 +23,11 @@ catalog:
   "@solidjs/diagnostics": 2.0.0-rc.8
 overrides:
   vite@*: "catalog:"
-  effect: 4.0.0-rc.112
-  "@effect/platform": 4.0.0-rc.112
-  "@effect/platform-node": 4.0.0-rc.112
-  "@effect/platform-node-shared": 4.0.0-rc.112
+  "@effect/platform-node>@effect/platform-node-shared": 4.0.0-rc.112
+  "@effect/platform-node-shared>@effect/platform": 4.0.0-rc.112
+  alchemy>@effect/sql-d1: 4.0.0-rc.112
+  alchemy>@effect/sql-sqlite-do: 4.0.0-rc.112
+  alchemy>@effect/vitest: 4.0.0-rc.112
 peerDependencyRules:
   allowAny:
     - vite

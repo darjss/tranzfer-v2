@@ -5,7 +5,6 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "vp dev",
     "build": "vp build",
     "start": "vp preview",
     "preview": "vp preview",
@@ -13,7 +12,6 @@
     "lint": "vp lint src"
   },
   "dependencies": {
-    "@elysiajs/eden": "1.4.9",
     "@solid-primitives/intersection-observer": "3.0.0-next.3",
     "@solid-primitives/mouse": "4.0.0-next.3",
     "@solid-primitives/timer": "1.4.5-next.1",
@@ -21,18 +19,18 @@
     "@solidjs/router": "2.0.0-next.24",
     "@solidjs/web": "catalog:",
     "@t3-oss/env-core": "0.13.11",
+    "@tranzfer/contracts": "workspace:*",
     "@uppy/aws-s3": "6.1.0",
     "@uppy/core": "6.0.1",
     "@uppy/drop-target": "5.0.0",
-    "better-result": "3.0.1",
     "cnfast": "^0.2.0",
     "cva": "1.0.0-beta.8",
-    "dismatch": "2.6.0",
-    "effect": "4.0.0-rc.112",
+    "effect": "4.0.0-rc.115",
     "solid-js": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.54.8",
+    "@cloudflare/workers-types": "5.20260911.1",
     "@solidjs/diagnostics": "catalog:",
     "@solidjs/prerender": "0.2.0",
     "@solidjs/start-devtools": "1.0.0-next.4",
@@ -49,7 +47,6 @@
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "wrangler": "4.131.1"
+    "vite-plus": "catalog:"
   }
 }

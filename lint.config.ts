@@ -92,6 +92,14 @@ export const lintConfig = (paths: {
         },
       },
       ...effectOverride,
+      {
+        files: ["packages/contracts/**"],
+        rules: {
+          // `Schema.TaggedError<E>()(...)` is a class factory, not a thrown
+          // error; the rule matches on the callee name alone.
+          "unicorn/throw-new-error": "off",
+        },
+      },
     ],
     plugins: [...(core.plugins ?? []), "effecttsgo"],
     rules: {
@@ -103,7 +111,7 @@ export const lintConfig = (paths: {
 };
 
 export const rootLint = lintConfig({
-  api: ["apps/api/**"],
+  api: ["apps/api/**", "packages/contracts/**"],
   components: ["apps/web/**/*.tsx"],
   web: ["apps/web/**"],
 });
