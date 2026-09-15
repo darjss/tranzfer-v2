@@ -16,7 +16,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: production
+    environment:
+      name: production
+      url: https://tranzfer.app
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,4 +34,4 @@ jobs:
           echo "$ALCHEMY_HOME" | base64 -d | tar xz -C ~/.alchemy
       - run: vp run deploy
       - name: Health check
-        run: curl -fsS https://tranzfer.app/infra | grep -q '"ok":true'
+        run: curl -fsS --retry 5 --retry-all-errors --retry-delay 3 https://tranzfer.app/infra | jq -e '.api.ok and .bindings.d1 and .bindings.r2 and .web'
