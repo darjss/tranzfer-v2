@@ -1,8 +1,4 @@
-import { For, createEffect, createSignal, onSettled } from "solid-js";
-import { createViewportObserver } from "@solid-primitives/intersection-observer";
-import { createMousePosition } from "@solid-primitives/mouse";
-import type { MousePosition } from "@solid-primitives/mouse";
-import { createTimer } from "@solid-primitives/timer";
+import { For, createSignal, onSettled } from "solid-js";
 import Brand from "./Brand";
 import Uploader from "./Uploader";
 import { ArrowIcon, Asterisk, Blob, Hand, Ink, Ring, Still } from "./notebook";
@@ -174,23 +170,62 @@ const head = "mb-16 max-w-[60ch]";
 const h2 =
   "mt-3.5 text-balance text-[clamp(34px,4.6vw,60px)] leading-none font-semibold tracking-[-0.04em] [&_i]:italic [&_i]:text-blue";
 
-interface MousePos {
-  current?: MousePosition;
-}
-
 export default function Landing() {
   const [word, setWord] = createSignal(0, { name: "hero-word" });
   const [prev, setPrev] = createSignal(-1, { name: "hero-word-prev" });
   const [mounted, setMounted] = createSignal(false, { name: "mounted" });
+  const [pos, setPos] = createSignal<{ x: number; y: number }>();
 
   let root: HTMLDivElement | undefined;
-  const mouse: MousePos = {};
-  const tilt = () =>
-    mouse.current?.sourceType === undefined
+  const tilt = () => {
+    const p = pos();
+    return p === undefined
       ? { x: 0, y: 0 }
-      : { x: mouse.current.x / innerWidth - 0.5, y: mouse.current.y / innerHeight - 0.5 };
+      : { x: p.x / innerWidth - 0.5, y: p.y / innerHeight - 0.5 };
+  };
 
-  const view = (
+  onSettled(() => {
+    setMounted(true);
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            e.target.classList.add("in");
+            io.unobserve(e.target);
+          }
+        }
+      },
+      { rootMargin: "-40px" },
+    );
+    for (const el of root?.querySelectorAll(".rv,.chip,.ink,.hand") ?? []) {
+      io.observe(el);
+    }
+
+    // Pointer parallax; App.css zeroes it on coarse pointers.
+    const onMove = (e: MouseEvent) => {
+      setPos({ x: e.clientX, y: e.clientY });
+    };
+    addEventListener("mousemove", onMove);
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const interval = setInterval(() => {
+      setPrev(word());
+      setWord((w) => (w + 1) % words.length);
+      timeout = setTimeout(() => {
+        setPrev(-1);
+      }, 600);
+    }, 2600);
+
+    return () => {
+      io.disconnect();
+      removeEventListener("mousemove", onMove);
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  });
+
+  return (
     <div
       ref={(el) => {
         root = el;
@@ -564,43 +599,4 @@ export default function Landing() {
       </div>
     </div>
   );
-
-  // The primitives below skip their effects under isServer, so they consume
-  // hydration ids on the client only. Creating them after the JSX keeps those
-  // ids past every element id, so server and client stay aligned.
-  createTimer(
-    () => {
-      setPrev(word());
-      setWord((w) => (w + 1) % words.length);
-      setTimeout(() => {
-        setPrev(-1);
-      }, 600);
-    },
-    2600,
-    setInterval,
-  );
-  // Pointer parallax; App.css zeroes it on coarse pointers.
-  mouse.current = createMousePosition(undefined, { touch: false });
-  const [observe] = createViewportObserver({ rootMargin: "-40px" });
-  const reveal = observe((e) => {
-    if (e.isIntersecting) {
-      e.target.classList.add("in");
-    }
-  });
-  createEffect(
-    () => mounted(),
-    (isUp) => {
-      if (!isUp) {
-        return;
-      }
-      for (const el of root?.querySelectorAll(".rv,.chip,.ink,.hand") ?? []) {
-        reveal(el);
-      }
-    },
-  );
-  onSettled(() => {
-    setMounted(true);
-  });
-
-  return view;
 }
