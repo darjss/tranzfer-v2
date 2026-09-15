@@ -158,7 +158,7 @@ Use **Vite+** (`vp`) and **Vite** for the web application.
 Keep the build setup boring. `filesystem-routing`, `@solidjs/meta`, and
 `prerender-crawler` are the site wiring. That is not SolidStart.
 
-The web Worker is the production server. `@cloudflare/vite-plugin` owns the `ssr` Vite environment (`viteEnvironment: { name: "ssr" }`) so `vp dev` / `vp build` / `vp preview` run the Solid `handleRequest` export inside workerd. `src/worker.ts` is the Worker entry: it forwards each request to `virtual:solid-ssr-handler`. There is no Node `server.js`.
+The web Worker is the production server. `@cloudflare/vite-plugin` owns the `ssr` Vite environment (`viteEnvironment: { name: "ssr" }`) so `vp dev` / `vp build` / `vp preview` run the Solid `handleRequest` export inside workerd. The Solid handler is the Worker entry; there is no custom entry module (the Solid plugin owns the `ssr` build input). Server routes are uppercase handler exports in `src/routes/*.ts`, dispatched by `src/middleware.ts`; they reach bindings through a lazy `import("cloudflare:workers")`. There is no Node `server.js`.
 
 Client assets are Workers static assets (assets-first: hashed files never hit the Worker). HTML, server functions, and the demo `/api/*` filesystem routes go through the Worker. Canonical product operations belong on the dedicated API Worker through Effect RPC.
 

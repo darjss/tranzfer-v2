@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.54.8",
+    "@cloudflare/workers-types": "5.20260911.1",
     "@solidjs/diagnostics": "catalog:",
     "@solidjs/prerender": "0.2.0",
     "@solidjs/start-devtools": "1.0.0-next.4",

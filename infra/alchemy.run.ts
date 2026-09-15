@@ -39,7 +39,6 @@ export default Alchemy.Stack(
       env: {
         API: api,
       },
-      main: "src/worker.ts",
       name: "tranzfer-web",
       rootDir: webRoot,
     });
