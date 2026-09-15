@@ -9,28 +9,29 @@ import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as RpcClient from "effect/unstable/rpc/RpcClient";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 
-// `Fetch` is a fiber reference read at request time, so it must live in the
-// runtime context, not only in the protocol layer's inputs.
-export const makeApi = (fetch: typeof globalThis.fetch, url: string) => {
+const buildApi = async () => {
+  // Lazy: the prerenderer imports the server bundle in Node, where
+  // `cloudflare:workers` does not exist. Only workerd reaches this.
+  const { env } = await import("cloudflare:workers");
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
       RpcClient.layerProtocolHttp({
         // prependUrl joins with a trailing slash; pin requests to the exact
         // endpoint so the Worker sees "/rpc", not "/rpc/".
-        transformClient: HttpClient.mapRequest(HttpClientRequest.setUrl(url)),
-        url,
+        transformClient: HttpClient.mapRequest(HttpClientRequest.setUrl("http://api/rpc")),
+        url: "http://api/rpc",
       }).pipe(Layer.provide([RpcSerialization.layerJson, FetchHttpClient.layer])),
-      Layer.succeed(FetchHttpClient.Fetch, fetch),
+      Layer.succeed(FetchHttpClient.Fetch, env.API.fetch.bind(env.API)),
     ),
   );
-  const scope = runtime.runSync(Scope.make());
-  const client = runtime.runSync(Effect.provideService(RpcClient.make(Api), Scope.Scope, scope));
+  const client = runtime.runSync(
+    Effect.provideService(RpcClient.make(Api), Scope.Scope, runtime.scope),
+  );
   return { client, runtime };
 };
 
-// Lazy: the prerenderer imports the server bundle in Node, where
-// `cloudflare:workers` does not exist. Only workerd reaches this.
-export const apiOverBinding = async () => {
-  const { env } = await import("cloudflare:workers");
-  return makeApi(env.API.fetch.bind(env.API), "http://api/rpc");
-};
+let api: ReturnType<typeof buildApi> | undefined;
+
+// `env.API` is the same service binding for the isolate's life, so one client
+// and runtime serve every request.
+export const apiOverBinding = async () => await (api ??= buildApi());

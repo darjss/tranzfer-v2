@@ -10,7 +10,6 @@ export class Api extends RpcGroup.make(
   Rpc.make("Health", { success: Schema.Struct({ ok: Schema.Literal(true) }) }),
   Rpc.make("Infra", {
     error: ProbeFailed,
-    payload: { key: Schema.NonEmptyString },
     success: Schema.Struct({ d1: Schema.Boolean, r2: Schema.Boolean }),
   }),
 ) {}

@@ -16,6 +16,7 @@ export default Alchemy.Stack(
     const files = yield* Cloudflare.R2.Bucket("Files");
 
     const api = yield* Cloudflare.Worker("Api", {
+      // Newest date the bundled workerd in `alchemy dev` accepts; prod supports it too.
       compatibility: {
         date: "2026-09-08",
         flags: ["nodejs_compat"],

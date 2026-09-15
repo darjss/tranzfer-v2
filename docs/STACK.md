@@ -338,8 +338,7 @@ machines, `Schema.TaggedUnion` plus `.match` for boundary-crossing unions, and
 `Match` for literal branching in Effect code. Upload-core tagged states belong
 here, not a second matcher.
 
-`dismatch` is installed and awaiting removal with Better Result. Do
-not extend its use. Do not turn every boolean into a tagged union for sport.
+Do not turn every boolean into a tagged union for sport.
 
 ---
 
@@ -352,7 +351,8 @@ validation, and serialized boundary data. Infer TypeScript types from schemas
 rather than maintaining parallel DTOs. Validate network data at runtime.
 
 Use `@t3-oss/env-core` 0.13.11 with Effect Schema Standard Schema values in
-`apps/web/env.ts` and `apps/api/src/env.ts`. Bindings stay typed on `ApiEnv`.
+`apps/web/env.ts` and `apps/api/src/env.ts`. Bindings stay typed on
+`Cloudflare.Env` via each app's `worker-env.d.ts`.
 Do not retain a second schema system.
 
 ---
@@ -535,16 +535,17 @@ File bytes travel directly between the client and R2, never through RPC.
 Keep ordinary HTTP endpoints for Better Auth, Polar webhooks, health checks, and
 browser download links. Do not introduce another RPC framework.
 
-Host the API Worker with **effect-cf** `Worker.make` / `makeFetchHandler`.
-Put Effect RPC in `fetch` via `RpcServer.toHttpEffect`. Do not use effect-cf
-`rpc:` for the public app protocol; that is Cloudflare Workers RPC.
+The API Worker runs on **effect-cf** `Worker.make`. Effect RPC sits on `POST
+/rpc` via `RpcServer.toHttpEffect`; web reaches it through the `API` service
+binding. Do not use effect-cf `rpc:`; that is Cloudflare Workers RPC, a
+different mechanism.
 
 Talk to R2 with **Distilled S3** (`@distilled.cloud/aws`) against the R2 S3
 endpoint. Do not wrap `env.BUCKET` with effect-cf `R2.Tag`.
 
-Replace Elysia and Eden during the readiness phase. Contract validation and
-inferred client types do not prove authorization, idempotency, or persistence
-correctness; handlers must enforce those requirements explicitly.
+Contract validation and inferred client types do not prove authorization,
+idempotency, or persistence correctness; handlers must enforce those
+requirements explicitly.
 
 ## Workflows and dependencies
 
@@ -584,8 +585,8 @@ completion against remote truth before retrying destructive or finalizing work.
 Unexpected programmer defects remain defects; do not disguise every exception
 as an expected business failure.
 
-Replace Better Result during the readiness phase. Keep one application error
-model rather than wrapping Effects in a second Result abstraction.
+Keep one application error model rather than wrapping Effects in a second
+Result abstraction.
 
 ---
 
@@ -1043,11 +1044,6 @@ idb
 clsx
 tailwind-merge
 class-variance-authority
-dismatch
-better-result
-Valibot
-Elysia
-Eden
 Playwright
 
 TanStack Query
@@ -1122,17 +1118,13 @@ Everything else exists to make that transfer safe, resumable, understandable, an
 
 # Installed versions (foundation)
 
-Current manifest snapshot, before the Effect application migration. Elysia, Eden,
-and Better Result remain installed pending replacement. Effect is installed in
-infrastructure, both apps, and the workspace root. Bump versions deliberately.
+Current manifest snapshot. Bump versions deliberately.
 
 | Package                                      | Where                 | Version       |
 | -------------------------------------------- | --------------------- | ------------- |
 | solid-js, @solidjs/web, @solidjs/diagnostics | web                   | 2.0.0-rc.8    |
 | @solidjs/router                              | web                   | 2.0.0-next.24 |
 | @solidjs/vite-plugin                         | web                   | 3.0.0-next.43 |
-| elysia                                       | api                   | 1.4.30        |
-| @elysiajs/eden                               | web                   | 1.4.9         |
 | alchemy                                      | infra                 | 2.0.0-beta.77 |
 | effect                                       | infra, web, api, root | 4.0.0-rc.112  |
 | @t3-oss/env-core                             | web, api              | 0.13.11       |
@@ -1147,8 +1139,6 @@ infrastructure, both apps, and the workspace root. Bump versions deliberately.
 | @uppy/drop-target                            | web                   | 5.0.0         |
 | cva                                          | web                   | 1.0.0-beta.8  |
 | cnfast                                       | web                   | 0.2.0         |
-| dismatch                                     | web                   | 2.6.0         |
-| better-result                                | web, api              | 3.0.1         |
 | better-auth                                  | api                   | 1.7.4         |
 | drizzle-orm                                  | api                   | 0.45.2        |
 | drizzle-kit                                  | api                   | 0.31.10       |
@@ -1181,13 +1171,13 @@ restriction against the selected Effect application architecture.
 Solid Primitives for intersection observation, mouse input, and timers are
 installed. Other primitives remain optional and require an actual use.
 
-`packages/contracts`, `packages/db`, and `packages/upload-core` do not exist yet.
-Create them when their first real contracts or implementation need those boundaries.
+`packages/contracts` holds the shared Effect RPC group. `packages/db` and
+`packages/upload-core` do not exist yet; create them when their first real
+implementation needs those boundaries.
 
 Ultracite core, its bundled anti-slop preset, Solid v2 strict, Effect
 `correctness`/`antipattern` lint, and T3 Env are installed. CI/deployment
-automation remains planned. `dismatch`, Better Result, Elysia, and Eden remain
-installed pending Effect replacement. Do not extend them.
+automation remains planned.
 
 ---
 

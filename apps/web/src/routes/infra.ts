@@ -7,7 +7,7 @@ export const GET = async () => {
   const api = await runtime.runPromise(client.Health());
   const bindings = await runtime.runPromise(
     client
-      .Infra({ key: "infra-probe" })
+      .Infra()
       .pipe(
         Effect.catchTag("ProbeFailed", (error) =>
           Effect.succeed({ d1: false, probeFailed: error.resource, r2: false }),

@@ -13,34 +13,43 @@ import "./env";
 
 const probeD1 = (env: Cloudflare.Env) =>
   Effect.tryPromise({
-    catch: () => new ProbeFailed({ resource: "d1" }),
+    catch: (error) => new ProbeFailed({ message: String(error), resource: "d1" }),
     try: async () => await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>(),
   }).pipe(
-    Effect.flatMap((row) => (row?.ok === 1 ? Effect.void : new ProbeFailed({ resource: "d1" }))),
+    Effect.flatMap((row) =>
+      row?.ok === 1 ? Effect.void : new ProbeFailed({ message: "no row", resource: "d1" }),
+    ),
   );
 
-const probeR2 = (env: Cloudflare.Env, key: string) =>
-  Effect.tryPromise({
-    catch: () => new ProbeFailed({ resource: "r2" }),
+const probeR2 = (env: Cloudflare.Env) => {
+  const key = `infra-probe/${crypto.randomUUID()}`;
+  return Effect.tryPromise({
+    catch: (error) => new ProbeFailed({ message: String(error), resource: "r2" }),
     try: async () => {
       await env.BUCKET.put(key, "ok");
       const object = await env.BUCKET.get(key);
       const text = object === null ? null : await object.text();
-      await env.BUCKET.delete(key);
       if (text !== "ok") {
         throw new Error("r2 probe round-trip mismatch");
       }
     },
-  });
+  }).pipe(
+    Effect.ensuring(
+      Effect.promise(async () => {
+        await env.BUCKET.delete(key);
+      }),
+    ),
+  );
+};
 
 const handlersLayer = Layer.unwrap(
   Effect.gen(function* handlers() {
     const env = yield* Environment.WorkerEnvironment;
     return Api.toLayer({
       Health: () => Effect.succeed({ ok: true as const }),
-      Infra: (payload) =>
+      Infra: () =>
         probeD1(env).pipe(
-          Effect.andThen(probeR2(env, payload.key)),
+          Effect.andThen(probeR2(env)),
           Effect.map(() => ({ d1: true, r2: true })),
         ),
     });
