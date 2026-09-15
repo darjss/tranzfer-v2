@@ -53,5 +53,6 @@ relevant `vp run build`. Local URLs go through Portless. Read
 
 Deploy only from the main checkout through `infra/alchemy.run.ts`, which owns
 both apps and production resources. Run `vp run build`, `vp run plan`, then
-`vp run deploy`. App Wrangler configs are for local development, not separate
-production deploys. Preserve the user's existing generated-file changes.
+`vp run deploy`. Local dev runs through `alchemy dev` from the same stack;
+there are no app Wrangler configs. Preserve the user's existing generated-file
+changes.

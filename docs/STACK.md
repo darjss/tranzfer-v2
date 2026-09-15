@@ -56,18 +56,18 @@ Use **Portless** for named local URLs. From the repo root:
 vp run dev
 ```
 
-That starts every app `dev` script through Portless without TLS (no port 443 / local CA). Addresses:
+That runs `alchemy dev` from `infra/alchemy.run.ts` behind Portless, so the same stack owns bindings in dev and production. Alchemy serves local workerd with D1/R2 simulators under `infra/.alchemy/local` (stage `dev_$USER`, logs under `infra/.alchemy/log/<stage>/`). Addresses:
 
 ```text
-http://tranzfer.localhost       apps/web
-http://api.tranzfer.localhost   apps/api
+https://tranzfer.localhost       apps/web (:3000)
+https://api.tranzfer.localhost   apps/api (:8787, via `portless alias api.tranzfer 8787`)
 ```
 
-Portless assigns each app a port and injects it (`PORT`, `--port`, or Wrangler's flags). Do not hard-code `localhost:3000` in docs or scripts.
+The proxy serves TLS; use `curl -k`. Do not hard-code `localhost:3000` in docs or scripts.
 
-One `portless.json` at the repo root names the apps. `turbo` is off; this repo does not use Turborepo.
+One `portless.json` at the repo root names the single `tranzfer` app. `turbo` is off; this repo does not use Turborepo.
 
-Everyday local serving is `vp run dev` (Portless). `vp run --filter @tranzfer/web dev` and `vp dev` skip the proxy and land on 3000 or the next free 3001–3003. Agents must open `http://tranzfer.localhost`, not those ports. See `.agents/skills/portless/SKILL.md`.
+Everyday local serving is `vp run dev` (Portless). `vp dev` skips the proxy and lands on 3000 or the next free 3001–3003. Agents must open `https://tranzfer.localhost`, not those ports. See `.agents/skills/portless/SKILL.md`.
 
 ---
 
@@ -879,7 +879,7 @@ Pin the exact Alchemy v2 version. Current pin: `alchemy@2.0.0-beta.77`.
 
 Alchemy v2's stack file is an Effect program. Application code also uses Effect 4. Keep Alchemy's pinned requirements separate from application version selection. Review workspace-wide overrides during migration and do not pass version-specific Effect objects between incompatible runtimes.
 
-Alchemy is the authoritative source of Cloudflare infrastructure state. `apps/api/wrangler.jsonc` is a local debug entry (`wrangler dev` / Portless) with simulated D1 and R2, not a second production source of truth.
+Alchemy is the authoritative source of Cloudflare infrastructure state. Local development runs through `alchemy dev` on the same stack, which simulates D1 and R2 locally; there are no app Wrangler configs.
 
 The `tranzfer` stack in `infra/alchemy.run.ts` currently creates:
 
@@ -1140,7 +1140,6 @@ infrastructure, both apps, and the workspace root. Bump versions deliberately.
 | @effect/tsgo                                 | root                  | 0.45.0        |
 | oxlint                                       | root, web             | 1.82.0        |
 | oxlint-tsgolint                              | root                  | 7.0.2001      |
-| wrangler                                     | web, api              | 4.131.1       |
 | @cloudflare/vite-plugin                      | web                   | 1.54.8        |
 | tailwindcss, @tailwindcss/vite               | web                   | 4.3.3         |
 | @uppy/core                                   | web                   | 6.0.1         |

@@ -1,9 +1,0 @@
-{
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "tranzfer-web",
-  "main": "./src/worker.ts",
-  "compatibility_date": "2026-09-13",
-  "compatibility_flags": ["nodejs_compat"],
-  // Local wrangler simulation only. Live bindings come from Alchemy.
-  "services": [{ "binding": "API", "service": "tranzfer-api" }],
-}

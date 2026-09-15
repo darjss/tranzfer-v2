@@ -17,9 +17,10 @@ export default Alchemy.Stack(
 
     const api = yield* Cloudflare.Worker("Api", {
       compatibility: {
-        date: "2026-09-13",
+        date: "2026-09-08",
         flags: ["nodejs_compat"],
       },
+      dev: { port: 8787 },
       env: {
         BUCKET: files,
         DB: db,
@@ -30,9 +31,10 @@ export default Alchemy.Stack(
 
     const web = yield* Cloudflare.Website.Vite("Web", {
       compatibility: {
-        date: "2026-09-13",
+        date: "2026-09-08",
         flags: ["nodejs_compat"],
       },
+      dev: { port: 3000 },
       domain: "tranzfer.app",
       env: {
         API: api,
