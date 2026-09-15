@@ -1,6 +1,6 @@
 # Tooling and UI readiness before uploads
 
-Status: in progress. Step 1 (lint policy) is done. This document authorizes no
+Status: in progress. Step 1 (lint policy) and step 2 (T3 Env) are done. This document authorizes no
 implementation by itself beyond the step being executed. Complete this phase
 before starting the first transfer flow in step 6 of
 [01-foundation.md](01-foundation.md).
@@ -144,6 +144,12 @@ configuration contents.
 
 ## 2. Validate environment configuration with T3 Env
 
+Status: done. `@t3-oss/env-core` 0.13.11 plus Effect Schema Standard Schema
+maps. Web `env.ts` is the Solid plugin schema and T3 `createEnv` over
+`process.env`. The API Worker has no string secrets yet, so T3 runs an empty
+server schema and D1/R2 stay binding types. Valibot is removed from both apps.
+No production secrets are required to build the landing page.
+
 Use `@t3-oss/env-core` with Effect Schema through its supported Standard Schema
 integration. Verify compatibility with the pinned releases rather than retaining
 Valibot or adding a custom schema framework. Separate public build-time
@@ -272,7 +278,7 @@ Resolve these known discrepancies before claiming readiness:
 - TanStack Solid Form is absent from the manifest although STACK.md says it is
   installed. Its researched store dependency requires Solid 1. Resolve the
   adapter compatibility and Effect Schema validation integration before
-  installing and using it. Do not preserve Valibot solely for forms.
+  installing and using it.
 - Several Solid Primitives are installed despite the document saying none are.
 
 If a compatible maintained release does not exist, present the concrete options

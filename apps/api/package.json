@@ -10,11 +10,12 @@
   },
   "dependencies": {
     "@polar-sh/sdk": "0.49.0",
+    "@t3-oss/env-core": "0.13.11",
     "better-auth": "1.7.4",
     "better-result": "3.0.1",
     "drizzle-orm": "0.45.2",
-    "elysia": "1.4.30",
-    "valibot": "1.4.2"
+    "effect": "4.0.0-rc.112",
+    "elysia": "1.4.30"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260911.1",

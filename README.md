@@ -50,7 +50,7 @@ vp install
 vp run dev
 ```
 
-That serves the web app at `http://tranzfer.localhost` and the API at `http://api.tranzfer.localhost`. One app: `vp run --filter @tranzfer/web dev` or `vp run --filter @tranzfer/api dev`. See `apps/web/.env.example` for current public configuration. The current app has no required `SESSION_SECRET`; T3 Env integration is planned.
+That serves the web app at `http://tranzfer.localhost` and the API at `http://api.tranzfer.localhost`. One app: `vp run --filter @tranzfer/web dev` or `vp run --filter @tranzfer/api dev`. See `apps/web/.env.example` for public `VITE_` keys. T3 Env plus Effect Schema validate them. There is no required `SESSION_SECRET`.
 
 Before committing code, run:
 

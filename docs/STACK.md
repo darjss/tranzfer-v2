@@ -162,7 +162,7 @@ The web Worker is the production server. `@cloudflare/vite-plugin` owns the `ssr
 
 Client assets are Workers static assets (assets-first: hashed files never hit the Worker). HTML, server functions, and the demo `/api/*` filesystem routes go through the Worker. Canonical product operations belong on the dedicated API Worker through Effect RPC.
 
-Environment validation will use T3 Env with Effect Schema. Separate public build-time values from Worker runtime secrets and typed service bindings. Validate only configuration the app actually needs.
+Environment validation uses T3 Env with Effect Schema. Separate public build-time values from Worker runtime secrets and typed service bindings. Validate only configuration the app actually needs.
 
 Do not introduce framework layers just to gain conventions that Tranzfer does not need.
 
@@ -338,7 +338,7 @@ machines, `Schema.TaggedUnion` plus `.match` for boundary-crossing unions, and
 `Match` for literal branching in Effect code. Upload-core tagged states belong
 here, not a second matcher.
 
-`dismatch` is installed and awaiting removal with Valibot and Better Result. Do
+`dismatch` is installed and awaiting removal with Better Result. Do
 not extend its use. Do not turn every boolean into a tagged union for sport.
 
 ---
@@ -351,11 +351,9 @@ Use **Effect Schema** for RPC inputs, success values, expected errors, form
 validation, and serialized boundary data. Infer TypeScript types from schemas
 rather than maintaining parallel DTOs. Validate network data at runtime.
 
-Use `@t3-oss/env-core` with Effect Schema's supported Standard Schema integration
-for environment validation. Verify the pinned versions together. Keep Cloudflare
-binding objects separately typed and keep server secrets out of client schemas.
-
-Replace Valibot during the readiness phase. Do not retain a second schema system.
+Use `@t3-oss/env-core` 0.13.11 with Effect Schema Standard Schema values in
+`apps/web/env.ts` and `apps/api/src/env.ts`. Bindings stay typed on `ApiEnv`.
+Do not retain a second schema system.
 
 ---
 
@@ -1124,40 +1122,38 @@ Everything else exists to make that transfer safe, resumable, understandable, an
 # Installed versions (foundation)
 
 Current manifest snapshot, before the Effect application migration. Elysia, Eden,
-Better Result, and Valibot remain installed pending replacement. Effect is
-installed in infrastructure and at the workspace root for Effect lint. Bump
-versions deliberately; the application Effect version will be selected during
-implementation.
+and Better Result remain installed pending replacement. Effect is installed in
+infrastructure, both apps, and the workspace root. Bump versions deliberately.
 
-| Package                                      | Where       | Version       |
-| -------------------------------------------- | ----------- | ------------- |
-| solid-js, @solidjs/web, @solidjs/diagnostics | web         | 2.0.0-rc.8    |
-| @solidjs/router                              | web         | 2.0.0-next.24 |
-| @solidjs/vite-plugin                         | web         | 3.0.0-next.43 |
-| elysia                                       | api         | 1.4.30        |
-| @elysiajs/eden                               | web         | 1.4.9         |
-| alchemy                                      | infra       | 2.0.0-beta.77 |
-| effect                                       | infra, root | 4.0.0-rc.112  |
-| ultracite                                    | root        | 7.11.1        |
-| @effect/tsgo                                 | root        | 0.45.0        |
-| oxlint                                       | root, web   | 1.82.0        |
-| oxlint-tsgolint                              | root        | 7.0.2001      |
-| wrangler                                     | web, api    | 4.131.1       |
-| @cloudflare/vite-plugin                      | web         | 1.54.8        |
-| tailwindcss, @tailwindcss/vite               | web         | 4.3.3         |
-| @uppy/core                                   | web         | 6.0.1         |
-| @uppy/aws-s3                                 | web         | 6.1.0         |
-| @uppy/drop-target                            | web         | 5.0.0         |
-| cva                                          | web         | 1.0.0-beta.8  |
-| cnfast                                       | web         | 0.2.0         |
-| dismatch                                     | web         | 2.6.0         |
-| better-result                                | web, api    | 3.0.1         |
-| valibot                                      | web, api    | 1.4.2         |
-| better-auth                                  | api         | 1.7.4         |
-| drizzle-orm                                  | api         | 0.45.2        |
-| drizzle-kit                                  | api         | 0.31.10       |
-| @polar-sh/sdk                                | api         | 0.49.0        |
-| portless                                     | root        | 0.15.6        |
+| Package                                      | Where                 | Version       |
+| -------------------------------------------- | --------------------- | ------------- |
+| solid-js, @solidjs/web, @solidjs/diagnostics | web                   | 2.0.0-rc.8    |
+| @solidjs/router                              | web                   | 2.0.0-next.24 |
+| @solidjs/vite-plugin                         | web                   | 3.0.0-next.43 |
+| elysia                                       | api                   | 1.4.30        |
+| @elysiajs/eden                               | web                   | 1.4.9         |
+| alchemy                                      | infra                 | 2.0.0-beta.77 |
+| effect                                       | infra, web, api, root | 4.0.0-rc.112  |
+| @t3-oss/env-core                             | web, api              | 0.13.11       |
+| ultracite                                    | root                  | 7.11.1        |
+| @effect/tsgo                                 | root                  | 0.45.0        |
+| oxlint                                       | root, web             | 1.82.0        |
+| oxlint-tsgolint                              | root                  | 7.0.2001      |
+| wrangler                                     | web, api              | 4.131.1       |
+| @cloudflare/vite-plugin                      | web                   | 1.54.8        |
+| tailwindcss, @tailwindcss/vite               | web                   | 4.3.3         |
+| @uppy/core                                   | web                   | 6.0.1         |
+| @uppy/aws-s3                                 | web                   | 6.1.0         |
+| @uppy/drop-target                            | web                   | 5.0.0         |
+| cva                                          | web                   | 1.0.0-beta.8  |
+| cnfast                                       | web                   | 0.2.0         |
+| dismatch                                     | web                   | 2.6.0         |
+| better-result                                | web, api              | 3.0.1         |
+| better-auth                                  | api                   | 1.7.4         |
+| drizzle-orm                                  | api                   | 0.45.2        |
+| drizzle-kit                                  | api                   | 0.31.10       |
+| @polar-sh/sdk                                | api                   | 0.49.0        |
+| portless                                     | root                  | 0.15.6        |
 
 ## Pending implementation and compatibility
 
@@ -1188,10 +1184,10 @@ installed. Other primitives remain optional and require an actual use.
 `packages/contracts`, `packages/db`, and `packages/upload-core` do not exist yet.
 Create them when their first real contracts or implementation need those boundaries.
 
-Ultracite core, its bundled anti-slop preset, Solid v2 strict, and Effect
-`correctness`/`antipattern` lint are installed. T3 Env and CI/deployment
-automation remain planned. `dismatch`, Better Result, Valibot, Elysia, and Eden
-remain installed pending Effect replacement. Do not extend them.
+Ultracite core, its bundled anti-slop preset, Solid v2 strict, Effect
+`correctness`/`antipattern` lint, and T3 Env are installed. CI/deployment
+automation remains planned. `dismatch`, Better Result, Elysia, and Eden remain
+installed pending Effect replacement. Do not extend them.
 
 ---
 
