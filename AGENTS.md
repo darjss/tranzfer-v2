@@ -1,58 +1,38 @@
 # Agent guide
 
-Make the smallest direct change. Prefer inference and named exports. No `any`,
-speculative abstractions, or new test files/helpers without explicit approval.
+Smallest direct change. Inference over annotations, named exports, no `any`,
+no wrapper functions that only rename or cast. New abstractions, test files,
+and helpers need the user's approval first.
 
 ## Read first
 
-- Architecture: `docs/STACK.md`. Current work: `docs/plan/02-pre-upload-readiness.md`.
-- Product: `docs/SOUL.md`. Long-term direction: `docs/VISION.md`. Do not build
-  later phases until Phase 0 reliability is proven.
-- Transfer behavior: `docs/RELIABILITY.md`. Solid owns UI, Uppy owns multipart
-  transport, and persistent metadata plus R2 own recovery. UI disposal or fiber
-  interruption must never implicitly abort remote uploads.
-- Effect 4 + RPC + Schema is selected. Elysia/Eden, Better Result, and Valibot
-  await removal; do not extend their use. Keep T3 Env as the env boundary.
+- Architecture: `docs/STACK.md`. Current step: `docs/plan/02-pre-upload-readiness.md`.
+- Transfer rules: `docs/RELIABILITY.md`. Solid owns UI, Uppy owns multipart
+  transport, D1 plus R2 own recovery. UI disposal or fiber interruption never
+  aborts a remote upload.
+- Solid 2: `.agents/skills/solidjs-v2/SKILL.md`, then
+  `~/dev/solid2-reference` (docs, blogs, source checkouts). Installed types win
+  over checkouts. Diagnostics: `solid-js/skills/reactivity-diagnostics/SKILL.md`.
+- Effect 4: `.agents/skills/effect/SKILL.md`, then the installed
+  `effect/AGENTS.md` in `node_modules`. Services sit at real boundaries
+  (persistence, storage, auth). Solid state and Uppy progress stay out of Effect.
+- Local dev and URLs: `.agents/skills/portless/SKILL.md` before `vp run dev`.
 
-## Solid 2 lookup order
+## Working rules
 
-1. Read `.agents/skills/solidjs-v2/SKILL.md` and the relevant routed reference.
-2. Look in `~/dev/solid2-reference/solid-docs` and `solid2-blogs` under that same
-   reference directory for explanations and examples.
-3. For unresolved behavior or hard bugs, inspect the matching source checkout
-   there: `solid`, `solid-router`, `vite-plugin-solid`, `kobalte`, or
-   `solid-primitives`. Installed types/runtime and `solid-js/CHEATSHEET.md` settle
-   version conflicts. Do not assume a checkout matches our installed release.
-
-For Solid diagnostic codes, read the owning package's
-`solid-js/skills/reactivity-diagnostics/SKILL.md`. For stale/excessive updates or
-performance regressions, read `@solidjs/diagnostics/skills/agent-loops/SKILL.md`
-and capture evidence. Name reactive scopes. Never guard `onSettled` with
-`if (!isServer)`; it breaks hydration ID alignment.
-
-## Effect guidance
-
-Use `.agents/skills/effect-ts/SKILL.md` for setup and
-`.agents/skills/effect/SKILL.md` for topic guidance. First read the owning
-package's installed `effect/AGENTS.md` completely; installed docs/types outrank
-examples. Today that copy is in `infra/node_modules/effect`. Do not upgrade or
-add dependencies merely to read docs. Services belong at real boundaries;
-keep Solid state and Uppy progress out of Atom/Stream abstractions.
-
-## Commands and deploys
-
-Run every command through `vp`. `vp install`, `vp add`, and `vp remove` for
-dependencies. `vp <name>` for built-ins (`check`, `lint`, `fmt`). `vp run <name>`
-for package scripts (`dev`, `test`, `build`, `plan`, `deploy`). Vite+ docs:
-`node_modules/vite-plus/docs`. `apps/web` is the Solid site/Worker, `apps/api`
-the API Worker, and `infra` the Alchemy stack.
-
-After code changes run `vp check`, existing tests with `vp run test`, and the
-relevant `vp run build`. Local URLs go through Portless. Read
-`.agents/skills/portless/SKILL.md` before starting or debugging `vp run dev`.
-
-Deploy only from the main checkout through `infra/alchemy.run.ts`, which owns
-both apps and production resources. Run `vp run build`, `vp run plan`, then
-`vp run deploy`. Local dev runs through `alchemy dev` from the same stack;
-there are no app Wrangler configs. Preserve the user's existing generated-file
-changes.
+- Every command goes through `vp` (`vp add`, `vp check`, `vp run <script>`).
+  After a change: `vp check`, `vp run test`, the relevant `vp run build`.
+- Lint stays on. A violation is a prompt to refactor toward the rule's intent.
+  A genuine exception (a factory the rule misreads, a declaration-merging
+  `.d.ts`) gets a file-scoped override with a one-line reason, and the user
+  approves it first.
+- Comments explain only behaviour a reader cannot infer from the code: a
+  runtime quirk, an outlier case, a non-obvious constraint. Everything else is
+  named code.
+- One stack. `infra/alchemy.run.ts` owns bindings for `alchemy dev` and deploy;
+  there are no per-app Wrangler configs or local-only binding hacks.
+- Bounded attempts. When the same step fails twice, stop and report the
+  evidence (logs, exact error) instead of a third variant.
+- Deploy from the main checkout: `vp run build`, `vp run plan`, then
+  `vp run deploy`. Leave `apps/web/file-routes.d.ts` and `solid-env.d.ts`
+  unstaged; Vite regenerates them.

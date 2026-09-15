@@ -27,3 +27,10 @@ export const makeApi = (fetch: typeof globalThis.fetch, url: string) => {
   const client = runtime.runSync(Effect.provideService(RpcClient.make(Api), Scope.Scope, scope));
   return { client, runtime };
 };
+
+// Lazy: the prerenderer imports the server bundle in Node, where
+// `cloudflare:workers` does not exist. Only workerd reaches this.
+export const apiOverBinding = async () => {
+  const { env } = await import("cloudflare:workers");
+  return makeApi(env.API.fetch.bind(env.API), "http://api/rpc");
+};

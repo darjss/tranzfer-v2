@@ -9,10 +9,9 @@ import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 import { Environment, Worker } from "effect-cf";
 
-import type { ApiEnv } from "./env";
-import { loadApiEnv } from "./env";
+import "./env";
 
-const probeD1 = (env: ApiEnv) =>
+const probeD1 = (env: Cloudflare.Env) =>
   Effect.tryPromise({
     catch: () => new ProbeFailed({ resource: "d1" }),
     try: async () => await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>(),
@@ -20,7 +19,7 @@ const probeD1 = (env: ApiEnv) =>
     Effect.flatMap((row) => (row?.ok === 1 ? Effect.void : new ProbeFailed({ resource: "d1" }))),
   );
 
-const probeR2 = (env: ApiEnv, key: string) =>
+const probeR2 = (env: Cloudflare.Env, key: string) =>
   Effect.tryPromise({
     catch: () => new ProbeFailed({ resource: "r2" }),
     try: async () => {
@@ -36,7 +35,7 @@ const probeR2 = (env: ApiEnv, key: string) =>
 
 const handlersLayer = Layer.unwrap(
   Effect.gen(function* handlers() {
-    const env = loadApiEnv(yield* Environment.WorkerEnvironment);
+    const env = yield* Environment.WorkerEnvironment;
     return Api.toLayer({
       Health: () => Effect.succeed({ ok: true as const }),
       Infra: (payload) =>

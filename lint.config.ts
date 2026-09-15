@@ -20,14 +20,6 @@ const effectErrorRules = {
   "effecttsgo/run-effect-inside-effect": "error",
   "effecttsgo/try-catch-in-effect-gen": "error",
   "effecttsgo/unknown-in-effect-catch": "error",
-  // Effect contracts declare several Schema.TaggedError / RpcGroup classes per
-  // file, and the TaggedError factory call trips the throw-new-error heuristic.
-  "max-classes-per-file": "off",
-  // Cloudflare.Env is an empty interface designed for declaration merging.
-  "typescript/no-empty-interface": "off",
-  "typescript/no-empty-object-type": "off",
-  "typescript/no-namespace": "off",
-  "unicorn/throw-new-error": "off",
 } as const;
 
 const vitePlusPlugin = {
@@ -100,6 +92,14 @@ export const lintConfig = (paths: {
         },
       },
       ...effectOverride,
+      {
+        files: ["packages/contracts/**"],
+        rules: {
+          // `Schema.TaggedError<E>()(...)` is a class factory, not a thrown
+          // error; the rule matches on the callee name alone.
+          "unicorn/throw-new-error": "off",
+        },
+      },
     ],
     plugins: [...(core.plugins ?? []), "effecttsgo"],
     rules: {
