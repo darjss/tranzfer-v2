@@ -1,0 +1,35 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: voidzero-dev/setup-vp@d5616419e3a9637febec6da1475cee9d07a317fd # v1.20.0
+        with:
+          node-version: "24"
+          cache: true
+      - name: Restore Alchemy credentials
+        env:
+          ALCHEMY_HOME: ${{ secrets.ALCHEMY_HOME }}
+        run: |
+          mkdir -p ~/.alchemy
+          echo "$ALCHEMY_HOME" | base64 -d | tar xz -C ~/.alchemy
+      - run: vp run deploy
+      - name: Health check
+        run: curl -fsS https://tranzfer.app/infra | grep -q '"ok":true'

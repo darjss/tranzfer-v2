@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js dev --no-input",
-    "plan": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js plan",
-    "deploy": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js deploy --yes",
-    "destroy": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js destroy --yes"
+    "plan": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js plan --stage production",
+    "deploy": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js deploy --yes --stage production",
+    "destroy": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js destroy --yes --stage production"
   },
   "dependencies": {
     "@effect/platform-node": "4.0.0-rc.112",
