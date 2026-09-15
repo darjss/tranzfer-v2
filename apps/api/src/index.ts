@@ -1,8 +1,8 @@
 import { Elysia } from "elysia";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
 
-import { loadApiEnv } from "./env.ts";
-import type { ApiEnv } from "./env.ts";
+import { loadApiEnv } from "./env";
+import type { ApiEnv } from "./env";
 
 // Bindings are isolate-scoped; the Worker env object is the same on every
 // request, so a module binding is enough (no ALS).

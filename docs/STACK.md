@@ -948,14 +948,15 @@ on the web app. Do not add a second ESLint plugin for Effect.
 
 Root and web `vp lint` share `lint.config.ts`. The `prepare` script runs
 `vp config` and `effect-tsgo patch --no-typescript --oxlint` so Oxlint 1.82.0 and
-`oxlint-tsgolint` 7.0.2001 match `@effect/tsgo` 0.45.0. Type-aware rules are
-on. Full `typeCheck` during lint is off, and `vite.config.ts` may assert the
-lint object: Vite+ types OxlintConfig from oxlint 1.81 while the workspace
-pins 1.82.0 for `@effect/tsgo`.
+`oxlint-tsgolint` 7.0.2001 match `@effect/tsgo` 0.45.0. Type-aware rules and
+full `typeCheck` are on: `vp check` and `vp lint` typecheck every workspace
+tsconfig through tsgolint on the TypeScript Go toolchain. `vite.config.ts` may
+assert the lint object: Vite+ types OxlintConfig from oxlint 1.81 while the
+workspace pins 1.82.0 for `@effect/tsgo`.
 
 Fast feedback matters heavily in an agent-driven repository.
 
-Lint violations should fail CI.
+Lint and type violations should fail CI.
 
 ---
 
