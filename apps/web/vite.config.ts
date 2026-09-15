@@ -12,7 +12,13 @@ const envFlag = (value: string | undefined) => value !== undefined && value !== 
 const workerSsr =
   envFlag(process.env.VITEST) || process.env.ALCHEMY_CLOUDFLARE_VITE_INJECTED === "1"
     ? []
-    : [cloudflare({ viteEnvironment: { name: "ssr" } })];
+    : [
+        cloudflare({
+          auxiliaryWorkers: [{ configPath: "../api/wrangler.jsonc" }],
+          remoteBindings: false,
+          viteEnvironment: { name: "ssr" },
+        }),
+      ];
 
 export default defineConfig({
   build: {
