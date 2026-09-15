@@ -182,10 +182,11 @@ catalogs:
 
 overrides:
   vite@*: npm:@voidzero-dev/vite-plus-core@0.3.1
-  effect: 4.0.0-rc.112
-  '@effect/platform': 4.0.0-rc.112
-  '@effect/platform-node': 4.0.0-rc.112
-  '@effect/platform-node-shared': 4.0.0-rc.112
+  '@effect/platform-node>@effect/platform-node-shared': 4.0.0-rc.112
+  '@effect/platform-node-shared>@effect/platform': 4.0.0-rc.112
+  alchemy>@effect/sql-d1: 4.0.0-rc.112
+  alchemy>@effect/sql-sqlite-do: 4.0.0-rc.112
+  alchemy>@effect/vitest: 4.0.0-rc.112
 
 packageExtensionsChecksum: sha256-TBpGywezTeIOhX5/mHtl82Zegpbjty80JzFwaftcvfY=
 
@@ -197,8 +198,8 @@ importers:
         specifier: 0.45.0
         version: 0.45.0
       effect:
-        specifier: 4.0.0-rc.112
-        version: 4.0.0-rc.112
+        specifier: 4.0.0-rc.115
+        version: 4.0.0-rc.115
       eslint-plugin-solid:
         specifier: 0.18.0
         version: 0.18.0(eslint@10.9.1(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3)
@@ -242,8 +243,11 @@ importers:
         specifier: 0.45.2
         version: 0.45.2(@cloudflare/workers-types@5.20260911.1)(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(kysely@0.29.5)
       effect:
-        specifier: 4.0.0-rc.112
-        version: 4.0.0-rc.112
+        specifier: 4.0.0-rc.115
+        version: 4.0.0-rc.115
+      effect-cf:
+        specifier: 0.43.0
+        version: 0.43.0(@cloudflare/workers-types@5.20260911.1)(@effect/sql-d1@4.0.0-rc.115(effect@4.0.0-rc.115))(@effect/sql-sqlite-do@4.0.0-rc.115(effect@4.0.0-rc.115))(effect@4.0.0-rc.115)
       elysia:
         specifier: 1.4.30
         version: 1.4.30(@sinclair/typebox@0.34.52)(exact-mirror@1.2.6)(file-type@22.1.0(supports-color@10.2.2))(openapi-types@12.1.3)(typescript@5.9.3)
@@ -309,8 +313,8 @@ importers:
         specifier: 2.6.0
         version: 2.6.0
       effect:
-        specifier: 4.0.0-rc.112
-        version: 4.0.0-rc.112
+        specifier: 4.0.0-rc.115
+        version: 4.0.0-rc.115
       solid-js:
         specifier: 'catalog:'
         version: 2.0.0-rc.8
@@ -380,7 +384,7 @@ importers:
         version: 4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1)
       alchemy:
         specifier: 2.0.0-beta.77
-        version: 2.0.0-beta.77(@effect/platform-node@4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1))(@types/node@26.4.1)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.1))(effect@4.0.0-rc.112)(typescript@5.9.3)(vitest@5.0.0)(ws@8.21.3)
+        version: 2.0.0-beta.77(@effect/platform-node@4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1))(@types/node@26.4.1)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.1))(effect@4.0.0-rc.112)(typescript@5.9.3)(vitest@4.1.11)(ws@8.21.3)
       effect:
         specifier: 4.0.0-rc.112
         version: 4.0.0-rc.112
@@ -399,8 +403,8 @@ packages:
     peerDependencies:
       '@distilled.cloud/cloudflare': 1.0.0-rc.9
       '@effect/platform-bun': '>=4.0.0-rc.112 || >=4.0.0'
-      '@effect/platform-node': 4.0.0-rc.112
-      effect: 4.0.0-rc.112
+      '@effect/platform-node': '>=4.0.0-rc.112 || >=4.0.0'
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
       rolldown: 1.2.5
       vite: ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
@@ -416,7 +420,7 @@ packages:
   '@alchemy.run/floci@2.0.0-beta.77':
     resolution: {integrity: sha512-P+qf4/8MJ6Qgy28pDtdDAavxeDCn+TE3xTgvgT+d1zt6mOLkP9cxeI9C0u0UW7Q/OiLVqHToFc4FVrxYIkm6ig==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
 
   '@alchemy.run/node-utils@2.0.0-beta.77':
     resolution: {integrity: sha512-+Z8hf9EAHMdgSVbB1O04nQLYVosElYhZtENhT4gIDCYcQrHUUu6BKpjof5P9x+tLpiR2eIOadTuGXi5KR3S/Sg==}
@@ -827,47 +831,47 @@ packages:
   '@distilled.cloud/aws@1.0.0-rc.9':
     resolution: {integrity: sha512-JVw6pRsl5Z+0iHdUI0Kw0r9gIGNDui/q7iYSVGgzlqiU9OXltOxxvgzW2FZ1jEzToBFUabIb9Ew2SjsWO+W82Q==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
 
   '@distilled.cloud/axiom@1.0.0-rc.9':
     resolution: {integrity: sha512-SKr1r5Eq62UVeUBbTMERmBFgl96z5Q3FStlD8AkxI9EnPjYsGulKEiLlBawUWGfbhcy1srUoQgRWP/a9gEFsvA==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
 
   '@distilled.cloud/cloudflare@1.0.0-rc.9':
     resolution: {integrity: sha512-tmdqv6/voHJEtzRX2z+CdxY8AyHsex+V1RBozsmisCMt6J0CQg7zVa+eQzz7zL5jDCTUwabVSA+jMN/4vStbBg==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
 
   '@distilled.cloud/core@1.0.0-rc.9':
     resolution: {integrity: sha512-42JhW0d0cD1U3vO6gZ7QiXjtHtzd+SNz9hYrznIcL/R61cl6tLePs6C6zfOjGAgO2xp4/E/FAFzi3iNx0eEBGw==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
 
   '@distilled.cloud/fly-io@1.0.0-rc.9':
     resolution: {integrity: sha512-MchXCinyJKfscWMCbJi6Vw94PJj2Q4OptyxcIvZ8odCNNCbS43RB3spSSeZihX79xenVn8SFJYtwonEJmSvkZg==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
 
   '@distilled.cloud/hetzner@1.0.0-rc.9':
     resolution: {integrity: sha512-Tla418BxNSxap8r2n0YVZZBo79DVY26PTNxZS3ZPHDmfgSoPQ6+W/+Arxsl1oTvNRRRuNcSbdJ4EuESOv70Edg==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
 
   '@distilled.cloud/neon@1.0.0-rc.9':
     resolution: {integrity: sha512-9/UNB2XNUwdyKWFd1aDTEVfpPpxVp8oF1QiAlDMRtMMGnUx08eaxDtX2SZU8voXMJaxYw08gDOFlHtkeTzLIiA==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
 
   '@distilled.cloud/planetscale@1.0.0-rc.9':
     resolution: {integrity: sha512-9lrkuQ1by+UkNsGQ8tNKaM+DEdOHYPGAhCyrDLQd7DG4Xh6JHPmrPlyTFsjHhS9thSz2WVaDVMDbsJ8zHsDNTQ==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
 
   '@distilled.cloud/railway@1.0.0-rc.9':
     resolution: {integrity: sha512-AI5SgoaPl7giY+HiYldwKihyCqhed5sjz1f8WwdRxTehswto/Rbx9vMX4FWeVgrQYXgkVK/NWcZuJJdCxSyM9Q==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
 
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
@@ -876,24 +880,34 @@ packages:
     resolution: {integrity: sha512-ttjz0xKamFN7vL8pNDYVwddJLjZvqKePc05djlz2VcdaKbLsnYbtMnL1rbOfHgEnIUSHGh7FkjaN4DM1Ov81sQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: ^4.0.0-rc.112
 
   '@effect/platform-node@4.0.0-rc.112':
     resolution: {integrity: sha512-/BMAcdNGQQskLmI0Zoa95KfTZkr9HV9N4NSxaSrusG6GeW6Ulp9KvZ+Rlaiw8lnOt43CXjFLdfll5/k5rxL4hQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: ^4.0.0-rc.112
       redis: '>=5.0.0 <7.0.0'
+
+  '@effect/sql-d1@4.0.0-rc.112':
+    resolution: {integrity: sha512-Wxdr6aU3pBHqhyBiybzbHmEK7qZ2w4iy0IxBgJHe9BLleYzCxObOaBQI9qq/VZSqEvc0IaOBMpbk2zh3dlPNSQ==}
+    peerDependencies:
+      effect: ^4.0.0-rc.112
 
   '@effect/sql-d1@4.0.0-rc.115':
     resolution: {integrity: sha512-o2JkGjN02NBMxwDtJbwcC4teyMiOApqN085fdVMid4FUC6ixj/WyKyPpe51QGOMQQTTl2BkXccA/IwDIywGXlA==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: ^4.0.0-rc.115
+
+  '@effect/sql-sqlite-do@4.0.0-rc.112':
+    resolution: {integrity: sha512-PewNVasimmhrdxYbNU91O0YlCcalIHOoF0H5XAWXrmzcEQrKM7kVCyb5h0gmJAZjBM4ZgWRvPY0PUOfbNmWchQ==}
+    peerDependencies:
+      effect: ^4.0.0-rc.112
 
   '@effect/sql-sqlite-do@4.0.0-rc.115':
     resolution: {integrity: sha512-7lH9h+w4DW2tI+dus4hEac5mSCy1wgiT+uw/VvjR8YhNDemd3zEFY03NkbD81ipfOpnu2QA1YwgM58ExyPlhug==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: ^4.0.0-rc.115
 
   '@effect/tsgo-darwin-arm64@0.45.0':
     resolution: {integrity: sha512-WUoiEVcm8E19QK6fl63lsssM4dkT9IFnULbmqQ6LBfv7H9uRkpE9S3thj8ZtZ+vl/QY8atwfuaTf+3A1m/kGtQ==}
@@ -934,11 +948,11 @@ packages:
     resolution: {integrity: sha512-gPG0ixVHgtYBUe5DbKX9vzHlhqd9+ZEfs4m/XWy0808av0A2XqMzaG3F5rnPBN7EUJRPlo9TluIi8WHx/pBV+A==}
     hasBin: true
 
-  '@effect/vitest@4.0.0-rc.115':
-    resolution: {integrity: sha512-DJR0hfdr3HNXAkzW8AzfvUz6VmrNFLrKk9tZGDURi33faMyxkc7ZewxELMMZwGpOTGN4mfqYVbX2CXgI+ZJBeQ==}
+  '@effect/vitest@4.0.0-rc.112':
+    resolution: {integrity: sha512-mEKh/FI64mt8JK1/v9mpOrJYdnp+UFZdRUBMEdZMiKz7klg6NPqVgg/oeAGH6wOOQc2iAPcfc2H9BbAv1KyzMQ==}
     peerDependencies:
-      effect: 4.0.0-rc.112
-      vitest: '>=5.0.0 <6.0.0'
+      effect: ^4.0.0-rc.112
+      vitest: '>=4.1.0 <5.0.0'
 
   '@electric-sql/pglite-socket@0.0.20':
     resolution: {integrity: sha512-J5nLGsicnD9wJHnno9r+DGxfcZWh+YJMCe0q/aCgtG6XOm9Z7fKeite8IZSNXgZeGltSigM9U/vAWZQWdgcSFg==}
@@ -3359,13 +3373,13 @@ packages:
       '@alchemy.run/frontend-frameworks': 2.0.0-beta.77
       '@aws/durable-execution-sdk-js': ^2.1.0
       '@effect/platform-bun': '>=4.0.0-rc.112 || >=4.0.0'
-      '@effect/platform-node': 4.0.0-rc.112
+      '@effect/platform-node': '>=4.0.0-rc.112 || >=4.0.0'
       '@effect/sql-mysql2': '>=4.0.0-rc.112 || >=4.0.0'
       '@effect/sql-pg': '>=4.0.0-rc.112 || >=4.0.0'
       '@vercel/nft': ^1.10.2
       drizzle-kit: 1.0.0-rc.5-ab785fc
       drizzle-orm: 1.0.0-rc.5-ab785fc
-      effect: 4.0.0-rc.112
+      effect: '>=4.0.0-rc.112 || >=4.0.0'
       mongodb: ^6.10.0
       mysql2: ^3.24.2
       pg: ^8.22.0
@@ -3808,8 +3822,37 @@ packages:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
     engines: {node: '>= 0.4'}
 
+  effect-cf@0.43.0:
+    resolution: {integrity: sha512-FoBrA81ZT6kmaWfiiysHTPNS6PTL3coz8fMaQ9wR3+uxEQ/5bJsqCKekWprHCNv/WKsvot49JYCb2lMCQlxsjw==}
+    peerDependencies:
+      '@cloudflare/computer': ^0.2.0
+      '@cloudflare/sandbox': ^0.13.0-next.738.2
+      '@cloudflare/vitest-plugin': ^1.0.0
+      '@cloudflare/workers-types': ^5.20260825.1
+      '@effect/sql-d1': ^4.0.0-rc.115
+      '@effect/sql-pg': ^4.0.0-rc.115
+      '@effect/sql-sqlite-do': ^4.0.0-rc.115
+      '@modelcontextprotocol/server': ^2.0.0
+      effect: ^4.0.0-rc.115
+    peerDependenciesMeta:
+      '@cloudflare/computer':
+        optional: true
+      '@cloudflare/sandbox':
+        optional: true
+      '@cloudflare/vitest-plugin':
+        optional: true
+      '@cloudflare/workers-types':
+        optional: true
+      '@effect/sql-pg':
+        optional: true
+      '@modelcontextprotocol/server':
+        optional: true
+
   effect@4.0.0-rc.112:
     resolution: {integrity: sha512-wXxwuh1Ywnv4cPRM3Wfa0vDwuOHnZ1TsTgHJkG9XgzND6inhBH9n1vBxhg3iIXOia/OrpmvVmd3lrD4vq6bF3A==}
+
+  effect@4.0.0-rc.115:
+    resolution: {integrity: sha512-ogYulZ5ffeOzrJqQrG0XOkDO5lKn2s9KNHhoxJy/6wKUkF0i12dlVXWA9TgsgQ+zV/JzizyG0+XMPepZEQX6vw==}
 
   electron-to-chromium@1.5.422:
     resolution: {integrity: sha512-UvA/32XqrLDdZSn7Jllo1AYNcWji/G0d5M0GTViE7KoGBiMunw3a34Sb2KO4ZZyrSEhqsxFoVhWWJshdyfKqJA==}
@@ -6057,14 +6100,23 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/sql-d1@4.0.0-rc.115(effect@4.0.0-rc.112)':
+  '@effect/sql-d1@4.0.0-rc.112(effect@4.0.0-rc.112)':
     dependencies:
       '@cloudflare/workers-types': 5.20260911.1
       effect: 4.0.0-rc.112
 
-  '@effect/sql-sqlite-do@4.0.0-rc.115(effect@4.0.0-rc.112)':
+  '@effect/sql-d1@4.0.0-rc.115(effect@4.0.0-rc.115)':
+    dependencies:
+      '@cloudflare/workers-types': 5.20260911.1
+      effect: 4.0.0-rc.115
+
+  '@effect/sql-sqlite-do@4.0.0-rc.112(effect@4.0.0-rc.112)':
     dependencies:
       effect: 4.0.0-rc.112
+
+  '@effect/sql-sqlite-do@4.0.0-rc.115(effect@4.0.0-rc.115)':
+    dependencies:
+      effect: 4.0.0-rc.115
 
   '@effect/tsgo-darwin-arm64@0.45.0':
     optional: true
@@ -6097,10 +6149,10 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.45.0
       '@effect/tsgo-win32-x64': 0.45.0
 
-  '@effect/vitest@4.0.0-rc.115(effect@4.0.0-rc.112)(vitest@5.0.0)':
+  '@effect/vitest@4.0.0-rc.112(effect@4.0.0-rc.112)(vitest@4.1.11)':
     dependencies:
       effect: 4.0.0-rc.112
-      vitest: 5.0.0(@types/node@26.4.1)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.1))(jsdom@25.0.1(supports-color@10.2.2))
+      vitest: 4.1.11(@types/node@26.4.1)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.1))(jsdom@25.0.1(supports-color@10.2.2))
 
   '@electric-sql/pglite-socket@0.0.20(@electric-sql/pglite@0.3.15)':
     dependencies:
@@ -7653,6 +7705,7 @@ snapshots:
       magic-string: 1.3.1
     optionalDependencies:
       vite: '@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.1)'
+    optional: true
 
   '@vitest/pretty-format@4.1.11':
     dependencies:
@@ -7672,7 +7725,8 @@ snapshots:
 
   '@vitest/spy@4.1.11': {}
 
-  '@vitest/spy@5.0.0': {}
+  '@vitest/spy@5.0.0':
+    optional: true
 
   '@vitest/utils@4.1.11':
     dependencies:
@@ -7818,7 +7872,7 @@ snapshots:
       json-schema-traverse: 0.4.1
       uri-js: 4.4.1
 
-  alchemy@2.0.0-beta.77(@effect/platform-node@4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1))(@types/node@26.4.1)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.1))(effect@4.0.0-rc.112)(typescript@5.9.3)(vitest@5.0.0)(ws@8.21.3):
+  alchemy@2.0.0-beta.77(@effect/platform-node@4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1))(@types/node@26.4.1)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.1))(effect@4.0.0-rc.112)(typescript@5.9.3)(vitest@4.1.11)(ws@8.21.3):
     dependencies:
       '@alchemy.run/cloudflare-runtime': 2.0.0-beta.77(@distilled.cloud/cloudflare@1.0.0-rc.9(effect@4.0.0-rc.112))(@effect/platform-node@4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1))(@types/node@26.4.1)(@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.1))(effect@4.0.0-rc.112)(rolldown@1.2.5)(typescript@5.9.3)
       '@alchemy.run/floci': 2.0.0-beta.77(effect@4.0.0-rc.112)
@@ -7834,9 +7888,9 @@ snapshots:
       '@distilled.cloud/neon': 1.0.0-rc.9(effect@4.0.0-rc.112)
       '@distilled.cloud/planetscale': 1.0.0-rc.9(effect@4.0.0-rc.112)
       '@distilled.cloud/railway': 1.0.0-rc.9(effect@4.0.0-rc.112)
-      '@effect/sql-d1': 4.0.0-rc.115(effect@4.0.0-rc.112)
-      '@effect/sql-sqlite-do': 4.0.0-rc.115(effect@4.0.0-rc.112)
-      '@effect/vitest': 4.0.0-rc.115(effect@4.0.0-rc.112)(vitest@5.0.0)
+      '@effect/sql-d1': 4.0.0-rc.112(effect@4.0.0-rc.112)
+      '@effect/sql-sqlite-do': 4.0.0-rc.112(effect@4.0.0-rc.112)
+      '@effect/vitest': 4.0.0-rc.112(effect@4.0.0-rc.112)(vitest@4.1.11)
       '@libsql/client': 0.17.4
       '@octokit/rest': 22.0.1
       '@octokit/webhooks': 14.2.0
@@ -8105,10 +8159,20 @@ snapshots:
       es-errors: 1.3.0
       gopd: 1.2.0
 
+  effect-cf@0.43.0(@cloudflare/workers-types@5.20260911.1)(@effect/sql-d1@4.0.0-rc.115(effect@4.0.0-rc.115))(@effect/sql-sqlite-do@4.0.0-rc.115(effect@4.0.0-rc.115))(effect@4.0.0-rc.115):
+    dependencies:
+      '@effect/sql-d1': 4.0.0-rc.115(effect@4.0.0-rc.115)
+      '@effect/sql-sqlite-do': 4.0.0-rc.115(effect@4.0.0-rc.115)
+      effect: 4.0.0-rc.115
+    optionalDependencies:
+      '@cloudflare/workers-types': 5.20260911.1
+
   effect@4.0.0-rc.112:
     dependencies:
       fast-check: 4.10.0
       msgpackr: 2.1.0
+
+  effect@4.0.0-rc.115: {}
 
   electron-to-chromium@1.5.422: {}
 
@@ -8845,6 +8909,7 @@ snapshots:
   magic-string@1.3.1:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
+    optional: true
 
   magicast@0.5.5:
     dependencies:
@@ -9427,7 +9492,8 @@ snapshots:
 
   tinybench@2.9.0: {}
 
-  tinybench@6.1.4: {}
+  tinybench@6.1.4:
+    optional: true
 
   tinyexec@1.3.0: {}
 
@@ -9663,6 +9729,7 @@ snapshots:
       jsdom: 25.0.1(supports-color@10.2.2)
     transitivePeerDependencies:
       - msw
+    optional: true
 
   w3c-xmlserializer@5.0.0:
     dependencies:
