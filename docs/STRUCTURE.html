@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tranzfer2 — code shape</title>
+    <style>
+      :root {
+        --bg: #0e0f11;
+        --panel: #16181c;
+        --panel2: #1c1f24;
+        --ink: #e8e6e1;
+        --dim: #9a978f;
+        --faint: #6b6963;
+        --line: #2a2d33;
+        --blue: #6ea8fe;
+        --green: #7fd88f;
+        --amber: #e5b567;
+        --red: #e06c75;
+        --mono: "SF Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
+        --sans: -apple-system, "Segoe UI", Inter, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        font-size: 15px;
+        line-height: 1.65;
+        padding: 48px 20px 96px;
+      }
+      .wrap {
+        max-width: 860px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 28px;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+        margin-bottom: 6px;
+      }
+      h1 .tag {
+        color: var(--faint);
+        font-weight: 400;
+        font-size: 15px;
+      }
+      .lede {
+        color: var(--dim);
+        margin-bottom: 40px;
+        max-width: 680px;
+      }
+      h2 {
+        font-size: 17px;
+        font-weight: 650;
+        margin: 44px 0 14px;
+        padding-top: 24px;
+        border-top: 1px solid var(--line);
+      }
+      h2:first-of-type {
+        border-top: none;
+        padding-top: 0;
+      }
+      h2 .num {
+        color: var(--faint);
+        font-weight: 400;
+        margin-right: 10px;
+      }
+      pre {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 18px 20px;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        line-height: 1.55;
+        color: #c9c7c0;
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.88em;
+        color: var(--amber);
+      }
+      pre code {
+        color: inherit;
+      }
+      .tree .dir {
+        color: var(--blue);
+      }
+      .tree .cmt {
+        color: var(--faint);
+      }
+      .tree .hl {
+        color: var(--green);
+        font-weight: 600;
+      }
+      .rule {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin: 10px 0;
+      }
+      .rule b {
+        color: var(--ink);
+        font-weight: 650;
+      }
+      .rule .src {
+        color: var(--faint);
+        font-size: 12.5px;
+        font-family: var(--mono);
+      }
+      p {
+        margin: 10px 0;
+        color: var(--dim);
+      }
+      p b {
+        color: var(--ink);
+      }
+      ul {
+        margin: 8px 0 8px 20px;
+        color: var(--dim);
+      }
+      li {
+        margin: 4px 0;
+      }
+      li b {
+        color: var(--ink);
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 12px 0;
+        font-size: 13.5px;
+      }
+      th {
+        text-align: left;
+        color: var(--faint);
+        font-weight: 500;
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      td {
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--line);
+        color: var(--dim);
+        vertical-align: top;
+      }
+      td:first-child {
+        color: var(--ink);
+        font-family: var(--mono);
+        font-size: 12.5px;
+        white-space: nowrap;
+      }
+      .verdict {
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      .ok {
+        color: var(--green);
+      }
+      .no {
+        color: var(--red);
+      }
+      .maybe {
+        color: var(--amber);
+      }
+      .note {
+        border-left: 3px solid var(--blue);
+        background: var(--panel2);
+        padding: 12px 16px;
+        border-radius: 0 8px 8px 0;
+        margin: 14px 0;
+        color: var(--dim);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Code shape <span class="tag">tranzfer2</span></h1>
+      <p class="lede">
+        Where code lives and the rules for adding new things. Distilled from 30 repo audits
+        (<code>~/dev/tranzfer2-references/audits/</code>) — specter, t3code, opencode, cap,
+        livestore — filtered to what one product needs. One obvious tool per job, no museum.
+      </p>
+
+      <h2><span class="num">01</span>The tree</h2>
+
+      <pre class="tree"><span class="dir">packages/</span>
+  <span class="dir">contracts/src/</span>
+    index.ts            <span class="cmt">// barrel: groups + errors + types</span>
+    <span class="dir">errors/</span>
+      transfer.ts       <span class="cmt">// Schema.TaggedError per domain</span>
+      auth.ts
+    <span class="dir">types/</span>
+      transfer.ts       <span class="cmt">// Transfer, Delivery, Part</span>
+      auth.ts           <span class="cmt">// Session, Principal</span>
+    transfer.ts         <span class="cmt">// TransferRpcs: create/sign/complete/abort</span>
+    auth.ts             <span class="cmt">// auth-facing ops (if they ride RPC)</span>
+
+  <span class="dir">db/src/</span>
+    schema.ts           <span class="cmt">// drizzle tables</span>
+    client.ts           <span class="cmt">// D1Client service (effect-cf D1.sqlLayer)</span>
+    migrations/
+
+  <span class="dir">upload-core/src/</span>
+    session.ts          <span class="cmt">// UploadSession, UploadState (tagged enum)</span>
+    plan.ts             <span class="cmt">// MultipartPlan: chunk sizing, part math</span>
+    progress.ts         <span class="cmt">// UploadProgress, ETA math</span>
+    errors.ts
+
+<span class="dir">apps/api/src/</span>
+  index.ts              <span class="cmt">// Worker.make + fetch dispatch ONLY (~60 lines)</span>
+  env.ts                <span class="cmt">// Config + env validation</span>
+  <span class="hl">runtime.ts</span>          <span class="cmt">// Layer.mergeAll — THE composition root</span>
+  <span class="dir">handlers/</span>
+    transfer.ts         <span class="cmt">// TransferRpcs.toLayer implementation</span>
+    auth.ts             <span class="cmt">// better-auth route adapter</span>
+  <span class="dir">services/</span>
+    Signing.ts          <span class="cmt">// presign R2 ops (Distilled S3)</span>
+    Transfers.ts        <span class="cmt">// transfer lifecycle logic</span>
+    Auth.ts             <span class="cmt">// session/principal resolution</span>
+  <span class="dir">repos/</span>
+    TransfersRepo.ts    <span class="cmt">// drizzle queries, Database.use shape</span>
+  middleware.ts         <span class="cmt">// auth middleware, error mapping</span>
+
+<span class="dir">apps/web/src/</span>
+  <span class="dir">api/</span>
+    client.ts           <span class="cmt">// RpcClient service + WebLayer</span>
+    runtime.ts          <span class="cmt">// ManagedRuntime frozen into context</span>
+    solid-effect.ts     <span class="cmt">// runEffect + effectAction binding</span>
+  <span class="dir">state/</span>
+    transfer-store.ts   <span class="cmt">// createStore + pure reducers</span>
+    <span class="hl">uppy-bridge.ts</span>    <span class="cmt">// Uppy events -> store (ONLY file importing @uppy/*)</span>
+  <span class="dir">features/</span>
+    send/               <span class="cmt">// send flow (components + local state)</span>
+    transfers/          <span class="cmt">// transfer list/detail</span>
+  <span class="dir">ui/</span>                 <span class="cmt">// kobalte wraps + styled primitives</span>
+  <span class="dir">routes/</span>             <span class="cmt">// file routes</span>
+
+<span class="dir">infra/alchemy.run.ts</span>  <span class="cmt">// unchanged</span></pre>
+
+      <h2><span class="num">02</span>The rules</h2>
+      <p>These are the whole design. Everything else follows.</p>
+
+      <div class="rule">
+        <b>1. contracts owns the wire.</b> Every operation is <code>Rpc.make</code> in a
+        <code>RpcGroup</code> in contracts. Contracts imports Schema and nothing else — no drizzle,
+        no handlers, no bindings. <span class="src">// t3code, effect-app</span>
+      </div>
+
+      <div class="rule">
+        <b>2. One composition root.</b> <code>runtime.ts</code> is the only
+        <code>Layer.mergeAll</code>. New service = new file + one line.
+        <span class="src">// opencode app-runtime, minus their DAG machinery</span>
+      </div>
+
+      <div class="rule">
+        <b>3. Services are Context.Service classes with a static layer.</b>
+        <pre>
+class Signing extends Context.Service&lt;Signing, Shape&gt;()("tranzfer/Signing") {
+  static layer = Layer.effect(this, Effect.fn("Signing.make")(function*() {
+    const config = yield* SigningConfig
+    return { presignPart: (args) =&gt; ... }
+  }))
+}</pre>
+        <span class="src">// dfx, livestore, effect-solutions</span>
+      </div>
+
+      <div class="rule">
+        <b>4. Handlers are thin, and resolve deps once.</b> <code>RpcGroup.toLayer</code> accepts an
+        <code>Effect</code> returning the handler map, so shared services are yielded once at layer
+        build, not inside every op:
+        <pre>
+export const TransferHandlers = TransferRpcs.toLayer(
+  Effect.gen(function*() {
+    const repo = yield* TransfersRepo
+    const auth = yield* Auth
+    return {
+      ListTransfers: () =&gt;
+        repo.listRecent(auth.principal.id).pipe(
+          Effect.mapError((e) =&gt; new TransferUnavailable({ ... })),
+        ),
+    }
+  }),
+)</pre>
+        <code>yield*</code> isn't manual wiring — it reads a service from context and the type
+        system tracks it on <code>R</code>. The layer's <code>R</code> is what
+        <code>runtime.ts</code> must satisfy; that <i>is</i> the injection. Same one level down: a
+        repo's <code>yield* D1Client</code> sits inside <code>Layer.effect</code>, runs once at
+        layer build, and every method closes over <code>db</code>. An op can still
+        <code>yield*</code> an extra service inline — it's a context read, not a declaration.
+        <code>Effect.all({ auth: Auth, repo: TransfersRepo })</code> grabs several in one shot.
+      </div>
+
+      <div class="rule">
+        Capture the service, not request state. Reading <code>auth.principal</code> inside the op
+        keeps it per-call; hoisting <code>const principal = auth.principal</code> into the gen would
+        freeze one requester's identity into every handler.
+        <span class="src">// specter, t3code</span>
+      </div>
+
+      <div class="rule">
+        <b>5. Repos are drizzle + nothing else.</b> <code>D1Client</code>
+        resolves once in the layer gen and every method closes over it:
+        <pre>
+export class TransfersRepo extends Context.Service&lt;TransfersRepo, {
+  listRecent: (id) =&gt; Effect.Effect&lt;Transfer[], TransferDbError&gt;
+  findById: (id) =&gt; Effect.Effect&lt;Transfer, TransferDbError&gt;
+  markFinalized: (id) =&gt; Effect.Effect&lt;void, TransferDbError&gt;
+}&gt;()("tranzfer/TransfersRepo") {
+  static layer = Layer.effect(this, Effect.gen(function*() {
+    const db = yield* D1Client
+    return {
+      listRecent: (id) =&gt; db.query.transfers.findMany({ /* ... */ }),
+      findById: (id) =&gt; db.query.transfers.findFirst({ /* ... */ }),
+      markFinalized: (id) =&gt; db.update(transfers).set({ /* ... */ }),
+    }
+  }))
+}</pre>
+        No <code>BaseRepository&lt;T&gt;</code> — cap's <code>Database.use(cb)</code> is 17 lines
+        and that's the whole pattern. Prefer drizzle's relational API (<code
+          >db.query.transfers.findMany({ where, orderBy, limit })</code
+        >) for reads once <code>relations</code> are declared in schema.ts;
+        <code>db.select()</code> stays for joins and aggregates. Each method maps its own errors to
+        <code>TransferDbError</code>. <span class="src">// cap</span>
+      </div>
+
+      <div class="rule">
+        <b>6. Errors are Schema.TaggedError, declared per-op.</b> Domain errors live in the service
+        file they belong to; only wire-safe fields on contract errors (<code>code</code>,
+        <code>message</code>, <code>requestId</code>, <code>retryable</code>). Defects never cross.
+        <span class="src">// specter, herdr-ts-sdk</span>
+      </div>
+
+      <div class="rule">
+        <b>7. The web app's API layer is the official binding.</b> <code>client.ts</code> builds the
+        RpcClient inside the app's Effect layer, <code>runtime.ts</code> freezes a ManagedRuntime
+        into Solid context, and <code>solid-effect.ts</code> carries the ~90-line official example
+        from <code>solid/examples/effect</code>: <code>runEffect</code> adapts an Effect to the
+        AsyncIterable Solid 2 consumes natively — pending goes to <code>&lt;Loading&gt;</code>,
+        failure to <code>&lt;Errored&gt;</code>, a superseded flight interrupts the fiber.
+        <code>effectAction</code> writes mutations as Effect sagas inside <code>action</code>. No
+        <code>[error, value]</code> tuple wrappers — see SOLID-EFFECT-BINDING.md.
+        <span class="src">// omnidraw + solid/examples/effect</span>
+      </div>
+
+      <div class="rule">
+        <b>8. Uppy is wrapped, not spread.</b> <code>uppy-bridge.ts</code> is the only file
+        importing <code>@uppy/*</code>. It owns the instance, subscribes to events, writes into the
+        store via pure reducers. Components read the store, never Uppy.
+        <span class="src">// pim-agent shape, melty-karts bridging</span>
+      </div>
+
+      <div class="rule">
+        <b>9. Solid 2 idioms only.</b> <code>createMemo(async)</code> +
+        <code>&lt;Loading&gt;</code>/<code>&lt;Errored&gt;</code> for reads, <code>action</code>/
+        <code>createOptimistic</code> for mutations, <code>onSettled</code> for lifecycle, two-arg
+        <code>createEffect(compute, apply)</code> for subscriptions. <code>createResource</code> is
+        gone in v2. <span class="src">// specter, wabou, openEtG</span>
+      </div>
+
+      <div class="rule">
+        <b>10. Forms are hand-rolled field state.</b> Local <code>createStore</code> for
+        values/touched/errors, Effect Schema for submit validation, Kobalte <code>Field</code> for
+        label/error wiring. Our forms are small — email, password, expiry. See §05 for why no lib
+        yet.
+      </div>
+
+      <div class="rule">
+        <b>11. Per-request fresh MemoMap on the Worker.</b> <code>Effect.provide</code> inside a
+        request leaks the parent fiber's MemoMap — use <code>{ local: true }</code> or a fresh
+        <code>Layer.makeMemoMap</code>. Two independent codebases hit this footgun.
+        <span class="src">// effect-app, executor</span>
+      </div>
+
+      <h2><span class="num">03</span>Naming</h2>
+      <ul>
+        <li><b>Services</b> — <code>PascalCase.ts</code>, tag <code>"tranzfer/Name"</code></li>
+        <li>
+          <b>RPC groups</b> — one per domain (<code>TransferRpcs</code>, <code>AuthRpcs</code>), not
+          one giant Api once there are two
+        </li>
+        <li><b>Repos</b> — <code>XRepo.ts</code></li>
+        <li>
+          <b>Feature folders</b> — own their components/state/styles; no global
+          <code>components/</code> until reuse is real
+        </li>
+        <li><b>Tests</b> — <code>x.test.ts</code> beside <code>x.ts</code></li>
+      </ul>
+
+      <h2><span class="num">04</span>Growth path</h2>
+      <p>
+        When a <code>services/X.ts</code> crosses ~300 lines it becomes
+        <code>services/X/index.ts</code> plus siblings — cap's <code>Storage/</code> does exactly
+        this (<code>SignedObject.ts</code>, <code>StorageRepo.ts</code> beside
+        <code>index.ts</code>). Not before.
+      </p>
+
+      <h2><span class="num">05</span>End to end: one feature</h2>
+      <p>
+        "List my recent transfers" traced through every layer. Six files, each doing one job. Names
+        are approximate — the installed types are the authority.
+      </p>
+
+      <p><b>packages/db/src/schema.ts</b> — the table</p>
+      <pre>
+export const transfers = sqliteTable("transfers", {
+  id: text("id").primaryKey(),
+  senderId: text("sender_id").notNull(),
+  status: text("status").notNull(), // "uploading" | "ready" | "expired"
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+})</pre>
+
+      <p><b>apps/api/src/repos/TransfersRepo.ts</b> — the query (rule 5)</p>
+      <pre>
+export class TransfersRepo extends Context.Service&lt;TransfersRepo, {
+  listRecent: (senderId: string) =&gt; Effect.Effect&lt;Transfer[], TransferDbError&gt;
+}&gt;()("tranzfer/TransfersRepo") {
+  static layer = Layer.effect(this, Effect.gen(function*() {
+    const db = yield* D1Client
+    return {
+      listRecent: (senderId) =&gt;
+        db.select().from(transfers)
+          .where(eq(transfers.senderId, senderId))
+          .orderBy(desc(transfers.createdAt)).limit(20)
+          .pipe(Effect.mapError((cause) =&gt; new TransferDbError({ cause }))),
+    }
+  }))
+}</pre>
+
+      <p><b>packages/contracts/src/transfer.ts</b> — the wire contract (rule 1)</p>
+      <pre>
+export class Transfer extends Schema.Class&lt;Transfer&gt;("Transfer")({
+  id: Schema.String,
+  senderId: Schema.String,
+  status: Schema.Literals(["uploading", "ready", "expired"]),
+  createdAt: Schema.DateTimeUtc,
+}) {}
+
+export class TransferUnavailable extends Schema.TaggedError&lt;TransferUnavailable&gt;()(
+  "TransferUnavailable",
+  { code: Schema.String, message: Schema.String, requestId: Schema.String, retryable: Schema.Boolean },
+) {}
+
+export class TransferRpcs extends RpcGroup.make(
+  Rpc.make("ListTransfers", {
+    success: Schema.Array(Transfer),
+    error: TransferUnavailable,
+  }),
+) {}</pre>
+
+      <p><b>apps/api/src/handlers/transfer.ts</b> — thin handler, deps resolved once (rule 4)</p>
+      <pre>
+export const TransferHandlers = TransferRpcs.toLayer(
+  Effect.gen(function*() {
+    const repo = yield* TransfersRepo
+    const auth = yield* Auth
+    return {
+      ListTransfers: () =&gt;
+        repo.listRecent(auth.principal.id).pipe(
+          Effect.mapError((cause) =&gt;
+            new TransferUnavailable({
+              code: "LIST_FAILED",
+              message: "could not list transfers",
+              requestId: crypto.randomUUID(),
+              retryable: true,
+            }),
+          ),
+        ),
+    }
+  }),
+)</pre>
+
+      <p><b>apps/api/src/runtime.ts</b> — the only mergeAll (rule 2)</p>
+      <pre>
+export const ApiLayer = Layer.mergeAll(
+  D1Client.layer,
+  TransfersRepo.layer,
+  Auth.layer,
+  Signing.layer,
+  TransferHandlers,
+)</pre>
+
+      <p><b>apps/web/src/api/client.ts</b> — the client lives in the layer (rule 7)</p>
+      <pre>
+// TransferClient is a service in WebLayer; effects read it from context.
+// RuntimeContext is provided at the app root: &lt;RuntimeContext value={createRuntime(WebLayer)}&gt;
+export const listTransfers = Effect.flatMap(
+  TransferClient,
+  (api) =&gt; api.ListTransfers(),
+)</pre>
+
+      <p><b>apps/web/src/features/transfers/TransferList.tsx</b> — the UI (rule 9)</p>
+      <pre>
+export function TransferList() {
+  const transfers = createMemo(() =&gt; runEffect(listTransfers))
+  return (
+    &lt;Errored fallback={(err, reset) =&gt; (
+      &lt;button onClick={reset}&gt;Retry: {String(err())}&lt;/button&gt;
+    )}&gt;
+      &lt;Loading fallback={&lt;Spinner /&gt;}&gt;
+        &lt;For each={transfers()} keyed={(t) =&gt; t.id}&gt;
+          {(t) =&gt; &lt;TransferRow transfer={t()} /&gt;}
+        &lt;/For&gt;
+      &lt;/Loading&gt;
+    &lt;/Errored&gt;
+  )
+}</pre>
+
+      <div class="note">
+        The flow in one line: drizzle row → repo → handler → Schema boundary → RpcClient →
+        <code>runEffect</code> AsyncIterable → <code>&lt;For&gt;</code>. A failure at any hop lands
+        in the same <code>&lt;Errored&gt;</code> fallback, typed all the way down — and if the memo
+        re-runs mid-flight, Solid closes the iterator and the fiber gets interrupted. Cancellation
+        for free.
+      </div>
+
+      <h2><span class="num">06</span>Forms on Solid 2 — the honest state of things</h2>
+      <p>No mature form library supports Solid 2 yet:</p>
+      <table>
+        <tr>
+          <th>library</th>
+          <th>solid-js peer</th>
+          <th>verdict</th>
+        </tr>
+        <tr>
+          <td>@tanstack/solid-form 1.33.5</td>
+          <td><code>&gt;=1.9.9</code></td>
+          <td class="verdict maybe">
+            allows 2.x by semver, unverified on new reactivity. There's a 2.0.0-alpha line too —
+            also v1-oriented.
+          </td>
+        </tr>
+        <tr>
+          <td>@formisch/solid 1.1.0</td>
+          <td><code>&gt;=1.6 &lt;2</code></td>
+          <td class="verdict no">explicitly excludes v2 (Fabian Hiller's lib)</td>
+        </tr>
+        <tr>
+          <td>@modular-forms/solid</td>
+          <td><code>^1.3.1</code></td>
+          <td class="verdict no">v1 only, superseded by formisch anyway</td>
+        </tr>
+        <tr>
+          <td>quoin Field/Form</td>
+          <td><code>beta.28</code></td>
+          <td class="verdict maybe">
+            a11y wiring only (label/desc/error), not state — useful regardless
+          </td>
+        </tr>
+      </table>
+      <div class="note">
+        STACK.md already gates TanStack Form on adapter verification. For our actual forms
+        (recipient email, password, expiry, workspace settings) a local <code>createStore</code> +
+        Schema validation is ~50 lines and zero risk. Revisit TanStack Form when the v2 adapter is
+        confirmed working.
+      </div>
+
+      <h2><span class="num">07</span>Deliberately skipped</h2>
+      <ul>
+        <li><b>opencode's LayerNode DAG</b> — bespoke dep-graph for 50+ services</li>
+        <li><b>effect-app's query DSL + client cache</b> — framework weight</li>
+        <li>
+          <b>specter's event sourcing</b> — the service/layer/Solid patterns are the gold, not the
+          ES machinery
+        </li>
+        <li>
+          <b>quoin as a dependency</b> — 0.3.x, needs a consumer-applied solid patch. Steal its
+          createX+Provider patterns; stay on Kobalte
+        </li>
+      </ul>
+
+      <p style="margin-top: 48px; color: var(--faint); font-size: 12.5px">
+        Sources: audits in ~/dev/tranzfer2-references/audits/ — specter.md, t3code.md, opencode.md,
+        cap.md, livestore.md, omnidraw.md, effect-app.md, executor.md, dfx.md, quoin.md, wabou.md,
+        and friends.
+      </p>
+    </div>
+  </body>
+</html>

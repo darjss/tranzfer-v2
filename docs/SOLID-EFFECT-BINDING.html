@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tranzfer2 — Solid 2 × Effect binding</title>
+    <style>
+      :root {
+        --bg: #0e0f11;
+        --panel: #16181c;
+        --panel2: #1c1f24;
+        --ink: #e8e6e1;
+        --dim: #9a978f;
+        --faint: #6b6963;
+        --line: #2a2d33;
+        --blue: #6ea8fe;
+        --green: #7fd88f;
+        --amber: #e5b567;
+        --red: #e06c75;
+        --mono: "SF Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
+        --sans: -apple-system, "Segoe UI", Inter, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        font-size: 15px;
+        line-height: 1.65;
+        padding: 48px 20px 96px;
+      }
+      .wrap {
+        max-width: 860px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 28px;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+        margin-bottom: 6px;
+      }
+      h1 .tag {
+        color: var(--faint);
+        font-weight: 400;
+        font-size: 15px;
+      }
+      .lede {
+        color: var(--dim);
+        margin-bottom: 40px;
+        max-width: 680px;
+      }
+      h2 {
+        font-size: 17px;
+        font-weight: 650;
+        margin: 44px 0 14px;
+        padding-top: 24px;
+        border-top: 1px solid var(--line);
+      }
+      h2:first-of-type {
+        border-top: none;
+        padding-top: 0;
+      }
+      h2 .num {
+        color: var(--faint);
+        font-weight: 400;
+        margin-right: 10px;
+      }
+      pre {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 18px 20px;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        line-height: 1.55;
+        color: #c9c7c0;
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.88em;
+        color: var(--amber);
+      }
+      pre code {
+        color: inherit;
+      }
+      p {
+        margin: 10px 0;
+        color: var(--dim);
+      }
+      p b {
+        color: var(--ink);
+      }
+      ul {
+        margin: 8px 0 8px 20px;
+        color: var(--dim);
+      }
+      li {
+        margin: 6px 0;
+      }
+      li b {
+        color: var(--ink);
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 12px 0;
+        font-size: 13.5px;
+      }
+      th {
+        text-align: left;
+        color: var(--faint);
+        font-weight: 500;
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      td {
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--line);
+        color: var(--dim);
+        vertical-align: top;
+      }
+      td:first-child {
+        color: var(--ink);
+        font-family: var(--mono);
+        font-size: 12.5px;
+      }
+      .note {
+        border-left: 3px solid var(--blue);
+        background: var(--panel2);
+        padding: 12px 16px;
+        border-radius: 0 8px 8px 0;
+        margin: 14px 0;
+        color: var(--dim);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Solid 2 × Effect binding <span class="tag">tranzfer2</span></h1>
+      <p class="lede">
+        How <code>apps/web</code> runs Effect programs. The official
+        <code>solid/examples/effect</code> binding adapted to installed versions — effect
+        <code>4.0.0-rc.115</code>, solid-js <code>2.0.0-rc.8</code>. ~90 lines, no wrapper types, no
+        tuple conventions.
+      </p>
+
+      <h2><span class="num">01</span>Why this instead of runSafe tuples</h2>
+      <p>
+        Solid 2 computations natively consume <code>PromiseLike</code> and
+        <code>AsyncIterable</code> values. A memo that returns one propagates pending to
+        <code>&lt;Loading&gt;</code>, failure to <code>&lt;Errored&gt;</code>, and gives
+        stale-while-revalidate through <code>latest</code>/<code>isPending</code>. That is Effect's
+        execution model almost one-to-one, so the bridge is a protocol adapter, not a state wrapper.
+      </p>
+      <p>
+        The load-bearing piece is cancellation: when a memo re-runs, Solid calls
+        <code>it.return()</code> on the superseded flight's iterator. Our
+        <code>return()</code> calls <code>Fiber.interrupt</code> — Effect's structured interruption
+        (finalizers, retries, the whole tree) composes with Solid's flight semantics with neither
+        side knowing about the other.
+      </p>
+
+      <h2><span class="num">02</span>The binding</h2>
+      <p><b>apps/web/src/api/solid-effect.ts</b> — the whole file</p>
+      <pre>
+import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime } from "effect"
+import { action, createContext, onCleanup, useContext } from "solid-js"
+
+export const RuntimeContext =
+  createContext&lt;ManagedRuntime.ManagedRuntime&lt;any, never&gt; | null&gt;(null)
+
+// Runtime scoped to the owner: disposed when the providing subtree unmounts.
+// Nested providers share the parent MemoMap, so common layers build once.
+export function createRuntime&lt;R&gt;(
+  layer: Layer.Layer&lt;R&gt;,
+): ManagedRuntime.ManagedRuntime&lt;R, never&gt; {
+  const parent = useContext(RuntimeContext)
+  const runtime = ManagedRuntime.make(layer, { memoMap: parent?.memoMap })
+  onCleanup(() =&gt; void runtime.dispose())
+  return runtime
+}
+
+// Must be called under an owner — a computation body or component setup.
+// Null-context fallback is only sound for effects with R = never.
+function resolveFork(): &lt;A, E&gt;(
+  effect: Effect.Effect&lt;A, E, any&gt;,
+) =&gt; Fiber.Fiber&lt;A, E&gt; {
+  const runtime = useContext(RuntimeContext)
+  return runtime
+    ? (effect) =&gt; runtime.runFork(effect)
+    : (Effect.runFork as any)
+}
+
+// Run an Effect as a Solid-consumable async source. Interruptible: if the
+// consuming computation re-runs or disposes first, the fiber is interrupted.
+export function runEffect&lt;A, E, R = never&gt;(
+  effect: Effect.Effect&lt;A, E, R&gt;,
+): AsyncIterable&lt;A&gt; {
+  const fork = resolveFork() // context resolves at the *reading* computation
+  return {
+    [Symbol.asyncIterator]() {
+      const fiber = fork(effect)
+      let yielded = false
+      let closed = false
+      const DONE = { done: true, value: undefined } as const
+      return {
+        async next(): Promise&lt;IteratorResult&lt;A&gt;&gt; {
+          if (yielded || closed) return DONE
+          const exit = await Effect.runPromise(Fiber.await(fiber))
+          if (closed) return DONE
+          if (Exit.isSuccess(exit)) {
+            yielded = true
+            return { done: false, value: exit.value }
+          }
+          closed = true
+          if (Exit.isInterrupted(exit)) return DONE
+          throw Cause.squash(exit.cause)
+        },
+        // Solid calls this on supersede/dispose — the interruption bridge.
+        async return(): Promise&lt;IteratorResult&lt;A&gt;&gt; {
+          if (!yielded && !closed) Effect.runFork(Fiber.interrupt(fiber))
+          closed = true
+          return DONE
+        },
+      }
+    },
+  }
+}
+
+export class ActionInterruptedError extends Error {
+  constructor() {
+    super("Action interrupted")
+    this.name = "ActionInterruptedError"
+  }
+}
+
+export interface EffectAction&lt;Args extends unknown[], R&gt; {
+  (...args: Args): Promise&lt;R&gt;
+  interrupt(): void
+}
+
+// A Solid action written as an Effect saga. Each yield*-ed Effect is one
+// transaction step on an interruptible fiber; typed failures throw back into
+// the generator at the yield* (instanceof narrows Schema.TaggedError).
+// v4: Effect has [Symbol.iterator] — step.value IS the Effect, no YieldWrap.
+export function effectAction&lt;Args extends unknown[], R&gt;(
+  genFn: (...args: Args) =&gt; Generator&lt;Effect.Effect&lt;any, any, any&gt;, R, any&gt;,
+): EffectAction&lt;Args, R&gt; {
+  const fork = resolveFork()
+  let inFlight: Fiber.Fiber&lt;any, any&gt; | null = null
+
+  const base = action(function* (...args: Args) {
+    const it = genFn(...args)
+    let step = it.next()
+    while (!step.done) {
+      const fiber = fork(step.value)
+      inFlight = fiber
+      const exit: Exit.Exit&lt;any, any&gt; =
+        yield Effect.runPromise(Fiber.await(fiber))
+      if (inFlight === fiber) inFlight = null
+      if (Exit.isSuccess(exit)) step = it.next(exit.value)
+      else if (Exit.isInterrupted(exit))
+        step = it.throw(new ActionInterruptedError())
+      else step = it.throw(Cause.squash(exit.cause))
+    }
+    return step.value
+  })
+
+  const invoke = (...args: Args) =&gt; {
+    invoke.interrupt() // superseding call cancels the previous flight
+    return base(...args)
+  }
+  invoke.interrupt = () =&gt; {
+    const fiber = inFlight
+    inFlight = null
+    if (fiber) Effect.runFork(Fiber.interrupt(fiber))
+  }
+  return invoke
+}</pre>
+
+      <h2><span class="num">03</span>Wiring</h2>
+      <p>
+        The RPC client is a service in the web layer, so every <code>runEffect</code> read can
+        <code>yield*</code> it — same DI story as the server side.
+      </p>
+      <pre>
+// apps/web/src/api/client.ts
+import { Context, Effect, Layer } from "effect"
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
+import * as RpcClient from "effect/unstable/rpc/RpcClient"
+import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization"
+import { Api } from "@tranzfer/contracts"
+
+export class ApiClient extends Context.Service&lt;ApiClient, /* client */&gt;()(
+  "tranzfer/ApiClient",
+) {
+  static layer = Layer.effect(this, RpcClient.make(Api))
+}
+
+export const WebLayer = ApiClient.layer.pipe(
+  Layer.provide(
+    RpcClient.layerProtocolHttp({ url: "/rpc" }).pipe(
+      Layer.provide([RpcSerialization.layerJson, FetchHttpClient.layer]),
+    ),
+  ),
+)</pre>
+      <pre>
+// app root
+&lt;RuntimeContext value={createRuntime(WebLayer)}&gt;
+  &lt;App /&gt;
+&lt;/RuntimeContext&gt;</pre>
+
+      <h2><span class="num">04</span>Reads</h2>
+      <pre>
+// features/transfers/TransferList.tsx
+export function TransferList() {
+  const transfers = createMemo(() =&gt;
+    runEffect(Effect.flatMap(ApiClient, (api) =&gt; api.ListTransfers()))
+  )
+  return (
+    &lt;Errored fallback={(err, reset) =&gt; (
+      &lt;button onClick={reset}&gt;Retry: {String(err())}&lt;/button&gt;
+    )}&gt;
+      &lt;Loading fallback={&lt;Spinner /&gt;}&gt;
+        &lt;For each={transfers()} keyed={(t) =&gt; t.id}&gt;
+          {(t) =&gt; &lt;TransferRow transfer={t()} /&gt;}
+        &lt;/For&gt;
+      &lt;/Loading&gt;
+    &lt;/Errored&gt;
+  )
+}</pre>
+      <p>
+        A filter signal in the memo's deps re-runs it: the in-flight fiber is interrupted, a fresh
+        one forks, <code>latest</code> keeps showing the stale list until the new one lands. No
+        abort code anywhere.
+      </p>
+
+      <h2><span class="num">05</span>Mutations</h2>
+      <pre>
+const cancelTransfer = effectAction(function* (id: string) {
+  const api = yield* ApiClient
+  try {
+    return yield* api.CancelTransfer({ id })
+  } catch (e) {
+    if (e instanceof TransferUnavailable &amp;&amp; e.retryable) {
+      // surface a toast, schedule a retry, whatever the flow needs
+    }
+    throw e
+  }
+})</pre>
+      <p>
+        <code>cancelTransfer(id)</code> returns a Promise;
+        <code>cancelTransfer.interrupt()</code> cancels. Inside <code>action</code>, writes between
+        yields stay in the transaction — and because suspension is <code>yield*</code> not
+        <code>await</code>, the "await escapes the transaction" hazard can't be expressed.
+      </p>
+
+      <h2><span class="num">06</span>Gotchas</h2>
+      <ul>
+        <li>
+          <b>Context resolves at the read site.</b> <code>runEffect</code> and
+          <code>effectAction</code> call <code>useContext</code> internally — inside a component or
+          computation body, never at file scope.
+        </li>
+        <li>
+          <b>The null-runtime fallback is only sound for <code>R = never</code>.</b> If an effect
+          needs services and no <code>RuntimeContext</code> is above it, it runs on the default
+          runtime and requirements blow up at run time. Provide at root.
+        </li>
+        <li>
+          <b>SSR/Worker requests</b> keep the per-isolate runtime pattern already in
+          <code>apps/web/src/api.ts</code> (ManagedRuntime over the <code>env.API</code> service
+          binding). This binding is for the browser runtime.
+        </li>
+        <li>
+          <b>Testing</b>: a lower
+          <code>&lt;RuntimeContext value={createRuntime(TestLayer)}&gt;</code> overrides services
+          for that subtree; shared MemoMap means common layers aren't rebuilt.
+        </li>
+      </ul>
+
+      <h2><span class="num">07</span>Diffs from the official example</h2>
+      <table>
+        <tr>
+          <th>official (older effect)</th>
+          <th>installed rc.115</th>
+        </tr>
+        <tr>
+          <td><code>YieldWrap</code> / <code>yieldWrapGet</code></td>
+          <td>
+            gone — <code>Effect</code> has <code>[Symbol.iterator]</code>;
+            <code>step.value</code> is the Effect directly
+          </td>
+        </tr>
+        <tr>
+          <td><code>ManagedRuntime.make(layer, parent?.memoMap)</code></td>
+          <td><code>make(layer, { memoMap })</code> — options object</td>
+        </tr>
+        <tr>
+          <td><code>Fiber.RuntimeFiber</code></td>
+          <td><code>Fiber.Fiber</code></td>
+        </tr>
+      </table>
+      <div class="note">
+        Everything else verified present in rc.115 (<code>Fiber.await</code>,
+        <code>Fiber.interrupt</code>, <code>Exit.isSuccess</code>, <code>Exit.isInterrupted</code>,
+        <code>Cause.squash</code>, <code>Effect.runFork</code>, <code>runtime.runFork</code>,
+        <code>runtime.dispose</code>) and solid-js rc.8 (<code>action</code>,
+        <code>createContext</code>, <code>useContext</code>, <code>onCleanup</code>,
+        <code>&lt;Loading&gt;</code>, <code>&lt;Errored&gt;</code>, <code>latest</code>,
+        <code>isPending</code>, <code>NotReadyError</code>, AsyncIterable in
+        <code>createMemo</code>).
+      </div>
+
+      <p style="margin-top: 48px; color: var(--faint); font-size: 12.5px">
+        Source: ~/dev/tranzfer2-references/solid2/solid/examples/effect/ — adapted for tranzfer2's
+        installed versions.
+      </p>
+    </div>
+  </body>
+</html>
