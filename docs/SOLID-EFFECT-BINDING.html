@@ -167,120 +167,170 @@
       <h2><span class="num">02</span>The binding</h2>
       <p><b>apps/web/src/api/solid-effect.ts</b> — the whole file</p>
       <pre>
-import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime } from "effect"
-import { action, createContext, onCleanup, useContext } from "solid-js"
+import type { Layer } from "effect";
+import { Cause, Effect, Exit, Fiber, ManagedRuntime } from "effect";
+import { action, createContext, onCleanup, useContext } from "solid-js";
 
-export const RuntimeContext =
-  createContext&lt;ManagedRuntime.ManagedRuntime&lt;any, never&gt; | null&gt;(null)
+import type { ApiClient } from "./client";
 
-// Runtime scoped to the owner: disposed when the providing subtree unmounts.
-// Nested providers share the parent MemoMap, so common layers build once.
-export function createRuntime&lt;R&gt;(
+/** Solid context carrying the Effect runtime. Provide with
+ * `&lt;RuntimeContext value={createRuntime(WebLayer)}&gt;`. The `null` default means
+ * a provider-less read falls back to the default runtime, which is sound only
+ * for effects with `R = never`. */
+export const RuntimeContext = createContext&lt;ManagedRuntime.ManagedRuntime&lt;ApiClient, never&gt; | null&gt;(
+  null,
+);
+
+/** Build a ManagedRuntime from a Layer, scoped to the current owner: the
+ * runtime (and every service finalizer in the layer) is disposed when the
+ * providing subtree unmounts. Nested providers share the parent's MemoMap, so
+ * layers common to both runtimes are built once and refcounted by Effect. */
+export const createRuntime = &lt;R&gt;(
   layer: Layer.Layer&lt;R&gt;,
-): ManagedRuntime.ManagedRuntime&lt;R, never&gt; {
-  const parent = useContext(RuntimeContext)
-  const runtime = ManagedRuntime.make(layer, { memoMap: parent?.memoMap })
-  onCleanup(() =&gt; void runtime.dispose())
-  return runtime
-}
+): ManagedRuntime.ManagedRuntime&lt;R, never&gt; =&gt; {
+  const parent = useContext(RuntimeContext);
+  const runtime = ManagedRuntime.make(layer, { memoMap: parent?.memoMap });
+  onCleanup(() =&gt; {
+    Effect.runFork(runtime.disposeEffect);
+  });
+  return runtime;
+};
 
-// Must be called under an owner — a computation body or component setup.
-// Null-context fallback is only sound for effects with R = never.
-function resolveFork(): &lt;A, E&gt;(
-  effect: Effect.Effect&lt;A, E, any&gt;,
-) =&gt; Fiber.Fiber&lt;A, E&gt; {
-  const runtime = useContext(RuntimeContext)
-  return runtime
-    ? (effect) =&gt; runtime.runFork(effect)
-    : (Effect.runFork as any)
-}
+/** Resolve the forking strategy from Solid context. Must be called under an
+ * owner — a computation body or component setup. Without a provider the
+ * default runtime is used, which is sound only for effects with `R = never`. */
+const resolveFork = () =&gt; {
+  const runtime = useContext(RuntimeContext);
+  // SAFETY: a provider-less read can only run `R = never` effects. The
+  // context contract above documents the fallback as sound only for those,
+  // so the declared requirement channel is erased here.
+  return &lt;A, E&gt;(effect: Effect.Effect&lt;A, E, ApiClient&gt;): Fiber.Fiber&lt;A, E&gt; =&gt;
+    runtime === null || runtime === undefined
+      ? Effect.runFork(effect as Effect.Effect&lt;A, E&gt;)
+      : runtime.runFork(effect);
+};
 
-// Run an Effect as a Solid-consumable async source. Interruptible: if the
-// consuming computation re-runs or disposes first, the fiber is interrupted.
-export function runEffect&lt;A, E, R = never&gt;(
-  effect: Effect.Effect&lt;A, E, R&gt;,
-): AsyncIterable&lt;A&gt; {
-  const fork = resolveFork() // context resolves at the *reading* computation
+/** Run an Effect as a Solid-consumable async source. Interruptible: if the
+ * consuming computation re-runs or disposes before the fiber settles, the
+ * fiber is interrupted and finalizers run. */
+export const runEffect = &lt;A, E&gt;(effect: Effect.Effect&lt;A, E, ApiClient&gt;): AsyncIterable&lt;A&gt; =&gt; {
+  // context resolves at the *reading* computation
+  const fork = resolveFork();
   return {
     [Symbol.asyncIterator]() {
-      const fiber = fork(effect)
-      let yielded = false
-      let closed = false
-      const DONE = { done: true, value: undefined } as const
+      const fiber = fork(effect);
+      let yielded = false;
+      let closed = false;
+      const DONE = { done: true, value: undefined } as const;
       return {
         async next(): Promise&lt;IteratorResult&lt;A&gt;&gt; {
-          if (yielded || closed) return DONE
-          const exit = await Effect.runPromise(Fiber.await(fiber))
-          if (closed) return DONE
-          if (Exit.isSuccess(exit)) {
-            yielded = true
-            return { done: false, value: exit.value }
+          if (yielded || closed) {
+            return DONE;
           }
-          closed = true
-          if (Exit.isInterrupted(exit)) return DONE
-          throw Cause.squash(exit.cause)
+          const exit = await Effect.runPromise(Fiber.await(fiber));
+          if (closed) {
+            return DONE;
+          }
+          if (Exit.isSuccess(exit)) {
+            yielded = true;
+            return { done: false, value: exit.value };
+          }
+          closed = true;
+          // interruption means Solid closed the iterator — that is normal
+          // completion here, not a failure to surface
+          if (Cause.hasInterrupts(exit.cause)) {
+            return DONE;
+          }
+          throw Cause.squash(exit.cause);
         },
-        // Solid calls this on supersede/dispose — the interruption bridge.
         async return(): Promise&lt;IteratorResult&lt;A&gt;&gt; {
-          if (!yielded && !closed) Effect.runFork(Fiber.interrupt(fiber))
-          closed = true
-          return DONE
+          // Solid calls this when the flight is superseded or the owner
+          // disposes — the bridge to Effect interruption. Awaiting the
+          // interrupt lets finalizers settle before a new flight starts.
+          if (!yielded &amp;&amp; !closed) {
+            await Effect.runPromise(Fiber.interrupt(fiber));
+          }
+          closed = true;
+          return DONE;
         },
-      }
+      };
     },
-  }
-}
+  };
+};
 
+/** Thrown into the saga when its in-flight step is interrupted (superseding
+ * invocation, cancel button). Catch to compensate, rethrow to reject the
+ * action and revert optimistic state. */
 export class ActionInterruptedError extends Error {
   constructor() {
-    super("Action interrupted")
-    this.name = "ActionInterruptedError"
+    super("Action interrupted");
+    this.name = "ActionInterruptedError";
   }
 }
 
 export interface EffectAction&lt;Args extends unknown[], R&gt; {
-  (...args: Args): Promise&lt;R&gt;
-  interrupt(): void
+  (...args: Args): Promise&lt;R&gt;;
+  /** Interrupt the in-flight step's fiber. Surfaces inside the generator as
+   * a thrown `ActionInterruptedError` at the `yield*`. */
+  interrupt: () =&gt; void;
 }
 
-// A Solid action written as an Effect saga. Each yield*-ed Effect is one
-// transaction step on an interruptible fiber; typed failures throw back into
-// the generator at the yield* (instanceof narrows Schema.TaggedError).
-// v4: Effect has [Symbol.iterator] — step.value IS the Effect, no YieldWrap.
-export function effectAction&lt;Args extends unknown[], R&gt;(
-  genFn: (...args: Args) =&gt; Generator&lt;Effect.Effect&lt;any, any, any&gt;, R, any&gt;,
-): EffectAction&lt;Args, R&gt; {
-  const fork = resolveFork()
-  let inFlight: Fiber.Fiber&lt;any, any&gt; | null = null
+/** A Solid action written as an Effect saga. Each `yield*`-ed Effect is one
+ * transaction step running as an interruptible fiber; typed failures are
+ * thrown back into the generator at the `yield*` (so `instanceof` narrows
+ * `Schema.TaggedError` classes). A superseding invocation interrupts the
+ * previous one's in-flight fiber before starting.
+ *
+ * In v4 `Effect` implements `[Symbol.iterator]` itself — `yield* effect`
+ * emits the Effect as the step value, no YieldWrap. */
+export const effectAction = &lt;Args extends unknown[], R&gt;(
+  genFn: (...args: Args) =&gt; Generator&lt;Effect.Effect&lt;unknown, unknown, ApiClient&gt;, R, unknown&gt;,
+): EffectAction&lt;Args, R&gt; =&gt; {
+  // context resolves where the action is created
+  const fork = resolveFork();
+  let inFlight: Fiber.Fiber&lt;unknown, unknown&gt; | null = null;
 
-  const base = action(function* (...args: Args) {
-    const it = genFn(...args)
-    let step = it.next()
-    while (!step.done) {
-      const fiber = fork(step.value)
-      inFlight = fiber
-      const exit: Exit.Exit&lt;any, any&gt; =
-        yield Effect.runPromise(Fiber.await(fiber))
-      if (inFlight === fiber) inFlight = null
-      if (Exit.isSuccess(exit)) step = it.next(exit.value)
-      else if (Exit.isInterrupted(exit))
-        step = it.throw(new ActionInterruptedError())
-      else step = it.throw(Cause.squash(exit.cause))
+  const base = action(function* base(
+    ...args: Args
+  ): Generator&lt;Promise&lt;Exit.Exit&lt;unknown, unknown&gt;&gt;, R, Exit.Exit&lt;unknown, unknown&gt;&gt; {
+    const it = genFn(...args);
+    let step = it.next();
+    while (step.done !== true) {
+      const fiber = fork(step.value);
+      inFlight = fiber;
+      const exit = yield Effect.runPromise(Fiber.await(fiber));
+      if (inFlight === fiber) {
+        inFlight = null;
+      }
+      if (Exit.isSuccess(exit)) {
+        step = it.next(exit.value);
+      } else if (Cause.hasInterrupts(exit.cause)) {
+        step = it.throw(new ActionInterruptedError());
+      } else {
+        step = it.throw(Cause.squash(exit.cause));
+      }
     }
-    return step.value
-  })
+    return step.value;
+  });
 
-  const invoke = (...args: Args) =&gt; {
-    invoke.interrupt() // superseding call cancels the previous flight
-    return base(...args)
-  }
-  invoke.interrupt = () =&gt; {
-    const fiber = inFlight
-    inFlight = null
-    if (fiber) Effect.runFork(Fiber.interrupt(fiber))
-  }
-  return invoke
-}</pre>
+  const interrupt = () =&gt; {
+    const fiber = inFlight;
+    inFlight = null;
+    if (fiber !== null) {
+      Effect.runFork(Fiber.interrupt(fiber));
+    }
+  };
+
+  return Object.assign(
+    async (...args: Args) =&gt; {
+      // superseding call cancels the previous flight
+      interrupt();
+      return await base(...args);
+    },
+    { interrupt },
+  );
+};
+</pre>
 
       <h2><span class="num">03</span>Wiring</h2>
       <p>
@@ -295,9 +345,10 @@ import * as RpcClient from "effect/unstable/rpc/RpcClient"
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization"
 import { Api } from "@tranzfer/contracts"
 
-export class ApiClient extends Context.Service&lt;ApiClient, /* client */&gt;()(
-  "tranzfer/ApiClient",
-) {
+export class ApiClient extends Context.Service&lt;
+  ApiClient,
+  RpcClient.FromGroup&lt;Api, RpcClientError&gt;
+&gt;()("tranzfer/ApiClient") {
   static layer = Layer.effect(this, RpcClient.make(Api))
 }
 
@@ -404,12 +455,29 @@ const cancelTransfer = effectAction(function* (id: string) {
           <td><code>Fiber.RuntimeFiber</code></td>
           <td><code>Fiber.Fiber</code></td>
         </tr>
+        <tr>
+          <td><code>Exit.isInterrupted</code></td>
+          <td>
+            gone — <code>Cause.hasInterrupts(exit.cause)</code> after an
+            <code>isSuccess</code> check. <code>Exit.hasInterrupts</code> exists but is a
+            <code>self is Failure</code> guard, which narrows the union to <code>never</code> and
+            breaks <code>.cause</code> access
+          </td>
+        </tr>
       </table>
       <div class="note">
+        Two more deliberate diffs from the generic sketch: the channels are
+        <code>ApiClient</code>-constrained rather than <code>any</code> (<code>runFork</code>
+        accepts <code>Effect&lt;A, E, ApiClient&gt;</code> directly, which keeps
+        <code>no-explicit-any</code> and the unsafe-assertion lints honest), and
+        <code>dispose</code> runs as <code>Effect.runFork(runtime.disposeEffect)</code> inside
+        <code>onCleanup</code> so no promise floats.
+      </div>
+      <div class="note">
         Everything else verified present in rc.115 (<code>Fiber.await</code>,
-        <code>Fiber.interrupt</code>, <code>Exit.isSuccess</code>, <code>Exit.isInterrupted</code>,
-        <code>Cause.squash</code>, <code>Effect.runFork</code>, <code>runtime.runFork</code>,
-        <code>runtime.dispose</code>) and solid-js rc.8 (<code>action</code>,
+        <code>Fiber.interrupt</code>, <code>Exit.isSuccess</code>, <code>Cause.squash</code>,
+        <code>Effect.runFork</code>, <code>runtime.runFork</code>,
+        <code>runtime.disposeEffect</code>) and solid-js rc.8 (<code>action</code>,
         <code>createContext</code>, <code>useContext</code>, <code>onCleanup</code>,
         <code>&lt;Loading&gt;</code>, <code>&lt;Errored&gt;</code>, <code>latest</code>,
         <code>isPending</code>, <code>NotReadyError</code>, AsyncIterable in
