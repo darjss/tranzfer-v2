@@ -11,11 +11,14 @@ and helpers need the user's approval first.
   transport, D1 plus R2 own recovery. UI disposal or fiber interruption never
   aborts a remote upload.
 - Solid 2: `.agents/skills/solidjs-v2/SKILL.md`, then
-  `~/dev/solid2-reference` (docs, blogs, source checkouts). Installed types win
-  over checkouts. Diagnostics: `solid-js/skills/reactivity-diagnostics/SKILL.md`.
+  `~/dev/tranzfer2-references/solid2` (docs, blogs, source checkouts). Installed
+  types win over checkouts. Diagnostics:
+  `solid-js/skills/reactivity-diagnostics/SKILL.md`.
 - Effect 4: `.agents/skills/effect/SKILL.md`, then the installed
-  `effect/AGENTS.md` in `node_modules`. Services sit at real boundaries
-  (persistence, storage, auth). Solid state and Uppy progress stay out of Effect.
+  `effect/AGENTS.md` in `node_modules`, then `~/dev/tranzfer2-references/effect`
+  (effect, effect-smol, website, examples checkouts). Services sit at real
+  boundaries (persistence, storage, auth). Solid state and Uppy progress stay
+  out of Effect.
 - Local dev and URLs: `.agents/skills/portless/SKILL.md` before `vp run dev`.
 
 ## Working rules
