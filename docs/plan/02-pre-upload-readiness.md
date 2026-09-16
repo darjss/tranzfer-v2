@@ -208,7 +208,7 @@ under AGENTS.md.
 
 ## 4. Add deployments after verification
 
-Status: in progress. The stack now uses `Cloudflare.state()` — the hosted
+Status: done. The stack now uses `Cloudflare.state()` — the hosted
 Alchemy state store provisioned by `alchemy provider cloudflare bootstrap`
 (worker `alchemy-state-store` on the account, credentials in Secrets Store).
 `vp run plan|deploy|destroy` are pinned to `--stage production` so stage no
