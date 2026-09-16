@@ -4,22 +4,25 @@ Smallest direct change. Inference over annotations, named exports, no `any`,
 no wrapper functions that only rename or cast. New abstractions, test files,
 and helpers need the user's approval first.
 
-## Read first
+## Read order
 
-- Architecture: `docs/STACK.md`. Current step: `docs/plan/02-pre-upload-readiness.md`.
-- Transfer rules: `docs/RELIABILITY.md`. Solid owns UI, Uppy owns multipart
-  transport, D1 plus R2 own recovery. UI disposal or fiber interruption never
-  aborts a remote upload.
-- Solid 2: `.agents/skills/solidjs-v2/SKILL.md`, then
-  `~/dev/tranzfer2-references/solid2` (docs, blogs, source checkouts). Installed
-  types win over checkouts. Diagnostics:
-  `solid-js/skills/reactivity-diagnostics/SKILL.md`.
-- Effect 4: `.agents/skills/effect/SKILL.md`, then the installed
-  `effect/AGENTS.md` in `node_modules`, then `~/dev/tranzfer2-references/effect`
-  (effect, effect-smol, website, examples checkouts). Services sit at real
-  boundaries (persistence, storage, auth). Solid state and Uppy progress stay
-  out of Effect.
-- Local dev and URLs: `.agents/skills/portless/SKILL.md` before `vp run dev`.
+Work outward; stop when the question is answered.
+
+1. **Skills** — how to write in a stack. `.agents/skills/solidjs-v2/` before
+   Solid work, `.agents/skills/effect/` before Effect work,
+   `.agents/skills/portless/` before `vp run dev`. Installed `node_modules`
+   types beat every doc and checkout. Solid diagnostics:
+   `solid-js/skills/reactivity-diagnostics/SKILL.md`.
+2. **Docs** — what this project decided. `docs/STACK.md` for the stack,
+   `docs/RELIABILITY.md` for transfer invariants (Solid owns UI, Uppy owns
+   multipart transport, D1 plus R2 own recovery, UI disposal never aborts a
+   remote upload), `docs/STRUCTURE.md` for where code lives and the DI/layer
+   patterns, `docs/SOLID-EFFECT-BINDING.md` for the Effect↔Solid bridge,
+   `docs/plan/` for the current step.
+3. **References** — how real codebases do it. `~/dev/tranzfer2-references/`
+   holds 30+ checkouts plus `audits/` reports; its README indexes them by
+   what they're good for. Mine for precedent and shape, not syntax — the
+   checkouts span mixed beta/RC versions.
 
 ## Working rules
 
@@ -39,3 +42,22 @@ and helpers need the user's approval first.
 - Deploy from the main checkout: `vp run build`, `vp run plan`, then
   `vp run deploy`. Leave `apps/web/file-routes.d.ts` and `solid-env.d.ts`
   unstaged; Vite regenerates them.
+
+## Docs and ledger
+
+Docs state rules. Git is the ledger: what happened, what failed, and why
+lives in commit messages, PR bodies, and issues. Status never enters docs.
+
+- `docs/STACK.md`, `docs/RELIABILITY.md`, `docs/VISION.md`, `docs/SOUL.md`,
+  `docs/STRUCTURE.md` hold standing decisions. Rules only: no versions,
+  install state, or progress notes. Versions come from `package.json` and the
+  lockfile.
+- PR bodies carry the why: approaches tried, failures hit, decisions made.
+  Link the issue when one exists.
+- Edit a doc when a decision changes. If work proves a rule wrong, fix the
+  rule and cite the PR.
+- `docs/plan/` files list remaining work. Delete finished items; delete the
+  file when empty.
+- Before re-trying a replaced approach or reverting a decision, search the
+  ledger: `git log --oneline -30`, `gh pr list --state merged`,
+  `gh search prs "<term>"`, `gh pr view <n>`.
