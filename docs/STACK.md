@@ -1120,47 +1120,61 @@ Everything else exists to make that transfer safe, resumable, understandable, an
 
 Current manifest snapshot. Bump versions deliberately.
 
-| Package                                      | Where                 | Version       |
-| -------------------------------------------- | --------------------- | ------------- |
-| solid-js, @solidjs/web, @solidjs/diagnostics | web                   | 2.0.0-rc.8    |
-| @solidjs/router                              | web                   | 2.0.0-next.24 |
-| @solidjs/vite-plugin                         | web                   | 3.0.0-next.43 |
-| alchemy                                      | infra                 | 2.0.0-beta.77 |
-| effect                                       | infra, web, api, root | 4.0.0-rc.112  |
-| @t3-oss/env-core                             | web, api              | 0.13.11       |
-| ultracite                                    | root                  | 7.11.1        |
-| @effect/tsgo                                 | root                  | 0.45.0        |
-| oxlint                                       | root, web             | 1.82.0        |
-| oxlint-tsgolint                              | root                  | 7.0.2001      |
-| @cloudflare/vite-plugin                      | web                   | 1.54.8        |
-| tailwindcss, @tailwindcss/vite               | web                   | 4.3.3         |
-| @uppy/core                                   | web                   | 6.0.1         |
-| @uppy/aws-s3                                 | web                   | 6.1.0         |
-| @uppy/drop-target                            | web                   | 5.0.0         |
-| cva                                          | web                   | 1.0.0-beta.8  |
-| cnfast                                       | web                   | 0.2.0         |
-| better-auth                                  | api                   | 1.7.4         |
-| drizzle-orm                                  | api                   | 0.45.2        |
-| drizzle-kit                                  | api                   | 0.31.10       |
-| @polar-sh/sdk                                | api                   | 0.49.0        |
-| portless                                     | root                  | 0.15.6        |
+| Package                                      | Where               | Version       |
+| -------------------------------------------- | ------------------- | ------------- |
+| solid-js, @solidjs/web, @solidjs/diagnostics | web                 | 2.0.0-rc.8    |
+| @solidjs/router                              | web                 | 2.0.0-next.24 |
+| @solidjs/vite-plugin                         | web                 | 3.0.0-next.43 |
+| alchemy                                      | infra               | 2.0.0-beta.77 |
+| effect                                       | web, api, contracts | 4.0.0-rc.115  |
+| effect                                       | infra               | 4.0.0-rc.112  |
+| effect-cf                                    | api                 | 0.44.1        |
+| @distilled.cloud/aws                         | api                 | 1.0.0-rc.9    |
+| @effect/sql-d1                               | api                 | 4.0.0-rc.115  |
+| @t3-oss/env-core                             | web, api            | 0.13.11       |
+| ultracite                                    | root                | 7.11.1        |
+| @effect/tsgo                                 | root                | 0.45.0        |
+| oxlint                                       | root, web           | 1.82.0        |
+| oxlint-tsgolint                              | root                | 7.0.2001      |
+| @cloudflare/vite-plugin                      | web                 | 1.54.8        |
+| tailwindcss, @tailwindcss/vite               | web                 | 4.3.3         |
+| @uppy/core                                   | web                 | 6.0.1         |
+| @uppy/aws-s3                                 | web                 | 6.1.0         |
+| @uppy/drop-target                            | web                 | 5.0.0         |
+| cva                                          | web                 | 1.0.0-beta.8  |
+| cnfast                                       | web                 | 0.2.0         |
+| unplugin-icons                               | web                 | 24.0.0        |
+| @iconify-json/ph                             | web                 | 1.2.2         |
+| @kobalte/core                                | web                 | 2.0.0-alpha.2 |
+| better-auth                                  | api                 | 1.7.4         |
+| drizzle-orm                                  | api                 | 1.0.0-rc.4    |
+| drizzle-kit                                  | api                 | 1.0.0-rc.4    |
+| @polar-sh/sdk                                | api                 | 0.49.0        |
+| portless                                     | root                | 0.15.6        |
 
 ## Pending implementation and compatibility
 
-Kobalte is not installed. The researched Solid 2 release is `2.0.0-alpha.2`,
-which pins Solid rc.3 while this app uses rc.8. Verify current releases and
-runtime behavior before integrating it; do not suppress peer errors as a fix.
+Kobalte `2.0.0-alpha.2` is installed and renders SSR under Solid rc.8, but its
+peer range pins rc.3 exactly (`@kobalte/utils` wants rc.0), so installs warn.
+That warning is a known mismatch, not a defect to silence with overrides; treat
+it as accepted alpha risk and re-check it whenever Solid moves.
 
-Phosphor is not installed. Readiness installs `unplugin-icons` and
-`@iconify-json/ph` in `apps/web` and uses Bold outlines. Pin versions at
-install time.
+Phosphor Bold ships through `unplugin-icons` (`compiler: "solid"`) and
+`@iconify-json/ph`. Import as `~icons/ph/<name>-bold`. unplugin-icons' bundled
+Solid type shim predates Solid 2, so `apps/web/src/icons.d.ts` declares the
+`~icons/*` modules against `@solidjs/web` JSX types instead.
 
-TanStack Solid Form is not installed. Its researched store dependency requires
-Solid 1. Resolve Solid 2 and Effect Schema compatibility before using it.
+TanStack Solid Form is not installed. Its store dependency requires Solid 1
+and the 2.0 alpha cannot be imported under Solid 2. Re-check for a maintained
+Solid 2 release before any form work; do not add it on peer-range syntax alone.
 
-Readiness will install `effect-cf`, `@distilled.cloud/aws`, and
-`drizzle-orm` / `drizzle-kit` 1.0.0-rc.4 with `@effect/sql-d1`. Manifests still
-show `drizzle-orm@0.45.2` until that step.
+`drizzle-orm@1.0.0-rc.4` was built against `effect@4.0.0-beta.83`, which still
+exported `Schema.TaggedErrorClass`. A `patchedDependencies` entry renames those
+call sites to `Schema.TaggedError` for rc.115; drop the patch when a drizzle
+release targets a current Effect RC.
+
+`@distilled.cloud/aws` and `@distilled.cloud/core` are patched for the same
+Effect RC drift; see `patches/`.
 
 Better Auth stays on the API Worker. We do not use its Solid 1 UI adapter.
 

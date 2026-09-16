@@ -1,5 +1,6 @@
 import { Api, ProbeFailed } from "@tranzfer/contracts";
 import * as Context from "effect/Context";
+import { sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
@@ -9,17 +10,20 @@ import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 import { Environment, Worker } from "effect-cf";
 
+import { Db } from "./db";
 import "./env";
+import * as R2 from "./r2";
 
-const probeD1 = (env: Cloudflare.Env) =>
-  Effect.tryPromise({
-    catch: (error) => new ProbeFailed({ message: String(error), resource: "d1" }),
-    try: async () => await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>(),
-  }).pipe(
-    Effect.flatMap((row) =>
-      row?.ok === 1 ? Effect.void : new ProbeFailed({ message: "no row", resource: "d1" }),
-    ),
-  );
+const probeD1 = Effect.gen(function* probeD1() {
+  const db = yield* Db;
+  const row = yield* db
+    .get<{ ok: number }>(sql`SELECT 1 AS ok`)
+    .pipe(Effect.mapError((error) => new ProbeFailed({ message: String(error), resource: "d1" })));
+  if (row?.ok !== 1) {
+    return yield* new ProbeFailed({ message: "no row", resource: "d1" });
+  }
+  return yield* Effect.void;
+});
 
 const probeR2 = (env: Cloudflare.Env) => {
   const key = `infra-probe/${crypto.randomUUID()}`;
@@ -42,19 +46,30 @@ const probeR2 = (env: Cloudflare.Env) => {
   );
 };
 
+const s3Layer = Layer.unwrap(
+  Effect.gen(function* s3() {
+    const env = yield* Environment.WorkerEnvironment;
+    return R2.make({
+      accessKeyId: env.R2_ACCESS_KEY_ID,
+      accountId: env.R2_ACCOUNT_ID,
+      secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+    });
+  }),
+);
+
 const handlersLayer = Layer.unwrap(
   Effect.gen(function* handlers() {
     const env = yield* Environment.WorkerEnvironment;
     return Api.toLayer({
       Health: () => Effect.succeed({ ok: true as const }),
       Infra: () =>
-        probeD1(env).pipe(
+        probeD1.pipe(
           Effect.andThen(probeR2(env)),
           Effect.map(() => ({ d1: true, r2: true })),
         ),
     });
   }),
-);
+).pipe(Layer.provide(Layer.mergeAll(Db.layer, s3Layer)));
 
 class RpcHandler extends Context.Service<
   RpcHandler,

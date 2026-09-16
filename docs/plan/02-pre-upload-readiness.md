@@ -257,6 +257,20 @@ verified commit deploys through Actions with passing post-deploy checks.
 
 ## 5. Reconcile and install the agreed stack
 
+Status: in progress. Agreed packages are installed and the proofs pass:
+Distilled S3 ran create-upload, presigned-PUT, ListParts, and abort against
+real R2 (`apps/api/probe-r2.ts`); D1 answers through `D1.sqlLayer` and
+`drizzle-orm/effect-d1`; the `/infra` RPC returns `{"d1":true,"r2":true}` under
+`alchemy dev`; Phosphor Bold icons render `currentColor` in SSR. `effect-cf`
+0.44.1 runs the Worker under effect `4.0.0-rc.115` while Alchemy stays on
+rc.112 in infra only. pnpm patches rename `Schema.TaggedErrorClass` to
+`Schema.TaggedError` for drizzle-orm rc.4 and adjust Distilled's config calls
+for the same RC drift. Open items: TanStack Solid Form still has no
+Solid 2-compatible release, `@kobalte/core@2.0.0-alpha.2` installs with
+rc.3-pinned peers under rc.8 (SSR render verified, interaction unverified), and
+the drizzle-kit `d1-http` migrate path has not been exercised since no schema
+exists yet.
+
 First reconcile STACK.md with the architecture decision above, including package
 ownership, RPC contracts, error handling, schema validation, and HTTP exceptions.
 Then compare every remaining affirmative dependency choice against package
