@@ -39,3 +39,21 @@ and helpers need the user's approval first.
 - Deploy from the main checkout: `vp run build`, `vp run plan`, then
   `vp run deploy`. Leave `apps/web/file-routes.d.ts` and `solid-env.d.ts`
   unstaged; Vite regenerates them.
+
+## Docs and ledger
+
+Docs state rules. Git is the ledger: what happened, what failed, and why
+lives in commit messages, PR bodies, and issues. Status never enters docs.
+
+- `docs/STACK.md`, `docs/RELIABILITY.md`, `docs/VISION.md`, `docs/SOUL.md`
+  hold standing decisions. Rules only: no versions, install state, or
+  progress notes. Versions come from `package.json` and the lockfile.
+- PR bodies carry the why: approaches tried, failures hit, decisions made.
+  Link the issue when one exists.
+- Edit a doc when a decision changes. If work proves a rule wrong, fix the
+  rule and cite the PR.
+- `docs/plan/` files list remaining work. Delete finished items; delete the
+  file when empty.
+- Before re-trying a replaced approach or reverting a decision, search the
+  ledger: `git log --oneline -30`, `gh pr list --state merged`,
+  `gh search prs "<term>"`, `gh pr view <n>`.
