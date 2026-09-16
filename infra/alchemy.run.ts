@@ -9,7 +9,7 @@ export default Alchemy.Stack(
   "tranzfer",
   {
     providers: Cloudflare.providers(),
-    state: Alchemy.localState(),
+    state: Cloudflare.state(),
   },
   Effect.gen(function* provision() {
     const db = yield* Cloudflare.D1.Database("App");

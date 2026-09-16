@@ -208,6 +208,21 @@ under AGENTS.md.
 
 ## 4. Add deployments after verification
 
+Status: in progress. The stack now uses `Cloudflare.state()` — the hosted
+Alchemy state store provisioned by `alchemy provider cloudflare bootstrap`
+(worker `alchemy-state-store` on the account, credentials in Secrets Store).
+`vp run plan|deploy|destroy` are pinned to `--stage production` so stage no
+longer depends on `$USER`. `alchemy dev` keeps the per-user `dev_$USER` stage.
+Local state was backed up before the switch. Because D1/R2 physical names are
+stage-derived, the `production` stage created fresh `tranzfer-App-production-*`
+and `tranzfer-files-production-*` resources; the previous `live_darjs` storage
+held no app data (empty D1, probe-only R2 usage) and remains as orphaned
+resources pending deletion. Workers `tranzfer-api`/`tranzfer-web` were adopted
+by name. CI auth uses a scoped `CLOUDFLARE_API_TOKEN` secret on the `production`
+GitHub environment (Workers/D1/R2/Secrets Store edit on the account,
+Workers Routes on the tranzfer.app zone) plus `CLOUDFLARE_ACCOUNT_ID` as a
+repo variable. The environment allows deploys from `main` only.
+
 Use `infra/alchemy.run.ts` as the only production stack. Deploy web and API
 together after verification succeeds for the same commit on `main`. Support a
 manual retry that cannot bypass verification or deploy an arbitrary branch.
@@ -230,6 +245,12 @@ Check the deployed landing page and API health afterward. Inspect existing
 destructive or privileged probes out of public health checks. Record the commit
 deployed and the manual recovery procedure. Do not claim a Worker rollback also
 rolls back database or infrastructure changes.
+
+Manual recovery: deploy from the main checkout with `vp run deploy`. If remote
+state is lost, `alchemy provider cloudflare bootstrap` reprovisions the store
+and `deploy --adopt` re-imports existing resources. If the
+`CLOUDFLARE_API_TOKEN` secret is revoked or expires, mint a replacement in the
+Cloudflare dashboard and update the `production` environment secret.
 
 Complete when the shared-state migration preserves existing resources and a
 verified commit deploys through Actions with passing post-deploy checks.
