@@ -336,6 +336,29 @@ Complete when the selected components match the home page, their interactions
 work in the browser without relevant Solid diagnostics, and lint, type checks,
 format verification, and production builds pass.
 
+## 7. Add pull request preview deployments
+
+Deferred: implement after auth and the D1 schema land, when previews have
+real flows to exercise.
+
+On `pull_request`, deploy the same stack with `--stage pr-<number>` so every
+PR gets isolated workers, D1, and R2 at a `*.workers.dev` URL. Fresh empty
+storage per preview is intended — no production data in test stages. Post the
+preview URL to the PR (sticky comment or deployment status) so agents and
+humans can open it directly.
+
+On `pull_request` `closed` (merged or not), destroy the `pr-<number>` stage in
+the same job to prevent orphaned D1/R2/worker sprawl. Teardown must run even
+when the PR is closed without merge.
+
+Forks receive no secrets on `pull_request` by default; keep it that way. Only
+branches in this repository get preview deploys. Reuse the `production`
+environment's `CLOUDFLARE_API_TOKEN` or mint a dedicated preview token if
+scoping diverges — do not widen the token for this.
+
+Complete when a PR deploys an isolated stage, the URL is reachable, and
+closing the PR tears the stage down.
+
 ## Handoff to core upload
 
 Record the commands and deployed URLs that passed, the exact component set,
