@@ -373,8 +373,8 @@ const cancelTransfer = effectAction(function* (id: string) {
         </li>
         <li>
           <b>SSR/Worker requests</b> keep the per-isolate runtime pattern already in
-          <code>apps/web/src/api.ts</code> (ManagedRuntime over the <code>env.API</code> service
-          binding). This binding is for the browser runtime.
+          <code>apps/web/src/api/binding.ts</code> (ManagedRuntime over the <code>env.API</code>
+          service binding). This binding is for the browser runtime.
         </li>
         <li>
           <b>Testing</b>: a lower

@@ -41,11 +41,11 @@ tranzfer2/
 │   │   │   ├── transfer.ts         # TransferRpcs.toLayer implementation
 │   │   │   └── auth.ts             # better-auth route adapter
 │   │   ├── services/
-│   │   │   ├── Signing.ts          # presign R2 ops (Distilled S3)
-│   │   │   ├── Transfers.ts        # transfer lifecycle logic
-│   │   │   └── Auth.ts             # session/principal resolution
+│   │   │   ├── signing.ts          # presign R2 ops (Distilled S3)
+│   │   │   ├── transfers.ts        # transfer lifecycle logic
+│   │   │   └── auth.ts             # session/principal resolution
 │   │   ├── repos/
-│   │   │   └── TransfersRepo.ts    # drizzle queries, Database.use shape
+│   │   │   └── transfers-repo.ts    # drizzle queries, Database.use shape
 │   │   └── middleware.ts           # auth middleware, error mapping
 │   │
 │   └── web/src/
@@ -81,7 +81,7 @@ runtime.ts (opencode's app-runtime pattern, minus their DAG machinery).
 **3. Services are Context.Service classes with a static layer:**
 
 ```ts
-// services/Signing.ts
+// services/signing.ts
 export class Signing extends Context.Service<Signing, {
   presignPart: (args) => Effect.Effect<PresignedUrl, SigningError>
 }>()("tranzfer/Signing") {
@@ -201,10 +201,10 @@ MemoMap. `runtime.ts` builds the layer once; request-scoped work gets
 
 ## Naming
 
-- Services: `PascalCase.ts` in `services/`, tag `"tranzfer/Name"`.
+- Services: `kebab-case.ts` in `services/`, tag `"tranzfer/Name"`.
 - RPC groups: one per domain in contracts (`TransferRpcs`, `AuthRpcs`), not
   one giant `Api` group once we have two domains (t3code splits this way).
-- Repos: `XRepo.ts`.
+- Repos: `x-repo.ts`.
 - Solid feature folders own their components, state, and styles — no global
   `components/` dumping ground until reuse is real (STACK.md rule).
 - Test colocation: `x.test.ts` beside `x.ts`.
@@ -221,4 +221,4 @@ MemoMap. `runtime.ts` builds the layer once; request-scoped work gets
 
 When a `services/X.ts` crosses ~300 lines it becomes `services/X/index.ts`
 plus siblings (`X/presign.ts`, `X/complete.ts`) — cap's `Storage/` does this
-(`SignedObject.ts`, `StorageRepo.ts` beside `index.ts`). Not before.
+(`signed-object.ts`, `storage-repo.ts` beside `index.ts`). Not before.

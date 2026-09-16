@@ -235,9 +235,9 @@ transaction" hazard can't be expressed.
 - **The `null`-runtime fallback is only sound for `R = never`.** If an effect
   needs services and there's no `RuntimeContext` above it, it runs on the
   default runtime and the requirements blow up at run time. Provide at root.
-- **SSR/Worker requests** keep the existing per-request-runtime pattern from
-  `apps/web/src/api.ts` (one ManagedRuntime per isolate over the `env.API`
-  binding). This binding is for the browser runtime.
+- **SSR/Worker requests** keep the per-request-runtime pattern in
+  `apps/web/src/api/binding.ts` (one ManagedRuntime per isolate over the
+  `env.API` service binding). This binding is for the browser runtime.
 - **Testing**: provide a test layer via a lower `<RuntimeContext
 value={createRuntime(TestLayer)}>` — the nested MemoMap share means common
   layers aren't rebuilt.
