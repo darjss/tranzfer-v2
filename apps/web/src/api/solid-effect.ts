@@ -110,7 +110,8 @@ export interface EffectAction<Args extends unknown[], R> {
  * transaction step running as an interruptible fiber; typed failures are
  * thrown back into the generator at the `yield*` (so `instanceof` narrows
  * `Schema.TaggedError` classes). A superseding invocation interrupts the
- * previous one's in-flight fiber before starting.
+ * previous one's in-flight fiber and starts only after that flight has
+ * settled, so its compensation cannot overlap the new run.
  *
  * In v4 `Effect` implements `[Symbol.iterator]` itself — `yield* effect`
  * emits the Effect as the step value, no YieldWrap. */
@@ -120,6 +121,11 @@ export const effectAction = <Args extends unknown[], R>(
   // context resolves where the action is created
   const fork = resolveFork();
   let inFlight: Fiber.Fiber<unknown, unknown> | null = null;
+  // invocations queue: each waits for the previous flight to settle so an
+  // interrupted saga's compensation cannot overlap the superseding run, and
+  // a call superseded while still queued never starts
+  let tail: Promise<unknown> = Promise.resolve();
+  let sequence = 0;
 
   const base = action(function* base(
     ...args: Args
@@ -154,9 +160,24 @@ export const effectAction = <Args extends unknown[], R>(
 
   return Object.assign(
     async (...args: Args) => {
-      // superseding call cancels the previous flight
+      // superseding call cancels the previous flight, then waits for its
+      // compensation to settle before starting
       interrupt();
-      return await base(...args);
+      sequence += 1;
+      const mine = sequence;
+      const current = (async () => {
+        try {
+          await tail;
+        } catch {
+          // the previous flight's rejection already surfaced to its caller
+        }
+        if (mine !== sequence) {
+          throw new ActionInterruptedError();
+        }
+        return await base(...args);
+      })();
+      tail = current;
+      return await current;
     },
     { interrupt },
   );

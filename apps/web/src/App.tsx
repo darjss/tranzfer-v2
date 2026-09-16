@@ -1,6 +1,7 @@
 import { Loading } from "solid-js";
 
-import { EffectRuntime } from "./api/runtime";
+import { WebLayer } from "./api/client";
+import { createRuntime, RuntimeContext } from "./api/solid-effect";
 import { Router } from "./router";
 import "./App.css";
 
@@ -8,8 +9,8 @@ import "./App.css";
 // chrome (the landing has its own nav) until there is a signed-in shell.
 export default function App() {
   return (
-    <EffectRuntime>
+    <RuntimeContext value={createRuntime(WebLayer)}>
       <Router>{(props) => <Loading fallback={<main />}>{props.children}</Loading>}</Router>
-    </EffectRuntime>
+    </RuntimeContext>
   );
 }

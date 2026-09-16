@@ -20,7 +20,7 @@ export class RpcHandler extends Context.Service<
       Scope.Scope | HttpServerRequest.HttpServerRequest
     >;
   }
->()("tranzfer-api/RpcHandler") {
+>()("tranzfer/RpcHandler") {
   static readonly layer = Layer.effect(
     RpcHandler,
     Effect.map(RpcServer.toHttpEffect(Api), (handle) => RpcHandler.of({ handle })),
