@@ -93,6 +93,14 @@ export const lintConfig = (paths: {
       },
       ...effectOverride,
       {
+        files: ["packages/contracts/src/auth.ts"],
+        rules: {
+          // The middleware tag and the context key it provides are one seam;
+          // Authenticated is meaningless without CurrentPrincipal.
+          "max-classes-per-file": "off",
+        },
+      },
+      {
         files: ["packages/contracts/**", "**/*-error.ts", "**/errors/*.ts"],
         rules: {
           // `Schema.TaggedError<E>()(...)` is a class factory, not a thrown

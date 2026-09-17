@@ -9,7 +9,9 @@ import type * as HttpServerResponse from "effect/unstable/http/HttpServerRespons
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 
+import { AuthHandlers } from "./handlers/auth";
 import { InfraHandlers } from "./handlers/infra";
+import { AuthenticatedLive } from "./middleware";
 import { Auth } from "./services/auth";
 
 export class RpcHandler extends Context.Service<
@@ -25,7 +27,11 @@ export class RpcHandler extends Context.Service<
   static readonly layer = Layer.effect(
     RpcHandler,
     Effect.map(RpcServer.toHttpEffect(Api), (handle) => RpcHandler.of({ handle })),
-  ).pipe(Layer.provide(Layer.mergeAll(InfraHandlers, RpcSerialization.layerJson)));
+  ).pipe(
+    Layer.provide(
+      Layer.mergeAll(InfraHandlers, AuthHandlers, AuthenticatedLive, RpcSerialization.layerJson),
+    ),
+  );
 }
 
 // RpcHandler needs Drizzle and Auth.layer is itself built on Drizzle, so
