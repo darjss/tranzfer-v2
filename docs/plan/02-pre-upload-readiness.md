@@ -42,8 +42,6 @@ STACK.md records this target architecture.
 - Use Drizzle v1 RC with `drizzle-orm/effect-d1` and `@effect/sql-d1`. Provide
   `D1Client` from the Worker binding (`effect-cf` `D1.sqlLayer` is the intended
   adapter). Do not keep a second raw-SQL API beside Drizzle.
-- Replace Elysia/Eden, Better Result, and Valibot with the selected Effect
-  facilities. Remove replaced packages rather than retaining parallel models.
 - Keep file bytes travelling directly between the client and R2. RPC coordinates
   transfers; it does not carry multipart file payloads.
 
