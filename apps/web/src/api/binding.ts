@@ -9,28 +9,41 @@ import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 
 import { ApiClient } from "./client";
 
-const buildApi = async () => {
-  // Lazy: the prerenderer imports the server bundle in Node, where
-  // `cloudflare:workers` does not exist. Only workerd reaches this.
+// Deferred to the first call: the prerenderer loads the server bundle in
+// Node, where `cloudflare:workers` does not exist. Only workerd reaches it.
+const bindingFetch: typeof globalThis.fetch = async (input, init) => {
   const { env } = await import("cloudflare:workers");
-  const runtime = ManagedRuntime.make(
-    Layer.mergeAll(
-      ApiClient.layer.pipe(
-        Layer.provide(
-          RpcClient.layerProtocolHttp({
-            // prependUrl joins with a trailing slash; pin requests to the
-            // exact endpoint so the Worker sees "/rpc", not "/rpc/".
-            transformClient: HttpClient.mapRequest(HttpClientRequest.setUrl("http://api/rpc")),
-            url: "http://api/rpc",
-          }).pipe(Layer.provide([RpcSerialization.layerJson, FetchHttpClient.layer])),
-        ),
+  return await env.API.fetch(input, init);
+};
+
+// The SSR counterpart of WebLayer: workerd cannot resolve the relative
+// "/rpc" and a worker-side fetch would not carry the browser's credentials,
+// so requests go over the API service binding with the incoming cookie.
+export const serverLayer = (cookie: string | null) =>
+  Layer.mergeAll(
+    ApiClient.layer.pipe(
+      Layer.provide(
+        RpcClient.layerProtocolHttp({
+          // prependUrl joins with a trailing slash; pin requests to the
+          // exact endpoint so the Worker sees "/rpc", not "/rpc/".
+          transformClient: HttpClient.mapRequest((request) =>
+            HttpClientRequest.setUrl(
+              cookie === null ? request : HttpClientRequest.setHeader(request, "cookie", cookie),
+              "http://api/rpc",
+            ),
+          ),
+          url: "http://api/rpc",
+        }).pipe(Layer.provide([RpcSerialization.layerJson, FetchHttpClient.layer])),
       ),
-      // Fetch is a Context.Reference read per request, so a sibling succeed
-      // layer is the injection point — providing it to the protocol layer
-      // would scope it to layer construction instead.
-      Layer.succeed(FetchHttpClient.Fetch, env.API.fetch.bind(env.API)),
     ),
+    // Fetch is a Context.Reference read per request, so a sibling succeed
+    // layer is the injection point — providing it to the protocol layer
+    // would scope it to layer construction instead.
+    Layer.succeed(FetchHttpClient.Fetch, bindingFetch),
   );
+
+const buildApi = () => {
+  const runtime = ManagedRuntime.make(serverLayer(null));
   return { client: runtime.runSync(Effect.service(ApiClient)), runtime };
 };
 
@@ -38,4 +51,4 @@ let api: ReturnType<typeof buildApi> | undefined;
 
 // `env.API` is the same service binding for the isolate's life, so one client
 // and runtime serve every request.
-export const apiOverBinding = async () => await (api ??= buildApi());
+export const apiOverBinding = () => (api ??= buildApi());

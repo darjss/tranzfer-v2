@@ -21,7 +21,10 @@ export default defineConfig({
     target: "esnext",
   },
   environments: {
-    // The ssr bundle runs in workerd, where `cloudflare:*` modules are builtins.
+    // The ssr bundle runs in workerd, where `cloudflare:*` modules are
+    // builtins. The client graph reaches the same specifier through binding.ts
+    // on a branch `isServer` eliminates, so it must be external there too.
+    client: { build: { rolldownOptions: { external: [/^cloudflare:/u] } } },
     ssr: { build: { rolldownOptions: { external: [/^cloudflare:/u] } } },
   },
   fmt: {
