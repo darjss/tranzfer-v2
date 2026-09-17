@@ -94,9 +94,10 @@ export const runEffect = <A, E>(effect: Effect.Effect<A, E, ApiClient>): AsyncIt
             return { done: false, value: exit.value };
           }
           closed = true;
-          // interruption means Solid closed the iterator — that is normal
-          // completion here, not a failure to surface
-          if (Cause.hasInterrupts(exit.cause)) {
+          // a pure-interrupt cause means Solid closed the iterator — normal
+          // completion. A mixed cause (interrupt + finalizer defect) must
+          // still surface, so this is hasInterruptsOnly, not hasInterrupts
+          if (Cause.hasInterruptsOnly(exit.cause)) {
             return DONE;
           }
           throw Cause.squash(exit.cause);
@@ -168,7 +169,7 @@ export const effectAction = <Args extends unknown[], R>(
       }
       if (Exit.isSuccess(exit)) {
         step = it.next(exit.value);
-      } else if (Cause.hasInterrupts(exit.cause)) {
+      } else if (Cause.hasInterruptsOnly(exit.cause)) {
         step = it.throw(new ActionInterruptedError());
       } else {
         step = it.throw(Cause.squash(exit.cause));
@@ -309,12 +310,12 @@ value={createRuntime(TestLayer)}>` — the nested MemoMap share means common
 
 ## Diffs from the official example
 
-| Official (older Effect)                          | Installed rc.115                                                                                                                                                                                 |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `YieldWrap` / `yieldWrapGet` from `effect/Utils` | Gone — `Effect` has `[Symbol.iterator]`; `step.value` is the Effect directly                                                                                                                     |
-| `ManagedRuntime.make(layer, parent?.memoMap)`    | `ManagedRuntime.make(layer, { memoMap })` — options object                                                                                                                                       |
-| `Fiber.RuntimeFiber`                             | `Fiber.Fiber`                                                                                                                                                                                    |
-| `Exit.isInterrupted`                             | Gone — `Cause.hasInterrupts(exit.cause)` after an `isSuccess` check. `Exit.hasInterrupts` exists but is a `self is Failure` guard, which narrows the union to `never` and breaks `.cause` access |
+| Official (older Effect)                          | Installed rc.115                                                                                                                                                                                                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `YieldWrap` / `yieldWrapGet` from `effect/Utils` | Gone — `Effect` has `[Symbol.iterator]`; `step.value` is the Effect directly                                                                                                                                                                                             |
+| `ManagedRuntime.make(layer, parent?.memoMap)`    | `ManagedRuntime.make(layer, { memoMap })` — options object                                                                                                                                                                                                               |
+| `Fiber.RuntimeFiber`                             | `Fiber.Fiber`                                                                                                                                                                                                                                                            |
+| `Exit.isInterrupted`                             | Gone — `Cause.hasInterruptsOnly(exit.cause)` after an `isSuccess` check (`hasInterrupts` would also swallow a mixed interrupt+defect cause). `Exit.hasInterrupts` exists but is a `self is Failure` guard, which narrows the union to `never` and breaks `.cause` access |
 
 Two more deliberate diffs from the generic sketch: the channels are
 `ApiClient`-constrained rather than `any` (`runFork` accepts

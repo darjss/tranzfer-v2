@@ -236,9 +236,10 @@ export const runEffect = &lt;A, E&gt;(effect: Effect.Effect&lt;A, E, ApiClient&g
             return { done: false, value: exit.value };
           }
           closed = true;
-          // interruption means Solid closed the iterator — that is normal
-          // completion here, not a failure to surface
-          if (Cause.hasInterrupts(exit.cause)) {
+          // a pure-interrupt cause means Solid closed the iterator — normal
+          // completion. A mixed cause (interrupt + finalizer defect) must
+          // still surface, so this is hasInterruptsOnly, not hasInterrupts
+          if (Cause.hasInterruptsOnly(exit.cause)) {
             return DONE;
           }
           throw Cause.squash(exit.cause);
@@ -310,7 +311,7 @@ export const effectAction = &lt;Args extends unknown[], R&gt;(
       }
       if (Exit.isSuccess(exit)) {
         step = it.next(exit.value);
-      } else if (Cause.hasInterrupts(exit.cause)) {
+      } else if (Cause.hasInterruptsOnly(exit.cause)) {
         step = it.throw(new ActionInterruptedError());
       } else {
         step = it.throw(Cause.squash(exit.cause));
@@ -479,8 +480,9 @@ const cancelTransfer = effectAction(function* (id: string) {
         <tr>
           <td><code>Exit.isInterrupted</code></td>
           <td>
-            gone — <code>Cause.hasInterrupts(exit.cause)</code> after an
-            <code>isSuccess</code> check. <code>Exit.hasInterrupts</code> exists but is a
+            gone — <code>Cause.hasInterruptsOnly(exit.cause)</code> after an
+            <code>isSuccess</code> check (<code>hasInterrupts</code> would also swallow a mixed
+            interrupt+defect cause). <code>Exit.hasInterrupts</code> exists but is a
             <code>self is Failure</code> guard, which narrows the union to <code>never</code> and
             breaks <code>.cause</code> access
           </td>
