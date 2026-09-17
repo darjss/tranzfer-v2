@@ -150,6 +150,9 @@ export const effectAction = <Args extends unknown[], R>(
   });
 
   const interrupt = () => {
+    // bump sequence so queued invocations fail their generation check too —
+    // interrupting only the in-flight fiber leaves a queued call runnable
+    sequence += 1;
     const fiber = inFlight;
     inFlight = null;
     if (fiber !== null) {
@@ -162,7 +165,6 @@ export const effectAction = <Args extends unknown[], R>(
       // superseding call cancels the previous flight, then waits for its
       // compensation to settle before starting
       interrupt();
-      sequence += 1;
       const mine = sequence;
       const current = (async () => {
         try {

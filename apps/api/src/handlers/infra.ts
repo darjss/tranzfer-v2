@@ -18,11 +18,13 @@ const probeR2 = (env: Cloudflare.Env) =>
         }
       },
     }).pipe(
-      // best-effort cleanup; a failed delete logs and doesn't mask the probe
+      // best-effort cleanup; a failed delete logs and doesn't mask the probe.
+      // ignoreCause, not ignore: promise rejection is a defect, which ignore
+      // (error-channel only) would let propagate and fail the probe.
       Effect.ensuring(
         Effect.promise(async () => {
           await env.BUCKET.delete(key);
-        }).pipe(Effect.ignore),
+        }).pipe(Effect.ignoreCause({ log: true })),
       ),
     );
   });

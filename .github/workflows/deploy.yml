@@ -34,4 +34,4 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       - name: Health check
-        run: curl -fsS --retry 5 --retry-all-errors --retry-delay 3 https://tranzfer.app/infra | jq -e '.api.ok and .bindings.d1 and .bindings.r2 and .web'
+        run: curl -fsS --retry 5 --retry-all-errors --retry-delay 3 https://tranzfer.app/infra | jq -e '.health.ok and .bindings.d1 and .bindings.r2 and .web'
