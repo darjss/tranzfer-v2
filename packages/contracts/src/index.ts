@@ -5,6 +5,7 @@ import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { ProbeFailed } from "./errors/infra";
 
 export { ProbeFailed } from "./errors/infra";
+export { Principal } from "./types/auth";
 
 export class Api extends RpcGroup.make(
   Rpc.make("Health", { success: Schema.Struct({ ok: Schema.Literal(true) }) }),

@@ -10,6 +10,7 @@ import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 
 import { InfraHandlers } from "./handlers/infra";
+import { Auth } from "./services/auth";
 
 export class RpcHandler extends Context.Service<
   RpcHandler,
@@ -27,8 +28,12 @@ export class RpcHandler extends Context.Service<
   ).pipe(Layer.provide(Layer.mergeAll(InfraHandlers, RpcSerialization.layerJson)));
 }
 
-// RpcHandler needs Drizzle, so mergeAll cannot build them in parallel:
-// provideMerge wires the dependency edge explicitly. Drizzle.layer brings its
+// RpcHandler needs Drizzle and Auth.layer is itself built on Drizzle, so
+// mergeAll cannot build them in parallel: provideMerge wires both dependency
+// edges explicitly. Auth.layer self-provides Drizzle.layer, which brings its
 // own Database dependency; what remains is WorkerEnvironment, provided by the
 // worker entrypoint.
-export const AppLayer = RpcHandler.layer.pipe(Layer.provideMerge(Drizzle.layer));
+export const AppLayer = RpcHandler.layer.pipe(
+  Layer.provideMerge(Drizzle.layer),
+  Layer.provideMerge(Auth.layer),
+);
