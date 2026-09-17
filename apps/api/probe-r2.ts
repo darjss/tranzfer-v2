@@ -7,14 +7,6 @@ import { Signing } from "./src/services/signing.ts";
 const bucket = env.R2_BUCKET ?? "tranzfer-files-production";
 const key = `s3-probe/${crypto.randomUUID()}`;
 
-const runtime = ManagedRuntime.make(
-  Signing.make({
-    accessKeyId: env.R2_ACCESS_KEY_ID,
-    accountId: env.R2_ACCOUNT_ID,
-    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-  }),
-);
-
 const program = Effect.gen(function* probe() {
   const signing = yield* Signing;
 
@@ -27,14 +19,13 @@ const program = Effect.gen(function* probe() {
     const partUrl = yield* signing.presignPart({ bucket, key, partNumber: 1, uploadId });
     console.log("presigned UploadPart url:", partUrl.slice(0, partUrl.indexOf("?")));
 
-    const put = yield* Effect.tryPromise(
-      async () => await fetch(partUrl, { body: "probe-part-body", method: "PUT" }),
-    );
-    if (!put.ok) {
-      throw new Error(
-        `presigned PUT failed: ${put.status} ${yield* Effect.promise(async () => await put.text())}`,
-      );
-    }
+    const put = yield* Effect.promise(async () => {
+      const res = await fetch(partUrl, { body: "probe-part-body", method: "PUT" });
+      if (!res.ok) {
+        throw new Error(`presigned PUT failed: ${res.status} ${await res.text()}`);
+      }
+      return res;
+    });
     console.log("presigned UploadPart PUT ok, etag:", put.headers.get("etag"));
 
     const listed = yield* signing.listParts({ bucket, key, uploadId });
@@ -53,4 +44,16 @@ const program = Effect.gen(function* probe() {
   );
 });
 
-await runtime.runPromise(program);
+const runtime = ManagedRuntime.make(
+  Signing.make({
+    accessKeyId: env.R2_ACCESS_KEY_ID,
+    accountId: env.R2_ACCOUNT_ID,
+    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+  }),
+);
+
+try {
+  await runtime.runPromise(program);
+} finally {
+  await runtime.dispose();
+}

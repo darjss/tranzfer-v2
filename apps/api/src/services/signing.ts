@@ -65,13 +65,11 @@ export class Signing extends Context.Service<
             ),
           createMultipart: (args) =>
             createMultipartUpload({ Bucket: args.bucket, Key: args.key }).pipe(
+              Effect.map(({ UploadId }) => UploadId),
               Effect.mapError((cause) => new SigningError({ cause, op: "createMultipart" })),
-              Effect.flatMap(({ UploadId }) =>
-                UploadId === undefined
-                  ? Effect.fail(
-                      new SigningError({ cause: "missing UploadId", op: "createMultipart" }),
-                    )
-                  : Effect.succeed(UploadId),
+              Effect.filterOrFail(
+                (id): id is string => id !== undefined,
+                () => new SigningError({ cause: "missing UploadId", op: "createMultipart" }),
               ),
             ),
           listParts: (args) =>
@@ -79,10 +77,15 @@ export class Signing extends Context.Service<
               Effect.mapError((cause) => new SigningError({ cause, op: "listParts" })),
             ),
           presignPart: (args) =>
-            Presign.presignUrl({
-              method: "PUT",
-              service: "s3",
-              url: `${endpoint}/${args.bucket}/${args.key}?partNumber=${args.partNumber}&uploadId=${args.uploadId}`,
+            Effect.suspend(() => {
+              // Keys can contain "+", "?", "&", spaces; encode each segment
+              // like distilled's own presignS3Url or the query corrupts.
+              const url = new URL(
+                `${endpoint}/${args.bucket}/${args.key.split("/").map(encodeURIComponent).join("/")}`,
+              );
+              url.searchParams.set("partNumber", String(args.partNumber));
+              url.searchParams.set("uploadId", args.uploadId);
+              return Presign.presignUrl({ method: "PUT", service: "s3", url: url.href });
             }).pipe(
               Effect.provide(presignContext),
               Effect.mapError((cause) => new SigningError({ cause, op: "presignPart" })),

@@ -36,9 +36,7 @@ const resolveFork = () => {
   // context contract above documents the fallback as sound only for those,
   // so the declared requirement channel is erased here.
   return <A, E>(effect: Effect.Effect<A, E, ApiClient>): Fiber.Fiber<A, E> =>
-    runtime === null || runtime === undefined
-      ? Effect.runFork(effect as Effect.Effect<A, E>)
-      : runtime.runFork(effect);
+    runtime === null ? Effect.runFork(effect as Effect.Effect<A, E>) : runtime.runFork(effect);
 };
 
 /** Run an Effect as a Solid-consumable async source. Interruptible: if the
