@@ -101,6 +101,22 @@ export const lintConfig = (paths: {
         },
       },
       {
+        files: ["packages/db/src/schema.ts"],
+        rules: {
+          // Column order in drizzle table objects defines DDL column order;
+          // keep the better-auth table layout.
+          "sort-keys": "off",
+        },
+      },
+      {
+        files: ["packages/db/src/client.ts"],
+        rules: {
+          // Database and Drizzle are one seam — both derive from the same D1
+          // handle, so they live in one file.
+          "max-classes-per-file": "off",
+        },
+      },
+      {
         files: ["apps/web/src/api/solid-effect.ts"],
         rules: {
           // The provider-less fallback in resolveFork erases the requirement

@@ -1,5 +1,5 @@
 import { Api, ProbeFailed } from "@tranzfer/contracts";
-import { D1Client } from "@tranzfer/db";
+import { Drizzle } from "@tranzfer/db";
 import { sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Predicate from "effect/Predicate";
@@ -36,23 +36,27 @@ const probeR2 = (env: Cloudflare.Env) =>
 
 export const InfraHandlers = Api.toLayer(
   Effect.gen(function* InfraHandlers() {
-    const db = yield* D1Client;
+    const db = yield* Drizzle;
     const env = yield* Environment.WorkerEnvironment;
 
-    const probeD1 = db.get<{ ok: number }>(sql`SELECT 1 AS ok`).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ProbeFailed({
-            message: Predicate.isError(cause) ? cause.message : String(cause),
-            resource: "d1",
-          }),
-      ),
-      Effect.filterOrFail(
-        (row) => row?.ok === 1,
-        () => new ProbeFailed({ message: "d1 probe returned no row", resource: "d1" }),
-      ),
-      Effect.asVoid,
-    );
+    const probeD1 = db
+      .run("infra.probeD1", (d) => d.get<{ ok: number }>(sql`SELECT 1 AS ok`))
+      .pipe(
+        Effect.mapError(
+          (drizzleError) =>
+            new ProbeFailed({
+              message: Predicate.isError(drizzleError.cause)
+                ? drizzleError.cause.message
+                : String(drizzleError.cause),
+              resource: "d1",
+            }),
+        ),
+        Effect.filterOrFail(
+          (row) => row?.ok === 1,
+          () => new ProbeFailed({ message: "d1 probe returned no row", resource: "d1" }),
+        ),
+        Effect.asVoid,
+      );
 
     return {
       Health: Effect.fn("InfraHandlers.Health")(() => Effect.succeed({ ok: true as const })),

@@ -1,5 +1,5 @@
 import { Api } from "@tranzfer/contracts";
-import { D1Client } from "@tranzfer/db";
+import { Drizzle } from "@tranzfer/db";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -27,6 +27,8 @@ export class RpcHandler extends Context.Service<
   ).pipe(Layer.provide(Layer.mergeAll(InfraHandlers, RpcSerialization.layerJson)));
 }
 
-// RpcHandler needs D1Client, so mergeAll cannot build them in parallel:
-// provideMerge wires the dependency edge explicitly.
-export const AppLayer = RpcHandler.layer.pipe(Layer.provideMerge(D1Client.layer));
+// RpcHandler needs Drizzle, so mergeAll cannot build them in parallel:
+// provideMerge wires the dependency edge explicitly. Drizzle.layer brings its
+// own Database dependency; what remains is WorkerEnvironment, provided by the
+// worker entrypoint.
+export const AppLayer = RpcHandler.layer.pipe(Layer.provideMerge(Drizzle.layer));
