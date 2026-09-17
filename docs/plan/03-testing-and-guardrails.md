@@ -102,10 +102,13 @@ overrides in `lint.config.ts`:
 - `packages/upload-core/**` (when it exists): forbid `solid-js`, `@uppy/*`,
   `drizzle-orm`, `cloudflare:*`. The transfer model must not know the
   transport or the UI.
+- `packages/db/**`: forbid `solid-js`, `@uppy/*`, and `apps/web` paths. The
+  package exists now (`D1Client` over `drizzle-orm/effect-d1` + `effect-cf`
+  `D1.sqlLayer`); it is consumed by `apps/api` only.
 - `apps/api/**`: forbid `solid-js`, `@uppy/*`, and `apps/web` paths.
-- `apps/web/**`: forbid `drizzle-orm`, `better-auth` server modules, and
-  `apps/api` paths. Scope carefully: `src/middleware.ts` and `src/routes/*`
-  legitimately lazy-import `cloudflare:workers`.
+- `apps/web/**`: forbid `drizzle-orm`, `@tranzfer/db`, `better-auth` server
+  modules, and `apps/api` paths. Scope carefully: `src/middleware.ts` and
+  `src/routes/*` legitimately lazy-import `cloudflare:workers`.
 - `import/no-cycle`: error, repo-wide.
 
 An agent that "fixes" something by reaching across the architecture with one
@@ -121,9 +124,13 @@ Copy executor's mechanism, not its rules: one
 Initial rules, each scoped to the paths where they apply:
 
 - `tranzfer/no-effect-run-outside-entry`: `Effect.runSync` / `runPromise` /
-  `runFork` / `runPromiseExit` call sites are entry-point machinery. Allowed
-  in `apps/api/src/index.ts`, the web Worker's server edges, `infra/`, `e2e/`,
-  and test files. Everywhere else they hide the runtime boundary.
+  `runFork` / `runPromiseExit` / `ManagedRuntime.make` call sites are
+  entry-point machinery. Allowed in files whose job is owning a runtime:
+  `apps/api/src/index.ts`, one-off probes (`apps/api/probe-r2.ts` already
+  does this), `apps/web/src/api/` (the `solid-effect.ts` bridge is the web
+  runtime boundary), the web Worker's server edges (`middleware.ts`,
+  `routes/`), `infra/`, `e2e/`, and test files. Everywhere else they hide
+  the runtime boundary.
 - `tranzfer/no-atom-import`: belt-and-suspenders beside
   `no-restricted-imports` on `@effect/atom` and `effect-atom`. STACK.md says
   Solid owns UI state.
@@ -137,13 +144,26 @@ unambiguous.
 
 ## 5. Public contract snapshot
 
-`scripts/check-public-api.ts` (run by `vp check` or a CI step): extract the
-exported symbol names from `packages/contracts` and diff against a committed
-`snapshot` file. Removals and renames fail; additions are allowed (regen via
-`--update`). Hermes lost externally-consumed names to "unused internal"
-cleanups; the RPC operation names and error schemas in contracts are exactly
-that class of surface. ~100 lines, uses the TypeScript compiler API already
-in the repo.
+`scripts/check-public-api.ts` (run by `vp check` or a CI step): snapshot the
+serialized surface of `packages/contracts` and diff against a committed
+file. Removals and renames fail; additions are allowed (regen via
+`--update`).
+
+The surface is deeper than top-level exports. Contracts now declares
+`Api extends RpcGroup` — renaming the `"Health"` tag or dropping `ok` from
+its success struct leaves the export list (`Api`, `ProbeFailed`) untouched
+while breaking every client. The snapshot must cover, per export:
+
+- RPC tag names inside each `RpcGroup` (`Health`, `Infra`, …), with each
+  operation's payload/success/error field names.
+- Tagged error schemas: the `_tag` and every serialized field name.
+- Plain exported types and constants.
+
+Emitting declarations (`tsc --emitDeclarationOnly`) and diffing the `.d.ts`
+is the cheap way to get all of this: RPC tags survive as string literals in
+the emitted types and struct fields are literal members. If declaration
+emit proves too lossy, walk the Schema ASTs of the built package instead.
+Either way, top-level export lists are not enough.
 
 Extend the same check to serialized durable-session schemas once
 `upload-core` exists: the IndexedDB session record's field names are a
@@ -219,10 +239,21 @@ smoke for the same reason). When it lands:
     matrix lives here.
   - `StorageTruth` — assert remote state (parts present, object exists,
     final size) through a dev-gated API surface, never by reaching into
-    workerd's storage. Plus the control-plane ledger: in dev the API records
-    sign/uploadPart/complete/abort calls per transfer, so a scenario can
-    assert confirmed parts were never re-sent. This is the tranzfer
-    equivalent of executor's emulator request ledgers.
+    workerd's storage. Plus a two-sided request ledger, because the wire
+    split is control-plane vs data-plane:
+    - Control plane: in dev the API records sign/complete/abort calls per
+      transfer. Cheap, and it catches "re-signed a part that was already
+      confirmed".
+    - Data plane: the browser surface records every request the page makes
+      to R2 endpoints into a parts ledger (`partNumber → count, etag`).
+      This side is mandatory: `UploadPart` bytes go browser → R2 over a
+      presigned URL, so the API can count signing calls but cannot see the
+      browser re-sending an already-confirmed part on a reused URL.
+      Executor's `browser.ts` already harvests every page request for trace
+      ids; the same listener carries this.
+    Together they are the tranzfer equivalent of executor's emulator request
+    ledgers, and the "avoidable re-uploaded bytes" metric made mechanical:
+    a scenario asserts part 842 hit the wire exactly once.
   - `Restart` — later. Restarting `alchemy dev` preserves the sim's D1/R2 on
     disk, which is exactly the "server dies, durable state survives" case,
     but it is not needed for the first suite.
