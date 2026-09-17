@@ -23,7 +23,7 @@ tranzfer2/
 │   │
 │   ├── db/src/
 │   │   ├── schema.ts               # drizzle tables + relations
-│   │   ├── client.ts               # D1Client service (effect-cf D1.sqlLayer)
+│   │   ├── client.ts               # Database seam + Drizzle service
 │   │   └── migrations/             # drizzle-kit output
 │   │
 │   └── upload-core/src/
@@ -45,7 +45,7 @@ tranzfer2/
 │   │   │   ├── transfers.ts        # transfer lifecycle logic
 │   │   │   └── auth.ts             # session/principal resolution
 │   │   ├── repos/
-│   │   │   └── transfers-repo.ts    # drizzle queries, Database.use shape
+│   │   │   └── transfers-repo.ts    # drizzle queries, Drizzle.run shape
 │   │   └── middleware.ts           # auth middleware, error mapping
 │   │
 │   └── web/src/
@@ -117,9 +117,9 @@ export const TransferHandlers = TransferRpcs.toLayer(
 `yield*` isn't manual wiring, it reads a service out of the context and the
 type system tracks it on `R`. The layer's `R` is what `runtime.ts` must
 satisfy — that's the injection. Same one level down: a repo's
-`yield* D1Client` sits inside `Layer.effect`, which also runs once at layer
-build, and every method closes over `db`. If an op needs an extra service
-anyway, `yield*` inside it still works; it's a context read, not a
+`yield* Drizzle` sits inside `Layer.effect`, which also runs once at layer
+build, and every method closes over the service. If an op needs an extra
+service anyway, `yield*` inside it still works; it's a context read, not a
 declaration. `Effect.all({ auth: Auth, repo: TransfersRepo })` grabs several
 in one shot.
 
@@ -127,7 +127,7 @@ Capture the service, not request state. Reading `auth.principal` inside the
 op keeps it per-call; hoisting `const principal = auth.principal` into the
 gen would freeze one requester's identity into every handler.
 
-**5. Repos are drizzle + nothing else.** `D1Client` resolves once in the
+**5. Repos are drizzle + nothing else.** `Drizzle` resolves once in the
 layer gen and every method closes over it:
 
 ```ts
@@ -142,11 +142,14 @@ export class TransfersRepo extends Context.Service<
   static layer = Layer.effect(
     this,
     Effect.gen(function* () {
-      const db = yield* D1Client;
+      const db = yield* Drizzle;
       return {
-        listRecent: (id) => db.query.transfers.findMany({/* ... */}),
-        findById: (id) => db.query.transfers.findFirst({/* ... */}),
-        markFinalized: (id) => db.update(transfers).set({/* ... */}),
+        listRecent: (id) =>
+          db.run("TransfersRepo.listRecent", (d) => d.query.transfers.findMany({/* ... */})),
+        findById: (id) =>
+          db.run("TransfersRepo.findById", (d) => d.query.transfers.findFirst({/* ... */})),
+        markFinalized: (id) =>
+          db.run("TransfersRepo.markFinalized", (d) => d.update(transfers).set({/* ... */})),
       };
     }),
   );
