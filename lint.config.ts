@@ -93,11 +93,19 @@ export const lintConfig = (paths: {
       },
       ...effectOverride,
       {
-        files: ["packages/contracts/**"],
+        files: ["packages/contracts/**", "**/*-error.ts", "**/errors/*.ts"],
         rules: {
           // `Schema.TaggedError<E>()(...)` is a class factory, not a thrown
           // error; the rule matches on the callee name alone.
           "unicorn/throw-new-error": "off",
+        },
+      },
+      {
+        files: ["apps/web/src/api/solid-effect.ts"],
+        rules: {
+          // The provider-less fallback in resolveFork erases the requirement
+          // channel deliberately; the SAFETY comment documents the invariant.
+          "typescript/no-unsafe-type-assertion": "off",
         },
       },
     ],

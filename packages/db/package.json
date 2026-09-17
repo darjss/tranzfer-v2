@@ -1,0 +1,20 @@
+{
+  "name": "@tranzfer/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "D1 client, schema, and migrations for Tranzfer.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "1.0.0-rc.4",
+    "effect": "4.0.0-rc.115",
+    "effect-cf": "0.44.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260911.1",
+    "typescript": "5.9.3"
+  }
+}
