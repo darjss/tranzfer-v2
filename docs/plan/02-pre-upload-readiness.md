@@ -257,60 +257,17 @@ verified commit deploys through Actions with passing post-deploy checks.
 
 ## 5. Reconcile and install the agreed stack
 
-First reconcile STACK.md with the architecture decision above, including package
-ownership, RPC contracts, error handling, schema validation, and HTTP exceptions.
-Then compare every remaining affirmative dependency choice against package
-manifests and current compatibility. Install the missing agreed dependencies
-upfront in their owning package. The document's optional examples and explicit
-exclusions are not an installation list. Do not add empty packages, wrappers, or
-future desktop dependencies just to house installed libraries.
+Remaining checks:
 
-Install and pin, in their owning packages:
-
-- `effect` and related packages at the same 4.x RC as infra (`4.0.0-rc.112`
-  when researched; bump together with Alchemy).
-- `effect-cf` for the Worker fetch runtime. Peer Effect RC must match.
-- `@distilled.cloud/aws` for S3/R2. Provide `FetchHttpClient`, `Region`,
-  `Endpoint`, and `Credentials` Layers. Prove ListParts and a presigned
-  UploadPart URL against real R2 before treating signing as done. If Distilled
-  path-style URLs fail R2, keep Distilled for ListParts and sign with
-  `aws4fetch`.
-- `drizzle-orm@1.0.0-rc.4` (npm tag `rc`) and matching `drizzle-kit@rc`, plus
-  `@effect/sql-d1` at the pinned Effect RC. Use `drizzle-orm/effect-d1`
-  (`SQLiteD1Drizzle.make` / `makeWithDefaults`). Official Effect docs are
-  Postgres-first; D1 Effect support landed in rc.4 as `effect-d1`. Do not stay
-  on `drizzle-orm@0.45.2`.
-- `drizzle-kit` `d1-http` migrate on rc.4 is reported broken for non-empty
-  journals ([issue 5952](https://github.com/drizzle-team/drizzle-orm/issues/5952)).
-  Apply migrations through a path that works on this stack (Wrangler/Alchemy
-  local execute, or a kit release that fixes `/raw` rows). Do not claim D1
-  readiness on an empty-database-only migrate.
-- `unplugin-icons` and `@iconify-json/ph` in `apps/web` for Phosphor Bold
-  chrome icons. Do not install Lucide, Tabler, or `solid-icons`. Keep brand
-  and notebook SVGs custom. Prove a Solid 2 import and `currentColor` render
-  before treating the set as ready.
-
-Pin compatible Effect 4 objects inside the Worker. Do not pass Alchemy's
-Effect values into application Layers.
-
-Resolve these known discrepancies before claiming readiness:
-
-- Kobalte publishes `2.0.0-alpha.2` with exact Solid rc.3 peers; this app uses
-  rc.8. Check current releases and relevant fixes, then prove compatibility.
-  Do not suppress peer warnings and call the integration complete.
-- TanStack Solid Form is absent from the manifest although STACK.md says it is
-  installed. Its researched store dependency requires Solid 1. Resolve the
-  adapter compatibility and Effect Schema validation integration before
-  installing and using it.
-- Several Solid Primitives are installed despite the document saying none are.
-
-If a compatible maintained release does not exist, present the concrete options
-to the user before choosing a fork, replacement, or scope change. Update STACK.md
-to reflect the actual selected versions and remaining blockers.
-
-Complete when agreed packages install together, their required integrations run
-under the pinned Solid and Worker runtimes, and the stack document matches the
-manifests. An unresolved compatibility blocker keeps this step incomplete.
+- Exercise a real `drizzle-kit` migrate once the first schema lands —
+  `d1-http` on rc.4 is broken for non-empty journals
+  ([issue 5952](https://github.com/drizzle-team/drizzle-orm/issues/5952)), so
+  migrate through a working path (Wrangler/Alchemy local execute, or a fixed
+  kit release). Do not claim D1 readiness on an empty-database-only migrate.
+- `@kobalte/core@2.0.0-alpha.2` renders SSR under Solid rc.8 but interaction
+  is unverified and its peers pin rc.3. Verify in section 6's component work.
+- TanStack Solid Form has no Solid 2-compatible release; re-check before form
+  work.
 
 ## 6. Prepare the local UI components
 

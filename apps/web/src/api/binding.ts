@@ -21,6 +21,9 @@ const buildApi = async () => {
         transformClient: HttpClient.mapRequest(HttpClientRequest.setUrl("http://api/rpc")),
         url: "http://api/rpc",
       }).pipe(Layer.provide([RpcSerialization.layerJson, FetchHttpClient.layer])),
+      // Fetch is a Context.Reference read per request, so a sibling succeed
+      // layer is the injection point — providing it to the protocol layer
+      // would scope it to layer construction instead.
       Layer.succeed(FetchHttpClient.Fetch, env.API.fetch.bind(env.API)),
     ),
   );

@@ -3,6 +3,7 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { fileRoutes } from "filesystem-routing/vite";
 import { prerender } from "prerender-crawler/vite";
+import Icons from "unplugin-icons/vite";
 import { defineConfig } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
 import { webLint } from "../../lint.config";
@@ -42,6 +43,7 @@ export default defineConfig({
       start: { middleware: "./src/middleware.ts" },
     }),
     fileRoutes({ codeSplitting: false, httpMethods: true, types: true }),
+    Icons({ compiler: "solid" }),
     prerender({ crawlLinks: false, emitPages: (p) => p === "/", mode: "hybrid", pages: ["/"] }),
   ],
   server: {

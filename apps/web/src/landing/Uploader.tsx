@@ -1,4 +1,6 @@
 import { For } from "solid-js";
+import PhCheckBold from "~icons/ph/check-bold";
+import PhUploadSimpleBold from "~icons/ph/upload-simple-bold";
 import { Button } from "../ui/Button";
 import coastRoad from "./assets/coast-road.webp";
 import frozenWilds from "./assets/frozen-wilds.webp";
@@ -45,17 +47,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
           </header>
           <div class="relative overflow-hidden rounded-[14px] border-[1.5px] border-dashed border-[#b9b2a2] bg-[repeating-linear-gradient(45deg,transparent_0_10px,rgba(0,0,0,.015)_10px_20px)] px-[22px] py-[26px] text-center">
             <div class="ico mx-auto mb-3 grid size-14 animate-[bob_2.6s_ease-in-out_infinite] place-items-center rounded-2xl bg-ink text-white shadow-[0_16px_30px_-14px_rgba(0,0,0,.6)]">
-              <svg
-                class="size-6"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M12 16V4m0 0 4 4m-4-4-4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
-              </svg>
+              <PhUploadSimpleBold class="size-6" />
             </div>
             <b class="block font-semibold">Drop cards, folders, anything</b>
             <span class="text-[13px] text-mut">Whole camera cards welcome. 400 GB is fine.</span>
@@ -73,15 +65,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
                     <small class="font-mono text-xs text-mut">{f.meta}</small>
                   </div>
                   <span class="grid size-[22px] place-items-center rounded-full bg-ok/12 text-ok">
-                    <svg
-                      class="size-3"
-                      viewBox="0 0 12 12"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path d="m2 6 3 3 5-6" />
-                    </svg>
+                    <PhCheckBold class="size-3" />
                   </span>
                 </div>
               )}

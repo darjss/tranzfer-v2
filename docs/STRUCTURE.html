@@ -220,11 +220,11 @@
     transfer.ts         <span class="cmt">// TransferRpcs.toLayer implementation</span>
     auth.ts             <span class="cmt">// better-auth route adapter</span>
   <span class="dir">services/</span>
-    Signing.ts          <span class="cmt">// presign R2 ops (Distilled S3)</span>
-    Transfers.ts        <span class="cmt">// transfer lifecycle logic</span>
-    Auth.ts             <span class="cmt">// session/principal resolution</span>
+    signing.ts          <span class="cmt">// presign R2 ops (Distilled S3)</span>
+    transfers.ts        <span class="cmt">// transfer lifecycle logic</span>
+    auth.ts             <span class="cmt">// session/principal resolution</span>
   <span class="dir">repos/</span>
-    TransfersRepo.ts    <span class="cmt">// drizzle queries, Database.use shape</span>
+    transfers-repo.ts    <span class="cmt">// drizzle queries, Database.use shape</span>
   middleware.ts         <span class="cmt">// auth middleware, error mapping</span>
 
 <span class="dir">apps/web/src/</span>
@@ -379,12 +379,12 @@ export class TransfersRepo extends Context.Service&lt;TransfersRepo, {
 
       <h2><span class="num">03</span>Naming</h2>
       <ul>
-        <li><b>Services</b> — <code>PascalCase.ts</code>, tag <code>"tranzfer/Name"</code></li>
+        <li><b>Services</b> — <code>kebab-case.ts</code>, tag <code>"tranzfer/Name"</code></li>
         <li>
           <b>RPC groups</b> — one per domain (<code>TransferRpcs</code>, <code>AuthRpcs</code>), not
           one giant Api once there are two
         </li>
-        <li><b>Repos</b> — <code>XRepo.ts</code></li>
+        <li><b>Repos</b> — <code>x-repo.ts</code></li>
         <li>
           <b>Feature folders</b> — own their components/state/styles; no global
           <code>components/</code> until reuse is real
@@ -394,9 +394,9 @@ export class TransfersRepo extends Context.Service&lt;TransfersRepo, {
 
       <h2><span class="num">04</span>Growth path</h2>
       <p>
-        When a <code>services/X.ts</code> crosses ~300 lines it becomes
-        <code>services/X/index.ts</code> plus siblings — cap's <code>Storage/</code> does exactly
-        this (<code>SignedObject.ts</code>, <code>StorageRepo.ts</code> beside
+        When a <code>services/x.ts</code> crosses ~300 lines it becomes
+        <code>services/x/index.ts</code> plus siblings — cap's <code>Storage/</code> does exactly
+        this (<code>signed-object.ts</code>, <code>storage-repo.ts</code> beside
         <code>index.ts</code>). Not before.
       </p>
 
@@ -415,7 +415,7 @@ export const transfers = sqliteTable("transfers", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 })</pre>
 
-      <p><b>apps/api/src/repos/TransfersRepo.ts</b> — the query (rule 5)</p>
+      <p><b>apps/api/src/repos/transfers-repo.ts</b> — the query (rule 5)</p>
       <pre>
 export class TransfersRepo extends Context.Service&lt;TransfersRepo, {
   listRecent: (senderId: string) =&gt; Effect.Effect&lt;Transfer[], TransferDbError&gt;
