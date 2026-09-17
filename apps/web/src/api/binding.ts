@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Predicate from "effect/Predicate";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
@@ -9,11 +10,21 @@ import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 
 import { ApiClient } from "./client";
 
-// Deferred to the first call: the prerenderer loads the server bundle in
-// Node, where `cloudflare:workers` does not exist. Only workerd reaches it.
+// Deferred to the first call and kept out of a string literal: the client
+// graph reaches this file through isServer-dead branches, where import
+// analysis would fail resolving `cloudflare:workers`. Only workerd (where it
+// is a builtin) ever evaluates it.
+const workersModule = "cloudflare:workers";
+
+const hasWorkerEnv = (value: unknown): value is { env: Cloudflare.Env } =>
+  Predicate.isObject(value) && "env" in value;
+
 const bindingFetch: typeof globalThis.fetch = async (input, init) => {
-  const { env } = await import("cloudflare:workers");
-  return await env.API.fetch(input, init);
+  const workers: unknown = await import(workersModule);
+  if (!hasWorkerEnv(workers)) {
+    throw new TypeError("cloudflare:workers did not expose env");
+  }
+  return await workers.env.API.fetch(input, init);
 };
 
 // The SSR counterpart of WebLayer: workerd cannot resolve the relative
