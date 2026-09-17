@@ -8,7 +8,7 @@ import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 
 export class ApiClient extends Context.Service<
   ApiClient,
-  RpcClient.FromGroup<Api, RpcClientError>
+  RpcClient.FromGroup<typeof Api, RpcClientError>
 >()("tranzfer/ApiClient") {
   static readonly layer = Layer.effect(ApiClient, RpcClient.make(Api));
 }

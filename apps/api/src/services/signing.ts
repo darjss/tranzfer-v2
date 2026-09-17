@@ -4,6 +4,7 @@ import { Environment } from "effect-cf";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 
 import { SigningError } from "./signing-error";
@@ -54,7 +55,7 @@ export class Signing extends Context.Service<
         const presignContext = yield* Effect.context<Credentials.Credentials | Region.Region>();
 
         return Signing.of({
-          abortMultipart: (args) =>
+          abortMultipart: Effect.fn("Signing.abortMultipart")((args) =>
             abortMultipartUpload({
               Bucket: args.bucket,
               Key: args.key,
@@ -63,7 +64,8 @@ export class Signing extends Context.Service<
               Effect.asVoid,
               Effect.mapError((cause) => new SigningError({ cause, op: "abortMultipart" })),
             ),
-          createMultipart: (args) =>
+          ),
+          createMultipart: Effect.fn("Signing.createMultipart")((args) =>
             createMultipartUpload({ Bucket: args.bucket, Key: args.key }).pipe(
               Effect.map(({ UploadId }) => UploadId),
               Effect.mapError((cause) => new SigningError({ cause, op: "createMultipart" })),
@@ -72,11 +74,13 @@ export class Signing extends Context.Service<
                 () => new SigningError({ cause: "missing UploadId", op: "createMultipart" }),
               ),
             ),
-          listParts: (args) =>
+          ),
+          listParts: Effect.fn("Signing.listParts")((args) =>
             listParts({ Bucket: args.bucket, Key: args.key, UploadId: args.uploadId }).pipe(
               Effect.mapError((cause) => new SigningError({ cause, op: "listParts" })),
             ),
-          presignPart: (args) =>
+          ),
+          presignPart: Effect.fn("Signing.presignPart")((args) =>
             Effect.suspend(() => {
               // Keys can contain "+", "?", "&", spaces; encode each segment
               // like distilled's own presignS3Url or the query corrupts.
@@ -90,6 +94,7 @@ export class Signing extends Context.Service<
               Effect.provide(presignContext),
               Effect.mapError((cause) => new SigningError({ cause, op: "presignPart" })),
             ),
+          ),
         });
       }),
     ).pipe(
@@ -113,10 +118,17 @@ export class Signing extends Context.Service<
   static readonly layer = Layer.unwrap(
     Effect.gen(function* layer() {
       const env = yield* Environment.WorkerEnvironment;
+      const creds = yield* Schema.decodeUnknownEffect(
+        Schema.Struct({
+          R2_ACCESS_KEY_ID: Schema.NonEmptyString,
+          R2_ACCOUNT_ID: Schema.NonEmptyString,
+          R2_SECRET_ACCESS_KEY: Schema.NonEmptyString,
+        }),
+      )(env);
       return Signing.make({
-        accessKeyId: env.R2_ACCESS_KEY_ID,
-        accountId: env.R2_ACCOUNT_ID,
-        secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+        accessKeyId: creds.R2_ACCESS_KEY_ID,
+        accountId: creds.R2_ACCOUNT_ID,
+        secretAccessKey: creds.R2_SECRET_ACCESS_KEY,
       });
     }),
   );
