@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
 import { Worker } from "effect-cf";
 
-import "./env";
 import { AppLayer, RpcHandler } from "./runtime";
 
 const fetch = Effect.gen(function* fetchWorker() {
