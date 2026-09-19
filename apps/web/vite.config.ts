@@ -39,9 +39,6 @@ export default defineConfig({
     solid({
       diagnostics: true,
       extensions: [".jsx", ".tsx"],
-      serverFunctions: envFlag(process.env.VITEST)
-        ? { configure: "./src/server-config.ts" }
-        : { configure: "./src/server-config.ts", devMiddleware: false },
       ssr: true,
       // Session reads can renew cookies; finish them before committing headers.
       start: { middleware: "./src/middleware.ts", renderMode: "async" },
