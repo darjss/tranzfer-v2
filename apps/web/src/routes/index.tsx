@@ -4,10 +4,10 @@ import Landing from "../landing/Landing";
 export default function Home() {
   return (
     <>
-      <Title>Tranzfer — Send the whole shoot. Never start over.</Title>
+      <Title>Tranzfer | Large file transfer, in development</Title>
       <Meta
         name="description"
-        content="Large file transfer for video editors and filmmakers. Hundreds of gigabytes to your editor; if Wi-Fi drops or the laptop sleeps, it resumes where it stopped."
+        content="An early build of resumable file transfer for creators and editors. Explore the upload design and recovery goals."
       />
       <Landing />
     </>
