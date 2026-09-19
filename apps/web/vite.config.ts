@@ -43,7 +43,8 @@ export default defineConfig({
         ? { configure: "./src/server-config.ts" }
         : { configure: "./src/server-config.ts", devMiddleware: false },
       ssr: true,
-      start: { middleware: "./src/middleware.ts" },
+      // Session reads can renew cookies; finish them before committing headers.
+      start: { middleware: "./src/middleware.ts", renderMode: "async" },
     }),
     fileRoutes({ codeSplitting: false, httpMethods: true, types: true }),
     Icons({ compiler: "solid" }),

@@ -9,6 +9,7 @@ import { Principal } from "./types/auth";
 
 export { Authenticated, CurrentPrincipal } from "./auth";
 export { Unauthorized } from "./errors/auth";
+export { AuthenticationUnavailable } from "./errors/authentication-unavailable";
 export { ProbeFailed } from "./errors/infra";
 export { Principal } from "./types/auth";
 

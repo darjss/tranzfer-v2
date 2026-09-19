@@ -30,7 +30,7 @@ const bindingFetch: typeof globalThis.fetch = async (input, init) => {
 // The SSR counterpart of WebLayer: workerd cannot resolve the relative
 // "/rpc" and a worker-side fetch would not carry the browser's credentials,
 // so requests go over the API service binding with the incoming cookie.
-export const serverLayer = (cookie: string | null) =>
+export const serverLayer = (cookie: string | null, responseHeaders: Headers) =>
   Layer.mergeAll(
     ApiClient.layer.pipe(
       Layer.provide(
@@ -50,11 +50,17 @@ export const serverLayer = (cookie: string | null) =>
     // Fetch is a Context.Reference read per request, so a sibling succeed
     // layer is the injection point — providing it to the protocol layer
     // would scope it to layer construction instead.
-    Layer.succeed(FetchHttpClient.Fetch, bindingFetch),
+    Layer.succeed(FetchHttpClient.Fetch, async (input, init) => {
+      const response = await bindingFetch(input, init);
+      for (const value of response.headers.getSetCookie()) {
+        responseHeaders.append("set-cookie", value);
+      }
+      return response;
+    }),
   );
 
 const buildApi = () => {
-  const runtime = ManagedRuntime.make(serverLayer(null));
+  const runtime = ManagedRuntime.make(serverLayer(null, new Headers()));
   return { client: runtime.runSync(Effect.service(ApiClient)), runtime };
 };
 

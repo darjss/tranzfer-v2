@@ -3,36 +3,15 @@ import { Drizzle } from "@tranzfer/db";
 import { sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Predicate from "effect/Predicate";
 import { Environment } from "effect-cf";
 
 const probeR2 = (env: Cloudflare.Env) =>
-  Effect.suspend(() => {
-    const key = `infra-probe/${crypto.randomUUID()}`;
-    return Effect.tryPromise({
-      catch: (cause) =>
-        new ProbeFailed({
-          message: Predicate.isError(cause) ? cause.message : String(cause),
-          resource: "r2",
-        }),
-      try: async () => {
-        await env.BUCKET.put(key, "ok");
-        const object = await env.BUCKET.get(key);
-        const text = object === null ? null : await object.text();
-        if (text !== "ok") {
-          throw new Error("r2 probe round-trip mismatch");
-        }
-      },
-    }).pipe(
-      // best-effort cleanup; a failed delete logs and doesn't mask the probe.
-      // ignoreCause, not ignore: promise rejection is a defect, which ignore
-      // (error-channel only) would let propagate and fail the probe.
-      Effect.ensuring(
-        Effect.promise(async () => {
-          await env.BUCKET.delete(key);
-        }).pipe(Effect.ignoreCause({ log: true })),
-      ),
-    );
+  Effect.tryPromise({
+    catch: () => new ProbeFailed({ message: "R2 probe failed", resource: "r2" }),
+    // A missing object still proves the binding can read the bucket.
+    try: async () => {
+      await env.BUCKET.head("infra-probe/health");
+    },
   });
 
 export const InfraHandlers = Layer.mergeAll(
@@ -50,11 +29,9 @@ export const InfraHandlers = Layer.mergeAll(
         .run("infra.probeD1", (d) => d.get<{ ok: number }>(sql`SELECT 1 AS ok`))
         .pipe(
           Effect.mapError(
-            (drizzleError) =>
+            () =>
               new ProbeFailed({
-                message: Predicate.isError(drizzleError.cause)
-                  ? drizzleError.cause.message
-                  : String(drizzleError.cause),
+                message: "D1 probe failed",
                 resource: "d1",
               }),
           ),
