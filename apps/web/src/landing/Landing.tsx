@@ -252,7 +252,7 @@ export default function Landing() {
               </a>
             </li>
             <li>
-              <a class="hover:text-ink" href="#">
+              <a class="hover:text-ink" href="/sign-in">
                 Sign in
               </a>
             </li>

@@ -93,11 +93,35 @@ export const lintConfig = (paths: {
       },
       ...effectOverride,
       {
+        files: ["packages/contracts/src/auth.ts"],
+        rules: {
+          // The middleware tag and the context key it provides are one seam;
+          // Authenticated is meaningless without CurrentPrincipal.
+          "max-classes-per-file": "off",
+        },
+      },
+      {
         files: ["packages/contracts/**", "**/*-error.ts", "**/errors/*.ts"],
         rules: {
           // `Schema.TaggedError<E>()(...)` is a class factory, not a thrown
           // error; the rule matches on the callee name alone.
           "unicorn/throw-new-error": "off",
+        },
+      },
+      {
+        files: ["packages/db/src/schema.ts"],
+        rules: {
+          // Column order in drizzle table objects defines DDL column order;
+          // keep the better-auth table layout.
+          "sort-keys": "off",
+        },
+      },
+      {
+        files: ["packages/db/src/client.ts"],
+        rules: {
+          // Database and Drizzle are one seam — both derive from the same D1
+          // handle, so they live in one file.
+          "max-classes-per-file": "off",
         },
       },
       {
