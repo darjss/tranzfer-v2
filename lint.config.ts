@@ -124,14 +124,6 @@ export const lintConfig = (paths: {
           "max-classes-per-file": "off",
         },
       },
-      {
-        files: ["apps/web/src/api/solid-effect.ts"],
-        rules: {
-          // The provider-less fallback in resolveFork erases the requirement
-          // channel deliberately; the SAFETY comment documents the invariant.
-          "typescript/no-unsafe-type-assertion": "off",
-        },
-      },
     ],
     plugins: [...(core.plugins ?? []), "effecttsgo"],
     rules: {
