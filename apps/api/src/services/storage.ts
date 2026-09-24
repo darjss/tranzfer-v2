@@ -2,14 +2,19 @@ import { StorageUnavailable } from "@tranzfer/contracts";
 import type { UploadRequest } from "@tranzfer/contracts";
 import { Credentials, Endpoint, Presign, Region } from "@distilled.cloud/aws";
 import * as S3 from "@distilled.cloud/aws/s3";
+import { RuntimeContext } from "alchemy";
+import * as Cloudflare from "alchemy/Cloudflare";
+import * as Output from "alchemy/Output";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Result from "effect/Result";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 
+import { Files } from "../resources";
 import { StorageError } from "./storage-error";
 
 // SAFETY: R2's S3 API signs against the pseudo-region "auto", which the AWS
@@ -48,6 +53,7 @@ const needsDeployedStage = (op: StorageError["op"]) =>
 export class Storage extends Context.Service<
   Storage,
   {
+    readonly available: boolean;
     readonly signUpload: (
       key: string,
       request: UploadRequest,
@@ -66,6 +72,32 @@ export class Storage extends Context.Service<
     readonly remove: (key: string) => Effect.Effect<void, StorageError>;
   }
 >()("tranzfer/Storage") {
+  static readonly deployed = Effect.gen(function* deployed() {
+    const files = yield* Files;
+    const token = yield* Cloudflare.ApiToken.AccountApiToken("FilesToken", {
+      policies: [
+        {
+          effect: "allow",
+          permissionGroups: [
+            "Workers R2 Storage Bucket Item Read",
+            "Workers R2 Storage Bucket Item Write",
+          ],
+          resources: Output.all(files.accountId, files.jurisdiction, files.bucketName).pipe(
+            Output.map(([accountId, jurisdiction, bucketName]) => ({
+              [`com.cloudflare.edge.r2.bucket.${accountId}_${jurisdiction}_${bucketName}`]: "*",
+            })),
+          ),
+        },
+      ],
+    });
+    return Storage.make({
+      accountId: (yield* files.accountId).pipe(Effect.provide(RuntimeContext.phantom)),
+      bucket: (yield* files.bucketName).pipe(Effect.provide(RuntimeContext.phantom)),
+      tokenId: (yield* token.tokenId).pipe(Effect.provide(RuntimeContext.phantom)),
+      tokenValue: (yield* token.value).pipe(Effect.provide(RuntimeContext.phantom)),
+    });
+  });
+
   static readonly make = (options: {
     readonly accountId: Effect.Effect<string>;
     readonly bucket: Effect.Effect<string>;
@@ -146,7 +178,8 @@ export class Storage extends Context.Service<
                   const bucket = yield* options.bucket;
                   let keyMarker: string | undefined;
                   let uploadIdMarker: string | undefined;
-                  do {
+                  let truncated = true;
+                  while (truncated) {
                     const page = yield* listMultipartUploads({
                       Bucket: bucket,
                       KeyMarker: keyMarker,
@@ -165,14 +198,15 @@ export class Storage extends Context.Service<
                         );
                       }
                     }
-                    keyMarker = page.IsTruncated === true ? page.NextKeyMarker : undefined;
-                    uploadIdMarker =
-                      page.IsTruncated === true ? page.NextUploadIdMarker : undefined;
-                  } while (keyMarker !== undefined || uploadIdMarker !== undefined);
+                    keyMarker = page.NextKeyMarker;
+                    uploadIdMarker = page.NextUploadIdMarker;
+                    truncated = page.IsTruncated === true;
+                  }
                 }).pipe(
                   Effect.mapError((cause) => new StorageError({ cause, op: "abortUploads" })),
                 ),
               ),
+              available: true,
               head: Effect.fn("Storage.head")((key) =>
                 Effect.gen(function* head() {
                   const bucket = yield* options.bucket;
@@ -220,36 +254,21 @@ export class Storage extends Context.Service<
               signUpload: Effect.fn("Storage.signUpload")((key, request) =>
                 Effect.gen(function* signUpload() {
                   const url = new URL(yield* objectUrl(key));
-                  let method: string;
-                  switch (request._tag) {
-                    case "Put": {
-                      method = "PUT";
-                      break;
-                    }
-                    case "Create": {
-                      method = "POST";
-                      url.searchParams.set("uploads", "");
-                      break;
-                    }
-                    case "Part": {
-                      method = "PUT";
-                      url.searchParams.set("partNumber", String(request.partNumber));
-                      url.searchParams.set("uploadId", request.uploadId);
-                      break;
-                    }
-                    case "List": {
-                      method = "GET";
-                      url.searchParams.set("uploadId", request.uploadId);
-                      break;
-                    }
-                    case "Complete": {
-                      method = "POST";
-                      url.searchParams.set("uploadId", request.uploadId);
-                      break;
-                    }
-                    default: {
-                      return yield* Effect.die(new Error("Unknown upload request tag"));
-                    }
+                  const { method, query } = Match.valueTags(request, {
+                    Complete: (r) => ({
+                      method: "POST",
+                      query: { uploadId: r.uploadId },
+                    }),
+                    Create: () => ({ method: "POST", query: { uploads: "" } }),
+                    List: (r) => ({ method: "GET", query: { uploadId: r.uploadId } }),
+                    Part: (r) => ({
+                      method: "PUT",
+                      query: { partNumber: String(r.partNumber), uploadId: r.uploadId },
+                    }),
+                    Put: () => ({ method: "PUT", query: {} }),
+                  });
+                  for (const [name, value] of Object.entries(query)) {
+                    url.searchParams.set(name, value);
                   }
                   return yield* presign({
                     expiresIn: UPLOAD_URL_TTL_SECONDS,
@@ -284,6 +303,7 @@ export class Storage extends Context.Service<
     Storage,
     Storage.of({
       abortUploads: () => needsDeployedStage("abortUploads"),
+      available: false,
       head: () => needsDeployedStage("head"),
       remove: () => needsDeployedStage("remove"),
       signDownload: () => needsDeployedStage("signDownload"),
