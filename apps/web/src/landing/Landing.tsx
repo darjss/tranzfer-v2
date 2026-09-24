@@ -2,7 +2,7 @@ import { For, createSignal, onSettled } from "solid-js";
 import Brand from "./Brand";
 import Uploader from "./Uploader";
 import { ArrowIcon, Asterisk, Blob, Hand, Ink, Ring, Still } from "./notebook";
-import { Button } from "../ui/Button";
+import { button } from "../ui/Button";
 import "./landing.css";
 import coastRoad from "./assets/coast-road.webp";
 import filmmaker from "./assets/filmmaker.webp";
@@ -10,7 +10,6 @@ import frozenWilds from "./assets/frozen-wilds.webp";
 import hikerSea from "./assets/hiker-sea.webp";
 import loftPacking from "./assets/loft-packing.webp";
 import morningPacking from "./assets/morning-packing.webp";
-import mountainStudio from "./assets/mountain-studio.webp";
 import neonCrosswalk from "./assets/neon-crosswalk.webp";
 import nightTravel from "./assets/night-travel.webp";
 import videoEdit from "./assets/video-edit.webp";
@@ -50,48 +49,48 @@ const failures = [
   {
     gb: "38 GB landed",
     h: "Café Wi-Fi died",
-    p: "It waited for the connection, then carried on from the same spot.",
-    r: "Continued",
+    p: "Goal: wait for the connection and retry only the missing parts.",
+    r: "Planned",
     rot: -3,
     src: wrong1,
   },
   {
     gb: "141 GB landed",
     h: "Laptop slept on the train",
-    p: "On wake it checked what had already arrived and picked up from there.",
-    r: "Continued",
+    p: "Goal: check the remote parts after wake and continue from them.",
+    r: "Planned",
     rot: 2,
     src: wrong2,
   },
   {
     gb: "220 GB landed",
     h: "Someone refreshed the tab",
-    p: "Choose the same file again and it resumes. No new upload.",
-    r: "Continued",
+    p: "Goal: reselect and verify the same file, then resume the existing upload.",
+    r: "Planned",
     rot: -1.5,
     src: wrong3,
   },
   {
     gb: "221 GB landed",
     h: "Left it overnight",
-    p: "Sessions don't time out on you. Open the lid the next morning and it's still where you left it.",
-    r: "Continued",
+    p: "Goal: renew expired authorization without discarding uploaded parts.",
+    r: "Planned",
     rot: 2.5,
     src: wrong4,
   },
   {
     gb: "311 GB landed",
     h: "One piece arrived damaged",
-    p: "Tranzfer noticed and re-sent that piece. About 100 MB, not 311 GB.",
-    r: "Fixed itself",
+    p: "Goal: detect a failed part and retry it without restarting the file.",
+    r: "Planned",
     rot: -2,
     src: wrong5,
   },
   {
     gb: "350 GB · done",
     h: "Delivered",
-    p: "Verified bit for bit. Marcus got one link and downloaded at full speed.",
-    r: "Done",
+    p: "Goal: confirm completion and let the recipient download the correct file.",
+    r: "Planned",
     rot: 1.5,
     src: wrong6,
   },
@@ -100,57 +99,18 @@ const failures = [
 const steps = [
   {
     h: "Drop the cards",
-    p: "Whole camera cards, folders, 400 GB. Drag them in and walk away.",
+    p: "Select a file and start a multipart upload directly to storage.",
     src: videoEdit,
   },
   {
-    h: "Close the laptop",
-    p: "Real speed, real time remaining. Nothing you've already sent is sent twice.",
+    h: "Resume after interruptions",
+    p: "Restore file access when needed and continue from confirmed uploaded parts.",
     src: loftPacking,
   },
   {
     h: "Send one link",
-    p: "Your editor clicks and downloads. No account. The link expires and the files delete themselves.",
+    p: "Give your editor an authorized download link with a clear expiry.",
     src: filmmaker,
-  },
-];
-
-const plans = [
-  {
-    cta: "Start free",
-    h: "Free",
-    hot: false,
-    items: ["100 GB per transfer", "Links live 7 days", "Resumes after any failure"],
-    per: "",
-    price: "$0",
-  },
-  {
-    cta: "Start Pro",
-    h: "Pro",
-    hot: true,
-    items: [
-      "1 TB per transfer",
-      "Links live 30 days",
-      "Passwords and expiry you control",
-      "Faster lane on busy days",
-      "Delivery history",
-    ],
-    per: "/mo",
-    price: "$29",
-    tag: "Most editors",
-  },
-  {
-    cta: "Talk to us",
-    h: "Studio",
-    hot: false,
-    items: [
-      "No size limit",
-      "Seats for the whole team",
-      "A standing inbox for your regular editors",
-      "Files land straight in their folder",
-    ],
-    per: "/mo",
-    price: "$99",
   },
 ];
 
@@ -238,21 +198,16 @@ export default function Landing() {
           <ul class="flex list-none items-center gap-7 text-sm font-medium text-mut">
             <li class="hidden md:block">
               <a class="hover:text-ink" href="#desk">
-                What survives
+                Recovery goals
               </a>
             </li>
             <li class="hidden md:block">
               <a class="hover:text-ink" href="#how">
-                How it works
-              </a>
-            </li>
-            <li class="hidden md:block">
-              <a class="hover:text-ink" href="#pricing">
-                Pricing
+                Planned workflow
               </a>
             </li>
             <li>
-              <a class="hover:text-ink" href="#">
+              <a class="hover:text-ink" href="/sign-in">
                 Sign in
               </a>
             </li>
@@ -284,21 +239,21 @@ export default function Landing() {
             tone="red"
             style="right:0;bottom:6%;width:130px;text-align:center;--r:-4deg;--d:1.4s"
           >
-            "sent twice:
+            the target:
             <br />
-            <b style="font-size:28px">zero"</b>
+            <b style="font-size:28px">resume</b>
             <br />
-            <small style="font-size:15px">sure.</small>
+            <small style="font-size:15px">verify first.</small>
           </Hand>
           <Asterisk style="left:34%;bottom:6%;width:30px;height:30px" />
           <Asterisk tone="blue" style="right:-3%;top:40%;width:24px;height:24px" />
           <Hand style="left:56%;top:1%;--r:-3deg;--d:1.2s">
-            day 1. 463 GB.
+            example: 463 GB.
             <br />
-            hotel wifi. let's see.
+            designed for big shoots.
           </Hand>
           <Hand tone="blue" style="left:50%;bottom:9%;--r:-3deg;--d:1.8s">
-            ↑ dropped the cards, went for dinner
+            ↑ upload design, still in progress
           </Hand>
 
           <div class="scatter pointer-events-none absolute inset-0 z-0 hidden lg:block">
@@ -335,24 +290,24 @@ export default function Landing() {
                 </svg>
               </span>
               <br />
-              Never start over.
+              Built to resume.
             </h1>
             <p
               class="rv mt-[26px] mb-[34px] max-w-[34ch] text-pretty text-xl leading-[1.4] font-medium text-[#3a3b40]"
               style="--d:120ms"
             >
-              Hundreds of gigabytes to your editor. Wi-Fi drops, laptop sleeps, tab closes. It picks
-              up where it stopped.
+              Tranzfer is an early build for sending large files to your editor. Sign-in works.
+              Uploads are not available yet. The preview shows what we are building.
             </p>
             <div class="rv flex flex-wrap items-center gap-[26px]" style="--d:200ms">
-              <Button>
-                Send 100 GB free <ArrowIcon />
-              </Button>
+              <a class={button()} href="/sign-in">
+                Sign in <ArrowIcon />
+              </a>
               <a
                 class="border-b border-ink/25 pb-0.5 text-[15px] font-semibold text-ink transition-[border-color] duration-200 hover:border-ink [&_span]:inline-block [&_span]:transition-[translate] [&_span]:duration-250 [&_span]:ease-smooth [&:hover_span]:translate-x-1"
                 href="#desk"
               >
-                See what it survives <span>→</span>
+                Explore the recovery goals <span>→</span>
               </a>
             </div>
           </div>
@@ -361,7 +316,7 @@ export default function Landing() {
         </section>
       </div>
 
-      <div class="ticker">
+      <div class="ticker" aria-label="Illustrative transfer examples">
         <div class="marq">
           <For each={[...ticker, ...ticker]}>
             {([name, route]) => (
@@ -381,30 +336,30 @@ export default function Landing() {
             <path d="M96 18 116 30 100 44" style="--len:60;--d:.9s" />
           </Ink>
           <Hand tone="red" style="left:45%;top:2%;--r:5deg;--d:1s">
-            09:12 wifi died.
+            what if wifi dies?
             <br />
-            here we go.
+            keep the parts.
           </Hand>
           <Hand style="right:-2%;top:12%;--r:-7deg;--d:.6s;text-align:right">
-            …wait. it kept going?
-            <br />I didn't touch anything.
+            the goal: resume
+            <br />
+            after an interruption.
           </Hand>
           <Hand tone="blue" style="left:-9%;top:70%;--r:-5deg;--d:.8s">
-            ok. this is
+            make recovery
             <br />
-            actually fine.
+            predictable.
           </Hand>
           <div class={head}>
-            <p class={mono}>One real day, one 350 GB card</p>
+            <p class={mono}>Illustrated recovery goals, not a completed transfer</p>
             <h2 class={["rv", h2]}>
-              Six things went wrong.
+              When a transfer breaks.
               <br />
-              <i>Nothing restarted.</i>
+              <i>Keep the work already done.</i>
             </h2>
             <p class="rv mt-[18px] max-w-[52ch] text-lg text-mut" style="--d:80ms">
-              Every piece of footage is saved the moment it lands. When something breaks, Tranzfer
-              checks what already arrived, makes sure your file hasn't changed, and sends only
-              what's missing.
+              The goal is to check which parts arrived, verify that the source file is unchanged,
+              and send only what is missing. These scenarios describe planned behavior.
             </p>
           </div>
           <div class="desk grid grid-cols-1 gap-y-7 gap-x-6 p-3 lg:grid-cols-3">
@@ -438,14 +393,14 @@ export default function Landing() {
 
         <section id="how" class="relative py-20 lg:py-[120px]">
           <Hand style="right:0;top:6%;--r:4deg;--d:.5s">
-            day 2. closed the lid
+            planned for laptops
             <br />
-            on purpose this time.
+            that need to sleep.
           </Hand>
           <div class={head}>
-            <p class={mono}>How it works</p>
+            <p class={mono}>Planned workflow</p>
             <h2 class={["rv", h2]}>
-              Three steps. <i>No babysitting.</i>
+              From camera card <i>to editor.</i>
             </h2>
           </div>
           <div class="steps grid grid-cols-1 gap-[18px] lg:grid-cols-3">
@@ -472,100 +427,6 @@ export default function Landing() {
           </div>
         </section>
 
-        <section class="quote relative grid grid-cols-1 items-center gap-[60px] py-20 lg:grid-cols-[1fr_1.4fr] lg:py-[120px]">
-          <Hand tone="blue" style="left:38%;top:8%;--r:-6deg;--d:.7s">
-            same. except mine
-            <br />
-            was a train.
-          </Hand>
-          <div class="pic rv overflow-hidden rounded-2xl shadow-[0_40px_80px_-40px_rgba(23,24,28,.6)] -rotate-3 transition-[rotate] duration-500 ease-spring hover:rotate-0">
-            <img src={mountainStudio} alt="" loading="lazy" />
-          </div>
-          <div>
-            <blockquote
-              class="rv text-balance text-[clamp(28px,3.6vw,46px)] leading-[1.08] font-semibold tracking-[-0.035em] italic"
-              style="--d:80ms"
-            >
-              "I closed the lid at 62%, got on a plane, opened it in Lisbon, and it just kept
-              going."
-            </blockquote>
-            <cite class="rv mt-5 block text-sm text-mut not-italic" style="--d:160ms">
-              Documentary DP · 1.2 TB delivered in one week
-            </cite>
-          </div>
-        </section>
-
-        <section id="pricing" class="relative py-20 lg:py-[120px]">
-          <Ink tone="blue" style="left:33%;top:47%;width:150px;height:90px" viewBox="0 0 180 80">
-            <ellipse
-              cx="90"
-              cy="40"
-              rx="84"
-              ry="32"
-              style="--len:360"
-              transform="rotate(-3 90 40)"
-            />
-          </Ink>
-          <Hand tone="blue" style="left:-11%;top:56%;--r:-8deg;--d:.9s">
-            $29. one redo
-            <br />
-            costs more →
-          </Hand>
-          <Hand style="right:0;top:12%;--r:4deg;--d:.5s">
-            day 3. Marcus has
-            <br />
-            everything. <s>cancel</s>
-          </Hand>
-          <div class={head}>
-            <p class={mono}>Pricing</p>
-            <h2 class={["rv", h2]}>
-              Pay for the work. <i>Not per gigabyte.</i>
-            </h2>
-          </div>
-          <div class="plans grid grid-cols-1 items-end gap-[18px] lg:grid-cols-3">
-            <For each={plans}>
-              {(p, i) => (
-                <div
-                  class={[
-                    "plan rv flex flex-col gap-[18px] rounded-[20px] p-8 transition-[translate,box-shadow,rotate] duration-350 ease-smooth",
-                    p.hot
-                      ? "bg-ink pb-10 text-paper shadow-[0_40px_80px_-40px_rgba(23,24,28,.9)] -rotate-[1.5deg] hover:rotate-0"
-                      : "bg-panel ring-1 ring-line hover:-translate-y-1.5 hover:shadow-[0_0_0_1px_var(--color-line),0_40px_60px_-40px_rgba(23,24,28,.5)]",
-                  ]}
-                  style={`--d:${i() * 70}ms`}
-                >
-                  <h3
-                    class={[
-                      "flex justify-between text-[13px] font-medium",
-                      p.hot ? "text-[#a9a79e]" : "text-mut",
-                    ]}
-                  >
-                    {p.h}{" "}
-                    {p.tag !== undefined && p.tag !== "" ? (
-                      <span class="text-[#8fa1ff]">{p.tag}</span>
-                    ) : null}
-                  </h3>
-                  <div class="font-mono text-[52px] leading-none font-medium tracking-[-0.04em]">
-                    {p.price}
-                    {p.per === "" ? null : (
-                      <small class="text-[15px] tracking-normal text-mut">{p.per}</small>
-                    )}
-                  </div>
-                  <ul
-                    class={[
-                      "grid flex-1 list-none gap-[9px] p-0 text-[15px] [&_li]:before:mr-2.5 [&_li]:before:opacity-50 [&_li]:before:content-['—']",
-                      p.hot ? "text-[#c9c6bc]" : "text-mut",
-                    ]}
-                  >
-                    <For each={p.items}>{(it) => <li>{it}</li>}</For>
-                  </ul>
-                  <Button variant={p.hot ? "fill" : "outline"}>{p.cta}</Button>
-                </div>
-              )}
-            </For>
-          </div>
-        </section>
-
         <section class="final relative overflow-hidden py-20 text-center lg:py-40">
           <Blob style="width:600px;height:400px;left:20%;top:20%;background:#ffe0bd" />
           <Ink tone="red" style="left:27%;top:56%;width:110px;height:70px" viewBox="0 0 120 90">
@@ -573,9 +434,9 @@ export default function Landing() {
             <path d="M94 4 114 14 100 32" style="--len:60;--d:1s" />
           </Ink>
           <Hand tone="red" style="left:14%;top:72%;--r:-6deg;--d:1.2s">
-            fine. you win.
+            next up:
             <br />
-            sending B-cam.
+            the first upload.
           </Hand>
           <Still
             in
@@ -584,13 +445,13 @@ export default function Landing() {
             style="--w:120px;--ar:2/3;--x:2%;--y:10%;--r:-8deg"
           />
           <Still in src={nightTravel} label="pickup" style="--w:140px;--x:84%;--y:55%;--r:9deg" />
-          <p class={mono}>Ready when you are</p>
+          <p class={mono}>Early build</p>
           <h2 class={["rv relative z-1 mx-auto mt-3.5 mb-[30px]", h2]}>
-            Send something <i>enormous.</i>
+            Large files. <i>Still building.</i>
           </h2>
-          <Button class="rv relative z-1" style="--d:80ms">
-            Send 100 GB free <ArrowIcon />
-          </Button>
+          <a class={button({ class: "rv relative z-1" })} href="/sign-in" style="--d:80ms">
+            Sign in <ArrowIcon />
+          </a>
         </section>
         <footer class="flex justify-between border-t border-ink pt-7 pb-[60px] text-[13px] text-mut">
           <span>© 2026 Tranzfer</span>

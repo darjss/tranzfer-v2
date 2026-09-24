@@ -93,6 +93,14 @@ export const lintConfig = (paths: {
       },
       ...effectOverride,
       {
+        files: ["packages/contracts/src/auth.ts"],
+        rules: {
+          // The middleware tag and the context key it provides are one seam;
+          // Authenticated is meaningless without CurrentPrincipal.
+          "max-classes-per-file": "off",
+        },
+      },
+      {
         files: ["packages/contracts/**", "**/*-error.ts", "**/errors/*.ts"],
         rules: {
           // `Schema.TaggedError<E>()(...)` is a class factory, not a thrown
@@ -101,11 +109,19 @@ export const lintConfig = (paths: {
         },
       },
       {
-        files: ["apps/web/src/api/solid-effect.ts"],
+        files: ["packages/db/src/schema.ts"],
         rules: {
-          // The provider-less fallback in resolveFork erases the requirement
-          // channel deliberately; the SAFETY comment documents the invariant.
-          "typescript/no-unsafe-type-assertion": "off",
+          // Column order in drizzle table objects defines DDL column order;
+          // keep the better-auth table layout.
+          "sort-keys": "off",
+        },
+      },
+      {
+        files: ["packages/db/src/client.ts"],
+        rules: {
+          // Database and Drizzle are one seam — both derive from the same D1
+          // handle, so they live in one file.
+          "max-classes-per-file": "off",
         },
       },
     ],

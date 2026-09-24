@@ -5,6 +5,8 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
+import { envBindings } from "../apps/api/src/bindings";
+
 const envFile = new URL("../.env", import.meta.url);
 if (existsSync(envFile)) {
   process.loadEnvFile(envFile);
@@ -20,6 +22,7 @@ const required = (name: string) => {
 
 const webRoot = new URL("../apps/web", import.meta.url).pathname;
 const apiMain = new URL("../apps/api/src/index.ts", import.meta.url).href;
+const dbMigrations = new URL("../packages/db/migrations", import.meta.url).pathname;
 
 export default Alchemy.Stack(
   "tranzfer",
@@ -28,8 +31,12 @@ export default Alchemy.Stack(
     state: Cloudflare.state(),
   },
   Effect.gen(function* provision() {
-    const db = yield* Cloudflare.D1.Database("App");
+    const db = yield* Cloudflare.D1.Database("App", {
+      // applied-migrations bookkeeping table, phoenix convention.
+      migrations: { dir: dbMigrations, table: "drizzle_migrations" },
+    });
     const files = yield* Cloudflare.R2.Bucket("Files");
+    const stage = yield* Alchemy.Stage;
 
     const api = yield* Cloudflare.Worker("Api", {
       // Newest date the bundled workerd in `alchemy dev` accepts; prod supports it too.
@@ -39,6 +46,11 @@ export default Alchemy.Stack(
       },
       dev: { port: 8787 },
       env: {
+        [envBindings.appUrl]:
+          stage === "production" ? "https://tranzfer.app" : required(envBindings.appUrl),
+        [envBindings.betterAuthSecret]: required(envBindings.betterAuthSecret),
+        [envBindings.googleClientId]: required(envBindings.googleClientId),
+        [envBindings.googleClientSecret]: required(envBindings.googleClientSecret),
         BUCKET: files,
         DB: db,
         R2_ACCESS_KEY_ID: required("R2_ACCESS_KEY_ID"),

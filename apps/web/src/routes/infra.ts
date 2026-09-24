@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import { apiOverBinding } from "../api/binding";
 
 export const GET = async () => {
-  const { client, runtime } = await apiOverBinding();
+  const { client, runtime } = apiOverBinding();
   return Response.json({
     web: true,
     ...(await runtime.runPromise(

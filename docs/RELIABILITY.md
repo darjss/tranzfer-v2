@@ -1,46 +1,18 @@
-# RELIABILITY.md
+# Reliability
 
-# Tranzfer Reliability Contract
+This is the most important file in the repository. Read all of it before you touch uploads, recovery, downloads, cancellation, expiry or anything that stores transfer state. Then read it again.
 
-> **A transfer is not fragile.**
->
-> Once Tranzfer has successfully moved bytes, ordinary failure should not make the user move those bytes again.
->
-> If Tranzfer has already moved 220 GB of a 350 GB project, the default outcome after failure is:
->
-> **continue from roughly 220 GB.**
->
-> Not:
->
-> **start from zero.**
+Everything here is an acceptance rule. None of it is a claim that the product already passes. If you write copy that says Tranzfer does something from this file, the matching gate below had better be green.
 
-This document is the reliability contract for Tranzfer.
+## The promise
 
-`SOUL.md` explains what kind of product Tranzfer is.
+Tranzfer moves enormous files between people without making anyone babysit the connection.
 
-`STACK.md` explains which tools we use.
+The user is allowed to live in an unreliable world. Their Wi-Fi drops. Their ISP flaps. Their router reboots. The laptop sleeps with the lid half open. The browser refreshes, the tab closes, the browser restarts, the machine reboots for an update nobody asked for. A signed URL expires. One part out of 7,000 fails. The API returns a 503 for four seconds. And all of this happens at 63%, because it always happens at 63%.
 
-This file explains what **must remain true when everything goes wrong**.
+Tranzfer's job is to make all of that boring.
 
-Any code touching uploads, downloads, transfer persistence, multipart state, recovery, verification, cleanup, or resumability must preserve the invariants in this document.
-
-Reliability is not a later hardening phase.
-
-Reliability is the product.
-
----
-
-# 1. The promise
-
-Tranzfer exists to move enormous files between people without making them babysit transport.
-
-The user is allowed to have an unreliable environment.
-
-Their Wi-Fi can disappear. Their ISP can flap. Their router can reboot. Their laptop can sleep. Their browser can refresh. Their tab can close. Their browser can restart. Their machine can reboot. A signed URL can expire. A multipart part can fail. An API can briefly return an error. A renderer can crash. The UI can disappear. A transfer can be 63% complete when any of this happens.
-
-Tranzfer is responsible for making ordinary failure boring.
-
-The product should behave as though the transfer is a durable job that happens to be observed by a UI.
+Say it out loud until it sticks:
 
 The UI is not the job.
 
@@ -48,1966 +20,387 @@ The browser tab is not the job.
 
 The Electron window is not the job.
 
-The current JavaScript process is not the job.
+The JavaScript process is not the job.
 
-**The transfer is the job.**
+**The transfer is the job.** It is a durable job with a local source file on one end and remote multipart state on the other. A UI happens to be watching it. When the UI dies, the job does not care.
 
----
+## The prime directive
 
-# 2. The prime directive
+> Never make the user upload bytes again if Tranzfer can prove those bytes already exist correctly on the remote side.
 
-> **Never make the user upload bytes again if Tranzfer can prove those bytes already exist correctly on the remote side.**
+Already moved bytes are an asset. They cost the user hours of their night. Every retry policy, persistence decision, cleanup job and screen of copy in this codebase has to respect them.
 
-This does not mean blindly trusting stale local state.
+That does not mean trusting stale local state. It means:
 
-It means:
+1. Persist enough identity to recover the transfer.
+2. Ask R2 what actually exists.
+3. Prove the local file is still the same file.
+4. Reconcile the two.
+5. Send only the missing work.
 
-1. persist enough identity to recover the transfer;
-2. ask the remote system what actually exists;
-3. verify the local file is still the same file;
-4. reconcile the two;
-5. continue only the missing work.
+When correctness and convenience disagree, correctness wins, every time. A resume that silently corrupts a file is far worse than a restart. A restart wastes a night. A corrupt file wastes a shoot.
 
-If correctness and convenience conflict, correctness wins.
+## Hierarchy of truth
 
-A resume that silently corrupts a file is worse than a restart.
-
----
-
-# 3. Hierarchy of truth
-
-For browser uploads:
+The closer a layer sits to the real bytes, the more it is believed.
 
 ```text
-Cloudflare R2 multipart state
-        ↑
-        │ remote truth
-        │
-IndexedDB durable session metadata
-        ↑
-        │ local durable recovery state
-        │
-Uppy runtime
-        ↑
-        │ current process/session
-        │
-Solid 2 UI
+Browser today                       Desktop later
+
+R2 multipart state                  R2 multipart state
+      ^  remote truth                     ^
+IndexedDB recovery metadata         SQLite transfer state
+      ^  durable local memory             ^
+Uppy runtime                        background transfer process
+      ^  this session only                ^
+Solid UI                            Electron + Solid UI
 ```
 
-For future desktop uploads:
+D1 sits beside R2 as the server's record of who owns which transfer and what lifecycle state it is in. R2 is authoritative for uploaded parts and completed objects. D1 is authoritative for identity, ownership and lifecycle.
 
-```text
-Cloudflare R2 multipart state
-        ↑
-SQLite durable transfer state
-        ↑
-Background transfer engine
-        ↑
-Electron + Solid UI
-```
+A signal, store, memo, component or query cache is never the only place critical recovery information lives. If a refresh can erase it, it was never durable.
 
-The closer a layer is to the actual bytes, the more authoritative it is.
+## The laws
 
-The UI must never become durable truth.
+These do not bend. A PR that breaks one of them is wrong even if every check is green.
 
-A signal, store, memo, query cache, or renderer state must never be the only place where critical recovery information exists.
+1. **Remote completed parts are the truth.** Local completed-part lists are a cache. When local says part 1200 is done and R2 does not have it, upload part 1200 again. When local says 72% and R2 says 74%, R2 wins.
+2. **Durable metadata is enough to recover.** If the process dies right after any line of transfer code, the next process can find the transfer and work out what to do.
+3. **Never resume against an unverified file.** Verify the source before sending another byte.
+4. **A filename is not an identity.** `Episode_14.mov` today and `Episode_14.mov` tomorrow can be different files.
+5. **Retry only what failed.** One failed part never restarts the file.
+6. **Expired authorization is recoverable.** Get fresh authorization for the operation and continue.
+7. **Losing the network is a pause.** Not an error, not a cancel.
+8. **Completion is idempotent.** Finishing twice, or finishing with a lost response, converges on the same completed transfer.
+9. **Abort is explicit.** Only a deliberate user or policy action destroys remote multipart state.
+10. **Recovery reconciles. It never assumes.**
+11. **Transfers outlive processes.** Component disposal, fiber interruption, tab close, renderer loss and network loss never implicitly abort a remote upload.
+12. **Progress reflects confirmed work.**
+13. **Reliability degrades honestly.** When we cannot do something automatically, we say so plainly and tell the user the next step.
 
----
+## What "resume" means
 
-# 4. Reliability invariants
+Nobody on this project uses the word loosely. Name the level.
 
-These are product invariants, not implementation suggestions.
+| Level | Survives                  | What happens                                                                               |
+| ----- | ------------------------- | ------------------------------------------------------------------------------------------ |
+| 0     | One failed request        | Retry that request with backoff                                                            |
+| 1     | Network loss, same tab    | Pause, then continue when connectivity returns                                             |
+| 2     | Refresh or renderer crash | Rebuild from durable metadata and continue                                                 |
+| 3     | Tab or browser close      | Restore metadata, recover file access or ask for the file, reconcile, continue             |
+| 4     | Machine reboot            | Same as 3 after the OS comes back. Web may need reselection. Desktop restores by path      |
+| 5     | Nobody at the keyboard    | Desktop only. Background process finds the job, verifies the file and continues on its own |
 
-## 4.1 Remote completed parts are authoritative
-
-If R2 reports that part 842 exists for the current multipart upload, that is stronger evidence than a stale local progress bar claiming only 841 parts completed.
-
-Local progress can be wrong.
-
-Remote multipart state is the source of truth for uploaded parts.
-
-## 4.2 Durable metadata must be sufficient to recover
-
-An in-progress transfer must persist enough information to reconstruct its identity after process loss.
-
-Conceptually:
-
-```ts
-type DurableUploadSession = {
-  transferId: string;
-  objectKey: string;
-  multipartUploadId: string;
-
-  fileName: string;
-  fileSize: number;
-  lastModified: number | null;
-  fingerprint: string;
-
-  chunkSize: number;
-
-  createdAt: number;
-  updatedAt: number;
-
-  status: "preparing" | "uploading" | "paused" | "recovering" | "finalizing";
-};
-```
-
-The shape may evolve.
-
-The invariant does not.
-
-## 4.3 Never resume against an unverified local file
-
-If the user replaces `Episode42.mov` after 180 GB has already uploaded, Tranzfer must not blindly combine the old first 180 GB with the new remainder.
-
-Before resuming after restoration, verify the local file using multiple signals:
+Level 4 on the web looks like this:
 
 ```text
-name
-size
-last modified time where meaningful
-stable fingerprint
+restore durable transfer
+  -> restore file handle, or ask for the same file again
+  -> verify identity
+  -> ListParts
+  -> upload missing parts
+  -> finalize
 ```
 
-Do not resume when identity is uncertain.
+Do not promise a level before we have tortured it. Do not skip lower rungs to build a higher one.
 
-## 4.4 Filename is not identity
+## What gets persisted
 
-Two files can share a name, extension, or size.
+Persist, before relying on any of it:
 
-Identity must be stronger than any one of those.
+- transfer ID, object key and multipart upload ID
+- file name, size and a meaningful modification time
+- content fingerprint and the fingerprint algorithm version
+- part-size policy
+- lifecycle state and timestamps
+- a file handle, where the browser supports it
 
-## 4.5 Retry only failed work
+Write checkpoints small and atomic. Keep the object key and upload ID stable across every retry. Version persisted records, and make sure a deploy can still recover transfers that were in flight before it.
 
-A failed part must not cause successful parts to be uploaded again.
+The nastiest window in this whole system is "remote succeeded, then we died." R2 accepted the part or completed the object, and the response never arrived or the next local write never happened. Every step has to be recoverable from that window. If you cannot explain how your change survives it, the change is not done.
 
-A temporary signing failure must not reset the multipart upload.
+## Recovery, in order
 
-A temporary API failure must not destroy the transfer.
+1. Load the durable transfer and reauthorize access.
+2. Restore file access. Check handle permission and request it through a user gesture when needed. Otherwise ask the user to pick the same file again.
+3. Verify the source file.
+4. Call `ListParts` against R2 and follow its pagination to the end. A 350 GB upload has thousands of parts. Reading page one and calling it done is a bug.
+5. Upload missing or failed parts into the existing multipart upload.
+6. If finalization might already have happened, check for the completed object and reconcile D1 before retrying or creating anything.
 
-## 4.6 Expired authorization is recoverable
+No step is skipped because "it probably worked."
 
-Expired signed URLs or temporary credentials are expected.
+## File identity
 
-The behavior should be:
+Identity is size, modification time where it means something, and a versioned content fingerprint. All of them must match. Changed or uncertain means reject.
 
-```text
-authorization expires
-        ↓
-obtain fresh authorization
-        ↓
-retry the affected operation
-```
+A sampled fingerprint catches accidental replacement without rereading 350 GB. It is not proof of full byte integrity, and nobody may describe it as such. Choose and document the algorithm before recovery ships, and store its version with every record so it can change later.
 
-Not:
+One multipart object corresponds to exactly one immutable source file version. Never mix versions. Never guess. One transfer, one source file, one final object.
 
-```text
-authorization expires
-        ↓
-restart 300 GB file
-```
+## Browser reality
 
-## 4.7 Network disappearance is a pause
+Browsers differ, and pretending otherwise is lying.
 
-A lost connection is ordinary behavior.
+- Where persistent file handles work, restore the handle and ask for permission with a user gesture.
+- Where they do not, ask the user to reselect the file. Tell them in the UI that this browser needs it, and tell them how much is already uploaded.
+- Golden Retriever can help restore files, but durable transfer identity must exist without it.
+- Never claim an automatic capability a browser does not have.
 
-The product should say:
+## Multipart and resources
 
-> Connection lost. Waiting to continue.
+R2 rules, from the current Cloudflare docs: at most 10,000 parts, 5 MiB to 5 GiB per part, and every part except the last must be the same size. By default R2 expires incomplete multipart uploads after 7 days. Check the docs again before changing any of this.
 
-When connectivity returns, continue automatically wherever safe.
+- Derive part size from file size and those limits, then persist the chosen policy with the transfer. A 350 GB file cannot fit in 10,000 parts below roughly 35 MB each. Uniform sizes mean the policy is fixed at creation and never changes mid-upload. Benchmark before picking defaults.
+- Sign parts lazily. Thousands of URLs signed up front will expire before anyone uses them.
+- File bytes travel directly between the client and R2. Workers and RPC never carry payloads. RPC coordinates access and lifecycle.
+- Memory is bounded by concurrency times part size, never by file size. Respect backpressure and release what you hold.
+- The advertised resume window must be shorter than whatever the bucket's lifecycle enforces. Promising a 14-day resume on a bucket that aborts uploads after 7 days is a lie with a delay.
 
-## 4.8 Completion is idempotent
+## State machines, not boolean soup
 
-This must be safe:
+Recovery, file access, finalization and cancellation are explicit domain states. `isUploading && isPaused && !isCancelled && hasError` is how contradictions get into production. If two booleans can both be true in a way that makes no sense, replace them with one state.
 
-```text
-all parts uploaded
-       ↓
-CompleteMultipartUpload sent
-       ↓
-remote object completes
-       ↓
-client crashes before response arrives
-       ↓
-client restarts
-```
+Uppy owns scheduling, progress events and transport retries. Do not build a second transport state machine next to it, and do not wrap its events in another framework. The domain states above sit over Uppy, not beside it.
 
-Recovery must converge toward the same correct completed state.
+## Failure taxonomy
 
-## 4.9 Abort is explicit
+Every failure falls into one of these. Each has exactly one correct response.
 
-Do not silently abort a valid multipart upload because:
+| Failure                | Examples                                         | Response                                                      |
+| ---------------------- | ------------------------------------------------ | ------------------------------------------------------------- |
+| Transient transport    | Timeout, 5xx, throttling, dropped connection     | Bounded retry with backoff for that request only              |
+| Authorization expired  | Signed URL expired, session renewed              | Fresh authorization for the affected operation, then continue |
+| Network gone           | Offline, sleep, changed networks                 | Pause. Resume when it is safe                                 |
+| Needs the user         | File permission lost, file reselection required  | Stop and explain the one action needed                        |
+| Local file mismatch    | Size, mtime or fingerprint changed               | Refuse to continue. Explain what changed                      |
+| Remote upload gone     | `NoSuchUpload`, lifecycle expiry, aborted upload | Explain it and ask for a decision. Never restart silently     |
+| Finalization uncertain | Complete sent, response lost                     | Inspect the object, reconcile D1, converge                    |
+| Invariant broken       | State we do not understand                       | Fail safe, keep the evidence, stop                            |
 
-```text
-tab closed
-window closed
-renderer crashed
-network disappeared
-```
+Distinguish a database or storage outage from missing authorization. "We couldn't check your session" and "you're signed out" are different problems with different next steps.
 
-Those are not cancellation.
+## No fake heroics
 
-Cancellation is a deliberate product action.
+If we cannot prove the local file is the same file, stop.
 
-## 4.10 Recovery reconciles; it does not assume
+If the remote multipart upload no longer exists, say so.
 
-Compare durable local state with remote multipart state.
+If storage returns a state we do not understand, fail safe.
 
-Remote state wins disagreements about uploaded parts.
-
-## 4.11 Transfers outlive processes
-
-Browser runtime dies: transfer survives.
-
-Renderer dies: transfer survives.
-
-Desktop UI closes: transfer survives.
-
-Machine reboots: transfer survives if the platform can reconnect to the same local file.
-
-## 4.12 Progress reflects real work
-
-Do not fake progress.
-
-Do not report complete merely because the last part upload finished.
-
-A transfer is complete only after remote completion and Tranzfer state safely reconcile.
-
-## 4.13 Reliability degrades honestly
-
-If automatic file access cannot be restored, ask the user to reselect the original file and continue.
-
-Never pretend a guarantee exists when the platform cannot provide it.
-
----
-
-# 5. What “resume” means
-
-Do not use the word loosely.
-
-## Level 0 — retry
-
-A single request failed. Retry it.
-
-## Level 1 — network resume
-
-Connectivity disappears while the runtime remains alive. Continue when it returns.
-
-## Level 2 — runtime resume
-
-Refresh or renderer reload. Reconstruct and continue.
-
-## Level 3 — browser-session resume
-
-Browser/tab closes. Restore durable session metadata and recover file access where possible.
-
-## Level 4 — machine-reboot resume
-
-The OS restarts.
-
-On web:
-
-```text
-restore durable session
-        ↓
-restore persistent file handle if possible
-        ↓
-otherwise reselect same file
-        ↓
-verify identity
-        ↓
-ListParts
-        ↓
-resume missing work
-```
-
-On desktop:
-
-```text
-restore local path
-verify file
-reconcile remote parts
-continue
-```
-
-## Level 5 — unattended desktop resume
-
-Future target:
-
-```text
-machine reboots
-        ↓
-background agent starts
-        ↓
-unfinished transfer found
-        ↓
-file still matches
-        ↓
-remote multipart state reconciled
-        ↓
-transfer continues without opening the UI
-```
-
-Do not promise a level before we have actually tortured it.
-
----
-
-# 6. Browser reliability contract
-
-Browser uploads live under browser security constraints.
-
-Do not pretend otherwise.
-
-## 6.1 Durable browser state
-
-Persist unfinished transfer metadata in IndexedDB or equivalent durable browser storage.
-
-Persist:
-
-```text
-transfer identity
-multipart upload identity
-remote object key
-file identity metadata
-fingerprint
-chunk policy
-recovery status
-timestamps
-file-system handle when supported
-schema version
-```
-
-Solid signals are not persistence.
-
-Uppy runtime state is not persistence.
-
-Local variables are not persistence.
-
-## 6.2 Persistent file handles
-
-Where supported, store a file-system handle durably.
-
-On restoration:
-
-```text
-restore handle
-       ↓
-check permission
-       ↓
-request permission through user gesture if required
-       ↓
-obtain File
-       ↓
-verify identity
-       ↓
-reconcile multipart state
-       ↓
-resume
-```
-
-A permission prompt is not a transfer failure.
-
-## 6.3 Reselect fallback
-
-If file access cannot be restored:
-
-```text
-unfinished transfer detected
-       ↓
-show expected file
-       ↓
-user selects local file
-       ↓
-verify identity
-       ↓
-resume existing multipart upload
-```
-
-The user should not restart merely because browser file access was lost.
-
-## 6.4 Golden Retriever
-
-Uppy Golden Retriever may be used as an extra recovery layer for:
-
-```text
-selected file recovery
-runtime state restoration
-accidental refresh
-tab closure
-```
-
-It is not the entire durability design.
-
-Our own durable transfer identity must exist independently.
-
-## 6.5 Capability tiers
-
-Internally classify browser recovery capability.
-
-Example:
-
-```text
-Tier A
-persistent file handle available
-strongest automatic recovery
-
-Tier B
-durable session available
-file must be reselected
-
-Tier C
-limited browser APIs
-best-effort recovery with explicit limitations
-```
-
-Never silently downgrade.
-
----
-
-# 7. Desktop reliability contract
-
-The desktop app exists partly because native processes can provide stronger long-running guarantees.
-
-## 7.1 Electron is the shell
-
-Assume Electron unless product reality changes it.
-
-Electron owns:
-
-```text
-window lifecycle
-tray
-menus
-native notifications
-updater
-OS integration
-IPC bridge
-```
-
-Electron does not own the transfer engine.
-
-## 7.2 Background transfer engine
-
-Initial assumption:
-
-```text
-compiled Bun sidecar process
-```
-
-Responsibilities:
-
-```text
-filesystem reads
-multipart upload
-durable queue
-SQLite
-retries/backoff
-network recovery
-bandwidth policy
-sleep/wake recovery
-remote reconciliation
-finalization
-```
-
-The renderer may disappear without affecting upload correctness.
-
-## 7.3 Renderer independence
-
-Ideal:
-
-```text
-user closes Tranzfer window
-       ↓
-renderer dies
-       ↓
-minimal Electron shell remains
-       ↓
-Bun uploader keeps transferring
-```
-
-When the UI returns:
-
-```text
-renderer starts
-       ↓
-requests current snapshot
-       ↓
-projects daemon state
-```
-
-## 7.4 Desktop durable database
-
-Conceptually:
-
-```sql
-uploads
--------
-id
-transfer_id
-local_path
-file_name
-file_size
-last_modified
-fingerprint
-remote_key
-multipart_upload_id
-chunk_size
-status
-created_at
-updated_at
-```
-
-and optionally:
-
-```sql
-parts
------
-upload_id
-part_number
-etag
-size
-completed_at
-```
-
-Exact schema may change.
-
-The recovery capability may not.
-
-## 7.5 Remote truth still wins
-
-SQLite accelerates recovery.
-
-R2 confirms reality.
-
-## 7.6 Bun is not sacred
-
-If profiling shows unacceptable RAM, CPU, battery use, missing OS behavior, or reliability problems, replace only the daemon boundary.
-
-A future Rust daemon must not require rewriting the renderer, API, contracts, or transfer UX.
-
----
-
-# 8. Multipart design
-
-Multipart is the basis of giant-file resumability.
-
-## 8.1 Huge files use multipart
-
-Do not upload 300 GB as one enormous request.
-
-## 8.2 Chunk size is derived
-
-Never hardcode a chunk size that can exceed the provider's multipart part-count limit.
-
-A reasonable starting policy may be approximately:
-
-```text
-large files          ~64 MiB
-hundreds of GB       ~128 MiB
-very large files     ~256 MiB
-```
-
-Benchmark before canonizing values.
-
-## 8.3 Trade-off
-
-Smaller parts:
-
-```text
-+ less retransmission on failure
-+ finer resume granularity
-- more requests
-- more signing operations
-- more bookkeeping
-```
-
-Larger parts:
-
-```text
-+ fewer requests
-+ less control-plane chatter
-- more retransmission per failed part
-- coarser recovery
-```
-
-## 8.4 No presigning the whole future
-
-Do not generate thousands of part URLs at transfer start.
-
-Long-running transfers can outlive them.
-
-Sign lazily or use another safe short-lived credential strategy.
-
-## 8.5 Stable object identity
-
-Once multipart creation fixes the remote object identity, resumed operations must continue against that same object.
-
-## 8.6 `ListParts` is core infrastructure
-
-Use it after uncertain interruption.
-
-Use it when local and remote state may disagree.
-
-Use it before deciding what to resend.
-
----
-
-# 9. File identity and fingerprinting
-
-Resuming the wrong file is corruption.
-
-Treat file identity as a first-class domain concept.
-
-Persist:
-
-```text
-name
-size
-lastModified when available
-fingerprint
-fingerprint algorithm version
-```
-
-The fingerprint should detect accidental replacement without requiring a complete 350 GB reread before every resume.
-
-A possible sampled strategy:
-
-```text
-hash(
-  metadata
-  +
-  beginning sample
-  +
-  deterministic interior samples
-  +
-  end sample
-)
-```
-
-The exact algorithm may evolve.
-
-A full checksum may be computed incrementally while bytes are already being read.
-
-Do not repeatedly re-hash giant files without reason.
-
----
-
-# 10. State machines, not boolean soup
-
-Do not model upload lifecycle as unrelated booleans that can contradict one another.
-
-Prefer explicit tagged states.
-
-Example:
-
-```ts
-type TransferState =
-  | { tag: "preparing" }
-  | { tag: "waiting-for-file-access" }
-  | { tag: "verifying-local-file" }
-  | { tag: "creating-multipart" }
-  | { tag: "uploading"; progress: Progress }
-  | { tag: "offline"; progress: Progress }
-  | { tag: "paused"; progress: Progress }
-  | { tag: "retrying"; attempt: number; progress: Progress }
-  | { tag: "recovering" }
-  | { tag: "reconciling-parts" }
-  | { tag: "finalizing" }
-  | { tag: "verifying-remote-object" }
-  | { tag: "complete"; transferId: string }
-  | { tag: "cancelled" }
-  | { tag: "failed"; error: TransferError };
-```
-
-Use Effect `Match` / tagged enums where exhaustive matching improves clarity.
-
----
-
-# 11. Recovery state machine
-
-Recovery is not one boolean.
-
-Conceptually:
-
-```text
-load durable session
-       ↓
-does transfer still exist?
-       ↓
-can local file be opened?
-       ↓
-does local file still match?
-       ↓
-does multipart upload still exist?
-       ↓
-ListParts
-       ↓
-reconcile
-       ↓
-resume
-```
-
-Possible states:
-
-```ts
-type RecoveryState =
-  | { tag: "loading-session" }
-  | { tag: "needs-permission" }
-  | { tag: "needs-file-reselection" }
-  | { tag: "verifying-file" }
-  | { tag: "remote-upload-expired" }
-  | { tag: "reconciling-parts" }
-  | { tag: "ready-to-resume" }
-  | { tag: "resuming" }
-  | { tag: "file-changed" }
-  | { tag: "already-complete" }
-  | { tag: "failed"; error: RecoveryError };
-```
-
-Solid projects these states.
-
-Solid does not invent them independently.
-
----
-
-# 12. Failure taxonomy
-
-Not all failures are equal.
-
-## Retryable transport failure
-
-Examples:
-
-```text
-temporary network loss
-timeout
-429
-5xx
-temporary storage issue
-```
-
-Behavior:
-
-```text
-retry with bounded backoff
-preserve session
-do not restart whole file
-```
-
-## Authorization expiry
-
-Behavior:
-
-```text
-refresh authorization
-retry operation
-```
-
-## User attention required
-
-Examples:
-
-```text
-file permission lost
-file handle unavailable
-local path moved
-external drive disconnected
-```
-
-Behavior:
-
-```text
-pause safely
-preserve remote progress
-ask for the smallest possible user action
-```
-
-## Local file mismatch
-
-Behavior:
-
-```text
-do not resume
-explain why
-offer safe restart
-```
-
-## Remote multipart expired
-
-Behavior:
-
-```text
-do not pretend resume remains possible
-explain clearly
-start fresh only through explicit product logic
-```
-
-## Finalization uncertainty
-
-Behavior:
-
-```text
-inspect remote object
-reconcile transfer status
-converge idempotently
-```
-
-## Fatal invariant failure
-
-Behavior:
-
-```text
-capture diagnostics
-fail loudly
-do not continue with questionable data
-```
-
----
-
-# 13. Progress, speed, and ETA
-
-The progress bar is part of trust.
-
-Progress must represent confirmed work.
-
-Speed should be smoothed enough to be useful.
-
-ETA should be honest, not absurdly precise.
-
-Prefer:
-
-```text
-~18 min remaining
-```
-
-over:
-
-```text
-17m 42.381s
-```
-
-If bytes are done but finalization is not:
-
-```text
-Uploading 100%
-Finalizing...
-```
-
-Do not call the transfer complete early.
-
----
-
-# 14. Persistence rules
-
-Persist valuable identity before proceeding into work that would be difficult to rediscover.
-
-If multipart upload creation succeeds, do not rely on volatile memory as the only place that knows its identity.
-
-Prefer small, atomic durable checkpoints.
-
-Persist domain recovery state, not giant runtime blobs.
-
-Version persisted schemas:
-
-```ts
-{
-  schemaVersion: 1,
-  ...
-}
-```
-
-A user may begin a transfer on frontend version N and resume on version N+1.
-
-Do not casually make deployed in-progress transfers unreadable.
-
----
-
-# 15. Cleanup
-
-Incomplete multipart uploads consume remote resources.
-
-Stale sessions must eventually be aborted.
-
-But cleanup must respect the advertised resume window.
-
-Never promise:
-
-> Resume within 7 days
-
-while maintenance aborts the session after 24 hours.
-
-Product semantics and lifecycle policy must agree.
-
-Closing the UI is not cleanup.
-
-Losing the network is not cleanup.
-
-Explicit cancellation, expiry, and confirmed abandonment are cleanup events.
-
----
-
-# 16. Cancellation
-
-Cancel is destructive.
-
-A true cancellation may:
-
-```text
-stop active work
-abort multipart upload
-free transfer capacity
-remove durable recovery metadata
-mark transfer cancelled
-```
-
-Do not trigger this sequence because a renderer disappears.
-
----
-
-# 17. Security during resume
-
-Resume is not an authorization bypass.
-
-The API must still verify:
-
-```text
-identity
-transfer ownership
-workspace membership
-entitlement
-transfer status
-object-key ownership
-multipart-upload association
-```
-
-A client must never be able to present an arbitrary `uploadId` and receive signed access to arbitrary storage objects.
-
----
-
-# 18. Integrity after completion
-
-Completion is more than one successful API response.
-
-At minimum reconcile:
-
-```text
-object exists
-expected size
-transfer record matches object
-upload session is complete
-capacity/accounting is correct
-recipient availability is correct
-```
-
-Where stronger checksums are useful and affordable, add them.
-
----
-
-# 19. Download reliability
-
-Uploads come first, but the philosophy applies in reverse.
-
-A future desktop receiver should support:
-
-```text
-background download
-resume
-bandwidth limits
-destination rules
-disk-space checks
-checksum verification
-post-download remote cleanup
-```
-
-The invariant remains:
-
-> already downloaded bytes should not be needlessly downloaded again.
-
----
-
-# 20. Resource safety
-
-Do not buffer giant files in memory.
-
-Memory usage should scale with:
-
-```text
-concurrency × bounded part size
-```
-
-not:
-
-```text
-total file size
-```
-
-Respect backpressure.
-
-Do not leak file descriptors over multi-hour transfers.
-
-Do not repeatedly reread or rehash hundreds of gigabytes without a clear reason.
-
----
-
-# 21. Sleep, wake, and network changes
-
-Sleep is normal laptop behavior.
-
-On wake:
-
-```text
-check connectivity
-refresh authorization if needed
-reconcile uncertain work
-continue
-```
-
-Network transitions are normal too:
-
-```text
-Ethernet → Wi‑Fi
-Wi‑Fi → hotspot
-VPN on/off
-home → office
-```
-
-Temporary transition may pause throughput.
-
-It should not require restarting the transfer.
-
----
-
-# 22. Uppy responsibilities
-
-Uppy owns browser upload mechanics.
-
-That includes the mechanics around:
-
-```text
-multipart orchestration
-part uploads
-retry/backoff
-pause/resume
-progress
-remote part listing
-completion
-abort
-```
-
-Tranzfer owns:
-
-```text
-transfer identity
-quota
-durable session identity
-same-file verification
-recovery UX
-authorization
-business lifecycle
-telemetry
-final verification
-abuse controls
-acceptance testing
-```
-
-Do not reimplement Uppy for sport.
-
-Do not assume Uppy automatically solves every product-level recovery requirement.
-
----
-
-# 23. Solid 2 responsibilities
-
-Solid owns reactive presentation and orchestration.
-
-Solid does not own durable correctness.
-
-Good:
-
-```text
-durable recovery service
-        ↓
-reactive state
-        ↓
-Solid UI
-```
-
-Bad:
-
-```text
-Solid signal
-        ↓
-effect
-        ↓
-hope it persisted
-```
-
-Derive whenever possible.
-
-Effects are for external side effects, not synchronizing multiple copies of the same domain state.
-
-Component destruction must always be safe.
-
----
-
-# 24. Desktop renderer responsibilities
-
-The desktop renderer may:
-
-```text
-display progress
-display speed
-display ETA
-display errors
-request pause
-request resume
-request cancellation
-show recovery prompts
-```
-
-It must not be the only owner of:
-
-```text
-local file path
-multipart uploadId
-durable queue
-retry policy
-remote reconciliation
-```
-
----
-
-# 25. Background daemon responsibilities
-
-The background transfer engine must be reconstructible from:
-
-```text
-local durable database
-+
-local filesystem
-+
-remote storage state
-+
-Tranzfer API
-```
-
-It must not require the renderer to explain what it was doing before a crash.
-
----
-
-# 26. Observability
-
-Record meaningful events such as:
-
-```text
-transfer_created
-multipart_created
-part_retry
-network_offline
-network_restored
-auth_refreshed
-tab_recovery_started
-file_permission_required
-file_reselected
-file_identity_mismatch
-parts_reconciled
-resume_started
-resume_succeeded
-resume_failed
-finalization_started
-finalization_retried
-transfer_completed
-transfer_cancelled
-multipart_expired
-```
-
-Never log raw credentials, signed URLs, private tokens, or file contents.
-
----
-
-# 27. Reliability metrics
-
-Eventually measure:
-
-```text
-successful transfer rate
-successful resume rate
-manual-intervention rate
-avoidable bytes re-uploaded
-average retries per large transfer
-finalization failure rate
-reselection frequency
-file mismatch frequency
-multipart expiry frequency
-time from recovery to resumed throughput
-```
-
-A particularly important metric is:
-
-> **avoidable re-uploaded bytes**
-
-If a user successfully moved 217 GB and Tranzfer unnecessarily makes them resend 217 GB, that is a serious product failure.
-
----
-
-# 28. Recovery UX
-
-Recovery should feel calm.
-
-Example:
-
-```text
-Episode 42
-347 GB
-
-Found unfinished transfer
-217 GB already uploaded
-
-[Continue]
-```
-
-If permission is required:
-
-```text
-217 GB is already uploaded.
-
-Allow access to the original file to continue.
-
-[Allow & continue]
-```
-
-If reselection is required:
-
-```text
-Select the original Episode42.mov to continue.
-Already uploaded data will not be sent again.
-
-[Choose file]
-```
-
-If the file changed:
-
-```text
-This file no longer matches the upload that started earlier.
-
-To protect your footage, Tranzfer won't combine two different file versions.
-
-[Start a new transfer]
-```
-
-Do not expose `ListMultipartUploadParts`, SigV4, IndexedDB, ETags, or other infrastructure jargon to users.
-
----
-
-# 29. No fake heroics
-
-If we cannot prove the local file is the same file: stop.
-
-If the remote multipart session no longer exists: say so.
-
-If storage returns a state we do not understand: fail safely.
-
-Reliability means trustworthy continuation, not aggressive continuation at all costs.
-
----
-
-# 30. Torture testing is product development
-
-Mocked tests are necessary.
-
-They are not sufficient.
-
-The product's value is surviving real failure, so we must create real failure.
-
-Required baseline file sizes:
-
-```text
-10 GB
-100 GB
-350 GB
-```
-
-Later add 500 GB and 1 TB when real usage and plan limits justify it.
-
----
-
-# 31. Browser torture matrix
-
-For a serious 350 GB test:
-
-## Connectivity
-
-- [ ] disconnect Wi‑Fi mid-part
-- [ ] reconnect after 30 seconds
-- [ ] reconnect after 10 minutes
-- [ ] switch networks mid-transfer
-- [ ] restart router
-- [ ] temporary DNS failure
-- [ ] connection becomes dramatically slower
-
-## Request failures
-
-- [ ] force a part to return 429
-- [ ] force a part to return 500
-- [ ] force several consecutive retryable failures
-- [ ] signing endpoint 500
-- [ ] signing endpoint timeout
-- [ ] signed authorization expiry
-- [ ] failure immediately before finalization
-- [ ] lost response immediately after finalization
-
-## Browser lifecycle
-
-- [ ] refresh at 1%
-- [ ] refresh at 40%
-- [ ] refresh at 99%
-- [ ] close tab at 30%
-- [ ] close tab at 70%
-- [ ] reopen site
-- [ ] close browser
-- [ ] reopen browser
-- [ ] browser crash if reproducible
-- [ ] PC reboot
-- [ ] sleep laptop
-- [ ] wake laptop
-
-## File access
-
-- [ ] persistent file handle remains valid
-- [ ] permission must be requested again
-- [ ] handle unavailable
-- [ ] reselect original file
-- [ ] reselect wrong file
-- [ ] reselect same-name different file
-- [ ] original file moved
-- [ ] original file deleted
-- [ ] original file modified
-
-## Remote reconciliation
-
-- [ ] local state misses a completed remote part
-- [ ] local state claims completion but remote does not
-- [ ] stale local progress
-- [ ] multipart session expired
-- [ ] final object already completed
-- [ ] cleanup races with recovery
+Reliability means trustworthy continuation, not continuation at any cost.
 
 ## Completion
 
-- [ ] crash before completion request
-- [ ] crash during completion request
-- [ ] remote completes but response is lost
-- [ ] recovery sees already-completed object
-- [ ] duplicate finalization attempt
-- [ ] final object size verification
+Before marking a transfer complete, confirm all of these:
 
----
+- the object exists at the expected key
+- it has the expected size
+- it belongs to this transfer
+- the multipart upload is finalized
+- accounting is recorded
+- the recipient can get it
 
-# 32. Desktop torture matrix
+Multipart ETags and sampled fingerprints do not prove whole-file equality. Use stronger checksums wherever an integrity claim depends on them.
 
-When desktop exists:
+Keep recovery metadata until completion is known. "100% uploaded" and "finalized" are two different states and the UI shows them as two different states.
 
-- [ ] close renderer while upload continues
-- [ ] destroy BrowserWindow entirely
-- [ ] Electron shell restart
-- [ ] Bun daemon restart
-- [ ] kill daemon mid-part
-- [ ] OS reboot
-- [ ] auto-start after reboot
-- [ ] local file path still valid
-- [ ] local file moved
-- [ ] local file changed
-- [ ] external drive unplugged
-- [ ] external drive reconnected
-- [ ] machine sleep/wake
-- [ ] network switch
-- [ ] tray-only operation for hours
-- [ ] update lifecycle does not destroy active transfers
-- [ ] renderer and daemon can reconnect after update
-- [ ] incoming download checks free disk space
+## Cancellation, expiry and cleanup
 
----
+Cancel is a destructive domain action. Authorize it, stop local work, abort the remote multipart upload, and reconcile capacity and durable metadata. Retrying a cancel is safe.
 
-# 33. Acceptance standard
+Pause is not cancel. Closing the tab is not cancel. Unload is not cancel.
 
-A torture test does not pass because the UI looks okay.
+Expiry and confirmed abandonment can trigger cleanup too, but maintenance respects the advertised resume window. Cleanup racing active work is a scenario we test, not one we hope away.
 
-It passes only if:
+## Downloads
+
+An upload change is not finished until the recipient can download the correct file through an authorized link. Expiry is stated clearly on the page. Define download recovery, and do not make anyone redownload confirmed bytes where the client supports ranges.
+
+## Authorization and abuse
+
+Every create, sign, list, complete, abort and download checks identity, ownership, workspace membership where it applies, entitlement and transfer status. The object key and multipart ID are bound to the authorized transfer. A client-supplied upload ID never grants access to arbitrary storage. Resuming is not a way to read or write someone else's upload.
+
+Before public uploads:
+
+- enforce the creative-media allowlist by file signature, not extension
+- reject archives and executables
+- keep objects private and retention short
+- add abuse reporting and admin disable and delete paths
+
+## Diagnostics
+
+Record transfer and multipart identities, recovery transitions, retries, file mismatches, authorization renewals and completion uncertainty.
+
+Never log credentials, session tokens, signed URLs or file contents. A signed URL in a log is a working credential in a log.
+
+Measure the things that matter: success rate, resume rate, bytes resent that did not need resending, manual interventions, retries and finalization failures.
+
+## What the user sees
+
+Failure should not make the product scream. Prefer:
 
 ```text
-final remote object is correct
-+
-already uploaded valid parts were not needlessly resent
-+
-transfer state converged correctly
-+
-the user could understand what happened
+Connection lost. We'll continue when you're back online.
 ```
 
----
-
-# 34. Release gates
-
-## Gate A — internal
-
 ```text
-10 GB
-network drop
-part retry
-refresh
-```
-
-## Gate B — serious beta
-
-```text
-100 GB
-tab close
-sleep/wake
-authorization expiry
-recovery
-```
-
-## Gate C — Tranzfer reliability promise
-
-```text
-350 GB
-router restart
-browser restart
-file reselection recovery
-remote reconciliation
-completion verification
-```
-
-## Gate D — reboot promise
-
-```text
-350 GB
-machine reboot
-durable restore
-same-file verification
-continue existing multipart upload
-```
-
-Do not market Gate D before Gate D passes.
-
----
-
-# 35. Regression severity
-
-## P0
-
-```text
-silent file corruption
-security boundary bypass
-wrong user's object resumed
-```
-
-## P1
-
-```text
-recoverable huge upload restarts from zero
-completed transfer becomes inaccessible
-remote object and product state diverge badly
-```
-
-## P2
-
-```text
-manual action required where automatic recovery should work
-progress incorrect after recovery
-resume requires unnecessary extra steps
-```
-
-## P3
-
-```text
-confusing recovery copy
-weird ETA
-cosmetic state issue
-```
-
----
-
-# 36. Agent rules
-
-Every coding agent touching transfer code must know:
-
-```text
-R2 remote state is authoritative for uploaded parts.
-Durable metadata outlives UI processes.
-Local file identity must be verified.
-Recovery reconciles; it does not assume.
-Component lifetime must not determine correctness.
-Uppy owns browser upload mechanics.
-Solid owns presentation, not durable transfer truth.
-```
-
-Reject code that:
-
-- stores critical upload identity only in a component;
-- creates a second upload state machine next to Uppy;
-- aborts uploads on page/window disappearance;
-- assumes unload means cancellation;
-- clears durable state before completion is known;
-- resumes based only on filename;
-- trusts stale local completed-part lists without reconciliation;
-- treats every error as fatal;
-- restarts a whole file after one failed part;
-- pre-signs thousands of future part URLs;
-- hardcodes chunk size without part-limit reasoning;
-- marks complete before finalization;
-- swallows completion uncertainty;
-- logs signed URLs or credentials.
-
----
-
-# 37. Code-review questions
-
-Every upload/recovery PR should answer:
-
-1. What durable state does this change create?
-2. What happens if the process dies immediately afterward?
-3. What if the remote operation succeeded but the response is lost?
-4. What if local and remote state disagree?
-5. What if the local file changed?
-6. Can the user be forced to resend already-confirmed bytes?
-7. Does cancellation remain explicit?
-8. Can this survive refresh?
-9. Can this survive browser restart?
-10. Can this survive machine reboot?
-11. Does it preserve future desktop compatibility?
-12. What torture test proves it?
-
----
-
-# 38. Definition of done: browser uploader
-
-The browser uploader is not done because a 1 GB happy path reaches R2.
-
-It is done when:
-
-- [ ] 10 GB works
-- [ ] 100 GB works
-- [ ] 350 GB works
-- [ ] chunk policy respects multipart limits
-- [ ] progress is accurate
-- [ ] retryable errors retry
-- [ ] network loss recovers
-- [ ] refresh recovers
-- [ ] tab close recovers
-- [ ] browser restart has a recovery path
-- [ ] PC reboot has a recovery path
-- [ ] file permission loss has a recovery path
-- [ ] original file reselection safely resumes
-- [ ] changed file is rejected
-- [ ] remote parts reconcile
-- [ ] authorization can refresh
-- [ ] finalization is safe
-- [ ] final object is verified
-- [ ] cancellation cleans up intentionally
-- [ ] stale sessions eventually clean up
-
----
-
-# 39. Definition of done: desktop uploader
-
-Desktop upload is not done because Electron can upload a file.
-
-It is done when:
-
-- [ ] renderer may disappear without stopping upload
-- [ ] daemon state survives daemon restart
-- [ ] machine reboot resumes
-- [ ] local file is verified
-- [ ] changed file is rejected
-- [ ] remote state reconciles
-- [ ] tray-only transfer works for hours
-- [ ] sleep/wake works
-- [ ] network switch works
-- [ ] external-drive loss is handled safely
-- [ ] update lifecycle does not destroy active transfers
-- [ ] resource usage is acceptable
-
----
-
-# 40. What we explicitly do not build yet
-
-Reliability is not permission to build a storage operating system.
-
-Do not build yet:
-
-```text
-mounted filesystem
-Dropbox-style sync
-folder mirroring
-distributed block deduplication
-peer-to-peer transport
-custom TCP protocol
-custom congestion control
-global accelerator network
-bespoke multipart protocol
-enterprise transfer appliance
-```
-
-Use existing infrastructure.
-
-S3-compatible multipart already solves the core remote resumability primitive.
-
-Uppy already solves much of browser transfer mechanics.
-
-R2 already stores the parts.
-
-We build the product semantics and recovery experience around those primitives.
-
----
-
-# 41. Anti-overengineering rule
-
-When deciding between:
-
-```text
-beautiful generic transfer abstraction
-```
-
-and:
-
-```text
-350 GB upload survives router restart
-```
-
-choose the second one.
-
-When deciding between:
-
-```text
-five-backend portable storage adapter
-```
-
-and:
-
-```text
-R2 resume works after browser restart
-```
-
-choose the second one.
-
-When deciding between:
-
-```text
-perfect event-sourced upload architecture
-```
-
-and:
-
-```text
-real editor resumes a failed upload
-```
-
-choose the second one.
-
----
-
-# 42. Anti-underengineering rule
-
-“Don't overengineer” is not permission to ship fragile uploads.
-
-These are not optional polish:
-
-```text
-multipart
-retry
-durable upload identity
-reconciliation
-same-file verification
-safe finalization
-real torture testing
-```
-
-For Tranzfer, these are the minimum product.
-
----
-
-# 43. The 350 GB rule
-
-Every upload architecture proposal must explain this scenario:
-
-```text
-A creator has a 350 GB project.
-
-They start uploading at night.
-
-At 63%:
-the router restarts.
-
-Ten minutes later:
-the network returns.
-
-At 71%:
-the laptop sleeps.
-
-In the morning:
-the laptop wakes.
-
-At 79%:
-the browser is accidentally closed.
-
-Later:
-the computer reboots for an update.
-
-The creator opens Tranzfer again.
-
-Tranzfer finds the unfinished transfer.
-
-It restores or requests access to the original file.
-
-It verifies the file is unchanged.
-
-It asks R2 which parts already exist.
-
-It continues from the missing work.
-
-The creator does not resend 276 GB.
-
-The editor eventually receives one correct file.
-```
-
-If a design cannot explain exactly how this works, the design is incomplete.
-
----
-
-# 44. The already-moved-bytes rule
-
-> **Already moved bytes are an asset. Preserve them.**
-
-Every retry strategy, persistence decision, cleanup policy, and UX flow should respect that.
-
----
-
-# 45. The one-file rule
-
-A multipart object must correspond to one immutable logical source-file version.
-
-Do not combine versions.
-
-Do not guess.
-
-One logical transfer.
-
-One logical source file.
-
-One final object.
-
----
-
-# 46. The remote-truth rule
-
-When recovering:
-
-```text
-local says 72%
-remote says 74%
-```
-
-remote wins.
-
-When:
-
-```text
-local says part 1200 done
-remote does not have part 1200
-```
-
-upload part 1200 again.
-
-When:
-
-```text
-local says finalizing
-remote object already exists correctly
-```
-
-converge toward complete.
-
----
-
-# 47. The calm-software rule
-
-Failures should not make the product scream.
-
-Prefer:
-
-```text
-Connection lost.
-We'll continue when you're back online.
-```
-
-or:
-
-```text
-We need access to the original file to continue.
+We need the original file to continue.
 217 GB is already uploaded.
 ```
 
-The product should communicate confidence because the system actually has a recovery plan.
+Progress shows confirmed work. In-flight activity can be shown separately. Smooth the speed, keep the ETA approximate, and give a next action for offline, reselect file, permission required, upload expired and retrying.
 
----
+The user should come out of a recovery still knowing what already arrived.
 
-# 48. Reliability ladder
-
-```text
-happy-path upload
-        ↓
-part retry
-        ↓
-network recovery
-        ↓
-refresh recovery
-        ↓
-tab/browser recovery
-        ↓
-machine-reboot recovery
-        ↓
-background desktop transfer
-        ↓
-unattended recurring delivery
-```
-
-Do not skip lower rungs.
-
----
-
-# 49. Reliability before automation
-
-Automation amplifies whatever reliability exists underneath.
-
-If transfer is fragile:
-
-```text
-automation = automated failure
-```
-
-Therefore:
-
-```text
-reliable transfer
-        ↓
-background transfer
-        ↓
-trusted relationships
-        ↓
-automatic delivery
-```
-
----
-
-# 50. Reliability before everything else
-
-Review features are irrelevant if the file never arrives.
-
-Pricing sophistication is irrelevant if a 300 GB transfer restarts from zero.
-
-Desktop architecture is irrelevant if browser reliability has not taught us the actual failure modes.
-
-Scale is irrelevant before ten users trust us with real footage.
-
-Reliability comes first.
-
----
-
-# 51. Product copy constraints
-
-Do not claim:
-
-> Never fails.
-
-Nothing never fails.
-
-Claim things we can prove.
-
-Examples:
+Never write "never fails." Nothing never fails. Claims we may make once the matching gate passes:
 
 ```text
 Resumes interrupted transfers.
-
-Already uploaded parts stay uploaded.
-
-Lose Wi‑Fi. Pick up where you left off.
-
-Reopen Tranzfer and continue.
-
+Parts already uploaded stay uploaded.
+Lose Wi-Fi, pick up where you left off.
 No starting a 300 GB project from zero because your connection blinked.
 ```
 
-Only market stronger claims after the corresponding release gate passes.
+The customer should think "Tranzfer remembers." Not "I hope the tab stays open."
 
----
+## Who owns what
 
-# 52. The customer's mental model
+- R2 owns uploaded parts and completed objects.
+- D1 owns transfer identity, ownership and lifecycle.
+- IndexedDB owns browser recovery metadata.
+- Uppy owns active browser transport.
+- Solid owns presentation. It displays the transfer and never decides its fate.
 
-The customer should think:
+## The 350 GB story
 
-> **Tranzfer remembers.**
-
-Not:
-
-> I hope the tab stays open.
-
----
-
-# 53. The engineering mental model
-
-Engineers and agents should think:
-
-> **A transfer is a durable distributed job with a local source file and remote multipart state.**
-
-Not:
-
-> A transfer is a component with a progress bar.
-
----
-
-# 54. The founder mental model
-
-Do not turn reliability into another way to avoid customers.
-
-The purpose of this document is to make Tranzfer trustworthy enough for real people to use.
-
-It is not permission to spend three months perfecting theoretical failure modes nobody has encountered.
-
-The sequence remains:
+Every upload design has to walk through this, step by step. If it cannot, the design is incomplete.
 
 ```text
-build
-break
-fix
-real human
-repeat
-ask for money
+A creator has a 350 GB project. They start the upload at night.
+
+At 63% the router restarts. Ten minutes later the network is back.
+At 71% the laptop goes to sleep. In the morning it wakes up.
+At 79% the browser gets closed by accident.
+Later the computer reboots for an update.
+
+The creator opens Tranzfer again.
+Tranzfer finds the unfinished transfer.
+It restores access to the original file, or asks for it.
+It verifies the file has not changed.
+It asks R2 which parts exist.
+It uploads only the missing parts.
+
+The creator does not resend 276 GB.
+The editor receives one correct file.
 ```
 
----
+## Torture testing
 
-# 55. Final standard
+Mocked tests are necessary. They are nowhere near sufficient. The product exists to survive real failure, so we cause real failure on purpose, on real files, and then check the final object, the domain state and the bytes resent. A reassuring progress bar is not evidence of anything.
 
-Tranzfer should eventually be the software someone chooses when the file is too important and too large to casually try again.
+Baseline sizes are 10 GB, 100 GB and 350 GB. Add 500 GB and 1 TB when real usage and plan limits justify them.
 
-The connection may fail.
+Before calling browser recovery done, break it in all of these ways:
 
-The browser may disappear.
+- **Connectivity.** Offline, flapping, and switching networks mid-upload.
+- **Requests.** Timeouts, throttling, 5xx, and authorization expiring during upload.
+- **Browser lifecycle.** Refresh, tab close, browser restart, sleep and wake.
+- **File access.** Permission loss, same-file reselection, a different file with the same name and size, a missing source file.
+- **Remote state.** Stale local metadata, missing remote parts, paginated part listings, expired multipart uploads.
+- **Completion.** Duplicate completion, completion with a lost response, interruption during finalization.
+- **Races.** Explicit cancel and expiry cleanup racing active work.
 
-The process may die.
+## Release gates
 
-The machine may reboot.
+| Gate                | Required evidence                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Internal            | 10 GB with network loss, failed-part retry and refresh                                                                    |
+| Serious beta        | 100 GB with tab close, sleep and wake, authorization expiry and recovery                                                  |
+| Reliability promise | 350 GB with router restart, browser restart, reselection, remote reconciliation and completion verification               |
+| Reboot promise      | 350 GB with machine reboot, durable restoration, same-file verification and continuation of the existing multipart upload |
 
-The transfer should remain understandable, recoverable, and safe.
+Do not market a gate before it passes. Record the environment, the failures injected, final object verification, manual steps and avoidable retransmission in the PR or issue.
 
-The best reliability feature is not a clever retry algorithm.
+New test files require explicit user approval under [AGENTS.md](../AGENTS.md). Otherwise use existing tests and direct runtime checks.
 
-It is the user's belief, earned by repeated evidence, that:
+## Severity
 
-> **I can leave this alone. Tranzfer will get it there.**
+| Level | Means                                                                                                 |
+| ----- | ----------------------------------------------------------------------------------------------------- |
+| P0    | Silent corruption, access-control bypass, resuming the wrong user's upload                            |
+| P1    | A recoverable huge upload restarts from zero, a completed file becomes unreachable, R2 and D1 diverge |
+| P2    | Manual steps where recovery should be automatic, wrong progress after recovery                        |
+| P3    | Confusing copy, silly ETA, cosmetic state glitches                                                    |
 
-Until that is true:
+P0 drops everything. P1 comes next. P2 and P3 still get fixed, but they never jump ahead of correctness work.
 
-**make the next transfer more reliable than the last one.**
+## Reject on sight
+
+Code review rejects any change that:
+
+- keeps critical upload identity only in a component or signal
+- builds a second upload state machine next to Uppy
+- aborts uploads when a page, window or component disappears
+- treats unload as cancel
+- clears durable state before completion is known
+- resumes based on filename alone
+- trusts a local completed-part list without reconciling
+- treats every error as fatal
+- restarts a whole file after one failed part
+- pre-signs thousands of future part URLs
+- hardcodes a part size without reasoning about part limits
+- marks a transfer complete before finalization
+- swallows completion uncertainty
+- logs signed URLs or credentials
+
+## Questions every transfer PR answers
+
+1. What durable state does this create?
+2. What happens if the process dies on the next line?
+3. What if the remote call succeeded and the response was lost?
+4. What if local and remote disagree?
+5. What if the local file changed?
+6. Can this ever make the user resend confirmed bytes?
+7. Is cancellation still explicit?
+8. Does it survive refresh? Browser restart? Reboot?
+9. Does it keep the desktop path open?
+10. Which torture test proves it?
+
+## Done, for the browser uploader
+
+The browser uploader is done when:
+
+- the 350 GB story above works end to end
+- the reliability promise gate has passed and its evidence is in a PR
+- the recipient downloads one correct, verified file through an authorized link
+- every row of the failure taxonomy has a working response and honest copy
+- nothing in "reject on sight" exists in the code
+
+## Desktop, later
+
+When desktop work starts, a separate background process owns file access, transport and SQLite recovery metadata. The renderer shows a snapshot. A renderer crashing never affects upload correctness. After any restart, the process reconciles with R2 exactly like the browser does.
+
+Before claiming desktop recovery, verify tray and background operation, process restart, reboot, sleep and wake, network changes, an external drive disappearing, source file changes, an interrupted update, and bounded CPU, memory and disk use.
+
+For receiving, add disk-space checks, destination rules, resume and integrity verification before any automatic remote cleanup. These wait until desktop work begins. They do not block web delivery.
+
+## The two ways to fail
+
+Overengineering. Given the choice between a beautiful generic transfer abstraction and a 350 GB upload that survives a router restart, pick the upload. Given a five-backend storage adapter and R2 resume working after a browser restart, pick resume. Given a perfect event-sourced architecture and a real editor finishing a failed upload, pick the editor.
+
+Underengineering. "Don't overengineer" is not permission to ship fragile uploads. Multipart, retry, durable identity, reconciliation, same-file verification, safe finalization and real torture tests are not polish. For Tranzfer they are the product.
+
+And don't let this file become a way to avoid users. The loop is build, break it, fix it, put it in front of a real human, repeat, ask for money. Theoretical failure modes nobody has hit wait their turn.
+
+## The standard
+
+Tranzfer should become the thing people reach for when the file is too big and too important to casually try again.
+
+The connection may fail. The browser may disappear. The process may die. The machine may reboot. The transfer stays understandable, recoverable and safe.
+
+The best reliability feature is not a clever retry loop. It is the user's belief, earned through repeated evidence, that they can walk away.
+
+> I can leave this alone. Tranzfer will get it there.
+
+Until that is true, make the next transfer more reliable than the last one.
