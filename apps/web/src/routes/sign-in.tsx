@@ -1,5 +1,5 @@
 import { Meta, Title } from "@solidjs/meta";
-import { createSignal, Show } from "solid-js";
+import { createSignal, onSettled, Show } from "solid-js";
 
 import { authClient } from "../api/auth-client";
 import Brand from "../landing/Brand";
@@ -32,6 +32,16 @@ const scopes = "We use your name, email and photo from Google. Nothing else.";
 export default function SignIn() {
   const [pending, setPending] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
+  const [keyFailed, setKeyFailed] = createSignal(false);
+  const [key, setKey] = createSignal("");
+  const [staging, setStaging] = createSignal(false);
+  // Only production has a Google provider; everywhere else the staging key
+  // endpoint is the way in. The signal flips after mount so SSR and the
+  // first client render match.
+  onSettled(() => {
+    setStaging(location.hostname !== "tranzfer.app");
+  });
+
   const signInWithGoogle = async () => {
     if (pending()) {
       return;
@@ -46,6 +56,30 @@ export default function SignIn() {
       setFailed(result.error !== null);
     } catch {
       setFailed(true);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const signInWithKey = async (secret: string) => {
+    if (pending()) {
+      return;
+    }
+    setPending(true);
+    setKeyFailed(false);
+    try {
+      const response = await fetch("/api/auth/staging-login", {
+        body: JSON.stringify({ key: secret }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      if (response.ok) {
+        location.assign("/deliveries");
+        return;
+      }
+      setKeyFailed(true);
+    } catch {
+      setKeyFailed(true);
     } finally {
       setPending(false);
     }
@@ -112,6 +146,43 @@ export default function SignIn() {
             </p>
           </Show>
           <p class="mt-6 text-sm text-mut">{scopes}</p>
+          <Show when={staging()}>
+            <form
+              class="mt-8 border-t border-dashed border-line pt-6"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void signInWithKey(key());
+              }}
+            >
+              <label class="text-sm font-medium" for="staging-key">
+                Staging key
+              </label>
+              <div class="mt-2 flex gap-2">
+                <input
+                  autocomplete="off"
+                  class="h-12 min-w-0 flex-1 rounded-full bg-white px-5 text-[15px] ring-1 ring-[#747775] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-blue"
+                  id="staging-key"
+                  name="key"
+                  onInput={(event) => {
+                    setKey(event.currentTarget.value);
+                  }}
+                  type="password"
+                />
+                <button
+                  class="inline-flex h-12 shrink-0 items-center justify-center rounded-full bg-ink px-6 text-[15px] font-medium text-paper transition-[background-color,translate] duration-200 ease-smooth hover:bg-ink/90 active:translate-y-px disabled:pointer-events-none disabled:opacity-60"
+                  disabled={pending()}
+                  type="submit"
+                >
+                  {pending() ? "Signing in…" : "Sign in"}
+                </button>
+              </div>
+              <Show when={keyFailed()}>
+                <p class="mt-3 text-sm text-rust" role="alert">
+                  That key didn't work. Try again.
+                </p>
+              </Show>
+            </form>
+          </Show>
         </div>
         <a class="text-sm text-mut hover:text-ink" href="/">
           ← Back to tranzfer.app
