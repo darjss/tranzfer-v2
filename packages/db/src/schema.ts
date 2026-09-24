@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -83,4 +83,75 @@ export const verification = sqliteTable(
       .notNull(),
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
+);
+
+export const delivery = sqliteTable(
+  "delivery",
+  {
+    id: text("id").primaryKey(),
+    // No cascade: account deletion needs an R2 object cleanup path first.
+    senderId: text("sender_id")
+      .notNull()
+      .references(() => user.id),
+    title: text("title").notNull(),
+    status: text("status", { enum: ["open", "ready", "cancelled"] })
+      .default("open")
+      .notNull(),
+    retentionDays: integer("retention_days").$type<1 | 3 | 7 | 14>().notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("delivery_senderId_createdAt_idx").on(table.senderId, table.createdAt)],
+);
+
+export const transfer = sqliteTable(
+  "transfer",
+  {
+    id: text("id").primaryKey(),
+    deliveryId: text("delivery_id")
+      .notNull()
+      .references(() => delivery.id),
+    objectKey: text("object_key").notNull().unique(),
+    path: text("path").notNull(),
+    size: integer("size").notNull(),
+    contentType: text("content_type"),
+    sourceModifiedAt: integer("source_modified_at", { mode: "timestamp_ms" }).notNull(),
+    state: text("state", { enum: ["uploading", "finalizing", "complete", "cancelled"] })
+      .default("uploading")
+      .notNull(),
+    etag: text("etag"),
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("transfer_deliveryId_idx").on(table.deliveryId),
+    uniqueIndex("transfer_deliveryId_path_unique").on(table.deliveryId, table.path),
+  ],
+);
+
+export const link = sqliteTable(
+  "link",
+  {
+    id: text("id").primaryKey(),
+    deliveryId: text("delivery_id")
+      .notNull()
+      .references(() => delivery.id),
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [index("link_deliveryId_idx").on(table.deliveryId)],
 );

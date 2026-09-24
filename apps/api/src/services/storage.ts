@@ -40,7 +40,10 @@ export class Storage extends Context.Service<
     ) => Effect.Effect<SignedUrl, StorageError>;
     readonly head: (
       key: string,
-    ) => Effect.Effect<Option.Option<{ readonly size: number }>, StorageError>;
+    ) => Effect.Effect<
+      Option.Option<{ readonly etag: string | undefined; readonly size: number }>,
+      StorageError
+    >;
     readonly abortUploads: (key: string) => Effect.Effect<void, StorageError>;
     readonly remove: (key: string) => Effect.Effect<void, StorageError>;
   }
@@ -158,11 +161,16 @@ export class Storage extends Context.Service<
                   const object = yield* headObject({ Bucket: bucket, Key: key }).pipe(
                     Effect.map((output) =>
                       output.ContentLength === undefined
-                        ? Option.none<{ readonly size: number }>()
-                        : Option.some({ size: output.ContentLength }),
+                        ? Option.none<{
+                            readonly etag: string | undefined;
+                            readonly size: number;
+                          }>()
+                        : Option.some({ etag: output.ETag, size: output.ContentLength }),
                     ),
                     Effect.catchTag("NotFound", () =>
-                      Effect.succeed(Option.none<{ readonly size: number }>()),
+                      Effect.succeed(
+                        Option.none<{ readonly etag: string | undefined; readonly size: number }>(),
+                      ),
                     ),
                   );
                   return object;

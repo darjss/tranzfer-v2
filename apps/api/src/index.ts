@@ -1,6 +1,6 @@
 import { Api } from "@tranzfer/contracts";
 import { Database, Drizzle } from "@tranzfer/db";
-import { RuntimeContext } from "alchemy";
+import { Random, RuntimeContext } from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Output from "alchemy/Output";
 import * as Context from "effect/Context";
@@ -11,10 +11,13 @@ import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 
 import { AuthHandlers } from "./handlers/auth";
+import { DeliveriesHandlers } from "./handlers/deliveries";
 import { InfraHandlers } from "./handlers/infra";
+import { LinkHandlers } from "./handlers/links";
 import { AuthenticatedLive } from "./middleware";
 import { App, Files } from "./resources";
 import { Auth, isDeployedStage } from "./services/auth";
+import { Links } from "./services/links";
 import { Storage } from "./services/storage";
 import { ApiWorker } from "./worker";
 
@@ -66,18 +69,26 @@ export default ApiWorker.make(
       });
     }
 
+    const linkSecret = yield* Random("LinkSecret");
+    const links = Links.make((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom)));
+
     // The Me handler's middleware requires HttpServerRequest, so the
     // auth-dependent part of the RPC stack only exists inside a request.
     // InfraHandlers resolves its bindings here at Init instead.
     const rpcInit = yield* Layer.build(
-      Layer.mergeAll(InfraHandlers, RpcSerialization.layerJson).pipe(
+      Layer.mergeAll(InfraHandlers, LinkHandlers, RpcSerialization.layerJson).pipe(
         Layer.provide(Drizzle.layer),
         Layer.provide(database),
         Layer.provide(storage),
+        Layer.provide(links),
       ),
     );
     const rpcRequest = Layer.fresh(
-      Layer.mergeAll(AuthHandlers, AuthenticatedLive).pipe(
+      Layer.mergeAll(AuthHandlers, AuthenticatedLive, DeliveriesHandlers).pipe(
+        Layer.provide(Drizzle.layer),
+        Layer.provide(database),
+        Layer.provide(storage),
+        Layer.provide(links),
         Layer.provide(Layer.succeed(Auth, auth)),
       ),
     );
