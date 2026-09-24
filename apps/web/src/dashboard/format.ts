@@ -136,18 +136,27 @@ export const statusOf = (delivery: Delivery, roll: Rollup, online: boolean): Sta
   if (settled !== undefined) {
     return settled;
   }
-  if (!online) {
-    return {
-      long: "Connection lost. We'll continue when you're back online.",
-      short: "Paused, offline",
-      tone: "amber",
-    };
-  }
+  // Failed and interrupted stay visible offline: only a genuinely in-flight
+  // local upload reads as paused.
   if (roll.failed) {
     return {
       long: "Something stopped the upload. Retry to keep going.",
       short: "Needs a retry",
       tone: "rust",
+    };
+  }
+  if (!roll.local) {
+    return {
+      long: "Interrupted. This browser can't resume it yet.",
+      short: "Interrupted",
+      tone: "rust",
+    };
+  }
+  if (!online) {
+    return {
+      long: "Connection lost. We'll continue when you're back online.",
+      short: "Paused, offline",
+      tone: "amber",
     };
   }
   if (roll.uploading) {
@@ -168,14 +177,7 @@ export const statusOf = (delivery: Delivery, roll: Rollup, online: boolean): Sta
       tone: "blue",
     };
   }
-  if (roll.local && !roll.interrupted) {
-    return { long: "Every byte is uploaded. Finishing up.", short: "Finishing up", tone: "blue" };
-  }
-  return {
-    long: "Interrupted. This browser can't resume it yet.",
-    short: "Interrupted",
-    tone: "rust",
-  };
+  return { long: "Every byte is uploaded. Finishing up.", short: "Finishing up", tone: "blue" };
 };
 
 export const toneText: Record<Tone, string> = {
