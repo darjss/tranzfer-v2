@@ -153,9 +153,15 @@ export const lintConfig = (
 
 export const rootLint = lintConfig(
   {
-    api: ["apps/api/**", "packages/contracts/**"],
+    api: ["apps/api/**", "e2e/**", "packages/contracts/**"],
     components: ["apps/web/**/*.tsx"],
-    effect: ["apps/api/**", "packages/**", "apps/web/src/api/**", "apps/web/src/uploads/**"],
+    effect: [
+      "apps/api/**",
+      "e2e/**",
+      "packages/**",
+      "apps/web/src/api/**",
+      "apps/web/src/uploads/**",
+    ],
     web: ["apps/web/**"],
   },
   { root: true },

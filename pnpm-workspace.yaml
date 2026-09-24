@@ -9,6 +9,7 @@
 # release and the policy can protect these packages like any other.
 packages:
   - apps/*
+  - e2e
   - infra
   - packages/*
 minimumReleaseAgeExclude:
