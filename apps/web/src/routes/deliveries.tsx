@@ -1,9 +1,9 @@
 import { Meta, Title } from "@solidjs/meta";
 import { useNavigate, useSearchParams } from "@solidjs/router";
-import { getRequestEvent, isServer } from "@solidjs/web";
+import { clientOnly, isServer } from "@solidjs/web";
 import type { ManagedRuntime } from "effect/ManagedRuntime";
+import { Unauthorized } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
-import * as Predicate from "effect/Predicate";
 import { createMemo, Errored, Loading, onSettled, Show, useContext } from "solid-js";
 
 import { ApiClient } from "../api/client";
@@ -14,17 +14,11 @@ import { Sidebar } from "../dashboard/Sidebar";
 import { deliveriesVersion, online } from "../uploads/store";
 import { getUploads } from "../uploads/uppy";
 
-const SignInRedirect = () => {
+const Redirect = (props: { to: string }) => {
   const navigate = useNavigate();
-  // Async rendering commits headers after the tree settles, so a Location
-  // write here still becomes a real redirect. On the client, navigate.
-  if (isServer) {
-    getRequestEvent()?.response.headers.set("Location", "/sign-in");
-  } else {
-    onSettled(() => {
-      navigate("/sign-in", { replace: true });
-    });
-  }
+  onSettled(() => {
+    navigate(props.to, { replace: true });
+  });
   return null;
 };
 
@@ -65,7 +59,7 @@ const DeliveriesPage = () => {
         <Errored
           fallback={(error, retry) => (
             <Show
-              when={Predicate.isTagged(error(), "Unauthorized")}
+              when={error() instanceof Unauthorized}
               fallback={
                 <main class="grid min-h-screen place-items-center" role="alert">
                   <div class="text-center">
@@ -77,7 +71,7 @@ const DeliveriesPage = () => {
                 </main>
               }
             >
-              <SignInRedirect />
+              <Redirect to="/sign-in" />
             </Show>
           )}
         >
@@ -111,6 +105,10 @@ const DeliveriesPage = () => {
   );
 };
 
+// Schema class instances cannot cross the SSR hydration boundary, so the
+// page mounts client-side only; the server renders the loading shell.
+const LazyDeliveries = clientOnly(async () => await Promise.resolve({ default: DeliveriesPage }));
+
 export default function Deliveries() {
-  return <DeliveriesPage />;
+  return <LazyDeliveries fallback={<main class="min-h-screen" />} />;
 }

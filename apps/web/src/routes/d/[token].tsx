@@ -1,29 +1,14 @@
 import { Meta, Title } from "@solidjs/meta";
 import { useParams } from "@solidjs/router";
-import { getRequestEvent, isServer } from "@solidjs/web";
-import type {
-  LinkExpired,
-  LinkNotFound,
-  LinkNotReady,
-  StorageUnavailable,
-} from "@tranzfer/contracts";
+import { clientOnly, getRequestEvent, isServer } from "@solidjs/web";
+import { LinkExpired, LinkNotFound, LinkNotReady } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
-import * as Predicate from "effect/Predicate";
 import { createMemo, Errored, For, Loading, Show } from "solid-js";
 
 import { ApiClient } from "../../api/client";
 import { runEffect } from "../../api/solid-effect";
 import { bytes, items, untilDate } from "../../dashboard/format";
 import Brand from "../../landing/Brand";
-
-type OpenLinkError = LinkExpired | LinkNotFound | LinkNotReady | StorageUnavailable;
-
-// Hydrated errors cross the boundary as tagged Error objects, not class
-// instances, so _tag is the discriminator.
-const hasTag = <Tag extends OpenLinkError["_tag"]>(
-  error: unknown,
-  tag: Tag,
-): error is Extract<OpenLinkError, { _tag: Tag }> => Predicate.isTagged(error, tag);
 
 const LinkPage = () => {
   const params = useParams<{ token: string }>();
@@ -42,7 +27,7 @@ const LinkPage = () => {
         <Errored
           fallback={(error) => {
             const current = error();
-            if (hasTag(current, "LinkNotReady")) {
+            if (current instanceof LinkNotReady) {
               return (
                 <section class="mx-auto max-w-[720px] px-6 py-10 sm:px-12">
                   <p class="font-mono text-xs text-mut">from {current.senderName}</p>
@@ -55,7 +40,7 @@ const LinkPage = () => {
                 </section>
               );
             }
-            if (hasTag(current, "LinkExpired")) {
+            if (current instanceof LinkExpired) {
               return (
                 <section class="mx-auto max-w-[720px] px-6 py-10 sm:px-12">
                   <h1 class="text-[36px] leading-tight font-semibold tracking-[-0.03em]">
@@ -71,7 +56,7 @@ const LinkPage = () => {
                   This link doesn't work.
                 </h1>
                 <p class="mt-3 text-mut">
-                  {hasTag(current, "LinkNotFound")
+                  {current instanceof LinkNotFound
                     ? "It may have been cancelled."
                     : "Something went wrong opening it. Try again in a moment."}
                 </p>
@@ -121,10 +106,22 @@ const LinkPage = () => {
   );
 };
 
+// Schema class instances cannot cross the SSR hydration boundary, so the
+// page mounts client-side only; the server renders the loading shell.
+const LazyLink = clientOnly(async () => await Promise.resolve({ default: LinkPage }));
+
 export default function PublicDelivery() {
   // Signed URLs are rendered into the HTML, so the page must never be cached.
   if (isServer) {
     getRequestEvent()?.response.headers.set("cache-control", "no-store");
   }
-  return <LinkPage />;
+  return (
+    <LazyLink
+      fallback={
+        <main class="paper-dots min-h-screen">
+          <div class="px-6 py-16 text-sm text-mut sm:px-12">Loading…</div>
+        </main>
+      }
+    />
+  );
 }

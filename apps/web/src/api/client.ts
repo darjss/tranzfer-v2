@@ -12,7 +12,9 @@ export class ApiClient extends Context.Service<
   ApiClient,
   RpcClient.FromGroup<typeof Api, RpcClientError>
 >()("tranzfer/ApiClient") {
-  static readonly layer = Layer.effect(ApiClient, RpcClient.make(Api));
+  // Spans wrap each request's send fiber; under hydration the traced send
+  // suspends before the fetch fires, and nothing observes the spans anyway.
+  static readonly layer = Layer.effect(ApiClient, RpcClient.make(Api, { disableTracing: true }));
 }
 
 export const WebLayer = ApiClient.layer.pipe(
