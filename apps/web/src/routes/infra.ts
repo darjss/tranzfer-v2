@@ -13,7 +13,7 @@ export const GET = async () => {
           .Infra()
           .pipe(
             Effect.catchTag("ProbeFailed", (error) =>
-              Effect.succeed({ d1: false, probeFailed: error.resource, r2: false }),
+              Effect.succeed({ d1: false, probeFailed: error.resource, r2: false, s3: false }),
             ),
           );
         return { bindings, health };

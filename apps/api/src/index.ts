@@ -1,6 +1,6 @@
 import { Api } from "@tranzfer/contracts";
 import { Database, Drizzle } from "@tranzfer/db";
-import { RuntimeContext } from "alchemy";
+import { Random, RuntimeContext } from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -11,11 +11,15 @@ import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 
 import { AuthHandlers } from "./handlers/auth";
+import { DeliveriesHandlers } from "./handlers/deliveries";
 import { InfraHandlers } from "./handlers/infra";
+import { LinkHandlers } from "./handlers/links";
 import { AuthenticatedLive } from "./middleware";
 import { App } from "./resources";
 import { Auth } from "./services/auth";
+import { Links } from "./services/links";
 import { deployStage } from "./services/stage";
+import { Storage } from "./services/storage";
 import { ApiWorker } from "./worker";
 
 export { ApiWorker } from "./worker";
@@ -33,26 +37,38 @@ export default ApiWorker.make(
     // the env holds no D1 binding.
     const database = Layer.succeed(Database, db.raw.pipe(Effect.provide(RuntimeContext.phantom)));
     const stage = yield* deployStage;
-    // Init-time config failures are fatal; deploy dies with the defect.
-    const auth = yield* Match.value(stage)
-      .pipe(
-        Match.when("production", () => Auth.production),
-        Match.when("staging", () => Auth.staging),
-        Match.orElse(() => Auth.dev),
-      )
-      .pipe(Effect.orDie, Effect.provide(database));
+    const auth = yield* Match.value(stage).pipe(
+      Match.when("production", () => Auth.production),
+      Match.when("staging", () => Auth.staging),
+      Match.when("dev", () => Auth.dev),
+      Match.exhaustive,
+      Effect.orDie,
+      Effect.provide(database),
+    );
 
-    // The Me handler's middleware requires HttpServerRequest, so the
-    // auth-dependent part of the RPC stack only exists inside a request.
-    // InfraHandlers resolves its bindings here at Init instead.
+    const storage = yield* Match.value(stage).pipe(
+      Match.whenOr("production", "staging", () => Storage.deployed),
+      Match.when("dev", () => Effect.succeed(Storage.unavailable)),
+      Match.exhaustive,
+    );
+
+    const linkSecret = yield* Random("LinkSecret");
+    const links = Links.make((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom)));
+
+    // Init builds each service once per isolate; only the auth-dependent part
+    // of the RPC stack is rebuilt per request (the Me middleware needs HttpServerRequest).
+    const services = yield* Layer.build(
+      Layer.mergeAll(Drizzle.layer, storage, links).pipe(Layer.provide(database)),
+    );
+    const servicesLayer = Layer.succeedContext(services);
     const rpcInit = yield* Layer.build(
-      Layer.mergeAll(InfraHandlers, RpcSerialization.layerJson).pipe(
-        Layer.provide(Drizzle.layer),
-        Layer.provide(database),
+      Layer.mergeAll(InfraHandlers, LinkHandlers, RpcSerialization.layerJson).pipe(
+        Layer.provide(servicesLayer),
       ),
     );
     const rpcRequest = Layer.fresh(
-      Layer.mergeAll(AuthHandlers, AuthenticatedLive).pipe(
+      Layer.mergeAll(AuthHandlers, AuthenticatedLive, DeliveriesHandlers).pipe(
+        Layer.provide(servicesLayer),
         Layer.provide(Layer.succeed(Auth, auth)),
       ),
     );
