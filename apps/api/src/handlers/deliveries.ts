@@ -229,14 +229,12 @@ export const DeliveriesHandlers = Layer.mergeAll(
           return { deliveries: found, links: linkRows, transfers };
         });
 
-        return yield* Effect.all(
-          rows.deliveries.map((delivery) =>
-            viewFromRows(
-              links,
-              delivery,
-              rows.transfers.filter((transfer) => transfer.deliveryId === delivery.id),
-              rows.links.find((link) => link.deliveryId === delivery.id),
-            ),
+        return yield* Effect.forEach(rows.deliveries, (delivery) =>
+          viewFromRows(
+            links,
+            delivery,
+            rows.transfers.filter((transfer) => transfer.deliveryId === delivery.id),
+            rows.links.find((link) => link.deliveryId === delivery.id),
           ),
         );
       },
@@ -421,13 +419,13 @@ export const DeliveriesHandlers = Layer.mergeAll(
             ]),
         );
 
-        yield* Effect.all(
-          loaded.transfers.map((transfer) =>
+        yield* Effect.forEach(
+          loaded.transfers,
+          (transfer) =>
             storage.abortUploads(transfer.objectKey).pipe(
               Effect.andThen(() => storage.remove(transfer.objectKey)),
               toStorageUnavailable("cancel cleanup failed"),
             ),
-          ),
           { concurrency: CANCEL_CONCURRENCY },
         );
 

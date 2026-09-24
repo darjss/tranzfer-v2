@@ -44,6 +44,7 @@ export const lintConfig = (
   paths: {
     api: string[];
     components: string[];
+    effect: string[];
     web: string[];
   },
   opts?: { root?: boolean },
@@ -84,6 +85,16 @@ export const lintConfig = (
           // Vite+ types `lint` against oxlint 1.81. Runtime is 1.82.0 so
           // @effect/tsgo 0.45.0 can patch Oxlint.
           "typescript/no-unsafe-type-assertion": "off",
+        },
+      },
+      {
+        files: paths.effect,
+        rules: {
+          // Effect's catch/tapError/flatMap/forEach take callbacks and are neither promises nor arrays; these rules match on names.
+          "promise/prefer-await-to-callbacks": "off",
+          "promise/prefer-await-to-then": "off",
+          "unicorn/no-array-for-each": "off",
+          "unicorn/no-array-method-this-argument": "off",
         },
       },
       {
@@ -144,6 +155,7 @@ export const rootLint = lintConfig(
   {
     api: ["apps/api/**", "packages/contracts/**"],
     components: ["apps/web/**/*.tsx"],
+    effect: ["apps/api/**", "packages/**", "apps/web/src/api/**", "apps/web/src/uploads/**"],
     web: ["apps/web/**"],
   },
   { root: true },
@@ -152,5 +164,6 @@ export const rootLint = lintConfig(
 export const webLint = lintConfig({
   api: [],
   components: ["**/*.tsx"],
+  effect: ["src/api/**", "src/uploads/**"],
   web: ["**/*.{js,jsx,ts,tsx}"],
 });

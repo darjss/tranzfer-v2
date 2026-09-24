@@ -11,7 +11,6 @@ import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
-import * as Result from "effect/Result";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 
 import { Files } from "../resources";
@@ -36,16 +35,12 @@ export interface SignedUrl {
 export const toStorageUnavailable =
   (label: string) =>
   <A, R>(effect: Effect.Effect<A, StorageError, R>): Effect.Effect<A, StorageUnavailable, R> =>
-    Effect.gen(function* convert() {
-      const result = yield* Effect.result(effect);
-      if (Result.isFailure(result)) {
-        yield* Effect.logError(label, result.failure.cause);
-        return yield* Effect.fail(
-          new StorageUnavailable({ message: "Storage is unavailable. Try again." }),
-        );
-      }
-      return result.success;
-    });
+    effect.pipe(
+      Effect.tapError((error) => Effect.logError(label, error.cause)),
+      Effect.mapError(
+        () => new StorageUnavailable({ message: "Storage is unavailable. Try again." }),
+      ),
+    );
 
 const needsDeployedStage = (op: StorageError["op"]) =>
   Effect.fail(new StorageError({ cause: "Uploads need a deployed stage", op }));
