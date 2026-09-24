@@ -47,6 +47,8 @@ export default defineConfig({
   ],
   root: import.meta.dirname,
   server: {
+    // `tailscale serve` proxies the dev server to other devices on the tailnet.
+    allowedHosts: [".ts.net"],
     host: "127.0.0.1",
     port: 3000,
   },
