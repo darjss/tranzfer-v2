@@ -21,6 +21,7 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 - Local URLs: Portless.
 - Lint and format: oxlint with type-aware rules and Solid diagnostics, oxfmt. Rules live in `lint.config.ts`.
 - Later, when real work needs it: a maintenance Worker or Queues for cleanup, KV for cache only, Electron with a separate Bun transport process and SQLite for desktop.
-- Observability, before launch: PostHog for product analytics, Axiom for the log and trace drain. Emit via `evlog`'s Workers adapter (wide events, PostHog and Axiom drains, cf-ray, tail sampling) or Effect OpenTelemetry over OTLP into Axiom; decide when we wire it. Alchemy already ships `@distilled.cloud/axiom`.
+- Observability, before launch: PostHog for product analytics, Axiom for the log and trace drain, Sentry for error capture.
+- Emitter, executor-validated: Effect spans to `WebTracerProvider` to batch OTLP at `api.axiom.co/v1/traces`. Their solved pitfalls: the browser-platform OTLP exporter build (node build crashes in workerd), lazy per-isolate provider (module-scope I/O fails deploy), Batch not Simple span processor, `waitUntil(forceFlush)`, URL and header redaction on span attrs. Browser spans forward through an edge route with server-held creds; PostHog server-side via direct HTTP, never `posthog-node`; e2e asserts spans against a local OTLP collector. `evlog`'s Workers adapter is the lighter fallback for request events only. Alchemy ships `@distilled.cloud/axiom`.
 
 Upload, recovery, integrity and abuse rules live in [RELIABILITY.md](RELIABILITY.md). Code placement lives in [STRUCTURE.md](STRUCTURE.md).
