@@ -78,7 +78,7 @@ const TransferSchema = Schema.Struct({
 export { TransferSchema as Transfer };
 export type Transfer = typeof TransferSchema.Type;
 
-export class Delivery extends Schema.Class<Delivery>("Delivery")({
+const DeliverySchema = Schema.Struct({
   createdAt: Schema.DateFromString,
   expiresAt: Schema.NullOr(Schema.DateFromString),
   id: Schema.String,
@@ -87,7 +87,9 @@ export class Delivery extends Schema.Class<Delivery>("Delivery")({
   status: DeliveryStatus,
   title: Schema.String,
   transfers: Schema.Array(TransferSchema),
-}) {}
+});
+export { DeliverySchema as Delivery };
+export type Delivery = typeof DeliverySchema.Type;
 
 const SharedDeliverySchema = Schema.Struct({
   expiresAt: Schema.NullOr(Schema.DateFromString),
