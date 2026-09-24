@@ -39,11 +39,11 @@ export function Sidebar(props: Props) {
   });
 
   return (
-    <aside class="sticky top-0 flex flex-col border-line bg-panel/85 max-lg:border-b lg:h-screen lg:border-r">
+    <aside class="border-line max-lg:contents lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-r lg:bg-panel/85">
       <div class="flex h-16 items-center px-5">
         <Brand />
       </div>
-      <div class="px-4">
+      <div class="border-b border-line px-4 pb-4 lg:border-0 lg:pb-0">
         <Button
           class="w-full"
           onClick={() => {
@@ -54,7 +54,7 @@ export function Sidebar(props: Props) {
           <PhPlusBold /> New delivery
         </Button>
       </div>
-      <nav class="mt-3 flex-1 overflow-y-auto px-2 pb-4">
+      <nav class="mt-3 flex-1 overflow-y-auto px-2 pb-4 max-lg:order-2">
         <For each={groups()}>
           {([label, itemsInGroup]) => (
             <>
@@ -100,7 +100,7 @@ export function Sidebar(props: Props) {
           )}
         </For>
       </nav>
-      <footer class="flex items-center gap-3 border-t border-line px-4 py-3 text-sm">
+      <footer class="flex items-center gap-3 border-t border-line px-4 py-3 text-sm max-lg:order-3">
         <Avatar name={props.principal.name} />
         <span class="truncate font-medium">{props.principal.name}</span>
         <button

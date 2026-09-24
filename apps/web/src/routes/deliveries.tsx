@@ -75,7 +75,7 @@ const DeliveriesPage = () => {
             </Show>
           )}
         >
-          <div class="grid min-h-screen lg:grid-cols-[300px_1fr]">
+          <div class="flex min-h-screen flex-col lg:grid lg:grid-cols-[300px_1fr]">
             <Sidebar
               deliveries={deliveries()}
               online={online()}
@@ -83,7 +83,7 @@ const DeliveriesPage = () => {
               select={select}
               selectedId={searchParams.d}
             />
-            <main class="paper-dots min-h-screen">
+            <main class="paper-dots min-h-screen max-lg:order-1">
               <Show when={!online()}>
                 <p class="border-b border-line bg-panel px-6 py-2.5 text-sm text-amber sm:px-12">
                   Connection lost. We'll continue when you're back online.

@@ -60,18 +60,21 @@ export const chosenFiles = (files: Iterable<File>) => {
 export const invalidPaths = (files: readonly ChosenFile[]) =>
   files.filter(({ path }) => !Schema.is(RelativePath)(path)).map(({ path }) => path);
 
-// The title is the single shared top folder when there is one, otherwise the
-// first file's name.
+// The title is the single shared top folder when there is one, the file name
+// for a lone file, or "<first> and N more" for several loose files.
 const deliveryTitle = (files: readonly ChosenFile[]) => {
-  const top = files[0]?.path.split("/")[0];
-  if (
-    top !== undefined &&
-    files.length > 1 &&
-    files.every(({ path }) => path.startsWith(`${top}/`))
-  ) {
+  const [first] = files;
+  if (first === undefined) {
+    return "Delivery";
+  }
+  const [top] = first.path.split("/");
+  if (files.length > 1 && files.every(({ path }) => path.startsWith(`${top}/`))) {
     return top;
   }
-  return files[0]?.file.name ?? "Delivery";
+  if (files.length === 1) {
+    return first.file.name;
+  }
+  return `${first.file.name} and ${files.length - 1} more`;
 };
 
 const toUploadRequest = (request: PresignableRequest): UploadRequest => {
