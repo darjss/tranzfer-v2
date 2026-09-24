@@ -1,6 +1,6 @@
 import { BetterAuth, Database as AuthDatabase } from "@alchemy.run/better-auth";
 import type { BetterAuthProps, DatabaseService } from "@alchemy.run/better-auth";
-import { Principal } from "@tranzfer/contracts";
+import type { Principal } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { RuntimeContext } from "alchemy";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -75,15 +75,12 @@ const makeAuth = (fragment: Effect.Effect<AuthFragment, Config.ConfigError | Sch
           Effect.map((result) => ({
             cookies: Cookies.fromSetCookie(result.headers.getSetCookie()),
             principal: Option.fromNullishOr(result.response).pipe(
-              Option.map(
-                (r) =>
-                  new Principal({
-                    email: r.user.email,
-                    id: r.user.id,
-                    image: r.user.image ?? null,
-                    name: r.user.name,
-                  }),
-              ),
+              Option.map((r): Principal => ({
+                email: r.user.email,
+                id: r.user.id,
+                image: r.user.image ?? null,
+                name: r.user.name,
+              })),
             ),
           })),
         ),
