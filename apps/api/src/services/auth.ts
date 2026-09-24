@@ -70,9 +70,8 @@ const makeAuth = (config: Effect.Effect<AuthConfig, Config.ConfigError | Schema.
     }
 
     // Our snake_case / integer-ms columns rule out the plugin's Kysely D1
-    // layer; Drizzle()'s db param is typed Record<string, unknown>, which a
-    // DrizzleD1Database doesn't satisfy, so the Database service is built
-    // here with the same drizzleAdapter call that helper wraps.
+    // layer, so the Database service is built with the drizzleAdapter call
+    // that helper wraps.
     const raw = yield* Database;
     const authDatabase = Layer.sync(AuthDatabase, (): DatabaseService => ({
       provider: "sqlite",

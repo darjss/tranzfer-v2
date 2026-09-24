@@ -1,4 +1,5 @@
 import type { Delivery } from "@tranzfer/contracts";
+import * as Match from "effect/Match";
 
 import type { TransferProgress } from "../uploads/store";
 
@@ -117,23 +118,26 @@ export const rollup = (
 
 export const statusOf = (delivery: Delivery, roll: Rollup, online: boolean): Status => {
   const total = totalSize(delivery);
-  if (delivery.status === "cancelled") {
-    return { long: "Cancelled.", short: "Cancelled", tone: "mut" };
-  }
-  if (delivery.status === "expired") {
-    return {
+  const settled = Match.value(delivery.status).pipe(
+    Match.when("cancelled", (): Status => ({
+      long: "Cancelled.",
+      short: "Cancelled",
+      tone: "mut",
+    })),
+    Match.when("expired", (): Status => ({
       long: "Expired. Files are deleted.",
       short: "Expired",
       tone: "mut",
-    };
-  }
-  if (delivery.status === "ready") {
-    const until = delivery.expiresAt === null ? "" : ` until ${untilDate(delivery.expiresAt)}`;
-    return {
-      long: `Ready. The link works${until}.`,
+    })),
+    Match.when("ready", (): Status => ({
+      long: `Ready. The link works${delivery.expiresAt === null ? "" : ` until ${untilDate(delivery.expiresAt)}`}.`,
       short: `Expires ${delivery.expiresAt === null ? "later" : shortDateAt(delivery.expiresAt)}`,
       tone: "ok",
-    };
+    })),
+    Match.orElse((): undefined => undefined),
+  );
+  if (settled !== undefined) {
+    return settled;
   }
   if (!online) {
     return {

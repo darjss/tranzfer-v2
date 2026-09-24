@@ -6,6 +6,7 @@ import { NotUploaded, partSize, RelativePath, usesMultipart } from "@tranzfer/co
 import type { NewFile, UploadRequest } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import type { ManagedRuntime } from "effect/ManagedRuntime";
+import * as Match from "effect/Match";
 import * as Schema from "effect/Schema";
 
 import { ApiClient } from "../api/client";
@@ -77,23 +78,25 @@ const deliveryTitle = (files: readonly ChosenFile[]) => {
   return `${first.file.name} and ${files.length - 1} more`;
 };
 
-const toUploadRequest = (request: PresignableRequest): UploadRequest => {
-  // The server never signs aborts; cancel is a server-side operation.
-  if (request.method === "DELETE") {
-    throw new Error("Aborts go through CancelDelivery");
-  }
-  if (request.method === "PUT") {
-    return "uploadId" in request
-      ? { _tag: "Part", partNumber: request.partNumber, uploadId: request.uploadId }
-      : { _tag: "Put" };
-  }
-  if (request.method === "GET") {
-    return { _tag: "List", uploadId: request.uploadId };
-  }
-  return "uploadId" in request
-    ? { _tag: "Complete", uploadId: request.uploadId }
-    : { _tag: "Create" };
-};
+const toUploadRequest = (request: PresignableRequest): UploadRequest =>
+  Match.value(request).pipe(
+    Match.when({ method: "PUT" }, (put): UploadRequest =>
+      "uploadId" in put
+        ? { _tag: "Part", partNumber: put.partNumber, uploadId: put.uploadId }
+        : { _tag: "Put" },
+    ),
+    Match.when({ method: "GET" }, (get): UploadRequest => ({
+      _tag: "List",
+      uploadId: get.uploadId,
+    })),
+    Match.when({ method: "DELETE" }, (): UploadRequest => {
+      // The server never signs aborts; cancel is a server-side operation.
+      throw new Error("Aborts go through CancelDelivery");
+    }),
+    Match.orElse((post): UploadRequest =>
+      "uploadId" in post ? { _tag: "Complete", uploadId: post.uploadId } : { _tag: "Create" },
+    ),
+  );
 
 const sign = async (runtime: Runtime, request: PresignableRequest) =>
   await runtime.runPromise(
@@ -104,7 +107,6 @@ const sign = async (runtime: Runtime, request: PresignableRequest) =>
     ),
   );
 
-// Per-file rate sampling for the smoothed speed; deltas only, not store state.
 const rates = new Map<string, { at: number; bytes: number }>();
 
 const sampleSpeed = (transferId: string, bytesUploaded: number): number | null => {
@@ -238,8 +240,6 @@ export const getUploads = (runtime: Runtime) => {
   return engine;
 };
 
-// Files a user drops or picks land here: validate client-side first, create
-// the delivery, then hand each file to Uppy keyed to its transfer.
 export const sendFiles = async (
   runtime: Runtime,
   files: readonly ChosenFile[],
