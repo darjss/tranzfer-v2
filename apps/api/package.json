@@ -5,15 +5,15 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
+    "@alchemy.run/better-auth": "2.0.0-beta.79",
     "@distilled.cloud/aws": "1.0.0-rc.12",
     "@polar-sh/sdk": "0.49.0",
-    "@t3-oss/env-core": "0.13.11",
     "@tranzfer/contracts": "workspace:*",
     "@tranzfer/db": "workspace:*",
+    "alchemy": "2.0.0-beta.79",
     "better-auth": "1.7.4",
     "drizzle-orm": "1.0.0-rc.5-ab785fc",
-    "effect": "4.0.0-rc.115",
-    "effect-cf": "0.44.1"
+    "effect": "4.0.0-rc.115"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260911.1",
