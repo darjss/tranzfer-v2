@@ -1,7 +1,6 @@
 import {
   Api,
   CurrentPrincipal,
-  Delivery,
   DeliveryConflict,
   DeliveryNotFound,
   InvalidUpload,
@@ -10,7 +9,7 @@ import {
   UploadClosed,
   usesMultipart,
 } from "@tranzfer/contracts";
-import type { NewDelivery, UploadRequest } from "@tranzfer/contracts";
+import type { NewDelivery, UploadRequest, Delivery } from "@tranzfer/contracts";
 import { Drizzle, schema } from "@tranzfer/db";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
@@ -35,28 +34,27 @@ const toDelivery = (
   delivery: DeliveryRow,
   transfers: readonly TransferRow[],
   linkToken: string,
-): Delivery =>
-  new Delivery({
-    createdAt: delivery.createdAt,
-    expiresAt: delivery.expiresAt,
-    id: delivery.id,
-    link: `/d/${linkToken}`,
-    retentionDays: delivery.retentionDays,
-    status:
-      delivery.status === "ready" &&
-      delivery.expiresAt !== null &&
-      delivery.expiresAt.getTime() <= Date.now()
-        ? "expired"
-        : delivery.status,
-    title: delivery.title,
-    transfers: transfers.map((transfer) => ({
-      id: transfer.id,
-      objectKey: transfer.objectKey,
-      path: transfer.path,
-      size: transfer.size,
-      state: transfer.state,
-    })),
-  });
+): Delivery => ({
+  createdAt: delivery.createdAt,
+  expiresAt: delivery.expiresAt,
+  id: delivery.id,
+  link: `/d/${linkToken}`,
+  retentionDays: delivery.retentionDays,
+  status:
+    delivery.status === "ready" &&
+    delivery.expiresAt !== null &&
+    delivery.expiresAt.getTime() <= Date.now()
+      ? "expired"
+      : delivery.status,
+  title: delivery.title,
+  transfers: transfers.map((transfer) => ({
+    id: transfer.id,
+    objectKey: transfer.objectKey,
+    path: transfer.path,
+    size: transfer.size,
+    state: transfer.state,
+  })),
+});
 
 const sameFileSet = (files: NewDelivery["files"], transfers: readonly TransferRow[]) =>
   files.length === transfers.length &&
