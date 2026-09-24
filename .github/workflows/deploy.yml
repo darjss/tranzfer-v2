@@ -28,6 +28,7 @@ jobs:
           cache: true
       - run: vp run deploy
         env:
+          APP_URL: https://tranzfer.app
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}

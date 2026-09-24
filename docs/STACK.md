@@ -11,9 +11,9 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 - Public config: T3 Env with Effect Schema. Secrets and bindings stay on the server.
 - Backend: Effect 4 for workflows, typed errors and services. Pure math stays plain functions.
 - Protocol: Effect RPC, schemas in `packages/contracts`. Plain HTTP for Better Auth, webhooks, health and downloads.
-- Worker adapter: `effect-cf`. One request runtime.
+- Worker adapter: Alchemy's Effect Worker runtime. Init builds the router and services once per isolate.
 - Database: D1 through Drizzle, wrapped in the `Drizzle` service. Alchemy applies migrations.
-- Auth: Better Auth with Google, sharing the Drizzle connection.
+- Auth: `@alchemy.run/better-auth` on the Drizzle adapter, backed by the lazy D1 accessor.
 - Upload transport: Uppy, straight from the browser to private R2 multipart.
 - Multipart signing: Distilled S3 against the R2 endpoint. Lazy signing, `ListParts` included.
 - Billing: Polar. Entitlements live in D1 and get reconciled from webhooks.

@@ -22,7 +22,7 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 - Comments explain runtime quirks and non-obvious constraints.
 - When a check fails, reproduce it on unchanged `origin/main` before blaming the current diff.
 - After the same step fails twice, stop and report the exact error and evidence.
-- `infra/alchemy.run.ts` owns dev and production bindings. Keep a single infrastructure definition.
+- The API Worker's resources and bindings live in `apps/api` (`resources.ts`, `index.ts`); `infra/alchemy.run.ts` composes the stack. Each resource has one definition.
 - Deploy only from the main checkout, after build and plan review. Leave generated `apps/web/file-routes.d.ts` and `apps/web/solid-env.d.ts` unstaged.
 
 ## Keep the record useful
