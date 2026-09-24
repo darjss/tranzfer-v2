@@ -2,10 +2,10 @@ import { Api } from "@tranzfer/contracts";
 import { Database, Drizzle } from "@tranzfer/db";
 import { Random, RuntimeContext } from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
-import * as Output from "alchemy/Output";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
 import { HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
@@ -15,9 +15,10 @@ import { DeliveriesHandlers } from "./handlers/deliveries";
 import { InfraHandlers } from "./handlers/infra";
 import { LinkHandlers } from "./handlers/links";
 import { AuthenticatedLive } from "./middleware";
-import { App, Files } from "./resources";
-import { Auth, isDeployedStage } from "./services/auth";
+import { App } from "./resources";
+import { Auth } from "./services/auth";
 import { Links } from "./services/links";
+import { deployStage } from "./services/stage";
 import { Storage } from "./services/storage";
 import { ApiWorker } from "./worker";
 
@@ -35,39 +36,20 @@ export default ApiWorker.make(
     // The accessor stays lazy: this impl also evaluates at deploy time, when
     // the env holds no D1 binding.
     const database = Layer.succeed(Database, db.raw.pipe(Effect.provide(RuntimeContext.phantom)));
+    const stage = yield* deployStage;
     // Init-time config failures are fatal; deploy dies with the defect.
-    const auth = yield* Auth.make.pipe(Effect.orDie, Effect.provide(database));
+    const auth = yield* Match.value(stage)
+      .pipe(
+        Match.when("production", () => Auth.production),
+        Match.when("staging", () => Auth.staging),
+        Match.orElse(() => Auth.dev),
+      )
+      .pipe(Effect.orDie, Effect.provide(database));
 
-    // Only deployed stages get a real bucket-scoped token; dev stages use a
-    // local bucket simulator and their Storage reports "needs a deployed
-    // stage" instead of minting Cloudflare credentials.
-    const deployed = yield* isDeployedStage;
-    let storage = Storage.unavailable;
-    if (deployed) {
-      const files = yield* Files;
-      const token = yield* Cloudflare.ApiToken.AccountApiToken("FilesToken", {
-        policies: [
-          {
-            effect: "allow",
-            permissionGroups: [
-              "Workers R2 Storage Bucket Item Read",
-              "Workers R2 Storage Bucket Item Write",
-            ],
-            resources: Output.all(files.accountId, files.jurisdiction, files.bucketName).pipe(
-              Output.map(([accountId, jurisdiction, bucketName]) => ({
-                [`com.cloudflare.edge.r2.bucket.${accountId}_${jurisdiction}_${bucketName}`]: "*",
-              })),
-            ),
-          },
-        ],
-      });
-      storage = Storage.make({
-        accountId: (yield* files.accountId).pipe(Effect.provide(RuntimeContext.phantom)),
-        bucket: (yield* files.bucketName).pipe(Effect.provide(RuntimeContext.phantom)),
-        tokenId: (yield* token.tokenId).pipe(Effect.provide(RuntimeContext.phantom)),
-        tokenValue: (yield* token.value).pipe(Effect.provide(RuntimeContext.phantom)),
-      });
-    }
+    const storage = yield* Match.value(stage).pipe(
+      Match.whenOr("production", "staging", () => Storage.deployed),
+      Match.orElse(() => Effect.succeed(Storage.unavailable)),
+    );
 
     const linkSecret = yield* Random("LinkSecret");
     const links = Links.make((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom)));

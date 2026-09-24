@@ -26,16 +26,25 @@ export const stagingLogin = (key: string): BetterAuthPlugin => ({
         const existing = await adapter.findUserByEmail("staging@tranzfer.test");
         const user =
           existing?.user ??
-          (await adapter.createUser(
-            {
-              createdAt: new Date(),
-              email: "staging@tranzfer.test",
-              emailVerified: true,
-              name: "Staging tester",
-              updatedAt: new Date(),
-            },
-            { method: "staging-login" },
-          ));
+          // A concurrent login can win the unique-email insert; re-find.
+          (await adapter
+            .createUser(
+              {
+                createdAt: new Date(),
+                email: "staging@tranzfer.test",
+                emailVerified: true,
+                name: "Staging tester",
+                updatedAt: new Date(),
+              },
+              { method: "staging-login" },
+            )
+            .catch(async () => {
+              const refound = await adapter.findUserByEmail("staging@tranzfer.test");
+              return refound?.user;
+            }));
+        if (user === undefined) {
+          throw new APIError("INTERNAL_SERVER_ERROR", { message: "Staging login failed" });
+        }
         const session = await adapter.createSession(user.id);
         await setSessionCookie(ctx, { session, user });
         return await ctx.json({ user });
