@@ -11,7 +11,7 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 - Upload, resume, download or cancellation: [docs/RELIABILITY.md](docs/RELIABILITY.md).
 - Tests, scenarios or lint guardrails: [docs/TESTING.md](docs/TESTING.md). Remaining work: [docs/plan/03-testing-and-guardrails.md](docs/plan/03-testing-and-guardrails.md).
 - Tool choices: [docs/STACK.md](docs/STACK.md). Code placement and request scope: [docs/STRUCTURE.md](docs/STRUCTURE.md). Effect reads in Solid: [docs/SOLID-EFFECT-BINDING.md](docs/SOLID-EFFECT-BINDING.md).
-- Planned but not built: pre-launch observability (PostHog, Axiom, evlog or Effect OpenTelemetry) and other deferred tools live in the STACK.md "Later" list.
+- Planned but not built: pre-launch observability (PostHog, Axiom, Sentry, Effect OpenTelemetry) and other deferred tools live in the STACK.md "Later" list.
 - Next milestone: [docs/plan/01-foundation.md](docs/plan/01-foundation.md). Optional follow-up: [docs/plan/02-pre-upload-readiness.md](docs/plan/02-pre-upload-readiness.md).
 - External precedent: `~/dev/tranzfer2-references/README.md`. Those checkouts can use different prereleases; verify syntax locally.
 
