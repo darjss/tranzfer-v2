@@ -38,4 +38,4 @@ export const AuthenticatedLive = Layer.effect(
       ),
     );
   }),
-).pipe(Layer.provide(Auth.layer));
+);

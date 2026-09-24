@@ -7,15 +7,17 @@ Use the existing directory tree as the file inventory. Add a package only for a 
 - `packages/upload-core` is for reusable transfer calculations and recovery data. Keep Solid, Uppy instances and platform I/O out of it.
 - `apps/api/src/handlers` translates RPC calls into service operations. `services` owns external dependencies and workflows. Keep queries beside the feature until a real repository boundary is useful.
 - `apps/web/src/routes` owns page and HTTP route entry points. `api` owns clients and the Solid bridge. `ui` owns reused presentation. Keep feature state beside its consumers.
-- `infra/alchemy.run.ts` owns Cloudflare resources and bindings.
+- `infra/alchemy.run.ts` composes the stack. The API Worker's resources and bindings live in `apps/api/src/resources.ts` and `index.ts`.
 
 ## Scope and dependencies
 
-`apps/api/src/runtime.ts` composes long-lived services. Services can declare their own layer dependencies; `Layer.mergeAll` is not restricted to one file. Capture stable services at layer construction, then read request-specific identity inside the operation.
+`apps/api/src/index.ts` is the composition edge: `ApiWorker.make` builds the router, the Better Auth instance and the D1 accessor once per isolate during Worker init. Services can declare their own layer dependencies; `Layer.mergeAll` is not restricted to one file. Capture stable services at layer construction, then read request-specific identity inside the operation.
+
+Configuration is read through `Config` during init. Alchemy binds those reads into the Worker as secrets at deploy. D1 is reached through the lazy `Database` accessor in `packages/db`; nothing may resolve the raw binding during init because the deploy-time evaluation has no env.
 
 `AuthenticatedLive` resolves the incoming cookie and provides `CurrentPrincipal`. A missing session is `Unauthorized`; failure to read it is `AuthenticationUnavailable`. Authentication middleware appends renewed cookies to the HTTP response.
 
-The RPC endpoint builds its authenticated handler layer within the HTTP request scope. Keep that scope for response hooks and fibers. Never capture a request, principal or response headers in an isolate-wide singleton.
+The RPC endpoint builds its authenticated handler layer within the HTTP request scope, because the `Authenticated` middleware requires `HttpServerRequest`. Keep that scope for response hooks and fibers. Never capture a request, principal or response headers in an isolate-wide singleton.
 
 Browser RPC posts to exactly `/rpc`, forwarded by the web Worker to the API binding. SSR creates a request-specific client with incoming cookies and outgoing response headers. The unauthenticated infrastructure client can be shared. See [the bridge contract](SOLID-EFFECT-BINDING.md).
 

@@ -1,10 +1,10 @@
 import { Credentials, Endpoint, Presign, Region } from "@distilled.cloud/aws";
 import * as S3 from "@distilled.cloud/aws/s3";
-import { Environment } from "effect-cf";
 import * as Context from "effect/Context";
+import * as Redacted from "effect/Redacted";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Schema from "effect/Schema";
+import * as Config from "effect/Config";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 
 import { SigningError } from "./signing-error";
@@ -117,18 +117,13 @@ export class Signing extends Context.Service<
 
   static readonly layer = Layer.unwrap(
     Effect.gen(function* layer() {
-      const env = yield* Environment.WorkerEnvironment;
-      const creds = yield* Schema.decodeUnknownEffect(
-        Schema.Struct({
-          R2_ACCESS_KEY_ID: Schema.NonEmptyString,
-          R2_ACCOUNT_ID: Schema.NonEmptyString,
-          R2_SECRET_ACCESS_KEY: Schema.NonEmptyString,
-        }),
-      )(env);
+      const accessKeyId = yield* Config.String("R2_ACCESS_KEY_ID");
+      const accountId = yield* Config.String("R2_ACCOUNT_ID");
+      const secretAccessKey = yield* Config.Redacted("R2_SECRET_ACCESS_KEY");
       return Signing.make({
-        accessKeyId: creds.R2_ACCESS_KEY_ID,
-        accountId: creds.R2_ACCOUNT_ID,
-        secretAccessKey: creds.R2_SECRET_ACCESS_KEY,
+        accessKeyId,
+        accountId,
+        secretAccessKey: Redacted.value(secretAccessKey),
       });
     }),
   );
