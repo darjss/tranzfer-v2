@@ -1,5 +1,5 @@
-// Pure constants only: infra/alchemy.run.ts imports this file and runs under
-// infra's own effect version, so importing anything here poisons that process.
+// Pure constants only: infra/alchemy.run.ts imports this file in the deploy
+// process, so it stays free of application imports.
 export const envBindings = {
   appUrl: "APP_URL",
   betterAuthSecret: "BETTER_AUTH_SECRET",

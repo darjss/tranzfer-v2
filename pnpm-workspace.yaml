@@ -15,8 +15,6 @@ minimumReleaseAgeExclude:
   - solid-js
   - "@solidjs/*"
   - effect-cf@0.44.1 || 0.44.1
-  - "@distilled.cloud/aws@1.0.0-rc.11"
-  - "@distilled.cloud/core@1.0.0-rc.11"
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0-rc.0
   vite-plus: 1.0.0-rc.0
@@ -31,11 +29,7 @@ overrides:
   "vite-plus>oxlint": "1.82.0"
   "oxlint>oxlint-tsgolint": "7.0.2001"
   oxlint-tsgolint: "7.0.2001"
-  "@effect/platform-node>@effect/platform-node-shared": 4.0.0-rc.112
-  "@effect/platform-node-shared>@effect/platform": 4.0.0-rc.112
-  alchemy>@effect/sql-d1: 4.0.0-rc.112
-  alchemy>@effect/sql-sqlite-do: 4.0.0-rc.112
-  alchemy>@effect/vitest: 4.0.0-rc.112
+  "@better-auth/drizzle-adapter>drizzle-orm": "1.0.0-rc.5-ab785fc"
 peerDependencyRules:
   allowAny:
     - vite
@@ -45,12 +39,3 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: false
   workerd: true
-packageExtensions:
-  alchemy:
-    dependencies:
-      "@effect/platform-node": "4.0.0-rc.112"
-      effect: "4.0.0-rc.112"
-patchedDependencies:
-  "@distilled.cloud/aws@1.0.0-rc.9": patches/@distilled.cloud__aws@1.0.0-rc.9.patch
-  "@distilled.cloud/core@1.0.0-rc.9": patches/@distilled.cloud__core@1.0.0-rc.9.patch
-  drizzle-orm@1.0.0-rc.4: patches/drizzle-orm@1.0.0-rc.4.patch
