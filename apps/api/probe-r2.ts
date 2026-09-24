@@ -1,14 +1,16 @@
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { env } from "./src/env.ts";
 import { Signing } from "./src/services/signing.ts";
 
-const bucket = env.R2_BUCKET ?? "tranzfer-files-production";
 const key = `s3-probe/${crypto.randomUUID()}`;
 
 const program = Effect.gen(function* probe() {
   const signing = yield* Signing;
+  const bucket = yield* Config.String("R2_BUCKET").pipe(
+    Config.withDefault("tranzfer-files-production"),
+  );
 
   const uploadId = yield* signing.createMultipart({ bucket, key });
   console.log("createMultipartUpload ok");
@@ -44,13 +46,7 @@ const program = Effect.gen(function* probe() {
   );
 });
 
-const runtime = ManagedRuntime.make(
-  Signing.make({
-    accessKeyId: env.R2_ACCESS_KEY_ID,
-    accountId: env.R2_ACCOUNT_ID,
-    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-  }),
-);
+const runtime = ManagedRuntime.make(Signing.layer);
 
 try {
   await runtime.runPromise(program);
