@@ -1,9 +1,8 @@
 import { BetterAuth, Database as AuthDatabase } from "@alchemy.run/better-auth";
-import type { BetterAuthProps } from "@alchemy.run/better-auth";
+import type { BetterAuthProps, DatabaseService } from "@alchemy.run/better-auth";
 import { Principal } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { RuntimeContext } from "alchemy";
-import { Stage } from "alchemy/Stage";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/d1";
 import * as Config from "effect/Config";
@@ -23,76 +22,26 @@ import type * as HttpServerResponse from "effect/unstable/http/HttpServerRespons
 import { AuthError } from "./auth-error";
 import { stagingLogin } from "./staging-login";
 
-// Inside the running Worker there is no Stage service; Alchemy binds
-// ALCHEMY_STAGE as a plain_text binding and we read that instead.
-export const stageName = Effect.serviceOption(Stage).pipe(
-  Effect.flatMap(
-    Option.match({
-      onNone: () => Config.String("ALCHEMY_STAGE").pipe(Config.option),
-      onSome: (stage) => Effect.succeed(Option.some(stage)),
-    }),
-  ),
-);
-
-// Deployed stages get real cloud resources and the Google/staging-login
-// split; every other stage is a local dev stage.
-export const isDeployedStage = stageName.pipe(
-  Effect.map(
-    Option.match({
-      onNone: () => false,
-      onSome: (stage) => stage === "production" || stage === "staging",
-    }),
-  ),
-);
-
 const SigningSecret = Schema.Redacted(Schema.String.check(Schema.isMinLength(32)));
+const decodeSecret = Schema.decodeUnknownEffect(SigningSecret);
 
-export class Auth extends Context.Service<
-  Auth,
-  {
-    readonly fetch: Effect.Effect<
-      HttpServerResponse.HttpServerResponse,
-      HttpServerError.HttpServerError | HttpBody.HttpBodyError,
-      HttpServerRequest.HttpServerRequest | Scope.Scope
-    >;
-    readonly session: (
-      headers: Headers,
-    ) => Effect.Effect<
-      { cookies: Cookies.Cookies; principal: Option.Option<Principal> },
-      AuthError
-    >;
-  }
->()("tranzfer/Auth") {
-  static readonly make = Effect.gen(function* makeAuth() {
-    const stage = yield* stageName;
+interface AuthConfig {
+  readonly google?: {
+    readonly clientId: string;
+    readonly clientSecret: Redacted.Redacted;
+  };
+  readonly secret?: Redacted.Redacted;
+  readonly testLoginKey?: Redacted.Redacted;
+}
+
+type Writable<T> = { -readonly [K in keyof T]: T[K] };
+
+const makeAuth = (config: Effect.Effect<AuthConfig, Config.ConfigError | Schema.SchemaError>) =>
+  Effect.gen(function* service() {
+    const resolved = yield* config;
     const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
-    const isProduction = Option.isSome(stage) && stage.value === "production";
-    const isStaging = Option.isSome(stage) && stage.value === "staging";
-    // Staging signs in only through the key-gated plugin; it never reads the
-    // Google credentials .env may carry.
-    const googleClientId = isStaging ? undefined : yield* Config.String("GOOGLE_CLIENT_ID");
-    const googleClientSecret = isStaging
-      ? undefined
-      : yield* Config.Redacted("GOOGLE_CLIENT_SECRET");
-    // Production keeps the configured secret; every other stage omits it and
-    // the plugin auto-provisions a stable Alchemy.Random.
-    const secret = isProduction
-      ? yield* Config.Redacted("BETTER_AUTH_SECRET").pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(SigningSecret)),
-        )
-      : undefined;
-    const decodeLoginKey = Schema.decodeUnknownEffect(SigningSecret);
-    let testLoginKey = Option.none<Redacted.Redacted>();
-    if (!isProduction) {
-      const key = isStaging
-        ? Option.some(yield* Config.Redacted("TEST_LOGIN_KEY"))
-        : yield* Config.option(Config.Redacted("TEST_LOGIN_KEY"));
-      if (Option.isSome(key)) {
-        testLoginKey = Option.some(yield* decodeLoginKey(key.value));
-      }
-    }
 
-    const props: BetterAuthProps = {
+    const props: Writable<BetterAuthProps> = {
       advanced: { database: { validateSchema: false } },
       basePath: "/api/auth",
       baseURL: origin,
@@ -103,40 +52,38 @@ export class Auth extends Context.Service<
         },
       },
       migrate: false,
-      plugins: Option.isNone(testLoginKey)
-        ? undefined
-        : [stagingLogin(Redacted.value(testLoginKey.value))],
-      socialProviders:
-        googleClientId === undefined || googleClientSecret === undefined
-          ? undefined
-          : {
-              google: {
-                clientId: googleClientId,
-                clientSecret: Redacted.value(googleClientSecret),
-              },
-            },
       trustedOrigins: [origin],
     };
+    if (resolved.secret !== undefined) {
+      props.secret = resolved.secret;
+    }
+    if (resolved.testLoginKey !== undefined) {
+      props.plugins = [stagingLogin(Redacted.value(resolved.testLoginKey))];
+    }
+    if (resolved.google !== undefined) {
+      props.socialProviders = {
+        google: {
+          clientId: resolved.google.clientId,
+          clientSecret: Redacted.value(resolved.google.clientSecret),
+        },
+      };
+    }
 
-    // Our columns are snake_case with integer-ms dates, which the plugin's
-    // Kysely D1 layer can't handle; this custom Database layer is the drizzle
-    // adapter over our lazy D1 accessor, resolved inside each invocation.
+    // Our snake_case / integer-ms columns rule out the plugin's Kysely D1
+    // layer; Drizzle()'s db param is typed Record<string, unknown>, which a
+    // DrizzleD1Database doesn't satisfy, so the Database service is built
+    // here with the same drizzleAdapter call that helper wraps.
     const raw = yield* Database;
-    const authDatabase = Layer.succeed(
-      AuthDatabase,
-      AuthDatabase.of({
-        provider: "sqlite",
-        runtime: raw.pipe(
-          Effect.map((handle) => drizzleAdapter(drizzle(handle), { provider: "sqlite", schema })),
-        ),
-      }),
-    );
+    const authDatabase = Layer.sync(AuthDatabase, (): DatabaseService => ({
+      provider: "sqlite",
+      runtime: raw.pipe(
+        Effect.map((handle) => drizzleAdapter(drizzle(handle), { provider: "sqlite", schema })),
+      ),
+    }));
 
-    const instance = yield* BetterAuth(secret === undefined ? props : { ...props, secret }).pipe(
-      Effect.provide(authDatabase),
-    );
+    const instance = yield* BetterAuth(props).pipe(Effect.provide(authDatabase));
 
-    return Auth.of({
+    return {
       fetch: instance.fetch.pipe(Effect.provide(RuntimeContext.phantom)),
       session: Effect.fn("Auth.session")((headers: Headers) =>
         instance.auth.pipe(
@@ -165,6 +112,58 @@ export class Auth extends Context.Service<
           })),
         ),
       ),
-    });
+    };
   });
+
+export class Auth extends Context.Service<
+  Auth,
+  {
+    readonly fetch: Effect.Effect<
+      HttpServerResponse.HttpServerResponse,
+      HttpServerError.HttpServerError | HttpBody.HttpBodyError,
+      HttpServerRequest.HttpServerRequest | Scope.Scope
+    >;
+    readonly session: (
+      headers: Headers,
+    ) => Effect.Effect<
+      { cookies: Cookies.Cookies; principal: Option.Option<Principal> },
+      AuthError
+    >;
+  }
+>()("tranzfer/Auth") {
+  static readonly production = makeAuth(
+    Effect.gen(function* config() {
+      const secret = yield* Config.Redacted("BETTER_AUTH_SECRET").pipe(
+        Effect.flatMap(decodeSecret),
+      );
+      const google = {
+        clientId: yield* Config.String("GOOGLE_CLIENT_ID"),
+        clientSecret: yield* Config.Redacted("GOOGLE_CLIENT_SECRET"),
+      };
+      return { google, secret };
+    }),
+  ).pipe(Effect.map((service) => Auth.of(service)));
+
+  static readonly staging = makeAuth(
+    Effect.gen(function* config() {
+      const testLoginKey = yield* Config.Redacted("TEST_LOGIN_KEY").pipe(
+        Effect.flatMap(decodeSecret),
+      );
+      return { testLoginKey };
+    }),
+  ).pipe(Effect.map((service) => Auth.of(service)));
+
+  static readonly dev = makeAuth(
+    Effect.gen(function* config() {
+      const clientId = yield* Config.option(Config.String("GOOGLE_CLIENT_ID"));
+      const clientSecret = yield* Config.option(Config.Redacted("GOOGLE_CLIENT_SECRET"));
+      const google =
+        Option.isSome(clientId) && Option.isSome(clientSecret)
+          ? { clientId: clientId.value, clientSecret: clientSecret.value }
+          : undefined;
+      const key = yield* Config.option(Config.Redacted("TEST_LOGIN_KEY"));
+      const testLoginKey = Option.isSome(key) ? yield* decodeSecret(key.value) : undefined;
+      return { google, testLoginKey };
+    }),
+  ).pipe(Effect.map((service) => Auth.of(service)));
 }
