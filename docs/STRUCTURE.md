@@ -13,7 +13,7 @@ Use the existing directory tree as the file inventory. Add a package only for a 
 
 `apps/api/src/index.ts` is the composition edge: `ApiWorker.make` builds the router, the Better Auth instance and the D1 accessor once per isolate during Worker init. Services can declare their own layer dependencies; `Layer.mergeAll` is not restricted to one file. Capture stable services at layer construction, then read request-specific identity inside the operation.
 
-Configuration is read through `Config` during init — Alchemy binds those reads into the Worker as secrets at deploy. D1 is reached through the lazy `Database` accessor in `packages/db`; nothing may resolve the raw binding during init because the deploy-time evaluation has no env.
+Configuration is read through `Config` during init. Alchemy binds those reads into the Worker as secrets at deploy. D1 is reached through the lazy `Database` accessor in `packages/db`; nothing may resolve the raw binding during init because the deploy-time evaluation has no env.
 
 `AuthenticatedLive` resolves the incoming cookie and provides `CurrentPrincipal`. A missing session is `Unauthorized`; failure to read it is `AuthenticationUnavailable`. Authentication middleware appends renewed cookies to the HTTP response.
 
