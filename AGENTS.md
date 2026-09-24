@@ -24,6 +24,7 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 - After the same step fails twice, stop and report the exact error and evidence.
 - The API Worker's resources and bindings live in `apps/api` (`resources.ts`, `index.ts`); `infra/alchemy.run.ts` composes the stack. Each resource has one definition.
 - Deploy only from the main checkout, after build and plan review. Leave generated `apps/web/file-routes.d.ts` and `apps/web/solid-env.d.ts` unstaged.
+- Staging lives at staging.tranzfer.app; deploy with `vp run deploy:staging` after plan review and sign in there with `POST /api/auth/staging-login`.
 
 ## Keep the record useful
 

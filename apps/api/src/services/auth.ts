@@ -21,6 +21,7 @@ import type * as HttpServerRequest from "effect/unstable/http/HttpServerRequest"
 import type * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
 import { AuthError } from "./auth-error";
+import { stagingLogin } from "./staging-login";
 
 // Inside the running Worker there is no Stage service; Alchemy binds
 // ALCHEMY_STAGE as a plain_text binding and we read that instead.
@@ -54,16 +55,31 @@ export class Auth extends Context.Service<
   static readonly make = Effect.gen(function* makeAuth() {
     const stage = yield* stageName;
     const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
-    const googleClientId = yield* Config.String("GOOGLE_CLIENT_ID");
-    const googleClientSecret = yield* Config.Redacted("GOOGLE_CLIENT_SECRET");
+    const isProduction = Option.isSome(stage) && stage.value === "production";
+    const isStaging = Option.isSome(stage) && stage.value === "staging";
+    // Staging signs in only through the key-gated plugin; it never reads the
+    // Google credentials .env may carry.
+    const googleClientId = isStaging ? undefined : yield* Config.String("GOOGLE_CLIENT_ID");
+    const googleClientSecret = isStaging
+      ? undefined
+      : yield* Config.Redacted("GOOGLE_CLIENT_SECRET");
     // Production keeps the configured secret; every other stage omits it and
     // the plugin auto-provisions a stable Alchemy.Random.
-    const secret =
-      Option.isSome(stage) && stage.value === "production"
-        ? yield* Config.Redacted("BETTER_AUTH_SECRET").pipe(
-            Effect.flatMap(Schema.decodeUnknownEffect(SigningSecret)),
-          )
-        : undefined;
+    const secret = isProduction
+      ? yield* Config.Redacted("BETTER_AUTH_SECRET").pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(SigningSecret)),
+        )
+      : undefined;
+    const decodeLoginKey = Schema.decodeUnknownEffect(SigningSecret);
+    let testLoginKey = Option.none<Redacted.Redacted>();
+    if (!isProduction) {
+      const key = isStaging
+        ? Option.some(yield* Config.Redacted("TEST_LOGIN_KEY"))
+        : yield* Config.option(Config.Redacted("TEST_LOGIN_KEY"));
+      if (Option.isSome(key)) {
+        testLoginKey = Option.some(yield* decodeLoginKey(key.value));
+      }
+    }
 
     const props: BetterAuthProps = {
       advanced: { database: { validateSchema: false } },
@@ -76,9 +92,18 @@ export class Auth extends Context.Service<
         },
       },
       migrate: false,
-      socialProviders: {
-        google: { clientId: googleClientId, clientSecret: Redacted.value(googleClientSecret) },
-      },
+      plugins: Option.isNone(testLoginKey)
+        ? undefined
+        : [stagingLogin(Redacted.value(testLoginKey.value))],
+      socialProviders:
+        googleClientId === undefined || googleClientSecret === undefined
+          ? undefined
+          : {
+              google: {
+                clientId: googleClientId,
+                clientSecret: Redacted.value(googleClientSecret),
+              },
+            },
       trustedOrigins: [origin],
     };
 

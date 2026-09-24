@@ -8,6 +8,8 @@
     "dev": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js dev --no-input",
     "plan": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js plan --stage production",
     "deploy": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js deploy --yes --stage production",
+    "plan:staging": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://staging.tranzfer.app node ./node_modules/alchemy/bin/cli.js plan --stage staging",
+    "deploy:staging": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://staging.tranzfer.app node ./node_modules/alchemy/bin/cli.js deploy --yes --stage staging",
     "destroy": "env -u npm_execpath -u npm_config_user_agent node ./node_modules/alchemy/bin/cli.js destroy --yes --stage production"
   },
   "dependencies": {
