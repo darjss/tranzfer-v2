@@ -5,6 +5,7 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
 import { HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
@@ -14,6 +15,7 @@ import { InfraHandlers } from "./handlers/infra";
 import { AuthenticatedLive } from "./middleware";
 import { App } from "./resources";
 import { Auth } from "./services/auth";
+import { deployStage } from "./services/stage";
 import { ApiWorker } from "./worker";
 
 export { ApiWorker } from "./worker";
@@ -30,8 +32,15 @@ export default ApiWorker.make(
     // The accessor stays lazy: this impl also evaluates at deploy time, when
     // the env holds no D1 binding.
     const database = Layer.succeed(Database, db.raw.pipe(Effect.provide(RuntimeContext.phantom)));
+    const stage = yield* deployStage;
     // Init-time config failures are fatal; deploy dies with the defect.
-    const auth = yield* Auth.make.pipe(Effect.orDie, Effect.provide(database));
+    const auth = yield* Match.value(stage)
+      .pipe(
+        Match.when("production", () => Auth.production),
+        Match.when("staging", () => Auth.staging),
+        Match.orElse(() => Auth.dev),
+      )
+      .pipe(Effect.orDie, Effect.provide(database));
 
     // The Me handler's middleware requires HttpServerRequest, so the
     // auth-dependent part of the RPC stack only exists inside a request.

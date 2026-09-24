@@ -4,6 +4,7 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Stage } from "alchemy/Stage";
 import * as Effect from "effect/Effect";
+import * as Match from "effect/Match";
 
 import ApiWorkerLive, { ApiWorker } from "../apps/api/src/index";
 
@@ -23,12 +24,11 @@ export default Alchemy.Stack(
   Effect.gen(function* provision() {
     const api = yield* ApiWorker;
     const stage = yield* Stage;
-    let domain: string | undefined;
-    if (stage === "production") {
-      domain = "tranzfer.app";
-    } else if (stage === "staging") {
-      domain = "staging.tranzfer.app";
-    }
+    const domain = Match.value(stage).pipe(
+      Match.when("production", () => "tranzfer.app"),
+      Match.when("staging", () => "staging.tranzfer.app"),
+      Match.orElse((): undefined => undefined),
+    );
 
     const web = yield* Cloudflare.Website.Vite("Web", {
       compatibility: {
