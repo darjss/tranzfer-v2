@@ -25,11 +25,22 @@ import { stagingLogin } from "./staging-login";
 
 // Inside the running Worker there is no Stage service; Alchemy binds
 // ALCHEMY_STAGE as a plain_text binding and we read that instead.
-const stageName = Effect.serviceOption(Stage).pipe(
+export const stageName = Effect.serviceOption(Stage).pipe(
   Effect.flatMap(
     Option.match({
       onNone: () => Config.String("ALCHEMY_STAGE").pipe(Config.option),
       onSome: (stage) => Effect.succeed(Option.some(stage)),
+    }),
+  ),
+);
+
+// Deployed stages get real cloud resources and the Google/staging-login
+// split; every other stage is a local dev stage.
+export const isDeployedStage = stageName.pipe(
+  Effect.map(
+    Option.match({
+      onNone: () => false,
+      onSome: (stage) => stage === "production" || stage === "staging",
     }),
   ),
 );

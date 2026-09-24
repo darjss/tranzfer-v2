@@ -7,6 +7,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { Files } from "../resources";
+import { isDeployedStage } from "../services/auth";
+import { Storage } from "../services/storage";
 
 export const InfraHandlers = Layer.mergeAll(
   Api.toLayerHandler(
@@ -18,6 +20,10 @@ export const InfraHandlers = Layer.mergeAll(
     Effect.gen(function* InfraHandler() {
       const db = yield* Drizzle;
       const files = yield* Cloudflare.R2.ReadBucket(Files);
+      const storage = yield* Storage;
+      // Dev stages run a bucket simulator with no S3 credentials; they
+      // report s3 false without probing.
+      const deployed = yield* isDeployedStage;
 
       const probeD1 = db
         .run("infra.probeD1", (d) => d.get<{ ok: number }>(sql`SELECT 1 AS ok`))
@@ -43,10 +49,17 @@ export const InfraHandlers = Layer.mergeAll(
         Effect.asVoid,
       );
 
+      // A missing object still proves the token can reach the bucket.
+      const probeS3 = storage.head("infra-probe/health").pipe(
+        Effect.mapError(() => new ProbeFailed({ message: "S3 probe failed", resource: "s3" })),
+        Effect.asVoid,
+      );
+
       return Effect.fn("InfraHandlers.Infra")(() =>
         probeD1.pipe(
           Effect.andThen(probeR2),
-          Effect.map(() => ({ d1: true, r2: true })),
+          Effect.andThen(deployed ? probeS3 : Effect.void),
+          Effect.map(() => ({ d1: true, r2: true, s3: deployed })),
         ),
       );
     }),
