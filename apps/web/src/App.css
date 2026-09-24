@@ -17,6 +17,13 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+@utility paper-dots {
+  --dots-ink: rgb(23 24 28 / 0.16);
+  background-color: var(--color-paper);
+  background-image: radial-gradient(var(--dots-ink) 1px, transparent 1.5px);
+  background-size: 18px 18px;
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;
