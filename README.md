@@ -19,7 +19,7 @@ After deployment, check API `/health`, web `/infra`, and sign-in. The infrastruc
 ## Decisions
 
 - [Vision](docs/VISION.md) and [product judgment](docs/SOUL.md)
-- [Transfer reliability](docs/RELIABILITY.md)
+- [Transfer reliability](docs/RELIABILITY.md) and [testing](docs/TESTING.md)
 - [Stack](docs/STACK.md) and [code boundaries](docs/STRUCTURE.md)
 - [Solid and Effect](docs/SOLID-EFFECT-BINDING.md)
 
