@@ -19,18 +19,12 @@ import { ApiWorker } from "./worker";
 export { ApiWorker } from "./worker";
 
 export default ApiWorker.make(
-  Effect.suspend(() =>
-    Effect.succeed(
-      globalThis.__ALCHEMY_RUNTIME__ === true
-        ? { main: import.meta.url }
-        : {
-            compatibility: { date: "2026-09-08" },
-            dev: { port: 8787, strictPort: true },
-            main: import.meta.url,
-            name: "tranzfer-api",
-          },
-    ),
-  ),
+  {
+    compatibility: { date: "2026-09-08" },
+    dev: { port: 8787, strictPort: true },
+    main: import.meta.url,
+    name: "tranzfer-api",
+  },
   Effect.gen(function* impl() {
     const db = yield* Cloudflare.D1.QueryDatabase(App);
     // The accessor stays lazy: this impl also evaluates at deploy time, when

@@ -22,28 +22,14 @@ import type * as HttpServerResponse from "effect/unstable/http/HttpServerRespons
 
 import { AuthError } from "./auth-error";
 
-// Jobs and tests outside Alchemy get no Stage service; the deploy-time
-// interceptor binds ALCHEMY_STAGE into the Worker for runtime reads.
+// Inside the running Worker there is no Stage service; Alchemy binds
+// ALCHEMY_STAGE as a plain_text binding and we read that instead.
 const stageName = Effect.serviceOption(Stage).pipe(
   Effect.flatMap(
     Option.match({
       onNone: () => Config.String("ALCHEMY_STAGE").pipe(Config.option),
       onSome: (stage) => Effect.succeed(Option.some(stage)),
     }),
-  ),
-);
-
-const Origin = Schema.String.check(
-  Schema.makeFilter(
-    (value) => {
-      try {
-        const url = new URL(value);
-        return (url.protocol === "http:" || url.protocol === "https:") && url.origin === value;
-      } catch {
-        return false;
-      }
-    },
-    { message: "APP_URL must be an HTTP(S) origin without a trailing slash" },
   ),
 );
 
@@ -67,9 +53,7 @@ export class Auth extends Context.Service<
 >()("tranzfer/Auth") {
   static readonly make = Effect.gen(function* makeAuth() {
     const stage = yield* stageName;
-    const origin = yield* Config.String("APP_URL").pipe(
-      Effect.flatMap(Schema.decodeUnknownEffect(Origin)),
-    );
+    const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
     const googleClientId = yield* Config.String("GOOGLE_CLIENT_ID");
     const googleClientSecret = yield* Config.Redacted("GOOGLE_CLIENT_SECRET");
     // Production keeps the configured secret; every other stage omits it and
