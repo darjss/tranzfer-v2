@@ -44,6 +44,39 @@ declare module "virtual:file-routes" {
       $component: FileRouteEagerRef<typeof import("./src/routes/index")>;
       $$route?: undefined;
     },
+    {
+      path: "/infra";
+      page: false;
+      $GET: FileRouteEagerRef<typeof import("./src/routes/infra")>;
+      $HEAD: FileRouteEagerRef<typeof import("./src/routes/infra")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/me";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/me")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/rpc";
+      page: false;
+      $POST: FileRouteEagerRef<typeof import("./src/routes/rpc")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/sign-in";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/sign-in")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/api/auth/*all";
+      page: false;
+      $GET: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
+      $POST: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
+      $HEAD: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
+      $$route?: undefined;
+    }
   ];
   export default routes;
 
@@ -58,6 +91,14 @@ declare module "virtual:file-routes" {
       children?: undefined;
     },
     {
+      path: "/me";
+      id: "/me";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/me")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
       path: "/*404";
       id: "/*404";
       page: true;
@@ -65,5 +106,13 @@ declare module "virtual:file-routes" {
       $$route: FileRouteEagerRef<typeof import("./src/routes/[...404]")>;
       children?: undefined;
     },
+    {
+      path: "/sign-in";
+      id: "/sign-in";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/sign-in")>;
+      $$route?: undefined;
+      children?: undefined;
+    }
   ];
 }
