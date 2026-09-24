@@ -68,7 +68,7 @@ const sameFileSet = (files: NewDelivery["files"], transfers: readonly TransferRo
   );
 
 // The link is written in the same batch as the delivery; a missing row is a
-// broken invariant, never a not-found, and signing "" would mint a dead link.
+// broken invariant, never a not-found.
 const viewFromRows = (
   links: Links["Service"],
   delivery: DeliveryRow,
@@ -175,10 +175,8 @@ export const DeliveriesHandlers = Layer.mergeAll(
           ),
         );
         if (Result.isFailure(inserted)) {
-          // Re-check what landed before blaming the caller: an identical
-          // delivery owned by the sender is a concurrent create, anything else
-          // that exists is a conflict, and nothing at all means the store
-          // itself failed.
+          // The insert raced a concurrent create: re-read before deciding who
+          // failed.
           const landed = yield* loadDeliveryRows(db, input.id, "deliveries.create.relookup");
           const taken = yield* db.run("deliveries.create.retaken", (d) =>
             d
@@ -423,8 +421,6 @@ export const DeliveriesHandlers = Layer.mergeAll(
             ]),
         );
 
-        // A cleanup failure fails the call, so the client retries and the
-        // idempotent cleanup runs again instead of being lost.
         yield* Effect.all(
           loaded.transfers.map((transfer) =>
             storage.abortUploads(transfer.objectKey).pipe(

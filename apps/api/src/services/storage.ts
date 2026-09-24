@@ -106,10 +106,8 @@ export class Storage extends Context.Service<
   }) =>
     Layer.unwrap(
       Effect.gen(function* storageLayer() {
-        // R2 S3 credentials from an API token: accessKeyId is the token id,
-        // secretAccessKey the lowercase hex SHA-256 of the token value.
-        // Resolved once per isolate; the accessors read Worker bindings, so
-        // nothing touches them at deploy time.
+        // accessKeyId is the token id and secretAccessKey its SHA-256 hex;
+        // resolved once per isolate so bindings are not read at deploy time.
         const credentials = yield* Effect.cached(
           Effect.gen(function* resolveCredentials() {
             const [tokenId, tokenValue] = yield* Effect.all([options.tokenId, options.tokenValue], {
@@ -297,8 +295,6 @@ export class Storage extends Context.Service<
       }),
     );
 
-  // Local dev stages have no real token or bucket, so every operation
-  // reports that uploads need a deployed stage.
   static readonly unavailable = Layer.succeed(
     Storage,
     Storage.of({

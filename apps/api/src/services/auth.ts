@@ -23,25 +23,15 @@ import { AuthError } from "./auth-error";
 import { stagingLogin } from "./staging-login";
 
 const SigningSecret = Schema.Redacted(Schema.String.check(Schema.isMinLength(32)));
-const decodeSecret = Schema.decodeUnknownEffect(SigningSecret);
 
-interface AuthConfig {
-  readonly google?: {
-    readonly clientId: string;
-    readonly clientSecret: Redacted.Redacted;
-  };
-  readonly secret?: Redacted.Redacted;
-  readonly testLoginKey?: Redacted.Redacted;
-}
+type AuthFragment = Pick<BetterAuthProps, "plugins" | "secret" | "socialProviders">;
 
-type Writable<T> = { -readonly [K in keyof T]: T[K] };
-
-const makeAuth = (config: Effect.Effect<AuthConfig, Config.ConfigError | Schema.SchemaError>) =>
+const makeAuth = (fragment: Effect.Effect<AuthFragment, Config.ConfigError | Schema.SchemaError>) =>
   Effect.gen(function* service() {
-    const resolved = yield* config;
+    const options = yield* fragment;
     const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
 
-    const props: Writable<BetterAuthProps> = {
+    const props: BetterAuthProps = {
       advanced: { database: { validateSchema: false } },
       basePath: "/api/auth",
       baseURL: origin,
@@ -53,21 +43,8 @@ const makeAuth = (config: Effect.Effect<AuthConfig, Config.ConfigError | Schema.
       },
       migrate: false,
       trustedOrigins: [origin],
+      ...options,
     };
-    if (resolved.secret !== undefined) {
-      props.secret = resolved.secret;
-    }
-    if (resolved.testLoginKey !== undefined) {
-      props.plugins = [stagingLogin(Redacted.value(resolved.testLoginKey))];
-    }
-    if (resolved.google !== undefined) {
-      props.socialProviders = {
-        google: {
-          clientId: resolved.google.clientId,
-          clientSecret: Redacted.value(resolved.google.clientSecret),
-        },
-      };
-    }
 
     // Our snake_case / integer-ms columns rule out the plugin's Kysely D1
     // layer, so the Database service is built with the drizzleAdapter call
@@ -130,39 +107,60 @@ export class Auth extends Context.Service<
     >;
   }
 >()("tranzfer/Auth") {
-  static readonly production = makeAuth(
-    Effect.gen(function* config() {
-      const secret = yield* Config.Redacted("BETTER_AUTH_SECRET").pipe(
-        Effect.flatMap(decodeSecret),
+  static readonly #make = (
+    fragment: Effect.Effect<AuthFragment, Config.ConfigError | Schema.SchemaError>,
+  ) => makeAuth(fragment).pipe(Effect.map(Auth.of));
+
+  static readonly production = Auth.#make(
+    Effect.map(
+      Config.all({
+        google: Config.all({
+          clientId: Config.String("GOOGLE_CLIENT_ID"),
+          clientSecret: Config.Redacted("GOOGLE_CLIENT_SECRET"),
+        }),
+        secret: Config.schema(SigningSecret, "BETTER_AUTH_SECRET"),
+      }),
+      ({ google, secret }): AuthFragment => ({
+        secret,
+        socialProviders: {
+          google: {
+            clientId: google.clientId,
+            clientSecret: Redacted.value(google.clientSecret),
+          },
+        },
+      }),
+    ),
+  );
+
+  static readonly staging = Auth.#make(
+    Effect.map(Config.schema(SigningSecret, "TEST_LOGIN_KEY"), (key): AuthFragment => ({
+      plugins: [stagingLogin(Redacted.value(key))],
+    })),
+  );
+
+  static readonly dev = Auth.#make(
+    Effect.gen(function* options() {
+      const google = yield* Config.option(
+        Config.all({
+          clientId: Config.String("GOOGLE_CLIENT_ID"),
+          clientSecret: Config.Redacted("GOOGLE_CLIENT_SECRET"),
+        }),
       );
-      const google = {
-        clientId: yield* Config.String("GOOGLE_CLIENT_ID"),
-        clientSecret: yield* Config.Redacted("GOOGLE_CLIENT_SECRET"),
+      const key = yield* Config.option(Config.schema(SigningSecret, "TEST_LOGIN_KEY"));
+      return {
+        ...Option.match(google, {
+          onNone: (): AuthFragment => ({}),
+          onSome: ({ clientId, clientSecret }): AuthFragment => ({
+            socialProviders: {
+              google: { clientId, clientSecret: Redacted.value(clientSecret) },
+            },
+          }),
+        }),
+        ...Option.match(key, {
+          onNone: (): AuthFragment => ({}),
+          onSome: (value): AuthFragment => ({ plugins: [stagingLogin(Redacted.value(value))] }),
+        }),
       };
-      return { google, secret };
     }),
-  ).pipe(Effect.map((service) => Auth.of(service)));
-
-  static readonly staging = makeAuth(
-    Effect.gen(function* config() {
-      const testLoginKey = yield* Config.Redacted("TEST_LOGIN_KEY").pipe(
-        Effect.flatMap(decodeSecret),
-      );
-      return { testLoginKey };
-    }),
-  ).pipe(Effect.map((service) => Auth.of(service)));
-
-  static readonly dev = makeAuth(
-    Effect.gen(function* config() {
-      const clientId = yield* Config.option(Config.String("GOOGLE_CLIENT_ID"));
-      const clientSecret = yield* Config.option(Config.Redacted("GOOGLE_CLIENT_SECRET"));
-      const google =
-        Option.isSome(clientId) && Option.isSome(clientSecret)
-          ? { clientId: clientId.value, clientSecret: clientSecret.value }
-          : undefined;
-      const key = yield* Config.option(Config.Redacted("TEST_LOGIN_KEY"));
-      const testLoginKey = Option.isSome(key) ? yield* decodeSecret(key.value) : undefined;
-      return { google, testLoginKey };
-    }),
-  ).pipe(Effect.map((service) => Auth.of(service)));
+  );
 }
