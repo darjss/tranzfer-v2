@@ -17,7 +17,7 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 - Upload transport: Uppy, straight from the browser to private R2 multipart.
 - Multipart signing: Distilled S3 against the R2 endpoint. Lazy signing, `ListParts` included.
 - Billing: Polar. Entitlements live in D1 and get reconciled from webhooks.
-- Infrastructure: Alchemy v2 in `infra/alchemy.run.ts`. Its Effect runtime stays separate from the app's.
+- Infrastructure: Alchemy v2 in `infra/alchemy.run.ts`, on the app's Effect version.
 - Local URLs: Portless.
 - Lint and format: oxlint with type-aware rules and Solid diagnostics, oxfmt. Rules live in `lint.config.ts`.
 - Later, when real work needs it: a maintenance Worker or Queues for cleanup, KV for cache only, Electron with a separate Bun transport process and SQLite for desktop.

@@ -12,13 +12,13 @@
     "generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "drizzle-orm": "1.0.0-rc.4",
+    "drizzle-orm": "1.0.0-rc.5-ab785fc",
     "effect": "4.0.0-rc.115",
     "effect-cf": "0.44.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260911.1",
-    "drizzle-kit": "1.0.0-rc.4",
+    "drizzle-kit": "1.0.0-rc.5-ab785fc",
     "typescript": "7.0.2"
   }
 }
