@@ -1,7 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { defineRelations } from "drizzle-orm/relations";
-import { D1 } from "effect-cf";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -9,25 +8,19 @@ import * as Layer from "effect/Layer";
 import { DrizzleError } from "./errors/drizzle";
 import * as schema from "./schema";
 
-// Validated lookup of the DB binding; env.DB cannot be typed here because
-// Cloudflare.Env is only declared in apps/api.
-const d1 = D1.make("tranzfer/D1", { binding: "DB" });
-
-// The single raw-handle seam (phoenix ADR 0040 shape): Drizzle and the
-// better-auth adapter both derive from this tag, so one isolate has one D1
-// handle and the layer graph enforces it.
-export class Database extends Context.Service<Database, D1Database>()("tranzfer/Database") {
-  static readonly layer = Layer.effect(Database, d1).pipe(Layer.provide(d1.layer));
-}
+// The raw D1 handle as a lazy accessor, not a value: the API Worker's init
+// effect also evaluates at deploy time, when the env holds no D1 binding, so
+// nothing may touch the handle until an invocation resolves it. The API
+// provides this as the QueryDatabase client's `raw` effect.
+export class Database extends Context.Service<Database, Effect.Effect<D1Database>>()(
+  "tranzfer/Database",
+) {}
 
 const relations = defineRelations(schema);
 
 export class Drizzle extends Context.Service<
   Drizzle,
   {
-    // The live instance so the better-auth drizzleAdapter can share this
-    // handle instead of constructing a second one.
-    readonly db: DrizzleD1Database<typeof relations>;
     readonly run: <A>(
       op: string,
       fn: (db: DrizzleD1Database<typeof relations>) => Promise<A>,
@@ -38,15 +31,19 @@ export class Drizzle extends Context.Service<
     Drizzle,
     Effect.gen(function* makeDrizzle() {
       const raw = yield* Database;
-      const db = drizzle(raw, { relations });
       return Drizzle.of({
-        db,
+        // The binding only exists inside an invocation, so the handle and the
+        // drizzle instance are both resolved per call.
         run: (op, fn) =>
-          Effect.tryPromise({
-            catch: (cause) => new DrizzleError({ cause, op }),
-            try: async () => await fn(db),
-          }),
+          raw.pipe(
+            Effect.flatMap((handle) =>
+              Effect.tryPromise({
+                catch: (cause) => new DrizzleError({ cause, op }),
+                try: async () => await fn(drizzle(handle, { relations })),
+              }),
+            ),
+          ),
       });
     }),
-  ).pipe(Layer.provide(Database.layer));
+  );
 }
