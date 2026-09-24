@@ -1,8 +1,6 @@
 import { createRoot, createSignal, createStore, runWithOwner } from "solid-js";
 
-// The browser's view of each transfer it owns. The server owns lifecycle
-// truth; this is a projection of Uppy events for the current tab only. It is
-// module state, not component state, so it survives navigation (law 11).
+// Module state, not component state, so uploads survive navigation (law 11).
 export type TransferPhase = "queued" | "uploading" | "finalizing" | "done" | "failed";
 
 export interface TransferProgress {
@@ -42,21 +40,15 @@ export const isActive = (progress: TransferProgress | undefined) =>
     progress.phase === "uploading" ||
     progress.phase === "finalizing");
 
-// Bumped whenever the server-side picture can have changed: a delivery is
-// created, a transfer finalizes, a cancel lands. Pages re-read Deliveries
-// off this. ownedWrite marks it intentional: Uppy callbacks write it from
-// whichever scope fired them.
+// Uppy callbacks write this from arbitrary scopes.
 export const [deliveriesVersion, bumpDeliveries] = createRoot(() =>
   createSignal(0, { ownedWrite: true }),
 );
 
-// Offline drives the banner; Uppy waits for the network by itself.
 export const [online, setOnline] = createRoot(() => createSignal(true, { ownedWrite: true }));
 
 let wired = false;
 
-// Window-level listeners live as long as the module does. Registering them
-// once here keeps component cleanup out of upload state entirely.
 export const wireWindow = () => {
   if (wired) {
     return;

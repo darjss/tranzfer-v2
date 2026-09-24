@@ -42,7 +42,6 @@ export const shortDateAt = (date: Date) => shortDate.format(date);
 
 export const speedAt = (bytesPerSecond: number) => `${bytes(bytesPerSecond)}/s`;
 
-// ETA stays approximate on purpose; nobody trusts "14:32:07 remaining".
 export const etaAt = (bytesLeft: number, bytesPerSecond: number) => {
   if (bytesPerSecond <= 0) {
     return "a while";
@@ -79,9 +78,7 @@ export interface Rollup {
   readonly uploading: boolean;
 }
 
-// Fold the tab's transfer progress into a delivery-level picture. A transfer
-// the server still calls uploading that this tab does not own is interrupted:
-// refresh-resume lands later, so we say so honestly.
+// A transfer the server calls uploading that this tab does not own is interrupted.
 export const rollup = (
   delivery: Delivery,
   progressOf: (transferId: string) => TransferProgress | undefined,

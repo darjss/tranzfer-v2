@@ -17,13 +17,9 @@ type Runtime = ManagedRuntime<ApiClient, never>;
 type SignRequest = Extract<AwsS3Options<Meta, Body>, { signRequest: unknown }>["signRequest"];
 export type PresignableRequest = Parameters<SignRequest>[0];
 
-// Finalize retries: a just-completed multipart object can lag on HEAD.
 const FINALIZE_ATTEMPTS = 4;
 const FINALIZE_BASE_MS = 800;
-// Smoothing applied to each new speed sample so single slow chunks do not
-// move the ETA wildly.
 const SPEED_EMA = 0.25;
-// Files that only clutter transfers and never carry data.
 const SKIPPED = /^\.DS_Store$|^Thumbs\.db$/u;
 const isSkipped = (path: string) =>
   path.split("/").some((segment) => SKIPPED.test(segment) || segment.startsWith("._"));
@@ -38,10 +34,8 @@ export interface ChosenFile {
   readonly path: string;
 }
 
-// Dropped folder entries carry relativePath; folder inputs carry
-// webkitRelativePath; plain picks carry neither.
-// webkitRelativePath is "" (not undefined) on plain picks, so an empty
-// relative path must fall through to the file name.
+// relativePath covers drops and webkitRelativePath folder picks; both are ""
+// on plain picks, so an empty relative path falls through to the file name.
 export const chosenPath = (file: File & { relativePath?: string }) => {
   const relative = file.relativePath ?? file.webkitRelativePath;
   return (relative === undefined || relative === "" ? file.name : relative).replace(/^\/+/u, "");
@@ -61,8 +55,6 @@ export const chosenFiles = (files: Iterable<File>) => {
 export const invalidPaths = (files: readonly ChosenFile[]) =>
   files.filter(({ path }) => !Schema.is(RelativePath)(path)).map(({ path }) => path);
 
-// The title is the single shared top folder when there is one, the file name
-// for a lone file, or "<first> and N more" for several loose files.
 const deliveryTitle = (files: readonly ChosenFile[]) => {
   const [first] = files;
   if (first === undefined) {
@@ -166,7 +158,6 @@ export const getUploads = (runtime: Runtime) => {
     if (transferId === undefined) {
       return;
     }
-    // Only confirmed parts grow the bar; in-flight bytes stay the pale tail.
     // PartNumber × partSize is exact here because Uppy 6 uploads one file's
     // parts sequentially and resumes by skipping parts the server lists, so
     // a completed part N implies parts 1..N-1 are also done.
@@ -200,7 +191,6 @@ export const getUploads = (runtime: Runtime) => {
     if (file === undefined || transferId === undefined) {
       return;
     }
-    // A single PUT is confirmed in one shot; multipart already counted parts.
     patchTransfer(transferId, {
       confirmed: Math.max(file.size ?? 0, transfers[transferId]?.confirmed ?? 0),
       inFlight: 0,
