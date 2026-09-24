@@ -23,7 +23,8 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 - When a check fails, reproduce it on unchanged `origin/main` before blaming the current diff.
 - After the same step fails twice, stop and report the exact error and evidence.
 - The API Worker's resources and bindings live in `apps/api` (`resources.ts`, `index.ts`); `infra/alchemy.run.ts` composes the stack. Each resource has one definition.
-- Deploy only from the main checkout, after build and plan review. Leave generated `apps/web/file-routes.d.ts` and `apps/web/solid-env.d.ts` unstaged.
+- Deploy only from the main checkout, after build and plan review.
+- Commit `apps/web/file-routes.d.ts` and `apps/web/solid-env.d.ts` with the route or plugin change that regenerates them. CI and fresh worktrees typecheck against the committed copies before any dev or build run writes them.
 
 ## Keep the record useful
 
