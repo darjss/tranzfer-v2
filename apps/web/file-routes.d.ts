@@ -64,17 +64,23 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/api/auth/*all";
+      page: false;
+      $GET: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
+      $POST: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
+      $HEAD: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
+      $$route?: undefined;
+    },
+    {
       path: "/sign-in";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/sign-in")>;
       $$route?: undefined;
     },
     {
-      path: "/api/auth/*all";
-      page: false;
-      $GET: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
-      $POST: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
-      $HEAD: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
+      path: "/prototype/dashboard";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/prototype/dashboard")>;
       $$route?: undefined;
     }
   ];
@@ -111,6 +117,14 @@ declare module "virtual:file-routes" {
       id: "/sign-in";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/sign-in")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/prototype/dashboard";
+      id: "/prototype/dashboard";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/prototype/dashboard")>;
       $$route?: undefined;
       children?: undefined;
     }
