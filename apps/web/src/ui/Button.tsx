@@ -4,8 +4,8 @@ import type { JSX } from "@solidjs/web";
 import { cva } from "./cn";
 import type { VariantProps } from "./cn";
 
-const button = cva({
-  base: "inline-flex items-center justify-center gap-2.5 rounded-xl font-semibold transition-[translate,scale,box-shadow,filter] duration-200 ease-smooth hover:-translate-y-px active:scale-[.97] [&_svg]:size-4 [&_svg]:transition-transform [&_svg]:duration-250 [&_svg]:ease-smooth hover:[&_svg]:translate-x-[3px]",
+export const button = cva({
+  base: "inline-flex items-center justify-center gap-2.5 rounded-xl font-semibold transition-[translate,scale,box-shadow,filter] duration-200 ease-smooth disabled:pointer-events-none disabled:opacity-50 hover:-translate-y-px active:scale-[.97] [&_svg]:size-4 [&_svg]:transition-transform [&_svg]:duration-250 [&_svg]:ease-smooth hover:[&_svg]:translate-x-[3px]",
   defaultVariants: {
     size: "md",
     variant: "fill",
@@ -24,17 +24,17 @@ const button = cva({
 });
 
 export function Button(
-  props: ParentProps<VariantProps<typeof button> & JSX.AnchorHTMLAttributes<HTMLAnchorElement>>,
+  props: ParentProps<VariantProps<typeof button> & JSX.ButtonHTMLAttributes<HTMLButtonElement>>,
 ) {
-  const rest = omit(props, "children", "class", "href", "size", "style", "variant");
+  const rest = omit(props, "children", "class", "type", "size", "style", "variant");
   return (
-    <a
+    <button
       {...rest}
       class={button({ class: props.class, size: props.size, variant: props.variant })}
-      href={props.href ?? "#"}
+      type={props.type ?? "button"}
       style={props.style}
     >
       {props.children}
-    </a>
+    </button>
   );
 }
