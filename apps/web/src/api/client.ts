@@ -1,6 +1,7 @@
 import { Api } from "@tranzfer/contracts";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
+import * as Tracer from "effect/Tracer";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
@@ -12,12 +13,15 @@ export class ApiClient extends Context.Service<
   ApiClient,
   RpcClient.FromGroup<typeof Api, RpcClientError>
 >()("tranzfer/ApiClient") {
-  // Spans wrap each request's send fiber; under hydration the traced send
-  // suspends before the fetch fires, and nothing observes the spans anyway.
-  static readonly layer = Layer.effect(ApiClient, RpcClient.make(Api, { disableTracing: true }));
+  static readonly layer = Layer.effect(ApiClient, RpcClient.make(Api));
 }
 
-export const WebLayer = ApiClient.layer.pipe(
+// Hydrated pages otherwise hang inside the request span before the fetch
+// fires; pinning the native tracer keeps requests firing there too.
+export const WebLayer = Layer.mergeAll(
+  ApiClient.layer,
+  Layer.succeed(Tracer.Tracer, Tracer.nativeTracer),
+).pipe(
   Layer.provide(
     RpcClient.layerProtocolHttp({
       // prependUrl adds a trailing slash to the transport's empty path.
