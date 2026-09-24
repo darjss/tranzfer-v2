@@ -39,9 +39,10 @@ STACK.md records this target architecture.
   `effect-cf` `R2.Tag` and do not send file bytes through Distilled `uploadPart`
   or `putObject`. `@distilled.cloud/cloudflare` is the account REST API, not
   object I/O.
-- Use Drizzle v1 RC with `drizzle-orm/effect-d1` and `@effect/sql-d1`. Provide
-  `D1Client` from the Worker binding (`effect-cf` `D1.sqlLayer` is the intended
-  adapter). Do not keep a second raw-SQL API beside Drizzle.
+- Use Drizzle v1 RC through the `drizzle-orm/d1` driver wrapped in the
+  `Drizzle` service; `Database` is the single raw-handle seam that Drizzle
+  and the Better Auth adapter both derive from. Do not keep a second
+  raw-SQL API beside Drizzle.
 - Keep file bytes travelling directly between the client and R2. RPC coordinates
   transfers; it does not carry multipart file payloads.
 
@@ -147,11 +148,6 @@ update the `production` environment secret.
 
 Remaining checks:
 
-- Exercise a real `drizzle-kit` migrate once the first schema lands —
-  `d1-http` on rc.4 is broken for non-empty journals
-  ([issue 5952](https://github.com/drizzle-team/drizzle-orm/issues/5952)), so
-  migrate through a working path (Wrangler/Alchemy local execute, or a fixed
-  kit release). Do not claim D1 readiness on an empty-database-only migrate.
 - `@kobalte/core@2.0.0-alpha.2` renders SSR under Solid rc.8 but interaction
   is unverified and its peers pin rc.3. Verify in section 4's component work.
 - TanStack Solid Form has no Solid 2-compatible release; re-check before form
