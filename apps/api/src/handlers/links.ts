@@ -1,21 +1,11 @@
-import {
-  Api,
-  LinkExpired,
-  LinkNotFound,
-  LinkNotReady,
-  StorageUnavailable,
-} from "@tranzfer/contracts";
+import { Api, LinkExpired, LinkNotFound, LinkNotReady } from "@tranzfer/contracts";
 import { Drizzle, schema } from "@tranzfer/db";
 import { eq, isNull, and } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import { Links } from "../services/links";
-import { Storage } from "../services/storage";
-
-const storageUnavailable = Effect.mapError(
-  () => new StorageUnavailable({ message: "Storage is unavailable. Try again." }),
-);
+import { Storage, toStorageUnavailable } from "../services/storage";
 
 const basename = (path: string) => path.split("/").at(-1) ?? path;
 
@@ -69,8 +59,7 @@ export const LinkHandlers = Api.toLayerHandler(
       const files = yield* Effect.all(
         transfers.map((transfer) =>
           storage.signDownload(transfer.objectKey, basename(transfer.path)).pipe(
-            Effect.tapError((error) => Effect.logError("signDownload failed", error.cause)),
-            storageUnavailable,
+            toStorageUnavailable("signDownload failed"),
             Effect.map((signed) => ({
               path: transfer.path,
               size: transfer.size,

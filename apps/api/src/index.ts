@@ -72,23 +72,22 @@ export default ApiWorker.make(
     const linkSecret = yield* Random("LinkSecret");
     const links = Links.make((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom)));
 
-    // The Me handler's middleware requires HttpServerRequest, so the
-    // auth-dependent part of the RPC stack only exists inside a request.
-    // InfraHandlers resolves its bindings here at Init instead.
+    // Services build once at Init so cached work (the R2 token hash, the HMAC
+    // key import) really happens once per isolate. Only the auth-dependent
+    // part of the RPC stack is rebuilt per request, because the Me handler's
+    // middleware requires HttpServerRequest.
+    const services = yield* Layer.build(
+      Layer.mergeAll(Drizzle.layer, storage, links).pipe(Layer.provide(database)),
+    );
+    const servicesLayer = Layer.succeedContext(services);
     const rpcInit = yield* Layer.build(
       Layer.mergeAll(InfraHandlers, LinkHandlers, RpcSerialization.layerJson).pipe(
-        Layer.provide(Drizzle.layer),
-        Layer.provide(database),
-        Layer.provide(storage),
-        Layer.provide(links),
+        Layer.provide(servicesLayer),
       ),
     );
     const rpcRequest = Layer.fresh(
       Layer.mergeAll(AuthHandlers, AuthenticatedLive, DeliveriesHandlers).pipe(
-        Layer.provide(Drizzle.layer),
-        Layer.provide(database),
-        Layer.provide(storage),
-        Layer.provide(links),
+        Layer.provide(servicesLayer),
         Layer.provide(Layer.succeed(Auth, auth)),
       ),
     );

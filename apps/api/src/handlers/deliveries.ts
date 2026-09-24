@@ -7,32 +7,28 @@ import {
   InvalidUpload,
   NotUploaded,
   partCount,
-  StorageUnavailable,
   UploadClosed,
   usesMultipart,
 } from "@tranzfer/contracts";
 import type { NewDelivery, UploadRequest } from "@tranzfer/contracts";
 import { Drizzle, schema } from "@tranzfer/db";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Result from "effect/Result";
 
 import { Links, newLinkId } from "../services/links";
-import { Storage } from "../services/storage";
-import type { StorageError } from "../services/storage-error";
+import { Storage, toStorageUnavailable } from "../services/storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CANCEL_CONCURRENCY = 8;
 
 type DeliveryRow = typeof schema.delivery.$inferSelect;
+type LinkRow = typeof schema.link.$inferSelect;
 type TransferRow = typeof schema.transfer.$inferSelect;
 
 const objectKey = (deliveryId: string, transferId: string) => `d/${deliveryId}/${transferId}`;
-
-const storageUnavailable = Effect.mapError(
-  () => new StorageUnavailable({ message: "Storage is unavailable. Try again." }),
-);
 
 // `expired` is computed on read and never stored.
 const toDelivery = (
@@ -71,7 +67,58 @@ const sameFileSet = (files: NewDelivery["files"], transfers: readonly TransferRo
     ),
   );
 
-const loadDelivery = (db: Drizzle["Service"], deliveryId: string, op: string) =>
+// The link is written in the same batch as the delivery; a missing row is a
+// broken invariant, never a not-found, and signing "" would mint a dead link.
+const viewFromRows = (
+  links: Links["Service"],
+  delivery: DeliveryRow,
+  transfers: readonly TransferRow[],
+  link: LinkRow | undefined,
+) =>
+  Effect.gen(function* view() {
+    if (link === undefined) {
+      return yield* Effect.die(new Error(`Delivery ${delivery.id} has no link row`));
+    }
+    const token = yield* links.issue(link.id);
+    return toDelivery(delivery, transfers, token);
+  });
+
+const deliveryView = (
+  db: Drizzle["Service"],
+  links: Links["Service"],
+  deliveryId: string,
+  op: string,
+) =>
+  Effect.gen(function* view() {
+    const loaded = yield* db.run(op, async (d) => {
+      const deliveries = await d
+        .select()
+        .from(schema.delivery)
+        .where(eq(schema.delivery.id, deliveryId));
+      if (deliveries.length === 0) {
+        return null;
+      }
+      const [transfers, linkRows] = await Promise.all([
+        d
+          .select()
+          .from(schema.transfer)
+          .where(eq(schema.transfer.deliveryId, deliveryId))
+          .orderBy(asc(schema.transfer.path)),
+        d
+          .select()
+          .from(schema.link)
+          .innerJoin(schema.delivery, eq(schema.link.deliveryId, schema.delivery.id))
+          .where(eq(schema.link.deliveryId, deliveryId)),
+      ]);
+      return { delivery: deliveries[0], link: linkRows[0]?.link, transfers };
+    });
+    if (loaded === null) {
+      return Option.none<Delivery>();
+    }
+    return Option.some(yield* viewFromRows(links, loaded.delivery, loaded.transfers, loaded.link));
+  });
+
+const loadDeliveryRows = (db: Drizzle["Service"], deliveryId: string, op: string) =>
   db.run(op, async (d) => {
     const deliveries = await d
       .select()
@@ -80,11 +127,12 @@ const loadDelivery = (db: Drizzle["Service"], deliveryId: string, op: string) =>
     if (deliveries.length === 0) {
       return null;
     }
-    const [transfers, links] = await Promise.all([
-      d.select().from(schema.transfer).where(eq(schema.transfer.deliveryId, deliveryId)),
-      d.select().from(schema.link).where(eq(schema.link.deliveryId, deliveryId)),
-    ]);
-    return { delivery: deliveries[0], link: links[0], transfers };
+    const transfers = await d
+      .select()
+      .from(schema.transfer)
+      .where(eq(schema.transfer.deliveryId, deliveryId))
+      .orderBy(asc(schema.transfer.path));
+    return { delivery: deliveries[0], transfers };
   });
 
 export const DeliveriesHandlers = Layer.mergeAll(
@@ -96,14 +144,15 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const links = yield* Links;
         const principal = yield* CurrentPrincipal;
 
-        const existing = yield* loadDelivery(db, input.id, "deliveries.create.lookup");
+        const existing = yield* loadDeliveryRows(db, input.id, "deliveries.create.lookup");
         if (existing !== null) {
           if (
             existing.delivery.senderId === principal.id &&
             sameFileSet(input.files, existing.transfers)
           ) {
-            const token = yield* links.issue(existing.link?.id ?? "");
-            return toDelivery(existing.delivery, existing.transfers, token);
+            return Option.getOrThrow(
+              yield* deliveryView(db, links, input.id, "deliveries.create.view"),
+            );
           }
           return yield* new DeliveryConflict({ message: "Delivery already exists" });
         }
@@ -120,9 +169,8 @@ export const DeliveriesHandlers = Layer.mergeAll(
           return yield* new DeliveryConflict({ message: "Delivery already exists" });
         }
 
-        const linkId = newLinkId();
-        yield* db
-          .run(
+        const inserted = yield* Effect.result(
+          db.run(
             "deliveries.create.insert",
             async (d) =>
               await d.batch([
@@ -143,43 +191,39 @@ export const DeliveriesHandlers = Layer.mergeAll(
                     sourceModifiedAt: new Date(file.lastModified),
                   })),
                 ),
-                d.insert(schema.link).values({ deliveryId: input.id, id: linkId }),
+                d.insert(schema.link).values({ deliveryId: input.id, id: newLinkId() }),
               ]),
-          )
-          .pipe(
-            // A concurrent create with the same client ids surfaces as a
-            // constraint violation; report it as a conflict, not an outage.
-            Effect.mapError(() => new DeliveryConflict({ message: "Delivery already exists" })),
+          ),
+        );
+        if (Result.isFailure(inserted)) {
+          // Re-check what landed before blaming the caller: an identical
+          // delivery owned by the sender is a concurrent create, anything else
+          // that exists is a conflict, and nothing at all means the store
+          // itself failed.
+          const landed = yield* loadDeliveryRows(db, input.id, "deliveries.create.relookup");
+          const taken = yield* db.run("deliveries.create.retaken", (d) =>
+            d
+              .select({ id: schema.transfer.id })
+              .from(schema.transfer)
+              .where(inArray(schema.transfer.id, transferIds)),
           );
+          if (
+            landed !== null &&
+            landed.delivery.senderId === principal.id &&
+            sameFileSet(input.files, landed.transfers)
+          ) {
+            return Option.getOrThrow(
+              yield* deliveryView(db, links, input.id, "deliveries.create.view"),
+            );
+          }
+          if (landed !== null || taken.length > 0) {
+            return yield* new DeliveryConflict({ message: "Delivery already exists" });
+          }
+          return yield* Effect.fail(inserted.failure);
+        }
 
-        const token = yield* links.issue(linkId);
-        const now = new Date();
-        return toDelivery(
-          {
-            createdAt: now,
-            expiresAt: null,
-            id: input.id,
-            retentionDays: input.retentionDays,
-            senderId: principal.id,
-            status: "open",
-            title: input.title,
-            updatedAt: now,
-          },
-          input.files.map((file) => ({
-            completedAt: null,
-            contentType: file.contentType,
-            createdAt: now,
-            deliveryId: input.id,
-            etag: null,
-            id: file.id,
-            objectKey: objectKey(input.id, file.id),
-            path: file.path,
-            size: file.size,
-            sourceModifiedAt: new Date(file.lastModified),
-            state: "uploading",
-            updatedAt: now,
-          })),
-          token,
+        return Option.getOrThrow(
+          yield* deliveryView(db, links, input.id, "deliveries.create.view"),
         );
       },
       Effect.catchTag("DrizzleError", Effect.die),
@@ -212,19 +256,16 @@ export const DeliveriesHandlers = Layer.mergeAll(
           return { deliveries: found, links: linkRows, transfers };
         });
 
-        const result: Delivery[] = [];
-        for (const delivery of rows.deliveries) {
-          const link = rows.links.find((l) => l.deliveryId === delivery.id);
-          const token = yield* links.issue(link?.id ?? "");
-          result.push(
-            toDelivery(
+        return yield* Effect.all(
+          rows.deliveries.map((delivery) =>
+            viewFromRows(
+              links,
               delivery,
-              rows.transfers.filter((t) => t.deliveryId === delivery.id),
-              token,
+              rows.transfers.filter((transfer) => transfer.deliveryId === delivery.id),
+              rows.links.find((link) => link.deliveryId === delivery.id),
             ),
-          );
-        }
-        return result;
+          ),
+        );
       },
       Effect.catchTag("DrizzleError", Effect.die),
     ),
@@ -243,9 +284,14 @@ export const DeliveriesHandlers = Layer.mergeAll(
             .select({ delivery: schema.delivery, transfer: schema.transfer })
             .from(schema.transfer)
             .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
-            .where(eq(schema.transfer.objectKey, input.key)),
+            .where(
+              and(
+                eq(schema.transfer.objectKey, input.key),
+                eq(schema.delivery.senderId, principal.id),
+              ),
+            ),
         );
-        const row = rows.find((r) => r.delivery.senderId === principal.id);
+        const [row] = rows;
         if (row === undefined) {
           return yield* new DeliveryNotFound({ message: "Delivery not found" });
         }
@@ -284,10 +330,9 @@ export const DeliveriesHandlers = Layer.mergeAll(
           );
         }
 
-        return yield* storage.signUpload(input.key, input.request).pipe(
-          Effect.tapError((error) => Effect.logError("signUpload failed", error.cause)),
-          storageUnavailable,
-        );
+        return yield* storage
+          .signUpload(input.key, input.request)
+          .pipe(toStorageUnavailable("signUpload failed"));
       },
       Effect.catchTag("DrizzleError", Effect.die),
     ),
@@ -307,27 +352,31 @@ export const DeliveriesHandlers = Layer.mergeAll(
             .select({ delivery: schema.delivery, transfer: schema.transfer })
             .from(schema.transfer)
             .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
-            .where(eq(schema.transfer.id, input.transferId)),
+            .where(
+              and(
+                eq(schema.transfer.id, input.transferId),
+                eq(schema.delivery.senderId, principal.id),
+              ),
+            ),
         );
-        const row = rows.find((r) => r.delivery.senderId === principal.id);
+        const [row] = rows;
         if (row === undefined) {
           return yield* new DeliveryNotFound({ message: "Delivery not found" });
         }
         const { delivery, transfer } = row;
 
         if (transfer.state === "complete") {
-          const loaded = yield* loadDelivery(db, delivery.id, "deliveries.finalize.reload");
-          const token = yield* links.issue(loaded?.link?.id ?? "");
-          return toDelivery(delivery, loaded?.transfers ?? [transfer], token);
+          return Option.getOrThrow(
+            yield* deliveryView(db, links, delivery.id, "deliveries.finalize.view"),
+          );
         }
         if (transfer.state === "cancelled") {
           return yield* new UploadClosed({ message: "This transfer is closed" });
         }
 
-        const object = yield* storage.head(transfer.objectKey).pipe(
-          Effect.tapError((error) => Effect.logError("finalize head failed", error.cause)),
-          storageUnavailable,
-        );
+        const object = yield* storage
+          .head(transfer.objectKey)
+          .pipe(toStorageUnavailable("finalize head failed"));
         if (Option.isNone(object)) {
           return yield* new NotUploaded({ message: "The object is not uploaded yet" });
         }
@@ -367,9 +416,9 @@ export const DeliveriesHandlers = Layer.mergeAll(
             ]),
         );
 
-        const loaded = yield* loadDelivery(db, delivery.id, "deliveries.finalize.reload");
-        const token = yield* links.issue(loaded?.link?.id ?? "");
-        return toDelivery(loaded?.delivery ?? delivery, loaded?.transfers ?? [], token);
+        return Option.getOrThrow(
+          yield* deliveryView(db, links, delivery.id, "deliveries.finalize.view"),
+        );
       },
       Effect.catchTag("DrizzleError", Effect.die),
     ),
@@ -384,7 +433,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const storage = yield* Storage;
         const principal = yield* CurrentPrincipal;
 
-        const loaded = yield* loadDelivery(db, input.deliveryId, "deliveries.cancel.lookup");
+        const loaded = yield* loadDeliveryRows(db, input.deliveryId, "deliveries.cancel.lookup");
         if (loaded === null || loaded.delivery.senderId !== principal.id) {
           return yield* new DeliveryNotFound({ message: "Delivery not found" });
         }
@@ -406,24 +455,20 @@ export const DeliveriesHandlers = Layer.mergeAll(
             ]),
         );
 
+        // A cleanup failure fails the call, so the client retries and the
+        // idempotent cleanup runs again instead of being lost.
         yield* Effect.all(
           loaded.transfers.map((transfer) =>
             storage.abortUploads(transfer.objectKey).pipe(
               Effect.andThen(() => storage.remove(transfer.objectKey)),
-              Effect.tapError((error: StorageError) =>
-                Effect.logError("cancel cleanup failed", error.cause),
-              ),
-              Effect.ignore,
+              toStorageUnavailable("cancel cleanup failed"),
             ),
           ),
           { concurrency: CANCEL_CONCURRENCY },
         );
 
-        const token = yield* links.issue(loaded.link?.id ?? "");
-        return toDelivery(
-          { ...loaded.delivery, status: "cancelled" },
-          loaded.transfers.map((transfer) => ({ ...transfer, state: "cancelled" })),
-          token,
+        return Option.getOrThrow(
+          yield* deliveryView(db, links, input.deliveryId, "deliveries.cancel.view"),
         );
       },
       Effect.catchTag("DrizzleError", Effect.die),

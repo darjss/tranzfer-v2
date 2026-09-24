@@ -1,3 +1,4 @@
+import { StorageUnavailable } from "@tranzfer/contracts";
 import type { UploadRequest } from "@tranzfer/contracts";
 import { Credentials, Endpoint, Presign, Region } from "@distilled.cloud/aws";
 import * as S3 from "@distilled.cloud/aws/s3";
@@ -6,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
+import * as Result from "effect/Result";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 
 import { StorageError } from "./storage-error";
@@ -23,6 +25,22 @@ export interface SignedUrl {
   readonly url: string;
   readonly expiresAt: Date;
 }
+
+// Storage failures reach the client as StorageUnavailable; the real cause is
+// logged here, never sent.
+export const toStorageUnavailable =
+  (label: string) =>
+  <A, R>(effect: Effect.Effect<A, StorageError, R>): Effect.Effect<A, StorageUnavailable, R> =>
+    Effect.gen(function* convert() {
+      const result = yield* Effect.result(effect);
+      if (Result.isFailure(result)) {
+        yield* Effect.logError(label, result.failure.cause);
+        return yield* Effect.fail(
+          new StorageUnavailable({ message: "Storage is unavailable. Try again." }),
+        );
+      }
+      return result.success;
+    });
 
 const needsDeployedStage = (op: StorageError["op"]) =>
   Effect.fail(new StorageError({ cause: "Uploads need a deployed stage", op }));
