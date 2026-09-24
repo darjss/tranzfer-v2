@@ -29,7 +29,6 @@ export default ApiWorker.make(
     compatibility: { date: "2026-09-08" },
     dev: { port: 8787, strictPort: true },
     main: import.meta.url,
-    name: "tranzfer-api",
   },
   Effect.gen(function* impl() {
     const db = yield* Cloudflare.D1.QueryDatabase(App);

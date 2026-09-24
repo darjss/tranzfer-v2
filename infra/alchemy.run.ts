@@ -40,7 +40,6 @@ export default Alchemy.Stack(
       env: {
         API: api,
       },
-      name: "tranzfer-web",
       rootDir: webRoot,
     });
 
