@@ -55,7 +55,7 @@ Contents:
     `process_exit_does_not_abort_remote_upload`).
   - **E2E scenarios** (`e2e/` package): one user-meaningful journey each,
     black-box against the running stack, written once via `scenario()`.
-  - **Torture gates** (RELIABILITY §34): the 10/100/350 GB runs stay staged,
+  - **Torture gates** (RELIABILITY release gates): the 10/100/350 GB runs stay staged,
     human-triggered releases gates. The suite proves the mechanics at small
     sizes; it does not pretend a simulated R2 proves 350 GB behavior.
 - The black-box rule. Assert through the typed RPC client, the browser, or a
@@ -66,7 +66,7 @@ Contents:
   `expect` with intent messages, no sleeps, values not booleans.
 - Failure injection is a first-class surface, not a hack: network cuts,
   throttling, and forced 4xx/5xx on signing and part requests are how the
-  RELIABILITY §31 matrix becomes executable.
+  RELIABILITY torture list becomes executable.
 - Remote truth is asserted, not assumed: scenarios verify R2-side state
   (parts present, object completed) through a dev inspection surface, and
   verify no confirmed part was re-sent through the request ledger.
@@ -94,7 +94,7 @@ Optimize for bounded coherent context, not lowest LOC.
 
 ## 3. Architectural boundary rules (lint, `no-restricted-imports`)
 
-Machine-enforce the boundaries STACK.md already declares, via per-path
+Machine-enforce the boundaries STRUCTURE.md already declares, via per-path
 overrides in `lint.config.ts`:
 
 - `packages/contracts/**`: forbid `solid-js`, `drizzle-orm`, `cloudflare:*`,
@@ -103,8 +103,8 @@ overrides in `lint.config.ts`:
   `drizzle-orm`, `cloudflare:*`. The transfer model must not know the
   transport or the UI.
 - `packages/db/**`: forbid `solid-js`, `@uppy/*`, and `apps/web` paths. The
-  package exists now (`D1Client` over `drizzle-orm/effect-d1` + `effect-cf`
-  `D1.sqlLayer`); it is consumed by `apps/api` only.
+  package exists now (the `Drizzle` service over
+  `drizzle-orm/d1` and the `effect-cf` D1 binding); it is consumed by `apps/api` only.
 - `apps/api/**`: forbid `solid-js`, `@uppy/*`, and `apps/web` paths.
 - `apps/web/**`: forbid `drizzle-orm`, `@tranzfer/db`, `better-auth` server
   modules, and `apps/api` paths. Scope carefully: `src/middleware.ts` and
@@ -235,8 +235,8 @@ smoke for the same reason). When it lands:
     browser-restart recovery scenarios real. This is the difference between
     testing refresh and testing RELIABILITY level 3/4.
   - `NetControl` — fault injection: `context.setOffline`, route interception
-    that fails, delays, or 4xx/5xx's signing and part requests. The §31
-    matrix lives here.
+    that fails, delays, or 4xx/5xx's signing and part requests. The RELIABILITY
+    torture list lives here.
   - `StorageTruth` — assert remote state (parts present, object exists,
     final size) through a dev-gated API surface, never by reaching into
     workerd's storage. Plus a two-sided request ledger, because the wire
@@ -251,9 +251,9 @@ smoke for the same reason). When it lands:
       browser re-sending an already-confirmed part on a reused URL.
       Executor's `browser.ts` already harvests every page request for trace
       ids; the same listener carries this.
-    Together they are the tranzfer equivalent of executor's emulator request
-    ledgers, and the "avoidable re-uploaded bytes" metric made mechanical:
-    a scenario asserts part 842 hit the wire exactly once.
+      Together they are the tranzfer equivalent of executor's emulator request
+      ledgers, and the "avoidable re-uploaded bytes" metric made mechanical:
+      a scenario asserts part 842 hit the wire exactly once.
   - `Restart` — later. Restarting `alchemy dev` preserves the sim's D1/R2 on
     disk, which is exactly the "server dies, durable state survives" case,
     but it is not needed for the first suite.
@@ -279,7 +279,7 @@ ever opens:
   product surface.
 - Named invariant tests over `upload-core`'s reconciliation and state
   machines against that fake. The scenario names come straight from
-  RELIABILITY §4 and §31.
+  the RELIABILITY laws and torture list.
 
 New test files require explicit approval under AGENTS.md; steps 8 and 9 are
 that request.
@@ -291,7 +291,7 @@ that request.
    additions.
 2. Steps 8–9 land with the first transfer flow, when there is a product
    surface worth driving.
-3. Torture gates remain RELIABILITY §34 staged runs; the harness makes the
+3. Torture gates remain RELIABILITY release-gate runs; the harness makes the
    small-size versions executable first.
 
 Each step completes when `vp check`, `vp run test`, and the relevant build
