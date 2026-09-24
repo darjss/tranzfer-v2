@@ -94,6 +94,7 @@ export const lintConfig = (
           "promise/prefer-await-to-callbacks": "off",
           "promise/prefer-await-to-then": "off",
           "unicorn/no-array-for-each": "off",
+          "unicorn/no-array-method-this-argument": "off",
         },
       },
       {

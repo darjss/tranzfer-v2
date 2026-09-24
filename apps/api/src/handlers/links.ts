@@ -56,8 +56,9 @@ export const LinkHandlers = Api.toLayerHandler(
         d.select().from(schema.transfer).where(eq(schema.transfer.deliveryId, delivery.id)),
       );
 
-      const files = yield* Effect.all(
-        transfers.map((transfer) =>
+      const files = yield* Effect.forEach(
+        transfers,
+        (transfer) =>
           storage.signDownload(transfer.objectKey, basename(transfer.path)).pipe(
             toStorageUnavailable("signDownload failed"),
             Effect.map((signed) => ({
@@ -66,7 +67,6 @@ export const LinkHandlers = Api.toLayerHandler(
               url: signed.url,
             })),
           ),
-        ),
         { concurrency: 8 },
       );
 
