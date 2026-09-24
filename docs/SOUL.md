@@ -1,6 +1,8 @@
-# SOUL.md
+# Soul
 
-Dear human, coding agent, future model, sleep-deprived version of me, or whatever intelligence has been summoned to work on this repository:
+Dear human, coding agent, future model, 3 am version of me, or whatever intelligence got summoned into this repository:
+
+Hi. Sit down. This is the part where I tell you what this whole thing is actually for, because the code will not tell you and the other docs are too polite.
 
 This repo exists to build **Tranzfer**.
 
@@ -8,141 +10,121 @@ Not a framework demo.
 
 Not an architecture portfolio piece.
 
-Not a playground for whatever JavaScript library became fashionable yesterday.
+Not a museum of whatever JavaScript library trended on Twitter last Tuesday.
 
-Not an excuse to invent twelve internal packages, a distributed event bus, or a generic abstraction capable of transferring files on Mars.
+Not an excuse to invent twelve internal packages, a distributed event bus, a plugin system, a DSL, and a generic abstraction capable of transferring files to Mars.
 
-The goal is stupidly simple:
+The goal is stupidly, almost offensively simple:
 
-> Someone has a fucking enormous file.  
-> Someone else needs that file.  
-> Tranzfer gets it there quickly, reliably, and without making either person think about how any of this works.
+> Someone has a fucking enormous file.
+> Someone else needs that file.
+> Tranzfer gets it there, and neither of them has to think about how.
 
-A YouTuber in the US should be able to send hundreds of gigabytes of raw footage to an editor on the other side of the world.
+That's it. That's the company. I have been chewing on this for years and it keeps coming back to those three lines.
 
-Their Wi-Fi can die.
+## The night that made me do this
 
-Their laptop can sleep.
+Picture it. A YouTuber in the US has 220 GB of raw footage. Their editor is on the other side of the world and starts work in eight hours. The upload is going. The laptop can't close. The tab can't be touched. They go to bed with the lid open like it's a sick pet.
 
-The tab can refresh.
+Their Wi-Fi dies.
 
-A signed URL can expire.
+The laptop sleeps anyway.
 
-A multipart request can fail.
+The tab refreshes.
 
-The upload can be 63% complete when everything goes to shit.
+A signed URL expires.
 
-And when they come back, Tranzfer should calmly continue instead of making them restart 220 GB from zero.
+One multipart request out of thousands fails.
 
-That is the first product.
+And it all happens at 63%, because it is always 63%, I swear to god it is always 63%.
 
-The longer-term product is the relationship between the people doing the work.
+They wake up. It's gone. Start over. From zero. 220 GB. Again.
 
-But we earn that future by making the transfer reliable first.
+This is normal. People accept this. People have _built workflows around_ this. They schedule their lives around upload bars. It makes me want to walk into the sea.
 
----
+When that person comes back to Tranzfer, it should calmly say "we lost the connection for a bit, carried on, it's done" and hand the editor one correct file. No drama. No restart. No apology email.
 
-## What success looks like
+That is the first product. Everything else is earned after it.
 
-The first victory is not an elegant architecture diagram.
+## What winning looks like
 
-The first victory is:
+The first victory is not an architecture diagram. Nobody has ever cried with joy over an architecture diagram.
 
-**100 GB transferred successfully.**
+The first victory is **100 GB transferred successfully.**
 
-Then:
+Then **350 GB transferred while we deliberately try to murder it.** Router yanked. Laptop slammed shut. Browser killed. Machine rebooted. And it still finishes, and the bytes still match.
 
-**350 GB transferred successfully while we deliberately try to kill it.**
+Then **a real video editor uses it for real work.**
 
-Then:
-
-**a real video editor uses it for real work.**
-
-Then they use it again.
+Then they use it again without me asking.
 
 Then someone gives us $29.
 
-Then ten people do.
+I will probably frame the first $29.
 
-Then strangers we have never met trust Tranzfer with footage they cannot afford to lose.
+Then ten people do. Then strangers I have never met trust Tranzfer with footage they cannot afford to lose, and they don't even think about it, because why would you think about the pipe.
 
-The business milestones are equally simple:
+The money milestones are just as blunt:
 
-**$1,000 MRR** means this is real.
+- **$1,000 MRR** means this is real.
+- **$2,000 MRR** means this can change my life.
+- **$3,500 MRR** means this tiny repository has become a very serious fucking piece of software.
 
-**$2,000 MRR** means this can change my life.
-
-**$3,500 MRR** means this tiny repository has become a very serious fucking piece of software.
-
-Do not optimize for imaginary scale before earning the right to have scale.
-
----
+Do not optimize for imaginary scale before earning the right to have scale. We do not need sharding. We need ten people who would be genuinely annoyed if Tranzfer disappeared.
 
 ## How this code should feel
 
-I want this repository to be beautiful.
+I want this repository to be beautiful. I mean that with my whole chest.
 
-Not clever-beautiful.
+Not clever-beautiful. Not "look at this type-level wizardry" beautiful.
 
 **Obvious-beautiful.**
 
-A good engineer or a good coding agent should be able to enter a package, understand why it exists, understand what it owns, make the change, and leave without poisoning three unrelated parts of the system.
+You should be able to walk into any package, understand why it exists and what it owns, make your change, and leave without poisoning three unrelated parts of the system on the way out. Like a good houseguest. Wipe your feet.
 
-Names should mean things.
+Names mean things.
 
-Boundaries should mean things.
+Boundaries mean things.
 
-Errors should be explicit.
+Errors are explicit and typed and say what actually happened.
 
-State should be understandable.
+State is something a tired person can hold in their head.
 
-Tests should protect behavior that matters.
+Tests protect behavior that matters, not line counts.
 
-Comments should explain things that aren't obvious, not narrate the syntax directly underneath them.
+Comments explain the weird runtime quirk, not the syntax sitting directly beneath them. `// increment i` is a war crime.
 
-If an abstraction exists, it should be because the product forced us to discover it — not because somebody predicted that perhaps one day it might theoretically become useful.
+An abstraction exists because the product forced us to discover it. Not because someone predicted it might theoretically, one day, possibly be useful. That someone is lying to you, and sometimes that someone is me.
 
 A little duplication is cheaper than the wrong abstraction.
 
-A boring function that works is better than an ingenious system nobody understands.
+A boring function that works beats an ingenious system nobody understands.
 
-A 350 GB upload surviving a router restart is infinitely more impressive than 14 layers of architectural purity.
-
----
+A 350 GB upload surviving a router restart is infinitely more impressive than fourteen layers of architectural purity. I will die on this hill. I have a tent up here.
 
 ## Solid 2
 
-Yes, this repo uses Solid 2 intentionally.
+Yes, this repo uses Solid 2 on purpose.
 
-Use it properly.
+Use it properly. Learn its model. Write code that feels native to Solid, not React wearing a Solid costume to a party.
 
-Learn its model.
-
-Write code that feels native to Solid rather than React translated into Solid syntax.
-
-But remember:
+But tattoo this somewhere:
 
 **Tranzfer does not exist to prove Solid 2 is good.**
 
-Solid 2 exists here because it helps us build Tranzfer well.
+Solid 2 is here because it helps us build Tranzfer well. Same goes for Effect, Uppy, Alchemy, all of it. They are tools. They work for the transfer.
 
-If you find yourself spending three days creating the world's most conceptually perfect reactive abstraction while the uploader still can't recover from a dead network connection, you have lost the plot.
-
----
+If you catch yourself three days deep in the most conceptually perfect reactive abstraction ever conceived while the uploader still can't survive a dead network connection, stop. Put the keyboard down. Go outside. You have lost the plot, and the plot is a file.
 
 ## People, not links
 
-Links are compatibility.
+Links are compatibility. They get the first file to someone who's never heard of us. They are not the product.
 
-They are not the long-term product.
+The product is the relationship between two people who work together.
 
-The long-term product is the relationship between the people doing the work.
+A creator should send footage to their editor as naturally as sending a text. A recurring editor should not have to open a browser, copy a link, pick a folder and babysit a download every single week like it's 2009.
 
-A creator should eventually be able to send footage to their editor as naturally as sending them a message.
-
-A recurring editor should not need to open a browser, copy a link, choose a folder, and babysit a download every week.
-
-One day the normal interaction might be:
+One day the normal interaction is just:
 
 ```text
 Marcus sent you Episode 24
@@ -153,19 +135,13 @@ Download tonight
 Always download from Marcus
 ```
 
-And later, maybe even that becomes unnecessary because Tranzfer already knows where the files should go.
+And later even that goes away, because Tranzfer already knows where Marcus's footage lives on your drive.
 
-That vision matters.
-
-But it does not give us permission to skip the hard part.
-
-Before Tranzfer can disappear into someone's workflow, it has to earn their trust by moving their files correctly.
-
----
+That vision is the thing that keeps me up. It is also not permission to skip the hard part. Before Tranzfer gets to vanish into someone's workflow, it has to earn their trust by moving their files correctly, over and over, boringly, forever.
 
 ## The standard
 
-The software should feel boring when it succeeds.
+Success should feel boring. Aggressively boring.
 
 Drop files.
 
@@ -179,66 +155,48 @@ ETA is believable.
 
 Failures recover.
 
-Refresh works.
+Refresh works. Resume works.
 
-Resume works.
+Recipient gets it. Link works. Download is fast.
 
-Recipient receives it.
+Checksum says the file is exactly what we promised.
 
-If they use the web, the link works.
+Done. Go make your video.
 
-If they use Tranzfer regularly in the future, the file should be able to arrive on their machine without ceremony.
+No "Cinematic Delivery Protocol."
 
-Download is fast.
+No "Command Center."
 
-Checksum says the file is what we promised it was.
-
-Done.
-
-No “Cinematic Delivery Protocol.”
-
-No “Command Center.”
-
-No pretending file transfer is a cyberpunk military operation.
+No neon hacker dashboard pretending a file upload is a cyberpunk military operation. It's footage. It's going to an editor. Calm down.
 
 Confidence is the brand.
 
 Reliability is the feature.
 
-Speed is the demonstration.
+Speed is the demo.
 
-Automation is earned convenience.
+Automation is convenience we earn later.
 
----
+And never, ever lie. No fake testimonials. No "trusted by 10,000 creators" when it's trusted by me and my friend. No reliability claim that a gate in [RELIABILITY.md](RELIABILITY.md) hasn't actually proven. If the product is honest when things break, people believe it when things work.
 
-## The product should get quieter over time
+## The product gets quieter over time
 
-The first transfer may require attention.
+The first transfer can take some attention.
 
-The fiftieth should require almost none.
+The fiftieth should take almost none.
 
-A good Tranzfer workflow gradually remembers the boring things:
+A good Tranzfer setup slowly remembers the boring stuff:
 
 ```text
 who this goes to
-where it should land
-when it should download
-how this relationship normally works
+where it lands
+when it downloads
+how these two people usually work
 ```
 
-The product becomes more valuable by removing repeated decisions.
-
-That does not mean building a giant creative-suite dashboard.
-
-It means making recurring file movement disappear into the background.
-
-Do not confuse more features with less friction.
-
----
+The product gets more valuable by deleting decisions, not by adding buttons. More features is not less friction. Usually it's the opposite. Every setting is a question we failed to answer for the user.
 
 ## What Tranzfer is not
-
-Tranzfer is not trying to become:
 
 ```text
 Dropbox
@@ -248,62 +206,42 @@ LucidLink
 a mounted cloud filesystem
 a digital asset manager
 a project-management suite
-a generic public file host
+a public file host
+a social network
+anything with "AI-powered" in the hero text
 ```
 
-Review, desktop automation, native integrations, and other future capabilities only belong here if they strengthen the same creator/editor delivery workflow.
+Review, desktop automation, native integrations and all the other shiny future stuff only get in if they make the creator and editor delivery workflow more reliable, more automatic, or worth more to people who pay. If a feature doesn't do one of those, it's a distraction wearing a feature costume.
 
-If a feature does not make that workflow more reliable, more automatic, or more valuable to paying users, it is probably a distraction.
+## Why this rewrite exists
 
----
+There was a Tranzfer before this repo.
 
-## Remember why this rewrite exists
+It taught me a lot. It also filled up with so much AI-generated sludge that building on top of it would have made every future coding agent a little dumber just from reading it. Like breathing in a room with bad air.
 
-There was a Tranzfer before this repository.
+So we burned it down and kept the lessons.
 
-It taught us things.
+Do not blindly port legacy code. Recover behavior on purpose. Reimplement it cleanly. Leave the contamination where it is.
 
-It also accumulated enough AI-generated sludge that continuing to build on top of it would make every future coding agent slightly dumber simply by reading the code.
+This repo has to get easier to understand as it grows. If it's getting harder, something is wrong, and it's probably the last abstraction somebody added.
 
-We are not rewriting history.
+## The future is not today's todo list
 
-We are keeping the lessons and throwing away the contamination.
-
-Do not blindly port legacy code.
-
-Recover behavior deliberately.
-
-Reimplement it cleanly.
-
-This repository should get easier to understand as it grows, not harder.
-
----
-
-## Future vision is not today's todo list
-
-There is a bigger vision now:
+There is a big vision:
 
 ```text
 reliable transfer
-    ↓
-recurring creator/editor relationships
-    ↓
-background delivery
-    ↓
-native inbox
-    ↓
-automation
-    ↓
-review / approval
-    ↓
-workflow integrations
+  -> recurring creator and editor relationships
+  -> background delivery
+  -> native inbox
+  -> automation
+  -> review and approval
+  -> workflow integrations
 ```
 
-That direction belongs in `VISION.md`.
+It lives in [VISION.md](VISION.md). It is not a license to build all of it this week.
 
-Do not treat it as permission to build all of it immediately.
-
-The current job remains painfully concrete:
+The actual job is painfully concrete:
 
 ```text
 build
@@ -316,11 +254,17 @@ ask for money
 
 No desktop app because the idea is exciting.
 
-No review system because an MIT repo made it cheap to copy.
+No review system because some MIT repo made it cheap to copy.
 
-No NLE plugin because it looks cool in a demo.
+No NLE plugin because it would look sick in a demo.
 
-Earn every layer.
+Earn every layer. Every single one.
+
+## This is a side project, and that is the point
+
+I build this after work. Keep the code understandable by one person coming back to it at 11 pm with half a brain left. Prefer the local change over the new framework. Add machinery only when a real workflow is screaming for it.
+
+When the interface talks, it tells the truth about what happened and what you can do next. "We need access to the file again." "Your sign-in expired." "Still finishing up on our end." Plain words. A person should never have to guess whether their 300 GB is safe.
 
 ---
 
@@ -330,9 +274,9 @@ Maybe it lets me quit my job.
 
 Maybe it lets me take care of the people I love.
 
-Maybe it pays for a stupid amount of AI coding subscriptions.
+Maybe it pays for a frankly irresponsible number of AI coding subscriptions.
 
-Maybe I get to send some money back to the open-source maintainers whose work made the whole thing possible.
+Maybe I get to send real money back to the open-source maintainers whose work made every line of this possible.
 
 That would be pretty fucking cool.
 
@@ -340,4 +284,4 @@ Until then:
 
 **make the next transfer more reliable than the last one.**
 
-That's the job.
+That's the job. That's the whole job.
