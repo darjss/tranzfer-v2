@@ -7,7 +7,7 @@ import PhFileBold from "~icons/ph/file-bold";
 
 import type { ApiClient } from "../api/client";
 import { Button } from "../ui/Button";
-import { cancelDelivery, getUploads, retryTransfer } from "../uploads/uppy";
+import { cancelDelivery, retryTransfer } from "../uploads/uppy";
 import { transfers } from "../uploads/store";
 import type { ManagedRuntime } from "effect/ManagedRuntime";
 import {
@@ -221,7 +221,7 @@ export function DeliveryPane(props: Props) {
                       <button
                         class="justify-self-end text-xs text-ink underline"
                         onClick={() => {
-                          retryTransfer(getUploads(props.runtime).uppy, transfer.id);
+                          retryTransfer(props.runtime, transfer.id);
                         }}
                         type="button"
                       >

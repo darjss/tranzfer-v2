@@ -127,6 +127,31 @@ const finalize = async (runtime: Runtime, transferId: string, attempt = 0) => {
   }
 };
 
+// Once the bytes are in R2, finishing is the FinalizeTransfer retry loop.
+// Both the upload-success path and a post-upload retry go through this.
+const finishTransfer = (
+  uppy: Uppy<Meta, Body>,
+  runtime: Runtime,
+  fileId: string,
+  transferId: string,
+) => {
+  void (async () => {
+    try {
+      await finalize(runtime, transferId);
+      patchTransfer(transferId, { bytesPerSecond: 0, phase: "done" });
+      bumpDeliveries((version) => version + 1);
+      // The uploader has already detached from this file, so removing it
+      // frees memory without firing an abort.
+      uppy.removeFile(fileId);
+    } catch (error) {
+      patchTransfer(transferId, {
+        error: error instanceof Error ? error.message : "Finishing failed",
+        phase: "failed",
+      });
+    }
+  })();
+};
+
 // One Uppy for the whole session, created lazily with the app's runtime. It
 // is never destroyed, uninstalled or cancelled by component cleanup or
 // navigation: Uppy aborts remote uploads on uninstall and on file removal,
@@ -196,21 +221,7 @@ export const getUploads = (runtime: Runtime) => {
       inFlight: 0,
       phase: "finalizing",
     });
-    void (async () => {
-      try {
-        await finalize(runtime, transferId);
-        patchTransfer(transferId, { bytesPerSecond: 0, phase: "done" });
-        bumpDeliveries((version) => version + 1);
-        // The uploader has already detached from this file, so removing it
-        // frees memory without firing an abort.
-        uppy.removeFile(file.id);
-      } catch (error) {
-        patchTransfer(transferId, {
-          error: error instanceof Error ? error.message : "Finishing failed",
-          phase: "failed",
-        });
-      }
-    })();
+    finishTransfer(uppy, runtime, file.id, transferId);
   });
 
   uppy.on("upload-error", (file, error) => {
@@ -275,18 +286,40 @@ export const sendFiles = async (
       type: file.type,
     });
   }
-  await uppy.upload();
+  // upload() resolves only once every file settles; the delivery must
+  // surface now, so per-file errors keep flowing through upload-error and a
+  // rejection here means a pre-flight failure no event covers.
+  void (async () => {
+    try {
+      await uppy.upload();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Upload failed";
+      for (const transfer of delivery.transfers) {
+        patchTransfer(transfer.id, { bytesPerSecond: 0, error: message, phase: "failed" });
+      }
+    }
+  })();
   return delivery;
 };
 
-export const retryTransfer = (uppy: Uppy<Meta, Body>, transferId: string) => {
+export const retryTransfer = (runtime: Runtime, transferId: string) => {
+  const { uppy } = getUploads(runtime);
   const file = uppy
     .getFiles()
     .find((candidate) => metaString(candidate.meta, "transferId") === transferId);
-  if (file !== undefined) {
-    patchTransfer(transferId, { error: undefined, phase: "uploading" });
-    void uppy.retryUpload(file.id);
+  if (file === undefined) {
+    return;
   }
+  const progress = transfers[transferId];
+  if (progress !== undefined && progress.confirmed >= (file.size ?? 0)) {
+    // The bytes already reached R2 and only FinalizeTransfer failed, so
+    // re-uploading would send the whole file again for nothing.
+    patchTransfer(transferId, { error: undefined, phase: "finalizing" });
+    finishTransfer(uppy, runtime, file.id, transferId);
+    return;
+  }
+  patchTransfer(transferId, { error: undefined, phase: "uploading" });
+  void uppy.retryUpload(file.id);
 };
 
 export const cancelDelivery = async (runtime: Runtime, deliveryId: string) => {
