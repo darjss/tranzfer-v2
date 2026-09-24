@@ -1,9 +1,8 @@
 import { BetterAuth, Database as AuthDatabase } from "@alchemy.run/better-auth";
-import type { BetterAuthProps } from "@alchemy.run/better-auth";
+import type { BetterAuthProps, DatabaseService } from "@alchemy.run/better-auth";
 import { Principal } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { RuntimeContext } from "alchemy";
-import { Stage } from "alchemy/Stage";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/d1";
 import * as Config from "effect/Config";
@@ -21,49 +20,16 @@ import type * as HttpServerRequest from "effect/unstable/http/HttpServerRequest"
 import type * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
 import { AuthError } from "./auth-error";
-
-// Inside the running Worker there is no Stage service; Alchemy binds
-// ALCHEMY_STAGE as a plain_text binding and we read that instead.
-const stageName = Effect.serviceOption(Stage).pipe(
-  Effect.flatMap(
-    Option.match({
-      onNone: () => Config.String("ALCHEMY_STAGE").pipe(Config.option),
-      onSome: (stage) => Effect.succeed(Option.some(stage)),
-    }),
-  ),
-);
+import { stagingLogin } from "./staging-login";
 
 const SigningSecret = Schema.Redacted(Schema.String.check(Schema.isMinLength(32)));
 
-export class Auth extends Context.Service<
-  Auth,
-  {
-    readonly fetch: Effect.Effect<
-      HttpServerResponse.HttpServerResponse,
-      HttpServerError.HttpServerError | HttpBody.HttpBodyError,
-      HttpServerRequest.HttpServerRequest | Scope.Scope
-    >;
-    readonly session: (
-      headers: Headers,
-    ) => Effect.Effect<
-      { cookies: Cookies.Cookies; principal: Option.Option<Principal> },
-      AuthError
-    >;
-  }
->()("tranzfer/Auth") {
-  static readonly make = Effect.gen(function* makeAuth() {
-    const stage = yield* stageName;
+type AuthFragment = Pick<BetterAuthProps, "plugins" | "secret" | "socialProviders">;
+
+const makeAuth = (fragment: Effect.Effect<AuthFragment, Config.ConfigError | Schema.SchemaError>) =>
+  Effect.gen(function* service() {
+    const options = yield* fragment;
     const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
-    const googleClientId = yield* Config.String("GOOGLE_CLIENT_ID");
-    const googleClientSecret = yield* Config.Redacted("GOOGLE_CLIENT_SECRET");
-    // Production keeps the configured secret; every other stage omits it and
-    // the plugin auto-provisions a stable Alchemy.Random.
-    const secret =
-      Option.isSome(stage) && stage.value === "production"
-        ? yield* Config.Redacted("BETTER_AUTH_SECRET").pipe(
-            Effect.flatMap(Schema.decodeUnknownEffect(SigningSecret)),
-          )
-        : undefined;
 
     const props: BetterAuthProps = {
       advanced: { database: { validateSchema: false } },
@@ -76,31 +42,24 @@ export class Auth extends Context.Service<
         },
       },
       migrate: false,
-      socialProviders: {
-        google: { clientId: googleClientId, clientSecret: Redacted.value(googleClientSecret) },
-      },
       trustedOrigins: [origin],
+      ...options,
     };
 
-    // Our columns are snake_case with integer-ms dates, which the plugin's
-    // Kysely D1 layer can't handle; this custom Database layer is the drizzle
-    // adapter over our lazy D1 accessor, resolved inside each invocation.
+    // Our snake_case / integer-ms columns rule out the plugin's Kysely D1
+    // layer, so the Database service is built with the drizzleAdapter call
+    // that helper wraps.
     const raw = yield* Database;
-    const authDatabase = Layer.succeed(
-      AuthDatabase,
-      AuthDatabase.of({
-        provider: "sqlite",
-        runtime: raw.pipe(
-          Effect.map((handle) => drizzleAdapter(drizzle(handle), { provider: "sqlite", schema })),
-        ),
-      }),
-    );
+    const authDatabase = Layer.sync(AuthDatabase, (): DatabaseService => ({
+      provider: "sqlite",
+      runtime: raw.pipe(
+        Effect.map((handle) => drizzleAdapter(drizzle(handle), { provider: "sqlite", schema })),
+      ),
+    }));
 
-    const instance = yield* BetterAuth(secret === undefined ? props : { ...props, secret }).pipe(
-      Effect.provide(authDatabase),
-    );
+    const instance = yield* BetterAuth(props).pipe(Effect.provide(authDatabase));
 
-    return Auth.of({
+    return {
       fetch: instance.fetch.pipe(Effect.provide(RuntimeContext.phantom)),
       session: Effect.fn("Auth.session")((headers: Headers) =>
         instance.auth.pipe(
@@ -129,6 +88,89 @@ export class Auth extends Context.Service<
           })),
         ),
       ),
-    });
+    };
   });
+
+export class Auth extends Context.Service<
+  Auth,
+  {
+    readonly fetch: Effect.Effect<
+      HttpServerResponse.HttpServerResponse,
+      HttpServerError.HttpServerError | HttpBody.HttpBodyError,
+      HttpServerRequest.HttpServerRequest | Scope.Scope
+    >;
+    readonly session: (
+      headers: Headers,
+    ) => Effect.Effect<
+      { cookies: Cookies.Cookies; principal: Option.Option<Principal> },
+      AuthError
+    >;
+  }
+>()("tranzfer/Auth") {
+  static readonly #make = (
+    fragment: Effect.Effect<AuthFragment, Config.ConfigError | Schema.SchemaError>,
+  ) => makeAuth(fragment).pipe(Effect.map(Auth.of));
+
+  static readonly production = Auth.#make(
+    Effect.map(
+      Config.all({
+        google: Config.all({
+          clientId: Config.String("GOOGLE_CLIENT_ID"),
+          clientSecret: Config.Redacted("GOOGLE_CLIENT_SECRET"),
+        }),
+        secret: Config.schema(SigningSecret, "BETTER_AUTH_SECRET"),
+      }),
+      ({ google, secret }): AuthFragment => ({
+        secret,
+        socialProviders: {
+          google: {
+            clientId: google.clientId,
+            clientSecret: Redacted.value(google.clientSecret),
+          },
+        },
+      }),
+    ),
+  );
+
+  static readonly staging = Auth.#make(
+    Effect.map(Config.schema(SigningSecret, "TEST_LOGIN_KEY"), (key): AuthFragment => ({
+      plugins: [stagingLogin(Redacted.value(key))],
+    })),
+  );
+
+  static readonly dev = Auth.#make(
+    Effect.gen(function* options() {
+      // A copied .env.example leaves empty values behind; treat them as unset
+      // so dev never registers a broken Google provider or fails to boot.
+      const google = yield* Config.option(
+        Config.all({
+          clientId: Config.String("GOOGLE_CLIENT_ID"),
+          clientSecret: Config.Redacted("GOOGLE_CLIENT_SECRET"),
+        }),
+      ).pipe(
+        Config.map(
+          Option.filter(
+            ({ clientId, clientSecret }) => clientId !== "" && Redacted.value(clientSecret) !== "",
+          ),
+        ),
+      );
+      const key = yield* Config.option(
+        Config.schema(Schema.Union([Schema.Literal(""), SigningSecret]), "TEST_LOGIN_KEY"),
+      ).pipe(Config.map(Option.filter((value): value is Redacted.Redacted => value !== "")));
+      return {
+        ...Option.match(google, {
+          onNone: (): AuthFragment => ({}),
+          onSome: ({ clientId, clientSecret }): AuthFragment => ({
+            socialProviders: {
+              google: { clientId, clientSecret: Redacted.value(clientSecret) },
+            },
+          }),
+        }),
+        ...Option.match(key, {
+          onNone: (): AuthFragment => ({}),
+          onSome: (value): AuthFragment => ({ plugins: [stagingLogin(Redacted.value(value))] }),
+        }),
+      };
+    }),
+  );
 }
