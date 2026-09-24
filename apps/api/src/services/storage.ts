@@ -19,10 +19,9 @@ import { StorageError } from "./storage-error";
 // RegionName union does not include.
 const r2Region = "auto" as Region.RegionName;
 
-// Uppy signs right before each request; downloads get an hour because
-// validity is checked at request start, so long downloads still finish.
+// Uppy signs right before each request. Download expiry is set per call so
+// a URL never outlives the link that issued it.
 const UPLOAD_URL_TTL_SECONDS = 900;
-const DOWNLOAD_URL_TTL_SECONDS = 3600;
 
 export interface SignedUrl {
   readonly url: string;
@@ -43,6 +42,7 @@ export class Storage extends Context.Service<
     readonly signDownload: (
       key: string,
       filename: string,
+      expiresInSeconds: number,
     ) => Effect.Effect<SignedUrl, StorageError>;
     readonly head: (
       key: string,
@@ -206,7 +206,7 @@ export class Storage extends Context.Service<
                   yield* deleteObject({ Bucket: bucket, Key: key });
                 }).pipe(Effect.mapError((cause) => new StorageError({ cause, op: "remove" }))),
               ),
-              signDownload: Effect.fn("Storage.signDownload")((key, filename) =>
+              signDownload: Effect.fn("Storage.signDownload")((key, filename, expiresInSeconds) =>
                 Effect.gen(function* signDownload() {
                   const url = new URL(yield* objectUrl(key));
                   const fallback = filename.replaceAll(/[^ -~]/gu, "_").replaceAll(/["\\]/gu, "_");
@@ -215,7 +215,7 @@ export class Storage extends Context.Service<
                     `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
                   );
                   return yield* presign({
-                    expiresIn: DOWNLOAD_URL_TTL_SECONDS,
+                    expiresIn: expiresInSeconds,
                     method: "GET",
                     url: url.href,
                   });
