@@ -18,13 +18,19 @@ minimumReleaseAgeExclude:
   - "@distilled.cloud/aws@1.0.0-rc.11"
   - "@distilled.cloud/core@1.0.0-rc.11"
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@0.3.1
-  vite-plus: 0.3.1
+  vite: npm:@voidzero-dev/vite-plus-core@1.0.0-rc.0
+  vite-plus: 1.0.0-rc.0
   solid-js: 2.0.0-rc.8
   "@solidjs/web": 2.0.0-rc.8
   "@solidjs/diagnostics": 2.0.0-rc.8
 overrides:
   vite@*: "catalog:"
+  # Keep oxlint at 1.82/tsgolint at 7.0.2001: `effect-tsgo patch` refuses
+  # vite-plus rc.0's bundled 1.85/7.0.2002. Drop these once @effect/tsgo
+  # supports them.
+  "vite-plus>oxlint": "1.82.0"
+  "oxlint>oxlint-tsgolint": "7.0.2001"
+  oxlint-tsgolint: "7.0.2001"
   "@effect/platform-node>@effect/platform-node-shared": 4.0.0-rc.112
   "@effect/platform-node-shared>@effect/platform": 4.0.0-rc.112
   alchemy>@effect/sql-d1: 4.0.0-rc.112

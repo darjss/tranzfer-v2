@@ -30,9 +30,7 @@ export default defineConfig({
   fmt: {
     ignorePatterns: ["**/file-routes.d.ts", "**/solid-env.d.ts"],
   },
-  // SAFETY: Vite+ types `lint` against oxlint 1.81. Runtime is 1.82.0 so
-  // @effect/tsgo 0.45.0 can patch Oxlint and oxlint-tsgolint.
-  lint: webLint as never,
+  lint: webLint,
   plugins: [
     ...workerSsr,
     tailwindcss(),
@@ -47,6 +45,7 @@ export default defineConfig({
     Icons({ compiler: "solid" }),
     prerender({ crawlLinks: false, emitPages: (p) => p === "/", mode: "hybrid", pages: ["/"] }),
   ],
+  root: import.meta.dirname,
   server: {
     host: "127.0.0.1",
     port: 3000,

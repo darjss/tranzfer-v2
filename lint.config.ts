@@ -40,11 +40,14 @@ const oxlintFromEslintLevels = (rules: Record<string, 0 | 1 | 2>) =>
     }),
   );
 
-export const lintConfig = (paths: {
-  api: string[];
-  components: string[];
-  web: string[];
-}): OxlintConfig => {
+export const lintConfig = (
+  paths: {
+    api: string[];
+    components: string[];
+    web: string[];
+  },
+  opts?: { root?: boolean },
+): OxlintConfig => {
   const effectOverride =
     paths.api.length === 0
       ? []
@@ -59,11 +62,10 @@ export const lintConfig = (paths: {
           },
         ];
 
-  return defineConfig({
+  const config: OxlintConfig = defineConfig({
     extends: [core, antiSlop],
     ignorePatterns: [...(core.ignorePatterns ?? []), ...generatedIgnores],
     jsPlugins: [vitePlusPlugin, ...(antiSlop.jsPlugins ?? [])],
-    options: { typeAware: true, typeCheck: true },
     overrides: [
       {
         files: paths.web,
@@ -132,13 +134,20 @@ export const lintConfig = (paths: {
     },
     settings: solidV2Strict.settings,
   });
+  if (opts?.root === true) {
+    config.options = { typeAware: true, typeCheck: true };
+  }
+  return config;
 };
 
-export const rootLint = lintConfig({
-  api: ["apps/api/**", "packages/contracts/**"],
-  components: ["apps/web/**/*.tsx"],
-  web: ["apps/web/**"],
-});
+export const rootLint = lintConfig(
+  {
+    api: ["apps/api/**", "packages/contracts/**"],
+    components: ["apps/web/**/*.tsx"],
+    web: ["apps/web/**"],
+  },
+  { root: true },
+);
 
 export const webLint = lintConfig({
   api: [],
