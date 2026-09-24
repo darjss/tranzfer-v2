@@ -40,10 +40,10 @@ export function Sidebar(props: Props) {
 
   return (
     <aside class="border-line max-lg:contents lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-r lg:bg-panel/85">
-      <div class="flex h-16 items-center px-5">
+      <div class="flex h-16 items-center px-5 max-lg:bg-panel">
         <Brand />
       </div>
-      <div class="border-b border-line px-4 pb-4 lg:border-0 lg:pb-0">
+      <div class="border-b border-line px-4 pb-4 max-lg:bg-panel lg:border-0 lg:pb-0">
         <Button
           class="w-full"
           onClick={() => {

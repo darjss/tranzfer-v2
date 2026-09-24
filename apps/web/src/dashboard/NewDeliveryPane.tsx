@@ -68,7 +68,8 @@ export function NewDeliveryPane(props: Props) {
 
       <div class="relative mt-8">
         <p class="absolute -top-10 right-4 z-10 rotate-[-4deg] font-hand text-2xl leading-tight font-semibold text-blue/80 select-none">
-          the whole folder is fine, we keep its structure
+          <span class="max-sm:hidden">the whole folder is fine, we keep its structure</span>
+          <span class="text-lg whitespace-nowrap sm:hidden">folders keep their structure</span>
         </p>
         <div
           class={[
