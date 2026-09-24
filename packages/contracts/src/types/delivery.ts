@@ -57,6 +57,11 @@ const NewDeliverySchema = Schema.Struct({
         new Set(files.map((file) => file.path.toLowerCase())).size === files.length ||
         "file paths must be unique case-insensitively",
     ),
+    // File ids become transfer primary keys; a duplicate fails the insert.
+    Schema.makeFilter(
+      (files) =>
+        new Set(files.map((file) => file.id)).size === files.length || "file ids must be unique",
+    ),
   ),
   id: Schema.String.check(Schema.isUUID()),
   retentionDays: RetentionDays,

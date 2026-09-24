@@ -56,17 +56,42 @@ export const LinkHandlers = Api.toLayerHandler(
         d.select().from(schema.transfer).where(eq(schema.transfer.deliveryId, delivery.id)),
       );
 
+      // A download URL must never outlive the link that issued it.
+      const expiresInSeconds =
+        delivery.expiresAt === null
+          ? 3600
+          : Math.min(
+              3600,
+              Math.max(1, Math.floor((delivery.expiresAt.getTime() - Date.now()) / 1000)),
+            );
+
       const files = yield* Effect.forEach(
         transfers,
         (transfer) =>
-          storage.signDownload(transfer.objectKey, basename(transfer.path)).pipe(
-            toStorageUnavailable("signDownload failed"),
-            Effect.map((signed) => ({
-              path: transfer.path,
-              size: transfer.size,
-              url: signed.url,
-            })),
-          ),
+          Effect.gen(function* file() {
+            // A PUT URL signed before finalize stays valid 15 minutes and can
+            // replace the checked object; verify it still matches the row.
+            const object = yield* storage
+              .head(transfer.objectKey)
+              .pipe(toStorageUnavailable("head failed"));
+            const intact =
+              Option.isSome(object) &&
+              object.value.size === transfer.size &&
+              (transfer.etag === null || object.value.etag === transfer.etag);
+            if (!intact) {
+              yield* Effect.logError("link object failed verification", {
+                deliveryId: delivery.id,
+                transferId: transfer.id,
+              });
+              return yield* Effect.die(
+                new Error(`Object for transfer ${transfer.id} failed verification`),
+              );
+            }
+            const signed = yield* storage
+              .signDownload(transfer.objectKey, basename(transfer.path), expiresInSeconds)
+              .pipe(toStorageUnavailable("signDownload failed"));
+            return { path: transfer.path, size: transfer.size, url: signed.url };
+          }),
         { concurrency: 8 },
       );
 

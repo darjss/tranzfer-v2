@@ -12,7 +12,7 @@ import {
 } from "@tranzfer/contracts";
 import type { NewDelivery, UploadRequest } from "@tranzfer/contracts";
 import { Drizzle, schema } from "@tranzfer/db";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -66,6 +66,17 @@ const sameFileSet = (files: NewDelivery["files"], transfers: readonly TransferRo
         transfer.id === file.id && transfer.path === file.path && transfer.size === file.size,
     ),
   );
+
+// A retried create only replays when every field matches; a changed payload
+// under the same id is a conflict, not a silent accept.
+const sameDelivery = (
+  input: NewDelivery,
+  delivery: DeliveryRow,
+  transfers: readonly TransferRow[],
+) =>
+  delivery.retentionDays === input.retentionDays &&
+  delivery.title === input.title &&
+  sameFileSet(input.files, transfers);
 
 // The link is written in the same batch as the delivery; a missing row is a
 // broken invariant, never a not-found.
@@ -130,7 +141,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
         if (existing !== null) {
           if (
             existing.delivery.senderId === principal.id &&
-            sameFileSet(input.files, existing.transfers)
+            sameDelivery(input, existing.delivery, existing.transfers)
           ) {
             return yield* deliveryView(db, links, input.id, "deliveries.create.view");
           }
@@ -187,7 +198,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
           if (
             landed !== null &&
             landed.delivery.senderId === principal.id &&
-            sameFileSet(input.files, landed.transfers)
+            sameDelivery(input, landed.delivery, landed.transfers)
           ) {
             return yield* deliveryView(db, links, input.id, "deliveries.create.view");
           }
@@ -359,14 +370,18 @@ export const DeliveriesHandlers = Layer.mergeAll(
 
         const now = new Date();
         const expiresAt = new Date(now.getTime() + delivery.retentionDays * DAY_MS);
-        yield* db.run(
+        // The transfer guard keeps a concurrent cancel final: without it a
+        // finalize racing CancelDelivery would resurrect a deleted object.
+        const [completed] = yield* db.run(
           "deliveries.finalize.complete",
           async (d) =>
             await d.batch([
               d
                 .update(schema.transfer)
                 .set({ completedAt: now, etag: object.value.etag, state: "complete" })
-                .where(eq(schema.transfer.id, transfer.id)),
+                .where(
+                  and(eq(schema.transfer.id, transfer.id), ne(schema.transfer.state, "cancelled")),
+                ),
               // The last file flips the delivery exactly once, even under
               // concurrent finalizes.
               d
@@ -381,6 +396,20 @@ export const DeliveriesHandlers = Layer.mergeAll(
                 ),
             ]),
         );
+        if (completed.meta.changes === 0) {
+          const current = yield* db.run("deliveries.finalize.relookup", (d) =>
+            d
+              .select({ state: schema.transfer.state })
+              .from(schema.transfer)
+              .where(eq(schema.transfer.id, transfer.id)),
+          );
+          if (current[0]?.state === "cancelled") {
+            return yield* new UploadClosed({ message: "This transfer is closed" });
+          }
+          return yield* Effect.die(
+            new Error(`Transfer ${transfer.id} changed state during finalize`),
+          );
+        }
 
         return yield* deliveryView(db, links, delivery.id, "deliveries.finalize.view");
       },

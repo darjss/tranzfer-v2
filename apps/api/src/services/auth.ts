@@ -140,13 +140,23 @@ export class Auth extends Context.Service<
 
   static readonly dev = Auth.#make(
     Effect.gen(function* options() {
+      // A copied .env.example leaves empty values behind; treat them as unset
+      // so dev never registers a broken Google provider or fails to boot.
       const google = yield* Config.option(
         Config.all({
           clientId: Config.String("GOOGLE_CLIENT_ID"),
           clientSecret: Config.Redacted("GOOGLE_CLIENT_SECRET"),
         }),
+      ).pipe(
+        Config.map(
+          Option.filter(
+            ({ clientId, clientSecret }) => clientId !== "" && Redacted.value(clientSecret) !== "",
+          ),
+        ),
       );
-      const key = yield* Config.option(Config.schema(SigningSecret, "TEST_LOGIN_KEY"));
+      const key = yield* Config.option(
+        Config.schema(Schema.Union([Schema.Literal(""), SigningSecret]), "TEST_LOGIN_KEY"),
+      ).pipe(Config.map(Option.filter((value): value is Redacted.Redacted => value !== "")));
       return {
         ...Option.match(google, {
           onNone: (): AuthFragment => ({}),
