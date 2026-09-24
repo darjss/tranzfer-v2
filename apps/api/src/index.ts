@@ -34,23 +34,23 @@ export default ApiWorker.make(
     // the env holds no D1 binding.
     const database = Layer.succeed(Database, db.raw.pipe(Effect.provide(RuntimeContext.phantom)));
     const stage = yield* deployStage;
-    // Init-time config failures are fatal; deploy dies with the defect.
-    const auth = yield* Match.value(stage)
-      .pipe(
-        Match.when("production", () => Auth.production),
-        Match.when("staging", () => Auth.staging),
-        Match.orElse(() => Auth.dev),
-      )
-      .pipe(Effect.orDie, Effect.provide(database));
+    const auth = yield* Match.value(stage).pipe(
+      Match.when("production", () => Auth.production),
+      Match.when("staging", () => Auth.staging),
+      Match.when("dev", () => Auth.dev),
+      Match.exhaustive,
+      Effect.orDie,
+      Effect.provide(database),
+    );
 
     const storage = yield* Match.value(stage).pipe(
       Match.whenOr("production", "staging", () => Storage.deployed),
-      Match.orElse(() => Effect.succeed(Storage.unavailable)),
+      Match.when("dev", () => Effect.succeed(Storage.unavailable)),
+      Match.exhaustive,
     );
 
-    // The Me handler's middleware requires HttpServerRequest, so the
-    // auth-dependent part of the RPC stack only exists inside a request.
-    // InfraHandlers resolves its bindings here at Init instead.
+    // Init builds each service once per isolate; only the auth-dependent part
+    // of the RPC stack is rebuilt per request (the Me middleware needs HttpServerRequest).
     const rpcInit = yield* Layer.build(
       Layer.mergeAll(InfraHandlers, RpcSerialization.layerJson).pipe(
         Layer.provide(Drizzle.layer),
