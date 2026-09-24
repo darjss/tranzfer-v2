@@ -83,41 +83,6 @@ const viewFromRows = (
     return toDelivery(delivery, transfers, token);
   });
 
-const deliveryView = (
-  db: Drizzle["Service"],
-  links: Links["Service"],
-  deliveryId: string,
-  op: string,
-) =>
-  Effect.gen(function* view() {
-    const loaded = yield* db.run(op, async (d) => {
-      const deliveries = await d
-        .select()
-        .from(schema.delivery)
-        .where(eq(schema.delivery.id, deliveryId));
-      if (deliveries.length === 0) {
-        return null;
-      }
-      const [transfers, linkRows] = await Promise.all([
-        d
-          .select()
-          .from(schema.transfer)
-          .where(eq(schema.transfer.deliveryId, deliveryId))
-          .orderBy(asc(schema.transfer.path)),
-        d
-          .select()
-          .from(schema.link)
-          .innerJoin(schema.delivery, eq(schema.link.deliveryId, schema.delivery.id))
-          .where(eq(schema.link.deliveryId, deliveryId)),
-      ]);
-      return { delivery: deliveries[0], link: linkRows[0]?.link, transfers };
-    });
-    if (loaded === null) {
-      return Option.none<Delivery>();
-    }
-    return Option.some(yield* viewFromRows(links, loaded.delivery, loaded.transfers, loaded.link));
-  });
-
 const loadDeliveryRows = (db: Drizzle["Service"], deliveryId: string, op: string) =>
   db.run(op, async (d) => {
     const deliveries = await d
@@ -127,12 +92,29 @@ const loadDeliveryRows = (db: Drizzle["Service"], deliveryId: string, op: string
     if (deliveries.length === 0) {
       return null;
     }
-    const transfers = await d
-      .select()
-      .from(schema.transfer)
-      .where(eq(schema.transfer.deliveryId, deliveryId))
-      .orderBy(asc(schema.transfer.path));
-    return { delivery: deliveries[0], transfers };
+    const [transfers, linkRows] = await Promise.all([
+      d
+        .select()
+        .from(schema.transfer)
+        .where(eq(schema.transfer.deliveryId, deliveryId))
+        .orderBy(asc(schema.transfer.path)),
+      d.select().from(schema.link).where(eq(schema.link.deliveryId, deliveryId)),
+    ]);
+    return { delivery: deliveries[0], link: linkRows[0], transfers };
+  });
+
+const deliveryView = (
+  db: Drizzle["Service"],
+  links: Links["Service"],
+  deliveryId: string,
+  op: string,
+) =>
+  Effect.gen(function* view() {
+    const loaded = yield* loadDeliveryRows(db, deliveryId, op);
+    if (loaded === null) {
+      return yield* Effect.die(new Error(`Delivery ${deliveryId} vanished after write`));
+    }
+    return yield* viewFromRows(links, loaded.delivery, loaded.transfers, loaded.link);
   });
 
 export const DeliveriesHandlers = Layer.mergeAll(
@@ -150,14 +132,11 @@ export const DeliveriesHandlers = Layer.mergeAll(
             existing.delivery.senderId === principal.id &&
             sameFileSet(input.files, existing.transfers)
           ) {
-            return Option.getOrThrow(
-              yield* deliveryView(db, links, input.id, "deliveries.create.view"),
-            );
+            return yield* deliveryView(db, links, input.id, "deliveries.create.view");
           }
           return yield* new DeliveryConflict({ message: "Delivery already exists" });
         }
 
-        // A transfer id already bound to another delivery is also a conflict.
         const transferIds = input.files.map((file) => file.id);
         const used = yield* db.run("deliveries.create.transferIds", (d) =>
           d
@@ -212,9 +191,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
             landed.delivery.senderId === principal.id &&
             sameFileSet(input.files, landed.transfers)
           ) {
-            return Option.getOrThrow(
-              yield* deliveryView(db, links, input.id, "deliveries.create.view"),
-            );
+            return yield* deliveryView(db, links, input.id, "deliveries.create.view");
           }
           if (landed !== null || taken.length > 0) {
             return yield* new DeliveryConflict({ message: "Delivery already exists" });
@@ -222,9 +199,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
           return yield* Effect.fail(inserted.failure);
         }
 
-        return Option.getOrThrow(
-          yield* deliveryView(db, links, input.id, "deliveries.create.view"),
-        );
+        return yield* deliveryView(db, links, input.id, "deliveries.create.view");
       },
       Effect.catchTag("DrizzleError", Effect.die),
     ),
@@ -306,10 +281,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
 
         const multipart = usesMultipart(transfer.size);
         const tag = input.request._tag;
-        if (
-          (multipart && (tag === "Put" || transfer.size === 0)) ||
-          (!multipart && tag !== "Put")
-        ) {
+        if (multipart === (tag === "Put")) {
           return yield* new InvalidUpload({ message: "Upload shape does not match the file size" });
         }
         if (tag === "Part" && input.request.partNumber > partCount(transfer.size)) {
@@ -366,9 +338,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const { delivery, transfer } = row;
 
         if (transfer.state === "complete") {
-          return Option.getOrThrow(
-            yield* deliveryView(db, links, delivery.id, "deliveries.finalize.view"),
-          );
+          return yield* deliveryView(db, links, delivery.id, "deliveries.finalize.view");
         }
         if (transfer.state === "cancelled") {
           return yield* new UploadClosed({ message: "This transfer is closed" });
@@ -416,9 +386,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
             ]),
         );
 
-        return Option.getOrThrow(
-          yield* deliveryView(db, links, delivery.id, "deliveries.finalize.view"),
-        );
+        return yield* deliveryView(db, links, delivery.id, "deliveries.finalize.view");
       },
       Effect.catchTag("DrizzleError", Effect.die),
     ),
@@ -467,9 +435,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
           { concurrency: CANCEL_CONCURRENCY },
         );
 
-        return Option.getOrThrow(
-          yield* deliveryView(db, links, input.deliveryId, "deliveries.cancel.view"),
-        );
+        return yield* deliveryView(db, links, input.deliveryId, "deliveries.cancel.view");
       },
       Effect.catchTag("DrizzleError", Effect.die),
     ),
