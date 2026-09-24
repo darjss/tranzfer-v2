@@ -21,5 +21,6 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 - Local URLs: Portless.
 - Lint and format: oxlint with type-aware rules and Solid diagnostics, oxfmt. Rules live in `lint.config.ts`.
 - Later, when real work needs it: a maintenance Worker or Queues for cleanup, KV for cache only, Electron with a separate Bun transport process and SQLite for desktop.
+- Observability, before launch: PostHog for product analytics, Axiom for the log and trace drain. Emit via `evlog`'s Workers adapter (wide events, PostHog and Axiom drains, cf-ray, tail sampling) or Effect OpenTelemetry over OTLP into Axiom; decide when we wire it. Alchemy already ships `@distilled.cloud/axiom`.
 
 Upload, recovery, integrity and abuse rules live in [RELIABILITY.md](RELIABILITY.md). Code placement lives in [STRUCTURE.md](STRUCTURE.md).
