@@ -1,36 +1,70 @@
 import { omit } from "solid-js";
 import type { ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { cva } from "./cn";
-import type { VariantProps } from "./cn";
+import { cva } from "styled-system/css";
+import type { RecipeVariantProps } from "styled-system/css";
 
 export const button = cva({
-  base: "inline-flex items-center justify-center gap-2.5 rounded-xl font-semibold transition-[translate,scale,box-shadow,filter] duration-200 ease-smooth disabled:pointer-events-none disabled:opacity-50 hover:-translate-y-px active:scale-[.97] [&_svg]:size-4 [&_svg]:transition-transform [&_svg]:duration-250 [&_svg]:ease-smooth hover:[&_svg]:translate-x-[3px]",
+  base: {
+    "& svg": {
+      boxSize: "4",
+      transitionDuration: "[250ms]",
+      transitionProperty: "[transform]",
+      transitionTimingFunction: "smooth",
+    },
+    "&:hover svg": { transform: "translateX(3px)" },
+    _active: { scale: "[.97]" },
+    _disabled: { opacity: 0.5, pointerEvents: "none" },
+    _hover: { translate: "[0 -1px]" },
+    alignItems: "center",
+    display: "inline-flex",
+    fontWeight: "semibold",
+    gap: "2.5",
+    justifyContent: "center",
+    rounded: "xl",
+    transitionDuration: "[200ms]",
+    transitionProperty: "[translate,scale,box-shadow,filter]",
+    transitionTimingFunction: "smooth",
+  },
   defaultVariants: {
     size: "md",
     variant: "fill",
   },
   variants: {
     size: {
-      md: "px-6 py-[15px] text-[15px]",
-      sm: "px-4 py-[11px] text-sm",
+      md: { fontSize: "[15px]", px: "6", py: "[15px]" },
+      sm: { fontSize: "sm", px: "4", py: "[11px]" },
     },
     variant: {
-      fill: "bg-linear-to-b from-[#3352dc] to-blue text-white shadow-[inset_0_1px_0_rgba(255,255,255,.28),0_1px_2px_rgba(23,24,28,.2),0_12px_28px_-12px_rgba(39,64,196,.7)] hover:brightness-[1.06]",
-      outline:
-        "bg-panel text-ink shadow-[inset_0_0_0_1px_var(--color-line),0_1px_2px_rgba(0,0,0,.06)] hover:bg-white",
+      fill: {
+        _hover: { filter: "[brightness(1.06)]" },
+        bgGradient: "to-b",
+        color: "white",
+        gradientFrom: "[#3352dc]",
+        gradientTo: "blue",
+        shadow:
+          "[inset 0 1px 0 rgba(255,255,255,.28),0 1px 2px rgba(23,24,28,.2),0 12px 28px -12px rgba(39,64,196,.7)]",
+      },
+      outline: {
+        _hover: { bg: "white" },
+        bg: "panel",
+        color: "ink",
+        shadow: "[inset 0 0 0 1px var(--colors-line),0 1px 2px rgba(0,0,0,.06)]",
+      },
     },
   },
 });
 
 export function Button(
-  props: ParentProps<VariantProps<typeof button> & JSX.ButtonHTMLAttributes<HTMLButtonElement>>,
+  props: ParentProps<
+    RecipeVariantProps<typeof button> & JSX.ButtonHTMLAttributes<HTMLButtonElement>
+  >,
 ) {
   const rest = omit(props, "children", "class", "type", "size", "style", "variant");
   return (
     <button
       {...rest}
-      class={button({ class: props.class, size: props.size, variant: props.variant })}
+      class={[button({ size: props.size, variant: props.variant }), props.class]}
       type={props.type ?? "button"}
       style={props.style}
     >

@@ -2,8 +2,8 @@
   opacity: 0;
   translate: 0 14px;
   transition:
-    opacity 0.6s var(--ease-smooth),
-    translate 0.6s var(--ease-smooth);
+    opacity 0.6s var(--easings-smooth),
+    translate 0.6s var(--easings-smooth);
   transition-delay: var(--d, 0ms);
 }
 .rv.in {
@@ -16,7 +16,7 @@
   vertical-align: top;
   overflow: hidden;
   height: 1em;
-  color: var(--color-blue);
+  color: var(--colors-blue);
   font-style: italic;
 }
 .flip > span {
@@ -24,7 +24,7 @@
   transform: translateY(110%);
   opacity: 0;
   transition:
-    transform 0.55s var(--ease-smooth),
+    transform 0.55s var(--easings-smooth),
     opacity 0.3s;
 }
 .flip > span.on {
@@ -39,7 +39,7 @@
 .ticker {
   overflow: hidden;
   white-space: nowrap;
-  border-block: 1px solid var(--color-ink);
+  border-block: 1px solid var(--colors-ink);
   padding-block: 18px;
   mask: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
 }
@@ -49,12 +49,12 @@
   animation: marq 38s linear infinite;
 }
 .ticker span {
-  font-family: var(--font-mono);
+  font-family: var(--fonts-mono);
   font-size: 13px;
-  color: var(--color-mut);
+  color: var(--colors-mut);
 }
 .ticker span b {
-  color: var(--color-ink);
+  color: var(--colors-ink);
   font-weight: 500;
 }
 
@@ -85,7 +85,7 @@
   position: absolute;
   left: 12px;
   bottom: 10px;
-  font-family: var(--font-mono);
+  font-family: var(--fonts-mono);
   font-size: 12px;
   color: #fff;
   background: rgba(0, 0, 0, 0.55);
@@ -107,9 +107,9 @@
   transform: translateY(40px) rotate(calc(var(--r) * 3));
   opacity: 0;
   transition:
-    transform 0.9s var(--ease-spring),
+    transform 0.9s var(--easings-spring),
     opacity 0.5s,
-    rotate 0.5s var(--ease-spring);
+    rotate 0.5s var(--easings-spring);
   transition-delay: var(--d, 0ms);
 }
 .note.rv.in {

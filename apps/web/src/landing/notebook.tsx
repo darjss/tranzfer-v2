@@ -1,19 +1,43 @@
 import type { ParentProps } from "solid-js";
+import { css, cx } from "styled-system/css";
 
 // Margin scribbles for the notebook layer. Positioning stays inline CSS so
 // each note is tuned where it is used; `.ink`/`.hand` reveal on scroll.
 
 type Tone = "" | "blue" | "red";
 
-const tone = { "": "text-ink", blue: "text-blue", red: "text-rust" } satisfies Record<Tone, string>;
+const tone = {
+  "": css({ color: "ink" }),
+  blue: css({ color: "blue" }),
+  red: css({ color: "rust" }),
+} satisfies Record<Tone, string>;
 
 export function Hand(props: ParentProps<{ tone?: Tone; style: string }>) {
   return (
     <span
-      class={[
-        "hand pointer-events-none absolute z-3 hidden translate-y-1.5 rotate-[var(--r,-4deg)] font-hand text-[22px] leading-[1.1] font-semibold opacity-0 transition-[opacity,translate] duration-500 ease-smooth [transition-delay:var(--d,0s)] lg:block [&.in]:translate-y-0 [&.in]:opacity-55 [&_s]:opacity-70 [&_s]:decoration-2",
+      class={cx(
+        "hand",
+        css({
+          "& s": { opacity: 0.7, textDecorationThickness: "2px" },
+          "&.in": { opacity: 0.55, translate: "[0 0]" },
+          display: { base: "none", lg: "block" },
+          fontFamily: "hand",
+          fontSize: "[22px]",
+          fontWeight: "semibold",
+          lineHeight: "[1.1]",
+          opacity: 0,
+          pointerEvents: "none",
+          pos: "absolute",
+          rotate: "var(--r, -4deg)",
+          transitionDelay: "var(--d, 0s)",
+          transitionDuration: "[500ms]",
+          transitionProperty: "[opacity,translate]",
+          transitionTimingFunction: "smooth",
+          translate: "[0 6px]",
+          zIndex: 3,
+        }),
         tone[props.tone ?? ""],
-      ]}
+      )}
       style={props.style}
     >
       {props.children}
@@ -21,13 +45,39 @@ export function Hand(props: ParentProps<{ tone?: Tone; style: string }>) {
   );
 }
 
+export const inkStrokes = css({
+  "& *": {
+    fill: "[none]",
+    stroke: "[currentColor]",
+    strokeDasharray: "var(--len, 600)",
+    strokeDashoffset: "var(--len, 600)",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    strokeWidth: "[2.2]",
+    transitionDelay: "var(--d, 0s)",
+    transitionDuration: "[1.3s]",
+    transitionProperty: "[stroke-dashoffset]",
+    transitionTimingFunction: "[cubic-bezier(.6,0,.2,1)]",
+  },
+  "&.in > *": { strokeDashoffset: "0" },
+});
+
 export function Ink(props: ParentProps<{ tone?: Tone; style: string; viewBox: string }>) {
   return (
     <svg
-      class={[
-        "ink pointer-events-none absolute z-3 hidden overflow-visible opacity-80 lg:block *:fill-none *:stroke-current *:stroke-[2.2] *:transition-[stroke-dashoffset] *:duration-[1.3s] *:ease-[cubic-bezier(.6,0,.2,1)] *:[stroke-dasharray:var(--len,600)] *:[stroke-dashoffset:var(--len,600)] *:[stroke-linecap:round] *:[stroke-linejoin:round] *:[transition-delay:var(--d,0s)] [&.in>*]:[stroke-dashoffset:0]",
+      class={cx(
+        "ink",
+        css({
+          display: { base: "none", lg: "block" },
+          opacity: 0.8,
+          overflow: "visible",
+          pointerEvents: "none",
+          pos: "absolute",
+          zIndex: 3,
+        }),
+        inkStrokes,
         tone[props.tone ?? ""],
-      ]}
+      )}
       style={props.style}
       viewBox={props.viewBox}
     >
@@ -43,11 +93,18 @@ export const Asterisk = (props: { tone?: Tone; style: string }) => (
 );
 
 export const Ring = (props: { style: string }) => (
-  <div class="halo hidden lg:block" style={props.style} />
+  <div class={cx("halo", css({ display: { base: "none", lg: "block" } }))} style={props.style} />
 );
 export const Blob = (props: { style: string }) => (
   <div
-    class="pointer-events-none absolute z-0 rounded-full opacity-35 blur-[60px]"
+    class={css({
+      borderRadius: "full",
+      filter: "[blur(60px)]",
+      opacity: 0.35,
+      pointerEvents: "none",
+      pos: "absolute",
+      zIndex: 0,
+    })}
     style={props.style}
   />
 );
@@ -56,7 +113,44 @@ export function Still(props: { src: string; label: string; style: string; in?: b
   return (
     <div
       class={[
-        "still pointer-events-none absolute top-(--y) left-(--x) w-(--w) aspect-[var(--ar,3/2)] overflow-hidden rounded-md bg-white px-1.5 pt-1.5 pb-[22px] shadow-[0_30px_60px_-30px_rgba(23,24,28,.55),0_0_0_1px_rgba(0,0,0,.06)] rotate-(--r) transform-[translate(var(--dx,0),var(--dy,0))_scale(.6)] opacity-0 [transition:transform_1.1s_var(--ease-spring),opacity_.6s_ease] [transition-delay:var(--d)] [animation-delay:var(--d)] after:absolute after:bottom-[5px] after:left-2 after:font-mono after:text-[9px] after:tracking-[.08em] after:uppercase after:text-mut after:content-[attr(data-l)] [&.in]:animate-[drift_7s_ease-in-out_infinite] [&.in]:opacity-100 [&.in]:transform-[translate(0,0)_scale(1)]",
+        "still",
+        css({
+          "&.in": {
+            animation: "[drift 7s ease-in-out infinite]",
+            opacity: 1,
+            transform: "[translate(0,0) scale(1)]",
+          },
+          _after: {
+            bottom: "[5px]",
+            color: "mut",
+            content: "attr(data-l)",
+            fontFamily: "mono",
+            fontSize: "[9px]",
+            left: "2",
+            letterSpacing: "[.08em]",
+            pos: "absolute",
+            textTransform: "uppercase",
+          },
+          animationDelay: "var(--d)",
+          aspectRatio: "var(--ar, 3/2)",
+          bg: "white",
+          borderRadius: "md",
+          left: "var(--x)",
+          opacity: 0,
+          overflow: "hidden",
+          paddingBottom: "[22px]",
+          pointerEvents: "none",
+          pos: "absolute",
+          pt: "1.5",
+          px: "1.5",
+          rotate: "var(--r)",
+          shadow: "[0 30px 60px -30px rgba(23,24,28,.55),0 0 0 1px rgba(0,0,0,.06)]",
+          top: "var(--y)",
+          transform: "[translate(var(--dx,0),var(--dy,0)) scale(.6)]",
+          transition: "[transform 1.1s var(--easings-spring),opacity .6s ease]",
+          transitionDelay: "var(--d)",
+          w: "var(--w)",
+        }),
         { in: props.in === true },
       ]}
       data-l={props.label}
@@ -65,7 +159,12 @@ export function Still(props: { src: string; label: string; style: string; in?: b
       <img
         src={props.src}
         alt=""
-        class="size-full rounded-[3px] object-cover saturate-[.9] contrast-[1.05]"
+        class={css({
+          borderRadius: "[3px]",
+          boxSize: "full",
+          filter: "[saturate(.9) contrast(1.05)]",
+          objectFit: "cover",
+        })}
       />
     </div>
   );

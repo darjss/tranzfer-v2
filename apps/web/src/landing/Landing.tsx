@@ -1,7 +1,8 @@
 import { For, createSignal, onSettled } from "solid-js";
+import { css, cx } from "styled-system/css";
 import Brand from "./Brand";
 import Uploader from "./Uploader";
-import { ArrowIcon, Asterisk, Blob, Hand, Ink, Ring, Still } from "./notebook";
+import { ArrowIcon, Asterisk, Blob, Hand, Ink, Ring, Still, inkStrokes } from "./notebook";
 import { button } from "../ui/Button";
 import "./landing.css";
 import coastRoad from "./assets/coast-road.webp";
@@ -125,10 +126,23 @@ const ticker = [
 
 const shift = (i: number) => (i % 2 ? 1 : -1) * (8 + i * 4);
 
-const mono = "font-mono text-[11px] tracking-[.1em] uppercase text-mut";
-const head = "mb-16 max-w-[60ch]";
-const h2 =
-  "mt-3.5 text-balance text-[clamp(34px,4.6vw,60px)] leading-none font-semibold tracking-[-0.04em] [&_i]:italic [&_i]:text-blue";
+const mono = css({
+  color: "mut",
+  fontFamily: "mono",
+  fontSize: "[11px]",
+  letterSpacing: "[.1em]",
+  textTransform: "uppercase",
+});
+const head = css({ maxW: "[60ch]", mb: "16" });
+const h2 = css({
+  "& i": { color: "blue", fontStyle: "italic" },
+  fontSize: "[clamp(34px,4.6vw,60px)]",
+  fontWeight: "semibold",
+  letterSpacing: "[-0.04em]",
+  lineHeight: "none",
+  mt: "3.5",
+  textWrap: "balance",
+});
 
 export default function Landing() {
   const [word, setWord] = createSignal(0, { name: "hero-word" });
@@ -190,31 +204,63 @@ export default function Landing() {
       ref={(el) => {
         root = el;
       }}
-      class="overflow-x-clip"
+      class={css({ overflowX: "clip" })}
     >
-      <div class="relative mx-auto max-w-[1180px] px-7">
-        <nav class="relative z-5 flex h-16 items-center justify-between border-b border-ink">
+      <div class={css({ marginInline: "auto", maxW: "[1180px]", pos: "relative", px: "7" })}>
+        <nav
+          class={css({
+            alignItems: "center",
+            borderBottomWidth: "1px",
+            borderColor: "ink",
+            display: "flex",
+            h: "16",
+            justifyContent: "space-between",
+            pos: "relative",
+            zIndex: 5,
+          })}
+        >
           <Brand />
-          <ul class="flex list-none items-center gap-7 text-sm font-medium text-mut">
-            <li class="hidden md:block">
-              <a class="hover:text-ink" href="#desk">
+          <ul
+            class={css({
+              alignItems: "center",
+              color: "mut",
+              display: "flex",
+              fontSize: "sm",
+              fontWeight: "medium",
+              gap: "7",
+              listStyle: "none",
+            })}
+          >
+            <li class={css({ display: { base: "none", md: "block" } })}>
+              <a class={css({ _hover: { color: "ink" } })} href="#desk">
                 Recovery goals
               </a>
             </li>
-            <li class="hidden md:block">
-              <a class="hover:text-ink" href="#how">
+            <li class={css({ display: { base: "none", md: "block" } })}>
+              <a class={css({ _hover: { color: "ink" } })} href="#how">
                 Planned workflow
               </a>
             </li>
             <li>
-              <a class="hover:text-ink" href="/sign-in">
+              <a class={css({ _hover: { color: "ink" } })} href="/sign-in">
                 Sign in
               </a>
             </li>
           </ul>
         </nav>
 
-        <section class="relative grid min-h-0 grid-cols-1 items-center gap-10 py-12 pb-20 lg:min-h-[calc(100vh-64px)] lg:grid-cols-2 lg:py-[72px] lg:pb-[140px]">
+        <section
+          class={css({
+            alignItems: "center",
+            display: "grid",
+            gap: "10",
+            gridTemplateColumns: { base: "1fr", lg: "repeat(2,minmax(0,1fr))" },
+            minH: { base: "0", lg: "[calc(100vh-64px)]" },
+            paddingBottom: { base: "20", lg: "[140px]" },
+            pos: "relative",
+            py: { base: "12", lg: "[72px]" },
+          })}
+        >
           <Blob style="width:520px;height:520px;left:-10%;top:-10%;background:#ffd9b0" />
           <Blob style="width:420px;height:420px;right:-6%;bottom:-20%;background:#c9d2ff" />
           <Ring style="right:8%;top:4%" />
@@ -256,7 +302,18 @@ export default function Landing() {
             ↑ upload design, still in progress
           </Hand>
 
-          <div class="scatter pointer-events-none absolute inset-0 z-0 hidden lg:block">
+          <div
+            class={cx(
+              "scatter",
+              css({
+                display: { base: "none", lg: "block" },
+                inset: "0",
+                pointerEvents: "none",
+                pos: "absolute",
+                zIndex: 0,
+              }),
+            )}
+          >
             <For each={stills}>
               {(s, i) => (
                 <Still
@@ -268,18 +325,45 @@ export default function Landing() {
             </For>
           </div>
 
-          <div class="relative z-2">
-            <h1 class="rv text-balance text-[clamp(44px,5.3vw,80px)] leading-[.96] font-semibold tracking-[-0.045em]">
+          <div class={css({ pos: "relative", zIndex: 2 })}>
+            <h1
+              class={cx(
+                "rv",
+                css({
+                  fontSize: "[clamp(44px,5.3vw,80px)]",
+                  fontWeight: "semibold",
+                  letterSpacing: "[-0.045em]",
+                  lineHeight: "[.96]",
+                  textWrap: "balance",
+                }),
+              )}
+            >
               Send the whole
               <br />
-              <span class="relative inline-block">
+              <span class={css({ display: "inline-block", pos: "relative" })}>
                 <span class="flip">
                   <For each={words}>
                     {(w, i) => <span class={{ on: word() === i(), out: prev() === i() }}>{w}</span>}
                   </For>
                 </span>
                 <svg
-                  class="ink pointer-events-none absolute -right-1 -bottom-1 -left-1 z-3 h-[18px] w-auto overflow-visible text-blue opacity-80 *:fill-none *:stroke-current *:stroke-[2.2] *:transition-[stroke-dashoffset] *:duration-[1.3s] *:ease-[cubic-bezier(.6,0,.2,1)] *:[stroke-dasharray:var(--len,600)] *:[stroke-dashoffset:var(--len,600)] *:[stroke-linecap:round] *:[stroke-linejoin:round] *:[transition-delay:var(--d,0s)] [&.in>*]:[stroke-dashoffset:0]"
+                  class={cx(
+                    "ink",
+                    css({
+                      bottom: "-1",
+                      color: "blue",
+                      h: "[18px]",
+                      left: "-1",
+                      opacity: 0.8,
+                      overflow: "visible",
+                      pointerEvents: "none",
+                      pos: "absolute",
+                      right: "-1",
+                      w: "auto",
+                      zIndex: 3,
+                    }),
+                    inkStrokes,
+                  )}
                   viewBox="0 0 260 26"
                   preserveAspectRatio="none"
                 >
@@ -293,18 +377,53 @@ export default function Landing() {
               Built to resume.
             </h1>
             <p
-              class="rv mt-[26px] mb-[34px] max-w-[34ch] text-pretty text-xl leading-[1.4] font-medium text-[#3a3b40]"
+              class={cx(
+                "rv",
+                css({
+                  color: "[#3a3b40]",
+                  fontSize: "xl",
+                  fontWeight: "medium",
+                  lineHeight: "[1.4]",
+                  maxW: "[34ch]",
+                  mb: "[34px]",
+                  mt: "[26px]",
+                  textWrap: "[pretty]",
+                }),
+              )}
               style="--d:120ms"
             >
               Tranzfer is an early build for sending large files to your editor. Sign-in works.
               Uploads are not available yet. The preview shows what we are building.
             </p>
-            <div class="rv flex flex-wrap items-center gap-[26px]" style="--d:200ms">
+            <div
+              class={cx(
+                "rv",
+                css({ alignItems: "center", display: "flex", flexWrap: "wrap", gap: "[26px]" }),
+              )}
+              style="--d:200ms"
+            >
               <a class={button()} href="/sign-in">
                 Sign in <ArrowIcon />
               </a>
               <a
-                class="border-b border-ink/25 pb-0.5 text-[15px] font-semibold text-ink transition-[border-color] duration-200 hover:border-ink [&_span]:inline-block [&_span]:transition-[translate] [&_span]:duration-250 [&_span]:ease-smooth [&:hover_span]:translate-x-1"
+                class={css({
+                  "& span": {
+                    display: "inline-block",
+                    transitionDuration: "[250ms]",
+                    transitionProperty: "[translate]",
+                    transitionTimingFunction: "smooth",
+                  },
+                  "&:hover span": { translate: "[4px 0]" },
+                  _hover: { borderColor: "ink" },
+                  borderBottomWidth: "1px",
+                  borderColor: "ink/25",
+                  color: "ink",
+                  fontSize: "[15px]",
+                  fontWeight: "semibold",
+                  paddingBottom: "0.5",
+                  transitionDuration: "[200ms]",
+                  transitionProperty: "[border-color]",
+                })}
                 href="#desk"
               >
                 Explore the recovery goals <span>→</span>
@@ -328,8 +447,8 @@ export default function Landing() {
         </div>
       </div>
 
-      <div class="relative mx-auto max-w-[1180px] px-7">
-        <section id="desk" class="relative py-20 lg:py-[120px]">
+      <div class={css({ marginInline: "auto", maxW: "[1180px]", pos: "relative", px: "7" })}>
+        <section id="desk" class={css({ pos: "relative", py: { base: "20", lg: "[120px]" } })}>
           <Ring style="left:60%;top:2%;width:120px;height:120px" />
           <Ink tone="red" style="left:34%;top:9%;width:120px;height:60px" viewBox="0 0 120 60">
             <path d="M4 50 C 30 10, 70 10, 112 30" style="--len:200" />
@@ -352,37 +471,103 @@ export default function Landing() {
           </Hand>
           <div class={head}>
             <p class={mono}>Illustrated recovery goals, not a completed transfer</p>
-            <h2 class={["rv", h2]}>
+            <h2 class={cx("rv", h2)}>
               When a transfer breaks.
               <br />
               <i>Keep the work already done.</i>
             </h2>
-            <p class="rv mt-[18px] max-w-[52ch] text-lg text-mut" style="--d:80ms">
+            <p
+              class={cx("rv", css({ color: "mut", fontSize: "lg", maxW: "[52ch]", mt: "[18px]" }))}
+              style="--d:80ms"
+            >
               The goal is to check which parts arrived, verify that the source file is unchanged,
               and send only what is missing. These scenarios describe planned behavior.
             </p>
           </div>
-          <div class="desk grid grid-cols-1 gap-y-7 gap-x-6 p-3 lg:grid-cols-3">
+          <div
+            class={cx(
+              "desk",
+              css({
+                columnGap: "6",
+                display: "grid",
+                gridTemplateColumns: { base: "1fr", lg: "repeat(3,minmax(0,1fr))" },
+                p: "3",
+                rowGap: "7",
+              }),
+            )}
+          >
             <For each={failures}>
               {(f, i) => (
                 <article
-                  class="note rv relative rounded-md bg-white px-2.5 pt-2.5 pb-[18px] shadow-[0_34px_60px_-36px_rgba(23,24,28,.5),0_0_0_1px_rgba(0,0,0,.06)] rotate-(--r)"
+                  class={cx(
+                    "note",
+                    "rv",
+                    css({
+                      bg: "white",
+                      borderRadius: "md",
+                      paddingBottom: "[18px]",
+                      pos: "relative",
+                      pt: "2.5",
+                      px: "2.5",
+                      rotate: "var(--r)",
+                      shadow: "[0 34px 60px -36px rgba(23,24,28,.5),0 0 0 1px rgba(0,0,0,.06)]",
+                    }),
+                  )}
                   style={`--r:${f.rot}deg;--d:${i() * 80}ms`}
                 >
                   <span class="tape" />
-                  <div class="ph relative aspect-4/3 overflow-hidden rounded-[3px]" data-gb={f.gb}>
+                  <div
+                    class={cx(
+                      "ph",
+                      css({
+                        aspectRatio: "landscape",
+                        borderRadius: "[3px]",
+                        overflow: "hidden",
+                        pos: "relative",
+                      }),
+                    )}
+                    data-gb={f.gb}
+                  >
                     <img
-                      class="size-full object-cover saturate-[.85]"
+                      class={css({
+                        boxSize: "full",
+                        filter: "[saturate(.85)]",
+                        objectFit: "cover",
+                      })}
                       src={f.src}
                       alt=""
                       loading="lazy"
                     />
                   </div>
-                  <h3 class="mx-1.5 mt-4 mb-1.5 text-xl leading-[1.1] font-semibold tracking-[-0.02em]">
+                  <h3
+                    class={css({
+                      fontSize: "xl",
+                      fontWeight: "semibold",
+                      letterSpacing: "[-0.02em]",
+                      lineHeight: "[1.1]",
+                      mb: "1.5",
+                      mt: "4",
+                      mx: "1.5",
+                    })}
+                  >
                     {f.h}
                   </h3>
-                  <p class="mx-1.5 text-sm text-mut">{f.p}</p>
-                  <span class="r mx-1.5 mt-3 inline-block font-mono text-[11px] tracking-[.08em] uppercase text-ok">
+                  <p class={css({ color: "mut", fontSize: "sm", mx: "1.5" })}>{f.p}</p>
+                  <span
+                    class={cx(
+                      "r",
+                      css({
+                        color: "ok",
+                        display: "inline-block",
+                        fontFamily: "mono",
+                        fontSize: "[11px]",
+                        letterSpacing: "[.08em]",
+                        mt: "3",
+                        mx: "1.5",
+                        textTransform: "uppercase",
+                      }),
+                    )}
+                  >
                     {f.r}
                   </span>
                 </article>
@@ -391,7 +576,7 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="how" class="relative py-20 lg:py-[120px]">
+        <section id="how" class={css({ pos: "relative", py: { base: "20", lg: "[120px]" } })}>
           <Hand style="right:0;top:6%;--r:4deg;--d:.5s">
             planned for laptops
             <br />
@@ -399,27 +584,89 @@ export default function Landing() {
           </Hand>
           <div class={head}>
             <p class={mono}>Planned workflow</p>
-            <h2 class={["rv", h2]}>
+            <h2 class={cx("rv", h2)}>
               From camera card <i>to editor.</i>
             </h2>
           </div>
-          <div class="steps grid grid-cols-1 gap-[18px] lg:grid-cols-3">
+          <div
+            class={cx(
+              "steps",
+              css({
+                display: "grid",
+                gap: "[18px]",
+                gridTemplateColumns: { base: "1fr", lg: "repeat(3,minmax(0,1fr))" },
+              }),
+            )}
+          >
             <For each={steps}>
               {(s, i) => (
                 <div
-                  class="step rv group relative flex min-h-[380px] flex-col justify-end overflow-hidden rounded-[20px] bg-panel ring-1 ring-line after:absolute after:inset-0 after:bg-linear-to-b after:from-transparent after:from-30% after:to-[rgba(23,24,28,.85)] after:content-['']"
+                  class={cx(
+                    "step",
+                    "rv",
+                    "group",
+                    css({
+                      _after: {
+                        bgGradient: "to-b",
+                        content: "''",
+                        gradientFrom: "transparent",
+                        gradientFromPosition: "30%",
+                        gradientTo: "[rgba(23,24,28,.85)]",
+                        inset: "0",
+                        pos: "absolute",
+                      },
+                      bg: "panel",
+                      borderRadius: "[20px]",
+                      display: "flex",
+                      flexDir: "column",
+                      justifyContent: "flex-end",
+                      minH: "[380px]",
+                      outlineColor: "line",
+                      outlineStyle: "solid",
+                      outlineWidth: "1px",
+                      overflow: "hidden",
+                      pos: "relative",
+                    }),
+                  )}
                   style={`--d:${i() * 80}ms`}
                 >
                   <img
-                    class="absolute inset-0 size-full object-cover transition-[scale,filter] duration-[1.2s] ease-smooth group-hover:scale-[1.06]"
+                    class={css({
+                      _groupHover: { scale: "[1.06]" },
+                      boxSize: "full",
+                      inset: "0",
+                      objectFit: "cover",
+                      pos: "absolute",
+                      transitionDuration: "[1.2s]",
+                      transitionProperty: "[scale,filter]",
+                      transitionTimingFunction: "smooth",
+                    })}
                     src={s.src}
                     alt=""
                     loading="lazy"
                   />
-                  <div class="relative z-1 p-[26px] text-paper">
-                    <span class="font-mono text-xs tracking-[.1em] text-[#9fb0ff]">0{i() + 1}</span>
-                    <h3 class="my-2.5 text-[26px] font-semibold tracking-[-0.025em]">{s.h}</h3>
-                    <p class="text-[15px] text-[#c9c6bc]">{s.p}</p>
+                  <div class={css({ color: "paper", p: "[26px]", pos: "relative", zIndex: 1 })}>
+                    <span
+                      class={css({
+                        color: "[#9fb0ff]",
+                        fontFamily: "mono",
+                        fontSize: "xs",
+                        letterSpacing: "[.1em]",
+                      })}
+                    >
+                      0{i() + 1}
+                    </span>
+                    <h3
+                      class={css({
+                        fontSize: "[26px]",
+                        fontWeight: "semibold",
+                        letterSpacing: "[-0.025em]",
+                        my: "2.5",
+                      })}
+                    >
+                      {s.h}
+                    </h3>
+                    <p class={css({ color: "[#c9c6bc]", fontSize: "[15px]" })}>{s.p}</p>
                   </div>
                 </div>
               )}
@@ -427,7 +674,17 @@ export default function Landing() {
           </div>
         </section>
 
-        <section class="final relative overflow-hidden py-20 text-center lg:py-40">
+        <section
+          class={cx(
+            "final",
+            css({
+              overflow: "hidden",
+              pos: "relative",
+              py: { base: "20", lg: "40" },
+              textAlign: "center",
+            }),
+          )}
+        >
           <Blob style="width:600px;height:400px;left:20%;top:20%;background:#ffe0bd" />
           <Ink tone="red" style="left:27%;top:56%;width:110px;height:70px" viewBox="0 0 120 90">
             <path d="M6 84 C 20 40, 60 20, 110 14" style="--len:260" />
@@ -446,14 +703,35 @@ export default function Landing() {
           />
           <Still in src={nightTravel} label="pickup" style="--w:140px;--x:84%;--y:55%;--r:9deg" />
           <p class={mono}>Early build</p>
-          <h2 class={["rv relative z-1 mx-auto mt-3.5 mb-[30px]", h2]}>
+          <h2
+            class={cx(
+              "rv",
+              css({ marginInline: "auto", mb: "[30px]", mt: "3.5", pos: "relative", zIndex: 1 }),
+              h2,
+            )}
+          >
             Large files. <i>Still building.</i>
           </h2>
-          <a class={button({ class: "rv relative z-1" })} href="/sign-in" style="--d:80ms">
+          <a
+            class={cx(button(), "rv", css({ pos: "relative", zIndex: 1 }))}
+            href="/sign-in"
+            style="--d:80ms"
+          >
             Sign in <ArrowIcon />
           </a>
         </section>
-        <footer class="flex justify-between border-t border-ink pt-7 pb-[60px] text-[13px] text-mut">
+        <footer
+          class={css({
+            borderColor: "ink",
+            borderTopWidth: "1px",
+            color: "mut",
+            display: "flex",
+            fontSize: "[13px]",
+            justifyContent: "space-between",
+            paddingBottom: "[60px]",
+            pt: "7",
+          })}
+        >
           <span>© 2026 Tranzfer</span>
           <span>Built for the work between shoots.</span>
         </footer>

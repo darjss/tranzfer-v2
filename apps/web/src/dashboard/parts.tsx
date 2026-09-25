@@ -1,3 +1,4 @@
+import { css, cx } from "styled-system/css";
 import type { Tone } from "./format";
 import { toneBar } from "./format";
 
@@ -12,27 +13,51 @@ export function Progress(props: {
 }) {
   return (
     <div
-      class={[
-        "flex overflow-hidden rounded-full bg-ink/8",
-        props.thick === true ? "h-2.5" : "h-1.5",
+      class={cx(
+        css({
+          bg: "ink/8",
+          borderRadius: "full",
+          display: "flex",
+          h: props.thick === true ? "2.5" : "1.5",
+          overflow: "hidden",
+        }),
         props.class,
-      ]}
+      )}
       role="progressbar"
       aria-valuemax={100}
       aria-valuemin={0}
       aria-valuenow={Math.round(props.pct)}
     >
       <div
-        class={[toneBar[props.tone], "h-full transition-[width] duration-500 ease-smooth"]}
+        class={cx(
+          toneBar[props.tone],
+          css({
+            h: "full",
+            transitionDuration: "[500ms]",
+            transitionProperty: "[width]",
+            transitionTimingFunction: "smooth",
+          }),
+        )}
         style={{ width: `${props.pct}%` }}
       />
-      <div class="h-full bg-blue/25" style={{ width: `${props.flightPct}%` }} />
+      <div class={css({ bg: "blue/25", h: "full" })} style={{ width: `${props.flightPct}%` }} />
     </div>
   );
 }
 
 export const Avatar = (props: { name: string }) => (
-  <span class="grid size-8 place-items-center rounded-full bg-ink font-semibold text-[13px] text-paper">
+  <span
+    class={css({
+      bg: "ink",
+      borderRadius: "full",
+      boxSize: "8",
+      color: "paper",
+      display: "grid",
+      fontSize: "[13px]",
+      fontWeight: "semibold",
+      placeItems: "center",
+    })}
+  >
     {props.name.trim().charAt(0).toUpperCase() || "?"}
   </span>
 );

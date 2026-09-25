@@ -1,5 +1,6 @@
 import type { Delivery, Principal } from "@tranzfer/contracts";
 import { createMemo, For, Show } from "solid-js";
+import { css, cx } from "styled-system/css";
 
 import PhPlusBold from "~icons/ph/plus-bold";
 import PhSignOutBold from "~icons/ph/sign-out-bold";
@@ -39,13 +40,44 @@ export function Sidebar(props: Props) {
   });
 
   return (
-    <aside class="border-line max-lg:contents lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-r lg:bg-panel/85">
-      <div class="flex h-16 items-center px-5 max-lg:bg-panel">
+    <aside
+      class={css({
+        borderColor: "line",
+        lg: {
+          bg: "panel/85",
+          borderRightWidth: "1px",
+          display: "flex",
+          flexDir: "column",
+          h: "screen",
+          pos: "sticky",
+          top: "0",
+        },
+        lgDown: { display: "contents" },
+      })}
+    >
+      <div
+        class={css({
+          alignItems: "center",
+          display: "flex",
+          h: "16",
+          lgDown: { bg: "panel" },
+          px: "5",
+        })}
+      >
         <Brand />
       </div>
-      <div class="border-b border-line px-4 pb-4 max-lg:bg-panel lg:border-0 lg:pb-0">
+      <div
+        class={css({
+          borderBottomWidth: "1px",
+          borderColor: "line",
+          lg: { borderBottomWidth: "0", pb: "0" },
+          lgDown: { bg: "panel" },
+          pb: "4",
+          px: "4",
+        })}
+      >
         <Button
-          class="w-full"
+          class={css({ w: "full" })}
           onClick={() => {
             props.select();
           }}
@@ -54,12 +86,35 @@ export function Sidebar(props: Props) {
           <PhPlusBold /> New delivery
         </Button>
       </div>
-      <nav class="mt-3 flex-1 overflow-y-auto px-2 pb-4 max-lg:order-2">
+      <nav
+        class={css({
+          flex: "1",
+          lgDown: { order: "2" },
+          mt: "3",
+          overflowY: "auto",
+          pb: "4",
+          px: "2",
+        })}
+      >
         <For each={groups()}>
           {([label, itemsInGroup]) => (
             <>
-              <p class="flex gap-2 px-3 pt-5 pb-1.5 text-xs font-semibold text-mut">
-                {label} <span class="font-mono font-normal">{itemsInGroup.length}</span>
+              <p
+                class={css({
+                  color: "mut",
+                  display: "flex",
+                  fontSize: "xs",
+                  fontWeight: "semibold",
+                  gap: "2",
+                  pb: "1.5",
+                  pt: "5",
+                  px: "3",
+                })}
+              >
+                {label}{" "}
+                <span class={css({ fontFamily: "mono", fontWeight: "normal" })}>
+                  {itemsInGroup.length}
+                </span>
               </p>
               <For each={itemsInGroup}>
                 {(delivery) => {
@@ -68,21 +123,51 @@ export function Sidebar(props: Props) {
                   const total = createMemo(() => totalSize(delivery));
                   return (
                     <button
-                      class={[
-                        "grid w-full gap-1.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-150",
+                      class={cx(
+                        css({
+                          borderRadius: "xl",
+                          display: "grid",
+                          gap: "1.5",
+                          px: "3",
+                          py: "2.5",
+                          textAlign: "left",
+                          transitionDuration: "[150ms]",
+                          transitionProperty: "colors",
+                          w: "full",
+                        }),
                         props.selectedId === delivery.id
-                          ? "bg-paper ring-1 ring-line"
-                          : "hover:bg-paper/60",
-                      ]}
+                          ? css({
+                              bg: "paper",
+                              shadow: "[0 0 0 1px var(--colors-line)]",
+                            })
+                          : css({ _hover: { bg: "paper/60" } }),
+                      )}
                       aria-current={props.selectedId === delivery.id ? "true" : undefined}
                       onClick={() => {
                         props.select(delivery.id);
                       }}
                       type="button"
                     >
-                      <span class="flex items-baseline justify-between gap-3">
-                        <b class="truncate text-[15px] font-semibold">{delivery.title}</b>
-                        <small class="font-mono text-xs text-mut">{bytes(total())}</small>
+                      <span
+                        class={css({
+                          alignItems: "baseline",
+                          display: "flex",
+                          gap: "3",
+                          justifyContent: "space-between",
+                        })}
+                      >
+                        <b
+                          class={css({
+                            fontSize: "[15px]",
+                            fontWeight: "semibold",
+                            truncate: true,
+                          })}
+                        >
+                          {delivery.title}
+                        </b>
+                        <small class={css({ color: "mut", fontFamily: "mono", fontSize: "xs" })}>
+                          {bytes(total())}
+                        </small>
                       </span>
                       <Show when={delivery.status === "open" && roll().local}>
                         <Progress
@@ -91,7 +176,9 @@ export function Sidebar(props: Props) {
                           tone={status().tone}
                         />
                       </Show>
-                      <small class={["text-xs", toneText[status().tone]]}>{status().short}</small>
+                      <small class={cx(css({ fontSize: "xs" }), toneText[status().tone])}>
+                        {status().short}
+                      </small>
                     </button>
                   );
                 }}
@@ -100,18 +187,35 @@ export function Sidebar(props: Props) {
           )}
         </For>
       </nav>
-      <footer class="flex items-center gap-3 border-t border-line px-4 py-3 text-sm max-lg:order-3">
+      <footer
+        class={css({
+          alignItems: "center",
+          borderColor: "line",
+          borderTopWidth: "1px",
+          display: "flex",
+          fontSize: "sm",
+          gap: "3",
+          lgDown: { order: "3" },
+          px: "4",
+          py: "3",
+        })}
+      >
         <Avatar name={props.principal.name} />
-        <span class="truncate font-medium">{props.principal.name}</span>
+        <span class={css({ fontWeight: "medium", truncate: true })}>{props.principal.name}</span>
         <button
-          class="ml-auto text-mut transition-colors hover:text-ink"
+          class={css({
+            _hover: { color: "ink" },
+            color: "mut",
+            marginLeft: "auto",
+            transitionProperty: "colors",
+          })}
           aria-label="Sign out"
           onClick={() => {
             void signOut();
           }}
           type="button"
         >
-          <PhSignOutBold class="size-4" />
+          <PhSignOutBold class={css({ boxSize: "4" })} />
         </button>
       </footer>
     </aside>

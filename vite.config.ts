@@ -4,7 +4,7 @@ import { rootLint } from "./lint.config";
 
 export default defineConfig({
   fmt: {
-    ignorePatterns: ["**/file-routes.d.ts", "**/solid-env.d.ts"],
+    ignorePatterns: ["**/file-routes.d.ts", "**/solid-env.d.ts", "**/styled-system/**"],
   },
   lint: rootLint,
   staged: {
