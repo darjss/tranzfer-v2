@@ -14,22 +14,36 @@ import {
   Switch,
   useContext,
 } from "solid-js";
+import { css, cx } from "styled-system/css";
 
 import { ApiClient } from "../../api/client";
 import { runEffect, RuntimeContext } from "../../api/solid-effect";
 import { bytes, items, untilDate } from "../../dashboard/format";
 import Brand from "../../landing/Brand";
 
+const errorSection = css({
+  marginInline: "auto",
+  maxW: "[720px]",
+  px: { base: "6", sm: "12" },
+  py: "10",
+});
+const errorTitle = css({
+  fontSize: "[36px]",
+  fontWeight: "semibold",
+  letterSpacing: "[-0.03em]",
+  lineHeight: "tight",
+});
+
 const LinkError = (props: { error: unknown }) => (
   <Switch>
     <Match when={props.error instanceof LinkNotReady ? props.error : null}>
       {(current) => (
-        <section class="mx-auto max-w-[720px] px-6 py-10 sm:px-12">
-          <p class="font-mono text-xs text-mut">from {current().senderName}</p>
-          <h1 class="mt-2 text-[36px] leading-tight font-semibold tracking-[-0.03em]">
-            {current().title}
-          </h1>
-          <p class="mt-3 text-blue">
+        <section class={errorSection}>
+          <p class={css({ color: "mut", fontFamily: "mono", fontSize: "xs" })}>
+            from {current().senderName}
+          </p>
+          <h1 class={cx(errorTitle, css({ mt: "2" }))}>{current().title}</h1>
+          <p class={css({ color: "blue", mt: "3" })}>
             Still uploading. This link starts working once every file is finished.
           </p>
         </section>
@@ -37,20 +51,16 @@ const LinkError = (props: { error: unknown }) => (
     </Match>
     <Match when={props.error instanceof LinkExpired ? props.error : null}>
       {(current) => (
-        <section class="mx-auto max-w-[720px] px-6 py-10 sm:px-12">
-          <h1 class="text-[36px] leading-tight font-semibold tracking-[-0.03em]">
-            {current().title}
-          </h1>
-          <p class="mt-3 text-mut">Expired on {untilDate(current().expiredAt)}.</p>
+        <section class={errorSection}>
+          <h1 class={errorTitle}>{current().title}</h1>
+          <p class={css({ color: "mut", mt: "3" })}>Expired on {untilDate(current().expiredAt)}.</p>
         </section>
       )}
     </Match>
     <Match when={true}>
-      <section class="mx-auto max-w-[720px] px-6 py-10 sm:px-12">
-        <h1 class="text-[36px] leading-tight font-semibold tracking-[-0.03em]">
-          This link doesn't work.
-        </h1>
-        <p class="mt-3 text-mut">
+      <section class={errorSection}>
+        <h1 class={errorTitle}>This link doesn't work.</h1>
+        <p class={css({ color: "mut", mt: "3" })}>
           {props.error instanceof LinkNotFound
             ? "It may have been cancelled."
             : "Something went wrong opening it. Try again in a moment."}
@@ -89,41 +99,91 @@ const LinkPage = () => {
   };
 
   return (
-    <main class="paper-dots min-h-screen">
+    <main class={cx("paper-dots", css({ minH: "screen" }))}>
       <Meta name="description" content="Download files shared with you through Tranzfer." />
-      <nav class="flex h-16 items-center px-6 sm:px-12">
+      <nav
+        class={css({ alignItems: "center", display: "flex", h: "16", px: { base: "6", sm: "12" } })}
+      >
         <Brand />
       </nav>
-      <Loading fallback={<div class="px-6 py-16 text-sm text-mut sm:px-12">Loading…</div>}>
+      <Loading
+        fallback={
+          <div class={css({ color: "mut", fontSize: "sm", px: { base: "6", sm: "12" }, py: "16" })}>
+            Loading…
+          </div>
+        }
+      >
         <Errored fallback={(error) => <LinkError error={error()} />}>
           <Show
             when={linkError()}
             fallback={
-              <section class="mx-auto max-w-[720px] px-6 py-10 sm:px-12">
+              <section class={errorSection}>
                 <Title>{delivery()?.title ?? "Tranzfer"}</Title>
-                <h1 class="text-[36px] leading-tight font-semibold tracking-[-0.03em]">
-                  {delivery()?.title}
-                </h1>
-                <p class="mt-2 text-mut">
-                  from <b class="font-medium text-ink">{delivery()?.senderName}</b> ·{" "}
-                  {items(delivery()?.files.length ?? 0)} · {bytes(total())}
+                <h1 class={errorTitle}>{delivery()?.title}</h1>
+                <p class={css({ color: "mut", mt: "2" })}>
+                  from{" "}
+                  <b class={css({ color: "ink", fontWeight: "medium" })}>
+                    {delivery()?.senderName}
+                  </b>{" "}
+                  · {items(delivery()?.files.length ?? 0)} · {bytes(total())}
                 </p>
                 <Show when={delivery()?.expiresAt ?? null}>
                   {(expiresAt) => (
-                    <p class="mt-1 text-sm text-mut">Available until {untilDate(expiresAt())}</p>
+                    <p class={css({ color: "mut", fontSize: "sm", mt: "1" })}>
+                      Available until {untilDate(expiresAt())}
+                    </p>
                   )}
                 </Show>
 
-                <ul class="mt-8 divide-y divide-line/70 border-y border-line">
+                <ul
+                  class={css({
+                    borderBottomWidth: "1px",
+                    borderColor: "line",
+                    borderTopWidth: "1px",
+                    divideColor: "line/70",
+                    divideY: "1px",
+                    mt: "8",
+                  })}
+                >
                   <For each={delivery()?.files ?? []}>
                     {(file) => (
-                      <li class="grid grid-cols-[1fr_80px_auto] items-center gap-4 py-3">
-                        <span class="truncate font-mono text-sm">{file.path}</span>
-                        <span class="text-right font-mono text-sm text-mut">
+                      <li
+                        class={css({
+                          alignItems: "center",
+                          columnGap: "4",
+                          display: "grid",
+                          gridTemplateColumns: "[1fr 80px auto]",
+                          py: "3",
+                        })}
+                      >
+                        <span class={css({ fontFamily: "mono", fontSize: "sm", truncate: true })}>
+                          {file.path}
+                        </span>
+                        <span
+                          class={css({
+                            color: "mut",
+                            fontFamily: "mono",
+                            fontSize: "sm",
+                            textAlign: "right",
+                          })}
+                        >
                           {bytes(file.size)}
                         </span>
                         <a
-                          class="inline-flex items-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-paper transition-transform hover:-translate-y-px"
+                          class={css({
+                            _hover: { translate: "[0 -1px]" },
+                            alignItems: "center",
+                            bg: "ink",
+                            borderRadius: "xl",
+                            color: "paper",
+                            display: "inline-flex",
+                            fontSize: "sm",
+                            fontWeight: "semibold",
+                            gap: "2",
+                            px: "4",
+                            py: "2",
+                            transitionProperty: "[transform,translate,scale,rotate]",
+                          })}
                           href={file.url}
                           onClick={(event) => {
                             event.preventDefault();
@@ -136,7 +196,7 @@ const LinkPage = () => {
                     )}
                   </For>
                 </ul>
-                <p class="mt-4 text-sm text-mut">
+                <p class={css({ color: "mut", fontSize: "sm", mt: "4" })}>
                   Interrupted downloads can resume in your browser's download manager while the link
                   is fresh.
                 </p>
@@ -163,8 +223,10 @@ export default function PublicDelivery() {
   return (
     <LazyLink
       fallback={
-        <main class="paper-dots min-h-screen">
-          <div class="px-6 py-16 text-sm text-mut sm:px-12">Loading…</div>
+        <main class={cx("paper-dots", css({ minH: "screen" }))}>
+          <div class={css({ color: "mut", fontSize: "sm", px: { base: "6", sm: "12" }, py: "16" })}>
+            Loading…
+          </div>
         </main>
       }
     />

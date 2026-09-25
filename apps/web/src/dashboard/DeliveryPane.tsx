@@ -1,5 +1,6 @@
 import type { Delivery } from "@tranzfer/contracts";
 import { createMemo, createSignal, For, Show } from "solid-js";
+import { css, cx } from "styled-system/css";
 
 import PhCheckBold from "~icons/ph/check-bold";
 import PhCopyBold from "~icons/ph/copy-bold";
@@ -64,34 +65,60 @@ export function DeliveryPane(props: Props) {
   };
 
   return (
-    <section class="max-w-[860px] px-6 py-10 pb-32 sm:px-12">
-      <p class="font-mono text-xs text-mut">
+    <section class={css({ maxW: "[860px]", pb: "32", px: { base: "6", sm: "12" }, py: "10" })}>
+      <p class={css({ color: "mut", fontFamily: "mono", fontSize: "xs" })}>
         Sent {sentAt(props.delivery.createdAt)} · keeps {props.delivery.retentionDays}{" "}
         {props.delivery.retentionDays === 1 ? "day" : "days"} after upload
       </p>
-      <h1 class="mt-2 text-[40px] leading-tight font-semibold tracking-[-0.035em]">
+      <h1
+        class={css({
+          fontSize: "[40px]",
+          fontWeight: "semibold",
+          letterSpacing: "[-0.035em]",
+          lineHeight: "tight",
+          mt: "2",
+        })}
+      >
         {props.delivery.title}
       </h1>
 
-      <section class="mt-8 rounded-2xl bg-panel p-6 ring-1 ring-line">
-        <p class="font-mono text-[26px] tracking-[-0.02em]">
+      <section
+        class={css({
+          bg: "panel",
+          borderRadius: "2xl",
+          mt: "8",
+          p: "6",
+          shadow: "[0 0 0 1px var(--colors-line)]",
+        })}
+      >
+        <p class={css({ fontFamily: "mono", fontSize: "[26px]", letterSpacing: "[-0.02em]" })}>
           {bytes(roll().confirmed)}
-          <span class="text-base text-mut"> of {bytes(total())} confirmed</span>
+          <span class={css({ color: "mut", fontSize: "md" })}> of {bytes(total())} confirmed</span>
         </p>
         <Progress
-          class="mt-4"
+          class={css({ mt: "4" })}
           flightPct={total() === 0 ? 0 : (roll().inFlight / total()) * 100}
           pct={total() === 0 ? 0 : (roll().confirmed / total()) * 100}
           thick
           tone={status().tone}
         />
-        <p class={["mt-3 text-[15px]", toneText[status().tone]]}>{status().long}</p>
+        <p class={cx(css({ fontSize: "[15px]", mt: "3" }), toneText[status().tone])}>
+          {status().long}
+        </p>
         <Show when={roll().uploading && props.online && roll().speed > 0}>
-          <p class="mt-1 font-mono text-xs text-mut">
+          <p class={css({ color: "mut", fontFamily: "mono", fontSize: "xs", mt: "1" })}>
             {speedAt(roll().speed)} · {etaAt(total() - roll().confirmed, roll().speed)} left
           </p>
         </Show>
-        <div class="mt-5 flex flex-wrap items-center gap-3">
+        <div
+          class={css({
+            alignItems: "center",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "3",
+            mt: "5",
+          })}
+        >
           <Show
             when={confirming()}
             fallback={
@@ -108,7 +135,9 @@ export function DeliveryPane(props: Props) {
               </Show>
             }
           >
-            <span class="text-sm text-mut">Cancel it? Uploads stop and the link dies.</span>
+            <span class={css({ color: "mut", fontSize: "sm" })}>
+              Cancel it? Uploads stop and the link dies.
+            </span>
             <Button
               disabled={cancelling()}
               onClick={() => {
@@ -120,7 +149,7 @@ export function DeliveryPane(props: Props) {
               {cancelling() ? "Cancelling…" : "Yes, cancel"}
             </Button>
             <button
-              class="text-sm text-ink underline"
+              class={css({ color: "ink", fontSize: "sm", textDecoration: "underline" })}
               onClick={() => {
                 setConfirming(false);
               }}
@@ -131,22 +160,35 @@ export function DeliveryPane(props: Props) {
           </Show>
         </div>
         <Show when={problem() !== undefined}>
-          <p class="mt-3 text-sm text-rust" role="alert">
+          <p class={css({ color: "rust", fontSize: "sm", mt: "3" })} role="alert">
             {problem()}
           </p>
         </Show>
       </section>
 
-      <section class="mt-8">
-        <h2 class="text-sm font-semibold">Link</h2>
-        <div class="mt-2 flex items-center gap-2 rounded-xl bg-panel py-1.5 pr-1.5 pl-4 ring-1 ring-line">
+      <section class={css({ mt: "8" })}>
+        <h2 class={css({ fontSize: "sm", fontWeight: "semibold" })}>Link</h2>
+        <div
+          class={css({
+            alignItems: "center",
+            bg: "panel",
+            borderRadius: "xl",
+            display: "flex",
+            gap: "2",
+            mt: "2",
+            pl: "4",
+            pr: "1.5",
+            py: "1.5",
+            shadow: "[0 0 0 1px var(--colors-line)]",
+          })}
+        >
           <span
-            class={[
-              "flex-1 truncate font-mono text-sm",
+            class={cx(
+              css({ flex: "1", fontFamily: "mono", fontSize: "sm", truncate: true }),
               props.delivery.status === "expired" || props.delivery.status === "cancelled"
-                ? "text-mut line-through"
-                : "",
-            ]}
+                ? css({ color: "mut", textDecoration: "line-through" })
+                : undefined,
+            )}
           >
             {link()}
           </span>
@@ -161,7 +203,7 @@ export function DeliveryPane(props: Props) {
             <PhCopyBold /> {copied() ? "Copied" : "Copy"}
           </Button>
         </div>
-        <p class="mt-2 text-sm text-mut">
+        <p class={css({ color: "mut", fontSize: "sm", mt: "2" })}>
           <Show
             when={props.delivery.status === "ready" && props.delivery.expiresAt !== null}
             fallback="Share it now. It starts working once every file is finished."
@@ -173,24 +215,47 @@ export function DeliveryPane(props: Props) {
         </p>
       </section>
 
-      <section class="mt-8">
-        <h2 class="text-sm font-semibold">
+      <section class={css({ mt: "8" })}>
+        <h2 class={css({ fontSize: "sm", fontWeight: "semibold" })}>
           Files{" "}
-          <span class="font-mono text-xs font-normal text-mut">
+          <span
+            class={css({ color: "mut", fontFamily: "mono", fontSize: "xs", fontWeight: "normal" })}
+          >
             {items(props.delivery.transfers.length)}
           </span>
         </h2>
-        <ul class="mt-2 divide-y divide-line/70 border-y border-line">
+        <ul
+          class={css({
+            borderBottomWidth: "1px",
+            borderColor: "line",
+            borderTopWidth: "1px",
+            divideColor: "line/70",
+            divideY: "1px",
+            mt: "2",
+          })}
+        >
           <For each={props.delivery.transfers}>
             {(transfer) => {
               const progress = createMemo(() => transfers[transfer.id]);
               return (
-                <li class="grid grid-cols-[20px_1fr_140px_80px] items-center gap-4 py-3">
-                  <PhFileBold class="size-4 text-mut" />
-                  <span class="truncate font-mono text-sm">{transfer.path}</span>
+                <li
+                  class={css({
+                    alignItems: "center",
+                    columnGap: "4",
+                    display: "grid",
+                    gridTemplateColumns: "[20px 1fr 140px 80px]",
+                    py: "3",
+                  })}
+                >
+                  <PhFileBold class={css({ boxSize: "4", color: "mut" })} />
+                  <span class={css({ fontFamily: "mono", fontSize: "sm", truncate: true })}>
+                    {transfer.path}
+                  </span>
                   <Show
                     when={transfer.state !== "complete"}
-                    fallback={<PhCheckBold class="size-4 justify-self-end text-ok" />}
+                    fallback={
+                      <PhCheckBold class={css({ boxSize: "4", color: "ok", justifySelf: "end" })} />
+                    }
                   >
                     <Show
                       when={progress()?.phase === "failed"}
@@ -198,14 +263,23 @@ export function DeliveryPane(props: Props) {
                         <Show
                           when={progress() !== undefined}
                           fallback={
-                            <span class="text-right text-xs text-rust">
+                            <span
+                              class={css({ color: "rust", fontSize: "xs", textAlign: "right" })}
+                            >
                               {transfer.state === "cancelled" ? "cancelled" : "interrupted"}
                             </span>
                           }
                         >
-                          <div class="h-1 overflow-hidden rounded-full bg-ink/8">
+                          <div
+                            class={css({
+                              bg: "ink/8",
+                              borderRadius: "full",
+                              h: "1",
+                              overflow: "hidden",
+                            })}
+                          >
                             <div
-                              class="h-full bg-blue"
+                              class={css({ bg: "blue", h: "full" })}
                               style={{
                                 width: `${
                                   transfer.size === 0
@@ -219,7 +293,12 @@ export function DeliveryPane(props: Props) {
                       }
                     >
                       <button
-                        class="justify-self-end text-xs text-ink underline"
+                        class={css({
+                          color: "ink",
+                          fontSize: "xs",
+                          justifySelf: "end",
+                          textDecoration: "underline",
+                        })}
                         onClick={() => {
                           retryTransfer(props.runtime, transfer.id);
                         }}
@@ -229,7 +308,16 @@ export function DeliveryPane(props: Props) {
                       </button>
                     </Show>
                   </Show>
-                  <span class="text-right font-mono text-sm text-mut">{bytes(transfer.size)}</span>
+                  <span
+                    class={css({
+                      color: "mut",
+                      fontFamily: "mono",
+                      fontSize: "sm",
+                      textAlign: "right",
+                    })}
+                  >
+                    {bytes(transfer.size)}
+                  </span>
                 </li>
               );
             }}

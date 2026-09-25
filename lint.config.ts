@@ -5,7 +5,12 @@ import type { OxlintConfig } from "oxlint";
 import antiSlop from "ultracite/oxlint/anti-slop";
 import core from "ultracite/oxlint/core";
 
-const generatedIgnores = ["**/file-routes.d.ts", "**/solid-env.d.ts", "docs/design/**"];
+const generatedIgnores = [
+  "**/file-routes.d.ts",
+  "**/solid-env.d.ts",
+  "docs/design/**",
+  "**/styled-system/**",
+];
 
 const effectErrorRules = {
   "effecttsgo/floating-effect": "error",

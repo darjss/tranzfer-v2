@@ -1,5 +1,6 @@
 import type { Delivery } from "@tranzfer/contracts";
 import * as Match from "effect/Match";
+import { css } from "styled-system/css";
 
 import type { TransferProgress } from "../uploads/store";
 
@@ -181,19 +182,19 @@ export const statusOf = (delivery: Delivery, roll: Rollup, online: boolean): Sta
 };
 
 export const toneText: Record<Tone, string> = {
-  amber: "text-amber",
-  blue: "text-blue",
-  mut: "text-mut",
-  ok: "text-ok",
-  rust: "text-rust",
+  amber: css({ color: "amber" }),
+  blue: css({ color: "blue" }),
+  mut: css({ color: "mut" }),
+  ok: css({ color: "ok" }),
+  rust: css({ color: "rust" }),
 };
 
 export const toneBar: Record<Tone, string> = {
-  amber: "bg-amber",
-  blue: "bg-blue",
-  mut: "bg-mut/40",
-  ok: "bg-ok",
-  rust: "bg-rust",
+  amber: css({ bg: "amber" }),
+  blue: css({ bg: "blue" }),
+  mut: css({ bg: "mut/40" }),
+  ok: css({ bg: "ok" }),
+  rust: css({ bg: "rust" }),
 };
 
 export const retentionChoices = [1, 3, 7, 14] as const;

@@ -1,4 +1,5 @@
 import { For } from "solid-js";
+import { css, cx } from "styled-system/css";
 import PhCheckBold from "~icons/ph/check-bold";
 import PhUploadSimpleBold from "~icons/ph/upload-simple-bold";
 import { Button } from "../ui/Button";
@@ -14,62 +15,262 @@ const files = [
   { meta: "61 GB · 97 clips", name: "Drone_Day2", thumb: coastRoad },
 ];
 
-const ghost =
-  "absolute inset-0 rounded-[20px] bg-panel ring-1 ring-line shadow-[0_30px_60px_-40px_rgba(23,24,28,.4)]";
+const ghost = css({
+  bg: "panel",
+  borderRadius: "[20px]",
+  inset: "0",
+  outlineColor: "line",
+  outlineStyle: "solid",
+  outlineWidth: "1px",
+  pos: "absolute",
+  shadow: "[0 30px 60px -40px rgba(23,24,28,.4)]",
+});
 
 export default function Uploader(props: { in: boolean; rx: number; ry: number }) {
   return (
-    <div class="stage group/stage relative z-2 w-[min(100%,520px)] [perspective:1400px] lg:justify-self-end">
+    <div
+      class={cx(
+        "stage group",
+        css({
+          lg: { justifySelf: "end" },
+          perspective: "1400px",
+          pos: "relative",
+          w: "[min(100%,520px)]",
+          zIndex: 2,
+        }),
+      )}
+    >
       <div
         class={[
-          "stack relative transform-3d transform-[rotateX(var(--rx,0))_rotateY(var(--ry,0))] transition-transform duration-400 ease-smooth",
+          "stack",
+          css({
+            pos: "relative",
+            transform: "[rotateX(var(--rx,0)) rotateY(var(--ry,0))]",
+            transformStyle: "preserve-3d",
+            transitionDuration: "[400ms]",
+            transitionProperty: "[transform]",
+            transitionTimingFunction: "smooth",
+          }),
           { in: props.in },
         ]}
         style={{ "--rx": `${props.rx}deg`, "--ry": `${props.ry}deg` }}
       >
-        <div class={[ghost, "transform-[rotate(-6deg)_translate(-18px,18px)_translateZ(-40px)]"]} />
-        <div class={[ghost, "transform-[rotate(4deg)_translate(14px,10px)_translateZ(-20px)]"]} />
-        <div class="card relative -rotate-2 rounded-[20px] bg-panel p-[22px] ring-1 ring-line shadow-[inset_0_1px_0_#fff,0_50px_90px_-50px_rgba(23,24,28,.55)] transition-[rotate] duration-500 ease-smooth group-hover/stage:rotate-0">
-          <div class="stamp absolute -top-3.5 right-[22px] inline-flex translate-y-2 scale-[.94] items-center gap-2 rounded-full bg-linear-to-b from-white to-[#f1ede3] px-3 py-[7px] text-xs font-medium text-ink opacity-0 shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--color-line),0_10px_20px_-12px_rgba(23,24,28,.4)] [transition:translate_.6s_var(--ease-smooth)_1s,scale_.6s_var(--ease-smooth)_1s,opacity_.4s_ease_1s] before:size-3.5 before:rounded-full before:[background:conic-gradient(var(--color-blue)_0_72%,var(--color-line)_0)] before:content-[''] [.in_&]:translate-y-0 [.in_&]:scale-100 [.in_&]:opacity-100">
+        <div
+          class={cx(
+            ghost,
+            css({ transform: "[rotate(-6deg) translate(-18px,18px) translateZ(-40px)]" }),
+          )}
+        />
+        <div
+          class={cx(
+            ghost,
+            css({ transform: "[rotate(4deg) translate(14px,10px) translateZ(-20px)]" }),
+          )}
+        />
+        <div
+          class={cx(
+            "card",
+            css({
+              _groupHover: { rotate: "[0deg]" },
+              bg: "panel",
+              borderRadius: "[20px]",
+              outlineColor: "line",
+              outlineStyle: "solid",
+              outlineWidth: "1px",
+              p: "[22px]",
+              pos: "relative",
+              rotate: "[-2deg]",
+              shadow: "[inset 0 1px 0 #fff,0 50px 90px -50px rgba(23,24,28,.55)]",
+              transitionDuration: "[500ms]",
+              transitionProperty: "[rotate]",
+              transitionTimingFunction: "smooth",
+            }),
+          )}
+        >
+          <div
+            class={cx(
+              "stamp",
+              css({
+                ".in &": { opacity: 1, scale: "[1]", translate: "[0 0]" },
+                _before: {
+                  background: "[conic-gradient(var(--colors-blue) 0 72%,var(--colors-line) 0)]",
+                  borderRadius: "full",
+                  boxSize: "3.5",
+                  content: "''",
+                },
+                alignItems: "center",
+                bgGradient: "to-b",
+                borderRadius: "full",
+                display: "inline-flex",
+                fontSize: "xs",
+                fontWeight: "medium",
+                gap: "2",
+                gradientFrom: "white",
+                gradientTo: "[#f1ede3]",
+                opacity: 0,
+                pos: "absolute",
+                px: "3",
+                py: "[7px]",
+                right: "[22px]",
+                scale: "[.94]",
+                shadow:
+                  "[inset 0 1px 0 #fff,0 0 0 1px var(--colors-line),0 10px 20px -12px rgba(23,24,28,.4)]",
+                top: "-3.5",
+                transition:
+                  "[translate .6s var(--easings-smooth) 1s,scale .6s var(--easings-smooth) 1s,opacity .4s ease 1s]",
+                translate: "[0 8px]",
+              }),
+            )}
+          >
             Upload preview
           </div>
-          <header class="mb-4 flex items-center justify-between">
+          <header
+            class={css({
+              alignItems: "center",
+              display: "flex",
+              justifyContent: "space-between",
+              mb: "4",
+            })}
+          >
             <div>
-              <b class="font-semibold">Example transfer</b>
-              <small class="block text-[13px] text-mut">To Marcus · your editor in Berlin</small>
+              <b class={css({ fontWeight: "semibold" })}>Example transfer</b>
+              <small class={css({ color: "mut", display: "block", fontSize: "[13px]" })}>
+                To Marcus · your editor in Berlin
+              </small>
             </div>
-            <span class="inline-flex items-center gap-2 text-xs font-medium text-mut before:size-1.5 before:rounded-full before:bg-ok before:shadow-[0_0_0_3px_rgba(31,122,69,.15)] before:content-['']">
+            <span
+              class={css({
+                _before: {
+                  bg: "ok",
+                  borderRadius: "full",
+                  boxSize: "1.5",
+                  content: "''",
+                  shadow: "[0 0 0 3px rgba(31,122,69,.15)]",
+                },
+                alignItems: "center",
+                color: "mut",
+                display: "inline-flex",
+                fontSize: "xs",
+                fontWeight: "medium",
+                gap: "2",
+              })}
+            >
               Preview
             </span>
           </header>
-          <div class="relative overflow-hidden rounded-[14px] border-[1.5px] border-dashed border-[#b9b2a2] bg-[repeating-linear-gradient(45deg,transparent_0_10px,rgba(0,0,0,.015)_10px_20px)] px-[22px] py-[26px] text-center">
-            <div class="ico mx-auto mb-3 grid size-14 animate-[bob_2.6s_ease-in-out_infinite] place-items-center rounded-2xl bg-ink text-white shadow-[0_16px_30px_-14px_rgba(0,0,0,.6)]">
-              <PhUploadSimpleBold class="size-6" />
+          <div
+            class={css({
+              background:
+                "[repeating-linear-gradient(45deg,transparent 0 10px,rgba(0,0,0,.015) 10px 20px)]",
+              borderColor: "[#b9b2a2]",
+              borderRadius: "[14px]",
+              borderStyle: "dashed",
+              borderWidth: "[1.5px]",
+              overflow: "hidden",
+              pos: "relative",
+              px: "[22px]",
+              py: "[26px]",
+              textAlign: "center",
+            })}
+          >
+            <div
+              class={cx(
+                "ico",
+                css({
+                  alignItems: "center",
+                  animation: "[bob 2.6s ease-in-out infinite]",
+                  bg: "ink",
+                  borderRadius: "2xl",
+                  boxSize: "14",
+                  color: "white",
+                  display: "grid",
+                  marginInline: "auto",
+                  mb: "3",
+                  placeItems: "center",
+                  shadow: "[0 16px 30px -14px rgba(0,0,0,.6)]",
+                }),
+              )}
+            >
+              <PhUploadSimpleBold class={css({ boxSize: "6" })} />
             </div>
-            <b class="block font-semibold">Upload design preview</b>
-            <span class="text-[13px] text-mut">File uploads are not available yet.</span>
+            <b class={css({ display: "block", fontWeight: "semibold" })}>Upload design preview</b>
+            <span class={css({ color: "mut", fontSize: "[13px]" })}>
+              File uploads are not available yet.
+            </span>
           </div>
-          <div class="mt-4 grid gap-2.5">
+          <div class={css({ display: "grid", gap: "2.5", mt: "4" })}>
             <For each={files}>
               {(f, i) => (
                 <div
-                  class="chip grid translate-x-5 rotate-2 grid-cols-[44px_1fr_auto] items-center gap-3 rounded-xl bg-white px-3 py-2.5 opacity-0 ring-1 ring-line [transition:translate_.6s_var(--ease-spring),rotate_.6s_var(--ease-spring),opacity_.4s] [transition-delay:var(--d)] [&.in]:translate-x-0 [&.in]:rotate-0 [&.in]:opacity-100"
+                  class={cx(
+                    "chip",
+                    css({
+                      "&.in": { opacity: 1, rotate: "[0deg]", translate: "[0 0]" },
+                      alignItems: "center",
+                      bg: "white",
+                      borderRadius: "xl",
+                      columnGap: "3",
+                      display: "grid",
+                      gridTemplateColumns: "[44px 1fr auto]",
+                      opacity: 0,
+                      outlineColor: "line",
+                      outlineStyle: "solid",
+                      outlineWidth: "1px",
+                      px: "3",
+                      py: "2.5",
+                      rotate: "[2deg]",
+                      transition:
+                        "[translate .6s var(--easings-spring),rotate .6s var(--easings-spring),opacity .4s]",
+                      transitionDelay: "var(--d)",
+                      translate: "[20px 0]",
+                    }),
+                  )}
                   style={`--d: ${0.5 + i() * 0.15}s`}
                 >
-                  <img class="size-11 rounded-lg object-cover" src={f.thumb} alt="" />
+                  <img
+                    class={css({ borderRadius: "lg", boxSize: "11", objectFit: "cover" })}
+                    src={f.thumb}
+                    alt=""
+                  />
                   <div>
-                    <b class="block text-sm font-semibold">{f.name}</b>
-                    <small class="font-mono text-xs text-mut">{f.meta}</small>
+                    <b class={css({ display: "block", fontSize: "sm", fontWeight: "semibold" })}>
+                      {f.name}
+                    </b>
+                    <small class={css({ color: "mut", fontFamily: "mono", fontSize: "xs" })}>
+                      {f.meta}
+                    </small>
                   </div>
-                  <span class="grid size-[22px] place-items-center rounded-full bg-ok/12 text-ok">
-                    <PhCheckBold class="size-3" />
+                  <span
+                    class={css({
+                      alignItems: "center",
+                      bg: "ok/12",
+                      borderRadius: "full",
+                      boxSize: "[22px]",
+                      color: "ok",
+                      display: "grid",
+                      placeItems: "center",
+                    })}
+                  >
+                    <PhCheckBold class={css({ boxSize: "3" })} />
                   </span>
                 </div>
               )}
             </For>
           </div>
-          <footer class="mt-[18px] flex items-center justify-between border-t border-line pt-4">
-            <small class="font-mono text-[13px] text-mut">463 GB · link lives 7 days</small>
+          <footer
+            class={css({
+              alignItems: "center",
+              borderColor: "line",
+              borderTopWidth: "1px",
+              display: "flex",
+              justifyContent: "space-between",
+              mt: "[18px]",
+              pt: "4",
+            })}
+          >
+            <small class={css({ color: "mut", fontFamily: "mono", fontSize: "[13px]" })}>
+              463 GB · link lives 7 days
+            </small>
             <Button size="sm" disabled>
               Coming soon
             </Button>

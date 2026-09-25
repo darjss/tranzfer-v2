@@ -1,5 +1,6 @@
 import type { ManagedRuntime } from "effect/ManagedRuntime";
 import { createSignal, For, Show } from "solid-js";
+import { css, cx } from "styled-system/css";
 
 import PhUploadSimpleBold from "~icons/ph/upload-simple-bold";
 
@@ -61,23 +62,71 @@ export function NewDeliveryPane(props: Props) {
   };
 
   return (
-    <section class="max-w-[860px] px-6 py-10 sm:px-12">
-      <h1 class="text-[40px] leading-tight font-semibold tracking-[-0.035em]">
+    <section class={css({ maxW: "[860px]", px: { base: "6", sm: "12" }, py: "10" })}>
+      <h1
+        class={css({
+          fontSize: "[40px]",
+          fontWeight: "semibold",
+          letterSpacing: "[-0.035em]",
+          lineHeight: "tight",
+        })}
+      >
         Send something big.
       </h1>
 
-      <div class="relative mt-8">
-        <p class="absolute -top-10 right-4 z-10 rotate-[-4deg] font-hand text-2xl leading-tight font-semibold text-blue/80 select-none">
-          <span class="max-sm:hidden">the whole folder is fine, we keep its structure</span>
-          <span class="text-lg whitespace-nowrap sm:hidden">folders keep their structure</span>
+      <div class={css({ mt: "8", pos: "relative" })}>
+        <p
+          class={css({
+            color: "blue/80",
+            fontFamily: "hand",
+            fontSize: "2xl",
+            fontWeight: "semibold",
+            lineHeight: "tight",
+            pos: "absolute",
+            right: "4",
+            rotate: "[-4deg]",
+            top: "-10",
+            userSelect: "none",
+            zIndex: 10,
+          })}
+        >
+          <span class={css({ display: { base: "none", sm: "inline" } })}>
+            the whole folder is fine, we keep its structure
+          </span>
+          <span
+            class={css({
+              display: { base: "inline", sm: "none" },
+              fontSize: "lg",
+              whiteSpace: "nowrap",
+            })}
+          >
+            folders keep their structure
+          </span>
         </p>
         <div
-          class={[
-            "grid min-h-[320px] place-items-center rounded-3xl border-2 border-dashed text-center transition-[border-color,scale] duration-300 ease-smooth motion-reduce:transition-none",
+          class={cx(
+            css({
+              _motionReduce: { transitionProperty: "[none]" },
+              borderRadius: "3xl",
+              borderStyle: "dashed",
+              borderWidth: "[2px]",
+              display: "grid",
+              minH: "[320px]",
+              placeItems: "center",
+              textAlign: "center",
+              transitionDuration: "[300ms]",
+              transitionProperty: "[border-color,scale]",
+              transitionTimingFunction: "smooth",
+            }),
             dragging()
-              ? "scale-[1.01] border-solid border-blue [--dots-ink:rgb(39_64_196/.35)]"
-              : "border-ink/25",
-          ]}
+              ? css({
+                  "--dots-ink": "rgb(39 64 196 / .35)",
+                  borderColor: "blue",
+                  borderStyle: "solid",
+                  scale: "[1.01]",
+                })
+              : css({ borderColor: "ink/25" }),
+          )}
           onDragLeave={(event) => {
             event.preventDefault();
             setDragging(false);
@@ -93,15 +142,40 @@ export function NewDeliveryPane(props: Props) {
           tabindex={0}
           aria-label="Drop a folder or files to upload"
         >
-          <div class="pointer-events-none flex flex-col items-center gap-3 px-6">
-            <span class="grid size-12 place-items-center rounded-2xl bg-ink text-paper">
-              <PhUploadSimpleBold class="size-6" />
+          <div
+            class={css({
+              alignItems: "center",
+              display: "flex",
+              flexDir: "column",
+              gap: "3",
+              pointerEvents: "none",
+              px: "6",
+            })}
+          >
+            <span
+              class={css({
+                bg: "ink",
+                borderRadius: "2xl",
+                boxSize: "12",
+                color: "paper",
+                display: "grid",
+                placeItems: "center",
+              })}
+            >
+              <PhUploadSimpleBold class={css({ boxSize: "6" })} />
             </span>
-            <p class="text-[17px] font-semibold">Drop a folder or files</p>
-            <p class="text-sm text-mut">
+            <p class={css({ fontSize: "[17px]", fontWeight: "semibold" })}>
+              Drop a folder or files
+            </p>
+            <p class={css({ color: "mut", fontSize: "sm" })}>
               or{" "}
               <button
-                class="pointer-events-auto text-ink underline underline-offset-2"
+                class={css({
+                  color: "ink",
+                  pointerEvents: "auto",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "2px",
+                })}
                 onClick={() => filesInput?.click()}
                 type="button"
               >
@@ -109,7 +183,12 @@ export function NewDeliveryPane(props: Props) {
               </button>{" "}
               ·{" "}
               <button
-                class="pointer-events-auto text-ink underline underline-offset-2"
+                class={css({
+                  color: "ink",
+                  pointerEvents: "auto",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "2px",
+                })}
                 onClick={() => folderInput?.click()}
                 type="button"
               >
@@ -119,7 +198,7 @@ export function NewDeliveryPane(props: Props) {
           </div>
         </div>
         <input
-          class="hidden"
+          class={css({ display: "none" })}
           multiple
           onChange={(event) => {
             const input = event.currentTarget;
@@ -132,7 +211,7 @@ export function NewDeliveryPane(props: Props) {
           type="file"
         />
         <input
-          class="hidden"
+          class={css({ display: "none" })}
           onChange={(event) => {
             const input = event.currentTarget;
             void send([...(input.files ?? [])]);
@@ -146,23 +225,48 @@ export function NewDeliveryPane(props: Props) {
         />
       </div>
 
-      <div class="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
-        <fieldset class="flex items-center gap-2">
-          <legend class="sr-only">Keep files for</legend>
-          <span class="text-sm font-medium">Keep files for</span>
+      <div
+        class={css({
+          alignItems: "center",
+          columnGap: "6",
+          display: "flex",
+          flexWrap: "wrap",
+          mt: "6",
+          rowGap: "3",
+        })}
+      >
+        <fieldset class={css({ alignItems: "center", display: "flex", gap: "2" })}>
+          <legend class={css({ srOnly: true })}>Keep files for</legend>
+          <span class={css({ fontSize: "sm", fontWeight: "medium" })}>Keep files for</span>
           <For each={retentionChoices}>
             {(days) => (
               <label
-                class={[
-                  "cursor-pointer rounded-full px-3 py-1 font-mono text-sm ring-1 transition-colors",
+                class={cx(
+                  css({
+                    borderRadius: "full",
+                    cursor: "pointer",
+                    fontFamily: "mono",
+                    fontSize: "sm",
+                    px: "3",
+                    py: "1",
+                    transitionProperty: "colors",
+                  }),
                   retention() === days
-                    ? "bg-ink text-paper ring-ink"
-                    : "text-ink ring-line hover:bg-panel",
-                ]}
+                    ? css({
+                        bg: "ink",
+                        color: "paper",
+                        shadow: "[0 0 0 1px var(--colors-ink)]",
+                      })
+                    : css({
+                        _hover: { bg: "panel" },
+                        color: "ink",
+                        shadow: "[0 0 0 1px var(--colors-line)]",
+                      }),
+                )}
               >
                 <input
                   checked={retention() === days}
-                  class="sr-only"
+                  class={css({ srOnly: true })}
                   name="retention"
                   onChange={() => {
                     setRetention(days);
@@ -175,17 +279,26 @@ export function NewDeliveryPane(props: Props) {
             )}
           </For>
         </fieldset>
-        <span class="ml-auto font-mono text-xs text-mut">
+        <span
+          class={css({
+            color: "mut",
+            fontFamily: "mono",
+            fontSize: "xs",
+            marginLeft: "auto",
+          })}
+        >
           counted from when the upload finishes
         </span>
       </div>
 
       <Show when={sending()}>
-        <p class="mt-4 text-sm text-mut">Setting the delivery up…</p>
+        <p class={css({ color: "mut", fontSize: "sm", mt: "4" })}>Setting the delivery up…</p>
       </Show>
       <Show when={problems().length > 0}>
-        <div class="mt-4" role="alert">
-          <For each={problems()}>{(problem) => <p class="text-sm text-rust">{problem}</p>}</For>
+        <div class={css({ mt: "4" })} role="alert">
+          <For each={problems()}>
+            {(problem) => <p class={css({ color: "rust", fontSize: "sm" })}>{problem}</p>}
+          </For>
         </div>
       </Show>
     </section>
