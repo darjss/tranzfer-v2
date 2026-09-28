@@ -268,7 +268,7 @@ export default function SignIn() {
               mt: "8",
               px: "6",
               shadow: "[0 0 0 1px #747775]",
-              transitionDuration: "[200ms]",
+              transitionDuration: "normal",
               transitionProperty: "[background-color,box-shadow,translate]",
               transitionTimingFunction: "smooth",
               w: "full",
@@ -348,7 +348,7 @@ export default function SignIn() {
                     h: "12",
                     justifyContent: "center",
                     px: "6",
-                    transitionDuration: "[200ms]",
+                    transitionDuration: "normal",
                     transitionProperty: "[background-color,translate]",
                     transitionTimingFunction: "smooth",
                   })}

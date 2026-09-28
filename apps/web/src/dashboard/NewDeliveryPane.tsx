@@ -111,10 +111,10 @@ export function NewDeliveryPane(props: Props) {
               borderStyle: "dashed",
               borderWidth: "[2px]",
               display: "grid",
-              minH: "[320px]",
+              minH: "80",
               placeItems: "center",
               textAlign: "center",
-              transitionDuration: "[300ms]",
+              transitionDuration: "slow",
               transitionProperty: "[border-color,scale]",
               transitionTimingFunction: "smooth",
             }),
@@ -249,7 +249,9 @@ export function NewDeliveryPane(props: Props) {
                     fontSize: "sm",
                     px: "3",
                     py: "1",
+                    transitionDuration: "fast",
                     transitionProperty: "colors",
+                    transitionTimingFunction: "default",
                   }),
                   retention() === days
                     ? css({

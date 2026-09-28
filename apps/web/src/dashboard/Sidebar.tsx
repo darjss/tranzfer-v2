@@ -131,8 +131,9 @@ export function Sidebar(props: Props) {
                           px: "3",
                           py: "2.5",
                           textAlign: "left",
-                          transitionDuration: "[150ms]",
+                          transitionDuration: "fast",
                           transitionProperty: "colors",
+                          transitionTimingFunction: "default",
                           w: "full",
                         }),
                         props.selectedId === delivery.id
@@ -207,7 +208,9 @@ export function Sidebar(props: Props) {
             _hover: { color: "ink" },
             color: "mut",
             marginLeft: "auto",
+            transitionDuration: "fast",
             transitionProperty: "colors",
+            transitionTimingFunction: "default",
           })}
           aria-label="Sign out"
           onClick={() => {

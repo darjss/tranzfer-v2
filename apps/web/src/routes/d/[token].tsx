@@ -182,7 +182,9 @@ const LinkPage = () => {
                             gap: "2",
                             px: "4",
                             py: "2",
+                            transitionDuration: "fast",
                             transitionProperty: "[transform,translate,scale,rotate]",
+                            transitionTimingFunction: "default",
                           })}
                           href={file.url}
                           onClick={(event) => {

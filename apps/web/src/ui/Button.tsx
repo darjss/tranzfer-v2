@@ -22,7 +22,7 @@ export const button = cva({
     gap: "2.5",
     justifyContent: "center",
     rounded: "xl",
-    transitionDuration: "[200ms]",
+    transitionDuration: "normal",
     transitionProperty: "[translate,scale,box-shadow,filter]",
     transitionTimingFunction: "smooth",
   },

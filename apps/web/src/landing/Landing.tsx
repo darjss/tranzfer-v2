@@ -352,7 +352,7 @@ export default function Landing() {
                     css({
                       bottom: "-1",
                       color: "blue",
-                      h: "[18px]",
+                      h: "4.5",
                       left: "-1",
                       opacity: 0.8,
                       overflow: "visible",
@@ -421,8 +421,9 @@ export default function Landing() {
                   fontSize: "[15px]",
                   fontWeight: "semibold",
                   paddingBottom: "0.5",
-                  transitionDuration: "[200ms]",
+                  transitionDuration: "normal",
                   transitionProperty: "[border-color]",
+                  transitionTimingFunction: "default",
                 })}
                 href="#desk"
               >
@@ -477,7 +478,7 @@ export default function Landing() {
               <i>Keep the work already done.</i>
             </h2>
             <p
-              class={cx("rv", css({ color: "mut", fontSize: "lg", maxW: "[52ch]", mt: "[18px]" }))}
+              class={cx("rv", css({ color: "mut", fontSize: "lg", maxW: "[52ch]", mt: "4.5" }))}
               style="--d:80ms"
             >
               The goal is to check which parts arrived, verify that the source file is unchanged,
@@ -505,7 +506,7 @@ export default function Landing() {
                     css({
                       bg: "white",
                       borderRadius: "md",
-                      paddingBottom: "[18px]",
+                      paddingBottom: "4.5",
                       pos: "relative",
                       pt: "2.5",
                       px: "2.5",
@@ -593,7 +594,7 @@ export default function Landing() {
               "steps",
               css({
                 display: "grid",
-                gap: "[18px]",
+                gap: "4.5",
                 gridTemplateColumns: { base: "1fr", lg: "repeat(3,minmax(0,1fr))" },
               }),
             )}
@@ -621,11 +622,9 @@ export default function Landing() {
                       flexDir: "column",
                       justifyContent: "flex-end",
                       minH: "[380px]",
-                      outlineColor: "line",
-                      outlineStyle: "solid",
-                      outlineWidth: "1px",
                       overflow: "hidden",
                       pos: "relative",
+                      shadow: "[0 0 0 1px var(--colors-line)]",
                     }),
                   )}
                   style={`--d:${i() * 80}ms`}

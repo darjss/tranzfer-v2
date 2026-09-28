@@ -33,7 +33,7 @@ export function Progress(props: {
           toneBar[props.tone],
           css({
             h: "full",
-            transitionDuration: "[500ms]",
+            transitionDuration: "slowest",
             transitionProperty: "[width]",
             transitionTimingFunction: "smooth",
           }),
