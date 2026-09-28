@@ -255,7 +255,7 @@ export default function Landing() {
             display: "grid",
             gap: "10",
             gridTemplateColumns: { base: "1fr", lg: "repeat(2,minmax(0,1fr))" },
-            minH: { base: "0", lg: "[calc(100vh-64px)]" },
+            minH: { base: "0", lg: "[calc(100vh - 64px)]" },
             paddingBottom: { base: "20", lg: "[140px]" },
             pos: "relative",
             py: { base: "12", lg: "[72px]" },
