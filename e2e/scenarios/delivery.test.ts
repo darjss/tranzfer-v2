@@ -19,10 +19,14 @@ const send = async (
   url: string,
   body?: Uint8Array | string,
   contentType?: string,
+  signedHeaders: Readonly<Record<string, string>> = {},
 ) => {
   const response = await fetch(url, {
     body,
-    headers: contentType === undefined ? undefined : { "content-type": contentType },
+    headers: {
+      ...signedHeaders,
+      ...(contentType === undefined ? {} : { "content-type": contentType }),
+    },
     method,
   });
   return {
@@ -69,7 +73,7 @@ const completeXml = (etags: readonly string[]) =>
     )
     .join("")}</CompleteMultipartUpload>`;
 
-// Every file is multipart; a small or empty one is a single part.
+// Every non-empty file is multipart; a small one is a single part.
 const uploadWhole = (api: Api, key: string, bytes: Buffer) =>
   Effect.gen(function* uploadFile() {
     const mpuId = yield* createUpload(api, key);
@@ -158,11 +162,27 @@ layer(Target.layer)("staging deliveries", (it) => {
           "delivery is missing the empty file transfer",
         );
 
-        // Small and empty files: one part each, then finalize.
+        // A small file is a one-part multipart upload.
         yield* uploadWhole(api, smallTransfer.objectKey, small);
         const afterSmall = yield* finalize(api, smallId);
         expect(afterSmall.transfers.find((t) => t.id === smallId)?.state).toBe("complete");
-        yield* uploadWhole(api, emptyTransfer.objectKey, Buffer.alloc(0));
+        // An empty file is one PUT signed with If-None-Match, so replaying it
+        // can't replace the object once it exists.
+        const emptyPut = yield* api.SignUpload({
+          key: emptyTransfer.objectKey,
+          request: { _tag: "Put" },
+        });
+        expect(emptyPut.headers).toEqual({ "if-none-match": "*" });
+        const putEmpty = yield* Effect.promise(
+          async () =>
+            await send("PUT", emptyPut.url, new Uint8Array(0), undefined, emptyPut.headers),
+        );
+        expect(putEmpty.status).toBe(200);
+        const replayEmpty = yield* Effect.promise(
+          async () =>
+            await send("PUT", emptyPut.url, new Uint8Array(0), undefined, emptyPut.headers),
+        );
+        expect(replayEmpty.status).toBe(412);
         yield* finalize(api, emptyId);
 
         // Big file: multipart create, three signed part PUTs, list, complete.

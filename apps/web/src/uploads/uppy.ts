@@ -72,13 +72,12 @@ const deliveryTitle = (files: readonly ChosenFile[]) => {
 
 const toUploadRequest = (request: PresignableRequest): UploadRequest =>
   Match.value(request).pipe(
-    Match.when({ method: "PUT" }, (put): UploadRequest => {
-      if (!("uploadId" in put)) {
-        // shouldUseMultipart is always true, so Uppy never asks for a single PUT.
-        throw new Error("Single PUT uploads are not signed");
-      }
-      return { _tag: "Part", partNumber: put.partNumber, uploadId: put.uploadId };
-    }),
+    // Uppy sends only an empty file as a single PUT.
+    Match.when({ method: "PUT" }, (put): UploadRequest =>
+      "uploadId" in put
+        ? { _tag: "Part", partNumber: put.partNumber, uploadId: put.uploadId }
+        : { _tag: "Put" },
+    ),
     Match.when({ method: "GET" }, (get): UploadRequest => ({
       _tag: "List",
       uploadId: get.uploadId,
@@ -178,7 +177,7 @@ export const getUploads = (runtime: Runtime) => {
     shouldUseMultipart: () => true,
     signRequest: async (request) => {
       const signed = await sign(runtime, request);
-      return { url: signed.url };
+      return { headers: signed.headers, url: signed.url };
     },
   });
 

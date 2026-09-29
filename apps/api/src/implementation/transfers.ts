@@ -246,12 +246,16 @@ export class Transfers extends Context.Service<
           if (!allowed) {
             return yield* new UploadClosed();
           }
+          // An empty file is a single guarded PUT; anything else is multipart.
+          if ((request._tag === "Put") !== (transfer.size === 0)) {
+            return yield* new InvalidUpload();
+          }
           if (request._tag === "Part" && request.partNumber > partCount(transfer.size)) {
             return yield* new InvalidUpload();
           }
           // From here the object may land without the browser living to say so;
           // `finalizing` is what the sweeper looks for.
-          if (request._tag === "Complete") {
+          if (request._tag === "Put" || request._tag === "Complete") {
             yield* db
               .update(schema.transfer)
               .set({ state: "finalizing" })

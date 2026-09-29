@@ -25,7 +25,7 @@ export const App = Cloudflare.D1.Database("App", {
 export const Files = Cloudflare.R2.Bucket("Files", {
   cors: [
     {
-      allowedHeaders: ["content-type", "range"],
+      allowedHeaders: ["content-type", "if-none-match", "range"],
       allowedMethods: ["GET", "HEAD", "PUT", "POST"],
       // Output.fromEffect so alchemy resolves the origin at plan/deploy; a
       // bare Effect serializes into the CORS payload. orDie fails the plan

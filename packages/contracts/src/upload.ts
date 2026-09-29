@@ -6,16 +6,17 @@ const MAX_PARTS = 10_000;
 // 64 MiB stands until the 10 GB gate benchmark.
 export const partSize = (size: number) =>
   Math.max(64 * MIB, Math.ceil(size / MAX_PARTS / MIB) * MIB);
-// An empty file still uploads one (empty) part.
-export const partCount = (size: number) => Math.max(1, Math.ceil(size / partSize(size)));
+export const partCount = (size: number) => Math.ceil(size / partSize(size));
 
 /**
- * The S3 requests Uppy asks the API to sign. Every file is a multipart upload,
- * so finalize can close the key: a completed or aborted upload id accepts no
- * more writes, and there is no single-PUT URL to replay. Aborts are not here:
- * cancel is server-side.
+ * The S3 requests Uppy asks the API to sign. Every non-empty file is a
+ * multipart upload, so finalize can close the key: a completed or aborted
+ * upload id accepts no more writes. An empty file has no part to send, so it
+ * is a single `Put`, signed to only create the object, never replace it.
+ * Aborts are not here: cancel is server-side.
  */
 export const UploadRequest = Schema.Union([
+  Schema.TaggedStruct("Put", {}),
   Schema.TaggedStruct("Create", {}),
   Schema.TaggedStruct("Part", {
     partNumber: Schema.Int.check(Schema.isBetween({ maximum: MAX_PARTS, minimum: 1 })),
@@ -30,7 +31,12 @@ export type UploadRequest = typeof UploadRequest.Type;
 export const SignUploadPayload = Schema.Struct({ key: Schema.String, request: UploadRequest });
 export interface SignUploadPayload extends Schema.Schema.Type<typeof SignUploadPayload> {}
 
-export const SignedUrl = Schema.Struct({ expiresAt: Schema.DateFromString, url: Schema.String });
+/** `headers` are part of the signature; the request must send them as given. */
+export const SignedUrl = Schema.Struct({
+  expiresAt: Schema.DateFromString,
+  headers: Schema.Record(Schema.String, Schema.String),
+  url: Schema.String,
+});
 export interface SignedUrl extends Schema.Schema.Type<typeof SignedUrl> {}
 
 /** The request or the stored object does not fit the transfer. */

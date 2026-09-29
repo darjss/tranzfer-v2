@@ -34,9 +34,14 @@ export const makeMemoryStorage = () => {
         Effect.sync(() => {
           sealed.push(key);
         }),
-      signDownload: (key) => Effect.succeed({ expiresAt: new Date(0), url: `memory://get/${key}` }),
+      signDownload: (key) =>
+        Effect.succeed({ expiresAt: new Date(0), headers: {}, url: `memory://get/${key}` }),
       signUpload: (key, request) =>
-        Effect.succeed({ expiresAt: new Date(0), url: `memory://${request._tag}/${key}` }),
+        Effect.succeed({
+          expiresAt: new Date(0),
+          headers: {},
+          url: `memory://${request._tag}/${key}`,
+        }),
     }),
   );
   return { layer, objects, purged, sealed };

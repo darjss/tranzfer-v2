@@ -310,14 +310,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/contracts
       '@uppy/aws-s3':
-        specifier: 6.1.0
-        version: 6.1.0(@uppy/core@6.0.1)
+        specifier: 6.2.1
+        version: 6.2.1(@uppy/core@6.1.0)
       '@uppy/core':
-        specifier: 6.0.1
-        version: 6.0.1
+        specifier: 6.1.0
+        version: 6.1.0
       '@uppy/drop-target':
         specifier: 5.0.0
-        version: 5.0.0(@uppy/core@6.0.1)
+        version: 5.0.0(@uppy/core@6.1.0)
       better-auth:
         specifier: 1.7.4
         version: 1.7.4(@cloudflare/workers-types@5.20260911.1)(drizzle-kit@1.0.0-rc.4)(drizzle-orm@1.0.0-rc.5-ab785fc(@cloudflare/workers-types@5.20260911.1)(@effect/sql-d1@4.0.0-rc.115(effect@4.0.0-rc.115))(@effect/sql-sqlite-do@4.0.0-rc.115(effect@4.0.0-rc.115))(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(effect@4.0.0-rc.115)(valibot@1.4.2(typescript@7.0.2))(zod@4.6.2))(react@19.3.0)(solid-js@2.0.0-rc.8)(vitest@4.1.11)
@@ -3205,13 +3205,13 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@uppy/aws-s3@6.1.0':
-    resolution: {integrity: sha512-br0dQU7Q4WfW21FBkXyCG2zRdGxH1xO5By9Mt3n3YKL8v/dC9MCFtuqW30+8hIij/eVVrB2JrOFFfmw1iXwuUA==}
+  '@uppy/aws-s3@6.2.1':
+    resolution: {integrity: sha512-TcoNW8nL6H92Eb7zNbdZBvJrnHvabcDBBUxX4sb5fi3n21bc/Zf3QutkmPTjyL4OafTcP7P1eBbBif7RUbTaPQ==}
     peerDependencies:
-      '@uppy/core': ^6.0.1
+      '@uppy/core': ^6.1.0
 
-  '@uppy/core@6.0.1':
-    resolution: {integrity: sha512-H+v4tOBPYY8Cf0JWoGa3+JPTl9Of8SBaVUH5TNwGgynncTWrQtuyGK91hv9wOjm0SFds3X5psPx1ArhngdSrBg==}
+  '@uppy/core@6.1.0':
+    resolution: {integrity: sha512-nnr4p73oM70slbBEDzSDacFue7zZ92lvrZaCUgP1MKJw4I1UaZ0zmYyfWuedR3rLX/cpClKctdftRmiElM1yFA==}
 
   '@uppy/drop-target@5.0.0':
     resolution: {integrity: sha512-6UcDFzHmY4KUuEvwJ4IPv9nWHIJDYFT3ex3LQLLHGZ65oQyJg3UzQHwcJasMmsIF3doxm2Wqe+OR06zfBJrwZg==}
@@ -4886,9 +4886,9 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
-  nanoid@5.1.16:
-    resolution: {integrity: sha512-kVrnsrJqMR8+oLJnGEmSWw9BivK5mt7H3FZatVRjrc5wGqFYuBxX1yG7+A7Gi5AefkX6t/oCkizcQgpu0cY1dQ==}
-    engines: {node: ^18 || >=20}
+  nanoid@6.0.1:
+    resolution: {integrity: sha512-3wVS3i51pE2pi1k5FFL/95BGfVS0kSsvDVuGXHOtxox/TywUmtgq+3qiTOTbs9J7KfHaXPiN171k/A6dBnaXFw==}
+    engines: {node: ^22 || ^24 || >=26}
     hasBin: true
 
   nanostores@1.5.3:
@@ -8307,27 +8307,27 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@uppy/aws-s3@6.1.0(@uppy/core@6.0.1)':
+  '@uppy/aws-s3@6.2.1(@uppy/core@6.1.0)':
     dependencies:
-      '@uppy/core': 6.0.1
+      '@uppy/core': 6.1.0
 
-  '@uppy/core@6.0.1':
+  '@uppy/core@6.1.0':
     dependencies:
       '@transloadit/prettier-bytes': 2.0.0
       classnames: 2.5.1
       lodash: 4.18.1
       mime-match: 1.0.2
       namespace-emitter: 2.0.1
-      nanoid: 5.1.16
+      nanoid: 6.0.1
       p-queue: 9.3.3
       p-retry: 6.2.1
       preact: 10.29.8
     transitivePeerDependencies:
       - preact-render-to-string
 
-  '@uppy/drop-target@5.0.0(@uppy/core@6.0.1)':
+  '@uppy/drop-target@5.0.0(@uppy/core@6.1.0)':
     dependencies:
-      '@uppy/core': 6.0.1
+      '@uppy/core': 6.1.0
 
   '@vitest/browser-preview@4.1.11(@voidzero-dev/vite-plus-core@1.0.0-rc.0(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(vitest@4.1.11)':
     dependencies:
@@ -9797,7 +9797,7 @@ snapshots:
 
   nanoid@3.3.18: {}
 
-  nanoid@5.1.16: {}
+  nanoid@6.0.1: {}
 
   nanostores@1.5.3: {}
 
