@@ -18,8 +18,8 @@ minimumReleaseAgeExclude:
   - "@uppy/aws-s3@6.2.1"
   - "@uppy/core@6.1.0"
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@1.0.0-rc.0
-  vite-plus: 1.0.0-rc.0
+  vite: npm:@voidzero-dev/vite-plus-core@1.0.0
+  vite-plus: 1.0.0
   solid-js: 2.0.0-rc.8
   "@solidjs/web": 2.0.0-rc.8
   "@solidjs/diagnostics": 2.0.0-rc.8
