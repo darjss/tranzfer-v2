@@ -13,6 +13,7 @@ import {
 import type { NewDelivery, UploadRequest } from "@tranzfer/contracts";
 import { Drizzle, schema } from "@tranzfer/db";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -23,6 +24,8 @@ import { Storage, toStorageUnavailable } from "../services/storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CANCEL_CONCURRENCY = 8;
+// D1 caps a statement at 100 bound params and a transfer row binds 8.
+const TRANSFER_ROWS_PER_INSERT = 12;
 
 type DeliveryRow = typeof schema.delivery.$inferSelect;
 type LinkRow = typeof schema.link.$inferSelect;
@@ -148,12 +151,14 @@ export const DeliveriesHandlers = Layer.mergeAll(
           return yield* new DeliveryConflict({ message: "Delivery already exists" });
         }
 
-        const transferIds = input.files.map((file) => file.id);
+        // One JSON param instead of one per id keeps this under D1's
+        // 100-param cap for any file count.
+        const transferIdsTaken = inArray(
+          schema.transfer.id,
+          sql`(select value from json_each(${JSON.stringify(input.files.map((file) => file.id))}))`,
+        );
         const used = yield* db.run("deliveries.create.transferIds", (d) =>
-          d
-            .select({ id: schema.transfer.id })
-            .from(schema.transfer)
-            .where(inArray(schema.transfer.id, transferIds)),
+          d.select({ id: schema.transfer.id }).from(schema.transfer).where(transferIdsTaken),
         );
         if (used.length > 0) {
           return yield* new DeliveryConflict({ message: "Delivery already exists" });
@@ -170,16 +175,18 @@ export const DeliveriesHandlers = Layer.mergeAll(
                   senderId: principal.id,
                   title: input.title,
                 }),
-                d.insert(schema.transfer).values(
-                  input.files.map((file) => ({
-                    contentType: file.contentType,
-                    deliveryId: input.id,
-                    id: file.id,
-                    objectKey: objectKey(input.id, file.id),
-                    path: file.path,
-                    size: file.size,
-                    sourceModifiedAt: new Date(file.lastModified),
-                  })),
+                ...Arr.chunksOf(input.files, TRANSFER_ROWS_PER_INSERT).map((files) =>
+                  d.insert(schema.transfer).values(
+                    files.map((file) => ({
+                      contentType: file.contentType,
+                      deliveryId: input.id,
+                      id: file.id,
+                      objectKey: objectKey(input.id, file.id),
+                      path: file.path,
+                      size: file.size,
+                      sourceModifiedAt: new Date(file.lastModified),
+                    })),
+                  ),
                 ),
                 d.insert(schema.link).values({ deliveryId: input.id, id: newLinkId() }),
               ]),
@@ -190,10 +197,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
           // failed.
           const landed = yield* loadDeliveryRows(db, input.id, "deliveries.create.relookup");
           const taken = yield* db.run("deliveries.create.retaken", (d) =>
-            d
-              .select({ id: schema.transfer.id })
-              .from(schema.transfer)
-              .where(inArray(schema.transfer.id, transferIds)),
+            d.select({ id: schema.transfer.id }).from(schema.transfer).where(transferIdsTaken),
           );
           if (
             landed !== null &&
