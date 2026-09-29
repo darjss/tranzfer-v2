@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { expect, layer } from "@effect/vitest";
-import { partSize } from "@tranzfer/contracts";
+import { DeliveryId, partSize, TransferId } from "@tranzfer/contracts";
 import type { NewDelivery } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
@@ -40,7 +40,7 @@ const uploadId = (body: Buffer) =>
 
 // R2 can take a moment to make a completed multipart object visible to HEAD;
 // the web client retries NotUploaded with the same backoff.
-const finalize = (api: Api, transferId: string) =>
+const finalize = (api: Api, transferId: TransferId) =>
   api.FinalizeTransfer({ transferId }).pipe(
     Effect.retry({
       schedule: Schedule.exponential("800 millis"),
@@ -49,7 +49,7 @@ const finalize = (api: Api, transferId: string) =>
     }),
   );
 
-const cleanup = (api: Api, deliveryId: string) =>
+const cleanup = (api: Api, deliveryId: DeliveryId) =>
   api.CancelDelivery({ deliveryId }).pipe(
     Effect.tapError((error) => Effect.logWarning(`cleanup cancel failed for ${deliveryId}`, error)),
     Effect.ignore,
@@ -64,9 +64,9 @@ layer(Target.layer)("staging deliveries", (it) => {
       const bigSize = 150 * MIB;
       const big = Buffer.alloc(bigSize, 0x62);
       const now = Date.now();
-      const deliveryId = randomUUID();
-      const smallId = randomUUID();
-      const bigId = randomUUID();
+      const deliveryId = DeliveryId.make(randomUUID());
+      const smallId = TransferId.make(randomUUID());
+      const bigId = TransferId.make(randomUUID());
       const newDelivery: NewDelivery = {
         files: [
           {
@@ -188,10 +188,12 @@ layer(Target.layer)("staging deliveries", (it) => {
         expect(replay.link).toBe(delivery.link);
         const conflict = yield* Effect.flip(
           api.CreateDelivery({
-            ...newDelivery,
             files: newDelivery.files.map((file, index) =>
               index === 0 ? { ...file, size: file.size + 1 } : file,
             ),
+            id: newDelivery.id,
+            retentionDays: newDelivery.retentionDays,
+            title: newDelivery.title,
           }),
         );
         expect(conflict._tag).toBe("DeliveryConflict");
@@ -228,13 +230,13 @@ layer(Target.layer)("staging deliveries", (it) => {
         files: [
           {
             contentType: "application/octet-stream",
-            id: randomUUID(),
+            id: TransferId.make(randomUUID()),
             lastModified: Date.now(),
             path: "pending.bin",
             size: 150 * MIB,
           },
         ],
-        id: randomUUID(),
+        id: DeliveryId.make(randomUUID()),
         retentionDays: 1,
         title: "Pending",
       });
@@ -268,12 +270,12 @@ layer(Target.layer)("staging deliveries", (it) => {
   it.effect("cancel · aborts remote multipart and closes signing", () =>
     Effect.gen(function* cancel() {
       const { api } = yield* Target;
-      const deliveryId = randomUUID();
+      const deliveryId = DeliveryId.make(randomUUID());
       const delivery = yield* api.CreateDelivery({
         files: [
           {
             contentType: "application/octet-stream",
-            id: randomUUID(),
+            id: TransferId.make(randomUUID()),
             lastModified: Date.now(),
             path: "junk.bin",
             size: 70 * MIB,

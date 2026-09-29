@@ -2,7 +2,14 @@ import type { AwsS3Options } from "@uppy/aws-s3";
 import AwsS3 from "@uppy/aws-s3";
 import { Uppy } from "@uppy/core";
 import type { Body, Meta } from "@uppy/core/utils";
-import { NotUploaded, partSize, RelativePath, usesMultipart } from "@tranzfer/contracts";
+import {
+  DeliveryId,
+  NotUploaded,
+  partSize,
+  RelativePath,
+  TransferId,
+  usesMultipart,
+} from "@tranzfer/contracts";
 import type { NewFile, UploadRequest } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import type { ManagedRuntime } from "effect/ManagedRuntime";
@@ -116,7 +123,9 @@ const sampleSpeed = (transferId: string, bytesUploaded: number): number | null =
 const finalize = async (runtime: Runtime, transferId: string, attempt = 0) => {
   try {
     return await runtime.runPromise(
-      ApiClient.pipe(Effect.flatMap((api) => api.FinalizeTransfer({ transferId }))),
+      ApiClient.pipe(
+        Effect.flatMap((api) => api.FinalizeTransfer({ transferId: TransferId.make(transferId) })),
+      ),
     );
   } catch (error) {
     if (error instanceof NotUploaded && attempt + 1 < FINALIZE_ATTEMPTS) {
@@ -253,12 +262,12 @@ export const sendFiles = async (
         api.CreateDelivery({
           files: files.map(({ file, path }): NewFile => ({
             contentType: file.type === "" ? null : file.type,
-            id: crypto.randomUUID(),
+            id: TransferId.make(crypto.randomUUID()),
             lastModified: file.lastModified,
             path,
             size: file.size,
           })),
-          id: crypto.randomUUID(),
+          id: DeliveryId.make(crypto.randomUUID()),
           retentionDays,
           title: deliveryTitle(files),
         }),
@@ -342,7 +351,7 @@ export const retryTransfer = (runtime: Runtime, transferId: string) => {
   void uppy.retryUpload(file.id);
 };
 
-export const cancelDelivery = async (runtime: Runtime, deliveryId: string) => {
+export const cancelDelivery = async (runtime: Runtime, deliveryId: DeliveryId) => {
   const uppy = getUploads(runtime);
   const cancelled = await runtime.runPromise(
     ApiClient.pipe(Effect.flatMap((api) => api.CancelDelivery({ deliveryId }))),

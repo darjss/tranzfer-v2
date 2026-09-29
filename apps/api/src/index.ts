@@ -1,24 +1,25 @@
 import { Api } from "@tranzfer/contracts";
-import { Database, Drizzle } from "@tranzfer/db";
+import { Database } from "@tranzfer/db";
 import { Random, RuntimeContext } from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import { sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Match from "effect/Match";
 import { HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 
-import { AuthHandlers } from "./handlers/auth";
-import { DeliveriesHandlers } from "./handlers/deliveries";
-import { InfraHandlers } from "./handlers/infra";
-import { LinkHandlers } from "./handlers/links";
-import { AuthenticatedLive } from "./middleware";
+import { Deliveries } from "./implementation/deliveries";
+import { LinkTokens } from "./implementation/link-tokens";
+import { ApiHandlers, AuthenticatedLive } from "./implementation/rpc";
+import { SharedLinks } from "./implementation/shared-links";
+import { Storage } from "./implementation/storage";
+import { sweep } from "./implementation/sweeper";
+import { Transfers } from "./implementation/transfers";
+import { Auth, makeAuth } from "./infrastructure/auth";
+import { filesStorage } from "./infrastructure/r2";
+import { deployStage } from "./infrastructure/stage";
 import { App } from "./resources";
-import { Auth } from "./services/auth";
-import { Links } from "./services/links";
-import { deployStage } from "./services/stage";
-import { Storage } from "./services/storage";
 import { ApiWorker } from "./worker";
 
 export { ApiWorker } from "./worker";
@@ -30,57 +31,76 @@ export default ApiWorker.make(
     main: import.meta.url,
   },
   Effect.gen(function* impl() {
-    const db = yield* Cloudflare.D1.QueryDatabase(App);
-    const database = Layer.succeed(Database, db.raw.pipe(Effect.provide(RuntimeContext.phantom)));
-    const stage = yield* deployStage;
-    const auth = yield* Match.value(stage).pipe(
-      Match.when("production", () => Auth.production),
-      Match.when("staging", () => Auth.staging),
-      Match.when("dev", () => Auth.dev),
-      Match.exhaustive,
-      Effect.orDie,
-      Effect.provide(database),
+    // This effect also runs at deploy time, when no binding exists, so the D1
+    // handle and every secret stay lazy until an invocation reads them.
+    const d1 = yield* Cloudflare.D1.QueryDatabase(App);
+    const handle = d1.raw.pipe(Effect.provide(RuntimeContext.phantom));
+    const linkSecret = yield* Random("LinkSecret");
+
+    const isolate = yield* Layer.build(
+      Layer.mergeAll(
+        yield* filesStorage,
+        LinkTokens.layer((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom))),
+        Layer.effect(Auth, makeAuth(yield* deployStage, handle)),
+        RpcSerialization.layerJson,
+      ),
     );
 
-    const storage = yield* Storage.deployed;
+    // A D1 client belongs to one invocation, so the services over it are
+    // rebuilt per request (and per cron run) with a fresh memo map.
+    const domain = Layer.mergeAll(Transfers.layer, SharedLinks.layer).pipe(
+      Layer.provideMerge(Deliveries.layer),
+      Layer.provideMerge(Layer.unwrap(Effect.map(handle, Database.fromD1))),
+    );
+    const perInvocation = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(Effect.provide(domain, { local: true }), Effect.provideContext(isolate));
 
-    const linkSecret = yield* Random("LinkSecret");
-    const links = Links.make((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom)));
+    yield* Cloudflare.Workers.cron("* * * * *", () => perInvocation(sweep));
 
-    const shared = yield* Layer.build(
-      Layer.mergeAll(InfraHandlers, LinkHandlers, RpcSerialization.layerJson).pipe(
-        Layer.provideMerge(
-          Layer.mergeAll(Drizzle.layer, storage, links, Layer.succeed(Auth, auth)),
-        ),
-        Layer.provide(database),
+    const health = Effect.gen(function* health() {
+      const { db } = yield* Database;
+      yield* db.run(sql`SELECT 1`);
+      const storage = yield* Storage;
+      yield* storage.head("health/probe");
+      return HttpServerResponse.jsonUnsafe({ ok: true });
+    }).pipe(
+      Effect.catch(() =>
+        Effect.succeed(HttpServerResponse.jsonUnsafe({ ok: false }, { status: 503 })),
       ),
     );
 
     const routes = Layer.mergeAll(
-      HttpRouter.add("*", "/api/auth/*", auth.fetch),
+      HttpRouter.add(
+        "*",
+        "/api/auth/*",
+        Effect.flatMap(Effect.service(Auth), (auth) => auth.fetch).pipe(
+          Effect.provideContext(isolate),
+        ),
+      ),
       HttpRouter.add(
         "POST",
         "/rpc",
-        Effect.flatten(RpcServer.toHttpEffect(Api)).pipe(
-          // Authenticated requires the HttpServerRequest, so these build per
-          // request in a fresh memo map.
-          Effect.provide(Layer.mergeAll(AuthHandlers, AuthenticatedLive, DeliveriesHandlers), {
-            local: true,
-          }),
-          Effect.provideContext(shared),
+        perInvocation(
+          Effect.flatten(RpcServer.toHttpEffect(Api)).pipe(
+            Effect.provide(Layer.mergeAll(ApiHandlers, AuthenticatedLive), { local: true }),
+          ),
         ),
       ),
-      HttpRouter.add("GET", "/health", HttpServerResponse.json({ ok: true })),
+      HttpRouter.add("GET", "/health", perInvocation(health)),
     );
-    const handle = yield* routes.pipe(
+    const handle_ = yield* routes.pipe(
       Layer.provide(HttpServer.layerServices),
       HttpRouter.toHttpEffect,
       Effect.provideService(Layer.CurrentMemoMap, yield* Layer.makeMemoMap),
     );
-    return { fetch: handle };
+    return { fetch: handle_ };
   }).pipe(
     Effect.provide(
-      Layer.mergeAll(Cloudflare.D1.QueryDatabaseBinding, Cloudflare.R2.ReadBucketBinding),
+      Layer.mergeAll(
+        Cloudflare.D1.QueryDatabaseBinding,
+        Cloudflare.R2.ReadBucketBinding,
+        Cloudflare.Workers.CronEventSourceLive,
+      ),
     ),
   ),
 );

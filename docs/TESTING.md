@@ -13,7 +13,7 @@ Each layer answers one question. Don't ask a layer a question it can't answer.
 | Layer          | Tool                                   | Answers                                                                        |
 | -------------- | -------------------------------------- | ------------------------------------------------------------------------------ |
 | Types and lint | `vp check`                             | Is this code possible, and does it respect the boundaries?                     |
-| Pure tests     | `@effect/vitest` through `vp run test` | Is the transfer logic right when you hand it plain values?                     |
+| Service tests  | `@effect/vitest` through `vp run test` | Do the API services keep their rules on a real local D1, with storage faked?   |
 | Staging checks | `vp run test:e2e` (vitest in `e2e/`)   | Does a deployed staging or PR preview build honor the API contract end to end? |
 | Scenarios      | Playwright inside `e2e/`               | Does a real user journey survive real failure against the running stack?       |
 | Release gates  | People, real files, real networks      | Does 10, 100 or 350 GB actually make it? The table in RELIABILITY.md decides   |
@@ -96,4 +96,4 @@ Vitest browser mode runs test code inside an iframe next to a rendered component
 
 ## CI
 
-`vp check` gates every PR. `vp run test` joins the gate once test files exist, because an empty run isn't coverage. Scenarios stay out of the PR gate until they prove fast and stable against the local stack. Then they get their own workflow.
+`vp check` and `vp run test` gate every PR. The API service tests in `apps/api/test` run on wrangler's local D1 (`@tranzfer/db/testing`) with an in-memory `Storage`; use `TestClock` for anything time-based. Scenarios stay out of the PR gate until they prove fast and stable against the local stack. Then they get their own workflow.

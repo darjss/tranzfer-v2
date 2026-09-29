@@ -21,3 +21,4 @@ jobs:
           cache: true
           node-version: "24"
       - run: vp check
+      - run: vp run test
