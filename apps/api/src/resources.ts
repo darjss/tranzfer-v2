@@ -37,9 +37,11 @@ export const Files = Cloudflare.R2.Bucket("Files", {
       id: "abort-incomplete-multipart",
     },
     {
-      // Backstop only; the app-level sweeper owns real expiry. This must
-      // outlive max retention (14 days from finalization) plus open/upload
-      // time, so objects under a live link are never deleted early.
+      // Backstop only. No app-level expiry sweep exists yet (planned in
+      // docs/plan/01-foundation.md), so objects can outlive retention until
+      // this fires. It must outlive max retention (14 days from finalization)
+      // plus open/upload time, so objects under a live link are never deleted
+      // early.
       deleteObjectsTransition: { condition: { maxAge: 30 * DAY_SECONDS, type: "Age" } },
       id: "expire-deliveries",
       prefix: "d/",
