@@ -13,7 +13,7 @@
     "plan:preview": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://$ALCHEMY_STAGE.tranzfer.app node ./node_modules/alchemy/bin/cli.js plan",
     "deploy:preview": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://$ALCHEMY_STAGE.tranzfer.app node ./node_modules/alchemy/bin/cli.js deploy --yes",
     "destroy:preview": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://$ALCHEMY_STAGE.tranzfer.app node ./node_modules/alchemy/bin/cli.js destroy --yes",
-    "destroy": "env -u npm_execpath -u npm_config_user_agent node ./X"
+    "destroy": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://tranzfer.app node ./node_modules/alchemy/bin/cli.js destroy --yes --stage production"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

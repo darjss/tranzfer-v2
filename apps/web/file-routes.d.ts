@@ -39,6 +39,12 @@ declare module "virtual:file-routes" {
       $$route: FileRouteEagerRef<typeof import("./src/routes/[...404]")>;
     },
     {
+      path: "/deliveries";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/deliveries")>;
+      $$route?: undefined;
+    },
+    {
       path: "/";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/index")>;
@@ -52,12 +58,6 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
-      path: "/me";
-      page: true;
-      $component: FileRouteEagerRef<typeof import("./src/routes/me")>;
-      $$route?: undefined;
-    },
-    {
       path: "/rpc";
       page: false;
       $POST: FileRouteEagerRef<typeof import("./src/routes/rpc")>;
@@ -67,6 +67,12 @@ declare module "virtual:file-routes" {
       path: "/sign-in";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/sign-in")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/d/:token";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/d/[token]")>;
       $$route?: undefined;
     },
     {
@@ -91,14 +97,6 @@ declare module "virtual:file-routes" {
       children?: undefined;
     },
     {
-      path: "/me";
-      id: "/me";
-      page: true;
-      $component: FileRouteEagerRef<typeof import("./src/routes/me")>;
-      $$route?: undefined;
-      children?: undefined;
-    },
-    {
       path: "/*404";
       id: "/*404";
       page: true;
@@ -111,6 +109,22 @@ declare module "virtual:file-routes" {
       id: "/sign-in";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/sign-in")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/d/:token";
+      id: "/d/:token";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/d/[token]")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/deliveries";
+      id: "/deliveries";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/deliveries")>;
       $$route?: undefined;
       children?: undefined;
     }
