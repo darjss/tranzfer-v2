@@ -70,14 +70,14 @@ export const totalSize = (delivery: Delivery) =>
   delivery.transfers.reduce((total, transfer) => total + transfer.size, 0);
 
 // What one file shows. The server state wins; local progress only speaks
-// for a transfer this tab still owns. Server "finalizing" means every byte
-// was signed for, and the sweeper finishes it even if this tab is gone.
+// for a transfer this tab still owns. A "finalizing" transfer this tab lost
+// reads as interrupted: signing Complete doesn't prove the bytes landed, and
+// if they did the sweeper marks it complete within a minute.
 type TransferStatus =
   | { readonly _tag: "Active"; readonly progress: TransferProgress }
   | { readonly _tag: "Cancelled" }
   | { readonly _tag: "Complete" }
   | { readonly _tag: "Failed"; readonly progress: TransferProgress }
-  | { readonly _tag: "Finishing" }
   | { readonly _tag: "Interrupted" };
 
 export const transferStatus = (transfer: Transfer, local: TransferProgress | undefined) =>
@@ -87,7 +87,6 @@ export const transferStatus = (transfer: Transfer, local: TransferProgress | und
     Match.when({ state: "cancelled" }, () => ({ _tag: "Cancelled" })),
     Match.when({ progress: { phase: "failed" } }, ({ progress }) => ({ _tag: "Failed", progress })),
     Match.when({ progress: Match.defined }, ({ progress }) => ({ _tag: "Active", progress })),
-    Match.when({ state: "finalizing" }, () => ({ _tag: "Finishing" })),
     Match.orElse(() => ({ _tag: "Interrupted" })),
   );
 
@@ -116,7 +115,6 @@ const addTransfer = (roll: Rollup, transfer: Transfer, local: TransferProgress |
     Cancelled: () => roll,
     Complete: () => ({ ...roll, confirmed: roll.confirmed + transfer.size }),
     Failed: ({ progress }) => ({ ...withProgress(roll, progress), failed: true }),
-    Finishing: () => ({ ...roll, confirmed: roll.confirmed + transfer.size }),
     Interrupted: () => ({ ...roll, interrupted: true }),
   });
 

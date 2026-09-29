@@ -48,7 +48,6 @@ const fileKind = {
   Cancelled: "cancelled",
   Complete: "ready",
   Failed: "failed",
-  Finishing: "finishing",
   Interrupted: "interrupted",
 } satisfies Record<ReturnType<typeof transferStatus>["_tag"], Kind>;
 
