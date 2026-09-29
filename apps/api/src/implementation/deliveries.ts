@@ -1,7 +1,7 @@
 import { Delivery, DeliveryConflict, DeliveryNotFound } from "@tranzfer/contracts";
 import type { DeliveryId, NewDelivery } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -11,13 +11,18 @@ import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 
 import { LinkTokens, newLinkId } from "./link-tokens";
-import { Storage } from "./storage";
+import { Storage, UPLOAD_URL_TTL } from "./storage";
 
 // D1 caps a statement at 100 bound parameters and a transfer row binds 8.
 const TRANSFER_ROWS_PER_INSERT = 12;
 // Deliveries purged per sweep; each is one list plus one bulk delete per 1000 files.
 const PURGE_BATCH = 20;
-const CANCEL_SETTLE = Duration.minutes(5);
+// A Complete or empty-file Put signed before a cancel can still land an object
+// until its URL expires, so the confirming purge waits out the URL's lifetime.
+const CANCEL_SETTLE = Duration.sum(UPLOAD_URL_TTL, Duration.minutes(1));
+// R2 aborts incomplete multipart uploads after 7 days, so an open delivery
+// older than that can never finish.
+const ABANDON_AFTER = Duration.days(7);
 
 export const objectPrefix = (deliveryId: DeliveryId) => `d/${deliveryId}/`;
 
@@ -231,6 +236,30 @@ export class Deliveries extends Context.Service<
 
         purgeEnded: Effect.gen(function* purgeEnded() {
           const now = yield* Clock.currentTimeMillis;
+          // A sender who closed the tab and never came back leaves an open
+          // delivery behind. End it like a cancel; the purge below cleans up.
+          const abandoned = yield* db.query.delivery.findMany({
+            columns: { id: true },
+            limit: PURGE_BATCH,
+            where: {
+              createdAt: { lte: new Date(now - Duration.toMillis(ABANDON_AFTER)) },
+              status: "open",
+            },
+          });
+          if (abandoned.length > 0) {
+            const ids = abandoned.map((delivery) => delivery.id);
+            yield* batch([
+              db
+                .update(schema.delivery)
+                .set({ status: "cancelled" })
+                .where(and(inArray(schema.delivery.id, ids), eq(schema.delivery.status, "open"))),
+              db
+                .update(schema.transfer)
+                .set({ state: "cancelled" })
+                .where(inArray(schema.transfer.deliveryId, ids)),
+            ]);
+            yield* Effect.logInfo("abandoned deliveries cancelled", { count: ids.length });
+          }
           const ended = yield* db.query.delivery.findMany({
             columns: { id: true },
             limit: PURGE_BATCH,

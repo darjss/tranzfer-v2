@@ -241,8 +241,14 @@ export class Transfers extends Context.Service<
           }
           const allowed = Match.value(transfer.state).pipe(
             Match.when("uploading", () => true),
-            // Only retries of the final steps; no new upload, no new parts.
-            Match.when("finalizing", () => request._tag === "Complete" || request._tag === "List"),
+            // Only retries of the final steps; no new upload, no new parts. The
+            // empty-file Put is safe to sign again: If-None-Match makes a second
+            // write fail, and a lost response must not strand the transfer.
+            Match.when(
+              "finalizing",
+              () =>
+                request._tag === "Complete" || request._tag === "List" || request._tag === "Put",
+            ),
             Match.orElse(() => false),
           );
           if (!allowed) {

@@ -173,4 +173,19 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       expect(view.expiresAt?.getTime()).toBe(start + 3 * DAY_MS);
     }),
   );
+
+  it.effect("an empty file re-signs its guarded Put after a lost response", () =>
+    Effect.gen(function* scenario() {
+      const created = yield* seed("gus", [newFile("empty.txt", 0)]);
+      const transfers = yield* Transfers;
+      const { objectKey } = first(created.transfers);
+
+      const wrongKind = yield* Effect.flip(transfers.sign("gus", objectKey, { _tag: "Create" }));
+      expect(wrongKind._tag).toBe("InvalidUpload");
+      // The first response is lost; the retry still gets a URL. If-None-Match
+      // (signed by the real storage) is what stops a second write.
+      yield* transfers.sign("gus", objectKey, { _tag: "Put" });
+      yield* transfers.sign("gus", objectKey, { _tag: "Put" });
+    }),
+  );
 });

@@ -228,6 +228,7 @@ const make = Effect.gen(function* makeUploads() {
           confirmed: Math.max(file.size ?? 0, transfers[transferId]?.confirmed ?? 0),
           inFlight: 0,
           phase: "finalizing",
+          uploaded: true,
         });
         runFork(finish(uppy, file.id, transferId));
       });
@@ -269,9 +270,9 @@ const make = Effect.gen(function* makeUploads() {
     const byPath = new Map(delivery.transfers.map((transfer) => [transfer.path, transfer]));
     const added: { fileId: string; transferId: TransferId }[] = [];
     // All or nothing: the delivery exists, but if any file can't be queued
-    // none will upload, so drop what landed and mark every transfer failed
-    // instead of leaving them queued forever.
-    const queued = yield* Effect.try(() => {
+    // none will upload. Drop what landed and cancel the delivery, so no row
+    // is left whose Retry has no file behind it.
+    yield* Effect.try(() => {
       for (const { file, path } of files) {
         const transfer = byPath.get(path);
         if (transfer === undefined) {
@@ -292,23 +293,22 @@ const make = Effect.gen(function* makeUploads() {
         added.push({ fileId, transferId: transfer.id });
       }
     }).pipe(
-      Effect.as(true),
       Effect.catch((error) =>
-        Effect.sync(() => {
+        Effect.gen(function* dropQueued() {
           for (const { fileId } of added) {
             uppy.removeFile(fileId);
           }
           for (const transfer of delivery.transfers) {
-            patchTransfer(transfer.id, { error: error.cause, phase: "failed" });
+            patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
           }
-          return false;
+          // If this cancel fails too, the sweeper ends the open delivery.
+          yield* Effect.ignore(api.CancelDelivery({ deliveryId: delivery.id }));
+          return yield* Effect.die(error.cause);
         }),
       ),
     );
-    if (queued) {
-      for (const { fileId, transferId } of added) {
-        runFork(start(uppy, fileId, transferId));
-      }
+    for (const { fileId, transferId } of added) {
+      runFork(start(uppy, fileId, transferId));
     }
     return delivery;
   });
@@ -319,10 +319,11 @@ const make = Effect.gen(function* makeUploads() {
     if (file === undefined) {
       return;
     }
-    const progress = transfers[transferId];
-    if (progress !== undefined && progress.confirmed >= (file.size ?? 0)) {
-      // The bytes already reached R2 and only FinalizeTransfer failed, so
-      // re-uploading would send the whole file again for nothing.
+    if (transfers[transferId]?.uploaded) {
+      // Uppy finished, so the object exists and only FinalizeTransfer failed;
+      // re-uploading would send the whole file again for nothing. Full
+      // confirmed bytes are not enough: the last part can land and the
+      // Complete request still fail.
       patchTransfer(transferId, { error: undefined, phase: "finalizing" });
       runFork(finish(uppy, file.id, transferId));
       return;
