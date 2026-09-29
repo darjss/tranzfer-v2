@@ -10,7 +10,10 @@
     "deploy": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://tranzfer.app node ./node_modules/alchemy/bin/cli.js deploy --yes --stage production",
     "plan:staging": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://staging.tranzfer.app node ./node_modules/alchemy/bin/cli.js plan --stage staging",
     "deploy:staging": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://staging.tranzfer.app node ./node_modules/alchemy/bin/cli.js deploy --yes --stage staging",
-    "destroy": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://tranzfer.app node ./node_modules/alchemy/bin/cli.js destroy --yes --stage production"
+    "plan:preview": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://$ALCHEMY_STAGE.tranzfer.app node ./node_modules/alchemy/bin/cli.js plan",
+    "deploy:preview": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://$ALCHEMY_STAGE.tranzfer.app node ./node_modules/alchemy/bin/cli.js deploy --yes",
+    "destroy:preview": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://$ALCHEMY_STAGE.tranzfer.app node ./node_modules/alchemy/bin/cli.js destroy --yes",
+    "destroy": "env -u npm_execpath -u npm_config_user_agent node ./X"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

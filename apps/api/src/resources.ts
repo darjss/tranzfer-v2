@@ -1,8 +1,12 @@
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Output from "alchemy/Output";
+import { Stage } from "alchemy/Stage";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+
+import { isPreviewStage } from "./services/stage";
 
 const DAY_SECONDS = 24 * 60 * 60;
 
@@ -31,6 +35,11 @@ export const Files = Cloudflare.R2.Bucket("Files", {
       maxAgeSeconds: 3600,
     },
   ],
+  // Preview stacks are torn down when their PR closes; R2 refuses to delete
+  // a bucket that still holds objects.
+  forceDestroy: Output.fromEffect(
+    Effect.map(Effect.serviceOption(Stage), Option.exists(isPreviewStage)),
+  ),
   lifecycleRules: [
     {
       abortMultipartUploadsTransition: { condition: { maxAge: 7 * DAY_SECONDS, type: "Age" } },
