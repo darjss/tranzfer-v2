@@ -1,0 +1,77 @@
+name: preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+# One run per PR at a time. Only a new push cancels a running deploy; a
+# closed PR gets no synchronize events, so nothing cancels a destroy.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: ${{ github.event.action == 'synchronize' }}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  ALCHEMY_STAGE: pr-${{ github.event.pull_request.number }}
+  PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}.tranzfer.app
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  deploy:
+    # Fork PRs get no secrets.
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+      deployment: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: voidzero-dev/setup-vp@d5616419e3a9637febec6da1475cee9d07a317fd # v1.20.0
+        with:
+          node-version: "24"
+          cache: true
+      - name: Deploy preview
+        run: vp run --filter @tranzfer/infra deploy:preview
+        env:
+          TEST_LOGIN_KEY: ${{ secrets.TEST_LOGIN_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      # A new custom domain can take a few minutes to get DNS and a cert.
+      - name: Health check
+        run: curl -fsS --retry 30 --retry-all-errors --retry-delay 10 "$PREVIEW_URL/infra" | jq -e '.health.ok and .bindings.d1 and .bindings.r2 and .bindings.s3 and .web'
+      - name: Comment preview URL
+        run: gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body "Preview for ${{ github.event.pull_request.head.sha }} is live at $PREVIEW_URL. Sign in with \`POST /api/auth/staging-login\`."
+      - name: E2E against preview
+        run: vp run test:e2e
+        env:
+          E2E_BASE_URL: ${{ env.PREVIEW_URL }}
+          TEST_LOGIN_KEY: ${{ secrets.TEST_LOGIN_KEY }}
+
+  destroy:
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+      deployment: false
+    steps:
+      # The merge ref can be gone once the PR closes; the head commit stays.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: voidzero-dev/setup-vp@d5616419e3a9637febec6da1475cee9d07a317fd # v1.20.0
+        with:
+          node-version: "24"
+          cache: true
+      - name: Destroy preview
+        run: vp run --filter @tranzfer/infra destroy:preview
+        env:
+          TEST_LOGIN_KEY: ${{ secrets.TEST_LOGIN_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Comment teardown
+        run: gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body "Preview $PREVIEW_URL was torn down when this PR closed."

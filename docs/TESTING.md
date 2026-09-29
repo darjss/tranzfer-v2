@@ -10,13 +10,13 @@ New test files still need explicit user approval under [AGENTS.md](../AGENTS.md)
 
 Each layer answers one question. Don't ask a layer a question it can't answer.
 
-| Layer          | Tool                                   | Answers                                                                      |
-| -------------- | -------------------------------------- | ---------------------------------------------------------------------------- |
-| Types and lint | `vp check`                             | Is this code possible, and does it respect the boundaries?                   |
-| Pure tests     | `@effect/vitest` through `vp run test` | Is the transfer logic right when you hand it plain values?                   |
-| Staging checks | `pnpm test:e2e` (vitest in `e2e/`)     | Does the deployed staging build honor the API contract end to end?           |
-| Scenarios      | Playwright inside `e2e/`               | Does a real user journey survive real failure against the running stack?     |
-| Release gates  | People, real files, real networks      | Does 10, 100 or 350 GB actually make it? The table in RELIABILITY.md decides |
+| Layer          | Tool                                   | Answers                                                                        |
+| -------------- | -------------------------------------- | ------------------------------------------------------------------------------ |
+| Types and lint | `vp check`                             | Is this code possible, and does it respect the boundaries?                     |
+| Pure tests     | `@effect/vitest` through `vp run test` | Is the transfer logic right when you hand it plain values?                     |
+| Staging checks | `pnpm test:e2e` (vitest in `e2e/`)     | Does a deployed staging or PR preview build honor the API contract end to end? |
+| Scenarios      | Playwright inside `e2e/`               | Does a real user journey survive real failure against the running stack?       |
+| Release gates  | People, real files, real networks      | Does 10, 100 or 350 GB actually make it? The table in RELIABILITY.md decides   |
 
 ## Pure tests
 
@@ -76,7 +76,7 @@ The parts ledger is the most important thing in the harness. Part bytes go strai
 
 ## Identity
 
-Sign-in is Google only, and scenarios don't go through Google. Outside production, the API exposes a dev-only identity route that uses Better Auth's `testUtils` plugin to create a user and a real session. Every request after that goes through real session validation. Production never registers the route.
+Sign-in is Google only, and scenarios don't go through Google. Outside production, when `TEST_LOGIN_KEY` is set, the API registers `POST /api/auth/staging-login` (`apps/api/src/services/staging-login.ts`). It checks the key, then creates the staging user and a real session. Every request after that goes through real session validation. Production never registers the route.
 
 One scenario checks that sign-in redirects to Google with the right callback URL. The real OAuth round trip gets checked by hand against the deployment.
 

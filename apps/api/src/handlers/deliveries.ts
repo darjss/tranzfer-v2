@@ -1,7 +1,6 @@
 import {
   Api,
   CurrentPrincipal,
-  Delivery,
   DeliveryConflict,
   DeliveryNotFound,
   InvalidUpload,
@@ -12,53 +11,28 @@ import {
 } from "@tranzfer/contracts";
 import type { NewDelivery, UploadRequest } from "@tranzfer/contracts";
 import { Drizzle, schema } from "@tranzfer/db";
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as Result from "effect/Result";
 
 import { Links, newLinkId } from "../services/links";
 import { Storage, toStorageUnavailable } from "../services/storage";
+import { deliveryView, loadDeliveryRows, viewFromRows } from "./delivery-rows";
+import type { DeliveryRows } from "./delivery-rows";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CANCEL_CONCURRENCY = 8;
-
-type DeliveryRow = typeof schema.delivery.$inferSelect;
-type LinkRow = typeof schema.link.$inferSelect;
-type TransferRow = typeof schema.transfer.$inferSelect;
+// D1 caps a statement at 100 bound params and a transfer row binds 8.
+const TRANSFER_ROWS_PER_INSERT = 12;
 
 const objectKey = (deliveryId: string, transferId: string) => `d/${deliveryId}/${transferId}`;
 
-// `expired` is computed on read and never stored.
-const toDelivery = (
-  delivery: DeliveryRow,
-  transfers: readonly TransferRow[],
-  linkToken: string,
-): Delivery =>
-  new Delivery({
-    createdAt: delivery.createdAt,
-    expiresAt: delivery.expiresAt,
-    id: delivery.id,
-    link: `/d/${linkToken}`,
-    retentionDays: delivery.retentionDays,
-    status:
-      delivery.status === "ready" &&
-      delivery.expiresAt !== null &&
-      delivery.expiresAt.getTime() <= Date.now()
-        ? "expired"
-        : delivery.status,
-    title: delivery.title,
-    transfers: transfers.map((transfer) => ({
-      id: transfer.id,
-      objectKey: transfer.objectKey,
-      path: transfer.path,
-      size: transfer.size,
-      state: transfer.state,
-    })),
-  });
-
-const sameFileSet = (files: NewDelivery["files"], transfers: readonly TransferRow[]) =>
+const sameFileSet = (files: NewDelivery["files"], transfers: DeliveryRows["transfers"]) =>
   files.length === transfers.length &&
   files.every((file) =>
     transfers.some(
@@ -69,64 +43,11 @@ const sameFileSet = (files: NewDelivery["files"], transfers: readonly TransferRo
 
 // A retried create only replays when every field matches; a changed payload
 // under the same id is a conflict, not a silent accept.
-const sameDelivery = (
-  input: NewDelivery,
-  delivery: DeliveryRow,
-  transfers: readonly TransferRow[],
-) =>
-  delivery.retentionDays === input.retentionDays &&
-  delivery.title === input.title &&
-  sameFileSet(input.files, transfers);
-
-// The link is written in the same batch as the delivery; a missing row is a
-// broken invariant, never a not-found.
-const viewFromRows = (
-  links: Links["Service"],
-  delivery: DeliveryRow,
-  transfers: readonly TransferRow[],
-  link: LinkRow | undefined,
-) =>
-  Effect.gen(function* view() {
-    if (link === undefined) {
-      return yield* Effect.die(new Error(`Delivery ${delivery.id} has no link row`));
-    }
-    const token = yield* links.issue(link.id);
-    return toDelivery(delivery, transfers, token);
-  });
-
-const loadDeliveryRows = (db: Drizzle["Service"], deliveryId: string, op: string) =>
-  db.run(op, async (d) => {
-    const deliveries = await d
-      .select()
-      .from(schema.delivery)
-      .where(eq(schema.delivery.id, deliveryId));
-    if (deliveries.length === 0) {
-      return null;
-    }
-    const [transfers, linkRows] = await Promise.all([
-      d
-        .select()
-        .from(schema.transfer)
-        .where(eq(schema.transfer.deliveryId, deliveryId))
-        .orderBy(asc(schema.transfer.path)),
-      d.select().from(schema.link).where(eq(schema.link.deliveryId, deliveryId)),
-    ]);
-    return { delivery: deliveries[0], link: linkRows[0], transfers };
-  });
-
-const deliveryView = (
-  db: Drizzle["Service"],
-  links: Links["Service"],
-  deliveryId: string,
-  op: string,
-) =>
-  Effect.gen(function* view() {
-    const loaded = yield* loadDeliveryRows(db, deliveryId, op);
-    if (loaded === null) {
-      return yield* Effect.die(new Error(`Delivery ${deliveryId} vanished after write`));
-    }
-    return yield* viewFromRows(links, loaded.delivery, loaded.transfers, loaded.link);
-  });
+const sameDelivery = (input: NewDelivery, senderId: string, row: DeliveryRows) =>
+  row.senderId === senderId &&
+  row.retentionDays === input.retentionDays &&
+  row.title === input.title &&
+  sameFileSet(input.files, row.transfers);
 
 export const DeliveriesHandlers = Layer.mergeAll(
   Api.toLayerHandler(
@@ -138,22 +59,21 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const principal = yield* CurrentPrincipal;
 
         const existing = yield* loadDeliveryRows(db, input.id, "deliveries.create.lookup");
-        if (existing !== null) {
-          if (
-            existing.delivery.senderId === principal.id &&
-            sameDelivery(input, existing.delivery, existing.transfers)
-          ) {
+        if (existing !== undefined) {
+          if (sameDelivery(input, principal.id, existing)) {
             return yield* deliveryView(db, links, input.id, "deliveries.create.view");
           }
           return yield* new DeliveryConflict({ message: "Delivery already exists" });
         }
 
-        const transferIds = input.files.map((file) => file.id);
+        // One JSON param instead of one per id keeps this under D1's
+        // 100-param cap for any file count.
+        const transferIdsTaken = inArray(
+          schema.transfer.id,
+          sql`(select value from json_each(${JSON.stringify(input.files.map((file) => file.id))}))`,
+        );
         const used = yield* db.run("deliveries.create.transferIds", (d) =>
-          d
-            .select({ id: schema.transfer.id })
-            .from(schema.transfer)
-            .where(inArray(schema.transfer.id, transferIds)),
+          d.select({ id: schema.transfer.id }).from(schema.transfer).where(transferIdsTaken),
         );
         if (used.length > 0) {
           return yield* new DeliveryConflict({ message: "Delivery already exists" });
@@ -170,16 +90,18 @@ export const DeliveriesHandlers = Layer.mergeAll(
                   senderId: principal.id,
                   title: input.title,
                 }),
-                d.insert(schema.transfer).values(
-                  input.files.map((file) => ({
-                    contentType: file.contentType,
-                    deliveryId: input.id,
-                    id: file.id,
-                    objectKey: objectKey(input.id, file.id),
-                    path: file.path,
-                    size: file.size,
-                    sourceModifiedAt: new Date(file.lastModified),
-                  })),
+                ...Arr.chunksOf(input.files, TRANSFER_ROWS_PER_INSERT).map((files) =>
+                  d.insert(schema.transfer).values(
+                    files.map((file) => ({
+                      contentType: file.contentType,
+                      deliveryId: input.id,
+                      id: file.id,
+                      objectKey: objectKey(input.id, file.id),
+                      path: file.path,
+                      size: file.size,
+                      sourceModifiedAt: new Date(file.lastModified),
+                    })),
+                  ),
                 ),
                 d.insert(schema.link).values({ deliveryId: input.id, id: newLinkId() }),
               ]),
@@ -190,22 +112,18 @@ export const DeliveriesHandlers = Layer.mergeAll(
           // failed.
           const landed = yield* loadDeliveryRows(db, input.id, "deliveries.create.relookup");
           const taken = yield* db.run("deliveries.create.retaken", (d) =>
-            d
-              .select({ id: schema.transfer.id })
-              .from(schema.transfer)
-              .where(inArray(schema.transfer.id, transferIds)),
+            d.select({ id: schema.transfer.id }).from(schema.transfer).where(transferIdsTaken),
           );
-          if (
-            landed !== null &&
-            landed.delivery.senderId === principal.id &&
-            sameDelivery(input, landed.delivery, landed.transfers)
-          ) {
-            return yield* deliveryView(db, links, input.id, "deliveries.create.view");
-          }
-          if (landed !== null || taken.length > 0) {
-            return yield* new DeliveryConflict({ message: "Delivery already exists" });
-          }
-          return yield* Effect.fail(inserted.failure);
+          return yield* Match.value({ landed, taken: taken.length > 0 }).pipe(
+            Match.when(
+              { landed: (row) => row !== undefined && sameDelivery(input, principal.id, row) },
+              () => deliveryView(db, links, input.id, "deliveries.create.view"),
+            ),
+            Match.whenOr({ landed: Predicate.isNotUndefined }, { taken: true }, () =>
+              Effect.fail(new DeliveryConflict({ message: "Delivery already exists" })),
+            ),
+            Match.orElse(() => Effect.fail(inserted.failure)),
+          );
         }
 
         return yield* deliveryView(db, links, input.id, "deliveries.create.view");
@@ -222,32 +140,18 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const links = yield* Links;
         const principal = yield* CurrentPrincipal;
 
-        const rows = yield* db.run("deliveries.list", async (d) => {
-          const found = await d
-            .select()
-            .from(schema.delivery)
-            .where(eq(schema.delivery.senderId, principal.id))
-            .orderBy(desc(schema.delivery.createdAt))
-            .limit(50);
-          if (found.length === 0) {
-            return { deliveries: [], links: [], transfers: [] };
-          }
-          const ids = found.map((delivery) => delivery.id);
-          const [transfers, linkRows] = await Promise.all([
-            d.select().from(schema.transfer).where(inArray(schema.transfer.deliveryId, ids)),
-            d.select().from(schema.link).where(inArray(schema.link.deliveryId, ids)),
-          ]);
-          return { deliveries: found, links: linkRows, transfers };
-        });
-
-        return yield* Effect.forEach(rows.deliveries, (delivery) =>
-          viewFromRows(
-            links,
-            delivery,
-            rows.transfers.filter((transfer) => transfer.deliveryId === delivery.id),
-            rows.links.find((link) => link.deliveryId === delivery.id),
-          ),
+        const rows = yield* db.run(
+          "deliveries.list",
+          async (d) =>
+            await d.query.delivery.findMany({
+              limit: 50,
+              orderBy: { createdAt: "desc" },
+              where: { senderId: principal.id },
+              with: { link: true, transfers: true },
+            }),
         );
+
+        return yield* Effect.forEach(rows, (row) => viewFromRows(links, row));
       },
       Effect.catchTag("DrizzleError", Effect.die),
     ),
@@ -261,24 +165,19 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const storage = yield* Storage;
         const principal = yield* CurrentPrincipal;
 
-        const rows = yield* db.run("deliveries.signUpload.lookup", (d) =>
-          d
-            .select({ delivery: schema.delivery, transfer: schema.transfer })
-            .from(schema.transfer)
-            .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
-            .where(
-              and(
-                eq(schema.transfer.objectKey, input.key),
-                eq(schema.delivery.senderId, principal.id),
-              ),
-            ),
+        const transfer = yield* db.run(
+          "deliveries.signUpload.lookup",
+          async (d) =>
+            await d.query.transfer.findFirst({
+              where: { delivery: { senderId: principal.id }, objectKey: input.key },
+              with: { delivery: true },
+            }),
         );
-        const [row] = rows;
-        if (row === undefined) {
+        if (transfer === undefined) {
           return yield* new DeliveryNotFound({ message: "Delivery not found" });
         }
 
-        const { delivery, transfer } = row;
+        const { delivery } = transfer;
         if (
           delivery.status !== "open" ||
           (transfer.state !== "uploading" && transfer.state !== "finalizing")
@@ -326,23 +225,18 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const storage = yield* Storage;
         const principal = yield* CurrentPrincipal;
 
-        const rows = yield* db.run("deliveries.finalize.lookup", (d) =>
-          d
-            .select({ delivery: schema.delivery, transfer: schema.transfer })
-            .from(schema.transfer)
-            .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
-            .where(
-              and(
-                eq(schema.transfer.id, input.transferId),
-                eq(schema.delivery.senderId, principal.id),
-              ),
-            ),
+        const transfer = yield* db.run(
+          "deliveries.finalize.lookup",
+          async (d) =>
+            await d.query.transfer.findFirst({
+              where: { delivery: { senderId: principal.id }, id: input.transferId },
+              with: { delivery: true },
+            }),
         );
-        const [row] = rows;
-        if (row === undefined) {
+        if (transfer === undefined) {
           return yield* new DeliveryNotFound({ message: "Delivery not found" });
         }
-        const { delivery, transfer } = row;
+        const { delivery } = transfer;
 
         if (transfer.state === "complete") {
           return yield* deliveryView(db, links, delivery.id, "deliveries.finalize.view");
@@ -427,7 +321,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const principal = yield* CurrentPrincipal;
 
         const loaded = yield* loadDeliveryRows(db, input.deliveryId, "deliveries.cancel.lookup");
-        if (loaded === null || loaded.delivery.senderId !== principal.id) {
+        if (loaded === undefined || loaded.senderId !== principal.id) {
           return yield* new DeliveryNotFound({ message: "Delivery not found" });
         }
 

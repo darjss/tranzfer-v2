@@ -1,5 +1,5 @@
 import type { Delivery } from "@tranzfer/contracts";
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
 import { css, cx } from "styled-system/css";
 
 import PhCheckBold from "~icons/ph/check-bold";
@@ -21,6 +21,7 @@ import {
   statusOf,
   toneText,
   totalSize,
+  transferStatus,
   untilDate,
 } from "./format";
 import { Progress } from "./parts";
@@ -43,10 +44,20 @@ export function DeliveryPane(props: Props) {
   const link = () => `${location.origin}${props.delivery.link}`;
   const cancellable = () => props.delivery.status === "open" || props.delivery.status === "ready";
 
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => {
+    clearTimeout(copiedTimer);
+  });
   const copy = async () => {
-    await navigator.clipboard.writeText(link());
+    try {
+      await navigator.clipboard.writeText(link());
+    } catch {
+      setProblem("Couldn't copy the link. Select it and copy it by hand.");
+      return;
+    }
     setCopied(true);
-    setTimeout(() => {
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => {
       setCopied(false);
     }, 1600);
   };
@@ -234,7 +245,7 @@ export function DeliveryPane(props: Props) {
         >
           <For each={props.delivery.transfers}>
             {(transfer) => {
-              const progress = createMemo(() => transfers[transfer.id]);
+              const file = createMemo(() => transferStatus(transfer, transfers[transfer.id])._tag);
               return (
                 <li
                   class={css({
@@ -249,47 +260,33 @@ export function DeliveryPane(props: Props) {
                   <span class={css({ fontFamily: "mono", fontSize: "sm", truncate: true })}>
                     {transfer.path}
                   </span>
-                  <Show
-                    when={transfer.state !== "complete"}
+                  <Switch
                     fallback={
-                      <PhCheckBold class={css({ boxSize: "4", color: "ok", justifySelf: "end" })} />
+                      <div
+                        class={css({
+                          bg: "ink/8",
+                          borderRadius: "full",
+                          h: "1",
+                          overflow: "hidden",
+                        })}
+                      >
+                        <div
+                          class={css({ bg: "blue", h: "full" })}
+                          style={{
+                            width: `${
+                              transfer.size === 0
+                                ? 0
+                                : ((transfers[transfer.id]?.confirmed ?? 0) / transfer.size) * 100
+                            }%`,
+                          }}
+                        />
+                      </div>
                     }
                   >
-                    <Show
-                      when={progress()?.phase === "failed"}
-                      fallback={
-                        <Show
-                          when={progress() !== undefined}
-                          fallback={
-                            <span
-                              class={css({ color: "rust", fontSize: "xs", textAlign: "right" })}
-                            >
-                              {transfer.state === "cancelled" ? "cancelled" : "interrupted"}
-                            </span>
-                          }
-                        >
-                          <div
-                            class={css({
-                              bg: "ink/8",
-                              borderRadius: "full",
-                              h: "1",
-                              overflow: "hidden",
-                            })}
-                          >
-                            <div
-                              class={css({ bg: "blue", h: "full" })}
-                              style={{
-                                width: `${
-                                  transfer.size === 0
-                                    ? 0
-                                    : ((progress()?.confirmed ?? 0) / transfer.size) * 100
-                                }%`,
-                              }}
-                            />
-                          </div>
-                        </Show>
-                      }
-                    >
+                    <Match when={file() === "Complete"}>
+                      <PhCheckBold class={css({ boxSize: "4", color: "ok", justifySelf: "end" })} />
+                    </Match>
+                    <Match when={file() === "Failed"}>
                       <button
                         class={css({
                           color: "ink",
@@ -304,8 +301,18 @@ export function DeliveryPane(props: Props) {
                       >
                         Retry
                       </button>
-                    </Show>
-                  </Show>
+                    </Match>
+                    <Match when={file() === "Cancelled"}>
+                      <span class={css({ color: "rust", fontSize: "xs", textAlign: "right" })}>
+                        cancelled
+                      </span>
+                    </Match>
+                    <Match when={file() === "Interrupted"}>
+                      <span class={css({ color: "rust", fontSize: "xs", textAlign: "right" })}>
+                        interrupted
+                      </span>
+                    </Match>
+                  </Switch>
                   <span
                     class={css({
                       color: "mut",

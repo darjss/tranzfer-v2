@@ -82,9 +82,6 @@ const LinkPage = () => {
   // surfaces a dead link the same way the load-time boundary does.
   const [linkError, setLinkError] = createSignal<unknown>();
   const download = async (path: string) => {
-    if (runtime === undefined) {
-      return;
-    }
     try {
       const fresh = await runtime.runPromise(
         ApiClient.pipe(Effect.flatMap((api) => api.OpenLink({ token: params.token }))),

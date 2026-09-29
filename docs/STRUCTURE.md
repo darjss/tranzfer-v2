@@ -4,7 +4,6 @@ Use the existing directory tree as the file inventory. Add a package only for a 
 
 - `packages/contracts` owns shared RPC operations, schemas and expected errors. It must not import application handlers, database implementations or Worker bindings.
 - `packages/db` owns schema, migrations and the D1/Drizzle connection. Better Auth and domain queries share that connection.
-- `packages/upload-core` is for reusable transfer calculations and recovery data. Keep Solid, Uppy instances and platform I/O out of it.
 - `apps/api/src/handlers` translates RPC calls into service operations. `services` owns external dependencies and workflows. Keep queries beside the feature until a real repository boundary is useful.
 - `apps/web/src/routes` owns page and HTTP route entry points. `api` owns clients and the Solid bridge. `ui` owns reused presentation. Keep feature state beside its consumers.
 - `infra/alchemy.run.ts` composes the stack. The API Worker's resources and bindings live in `apps/api/src/resources.ts` and `index.ts`.

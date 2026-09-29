@@ -35,7 +35,7 @@ From an agent shell, start detached so tool timeouts cannot kill it:
 
 ```text
 pkill -f alchemy/bin/exec; pkill -f "cli.js dev"
-setsid -f sh -c 'cd /home/darjs/dev/tranzfer2 && exec vp run dev > /tmp/dev.log 2>&1 < /dev/null'
+setsid -f sh -c 'cd "$(git rev-parse --show-toplevel)" && exec vp run dev > /tmp/dev.log 2>&1 < /dev/null'
 ```
 
 Worker logs live under `infra/.alchemy/log/<stage>/{Api,Web}`.

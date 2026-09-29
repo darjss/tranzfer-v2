@@ -69,116 +69,131 @@ export interface Status {
 export const totalSize = (delivery: Delivery) =>
   delivery.transfers.reduce((total, transfer) => total + transfer.size, 0);
 
-export interface Rollup {
-  readonly confirmed: number;
-  readonly failed: boolean;
-  readonly inFlight: number;
-  readonly interrupted: boolean;
-  readonly local: boolean;
-  readonly speed: number;
-  readonly uploading: boolean;
-}
+// What one file shows. The server state wins; local progress only speaks
+// for a transfer this tab still owns, and one it doesn't own is interrupted.
+type TransferStatus =
+  | { readonly _tag: "Active"; readonly progress: TransferProgress }
+  | { readonly _tag: "Cancelled" }
+  | { readonly _tag: "Complete" }
+  | { readonly _tag: "Failed"; readonly progress: TransferProgress }
+  | { readonly _tag: "Interrupted" };
 
-// A transfer the server calls uploading that this tab does not own is interrupted.
+export const transferStatus = (
+  transfer: Delivery["transfers"][number],
+  local: TransferProgress | undefined,
+) =>
+  Match.value({ progress: local, state: transfer.state }).pipe(
+    Match.withReturnType<TransferStatus>(),
+    Match.when({ state: "complete" }, () => ({ _tag: "Complete" })),
+    Match.when({ state: "cancelled" }, () => ({ _tag: "Cancelled" })),
+    Match.when({ progress: { phase: "failed" } }, ({ progress }) => ({ _tag: "Failed", progress })),
+    Match.when({ progress: Match.defined }, ({ progress }) => ({
+      _tag: "Active",
+      progress,
+    })),
+    Match.orElse(() => ({ _tag: "Interrupted" })),
+  );
+
+const idle = {
+  confirmed: 0,
+  failed: false,
+  inFlight: 0,
+  interrupted: false,
+  local: false,
+  speed: 0,
+  uploading: false,
+};
+
+type Rollup = typeof idle;
+
+const withProgress = (roll: Rollup, progress: TransferProgress): Rollup => ({
+  ...roll,
+  confirmed: roll.confirmed + progress.confirmed,
+  inFlight: roll.inFlight + progress.inFlight,
+  local: true,
+  speed: roll.speed + progress.bytesPerSecond,
+  uploading: roll.uploading || progress.phase === "queued" || progress.phase === "uploading",
+});
+
+const addTransfer = (
+  roll: Rollup,
+  transfer: Delivery["transfers"][number],
+  local: TransferProgress | undefined,
+) =>
+  Match.valueTags(transferStatus(transfer, local), {
+    Active: ({ progress }) => withProgress(roll, progress),
+    Cancelled: () => roll,
+    Complete: () => ({ ...roll, confirmed: roll.confirmed + transfer.size }),
+    Failed: ({ progress }) => ({ ...withProgress(roll, progress), failed: true }),
+    Interrupted: () => ({ ...roll, interrupted: true }),
+  });
+
 export const rollup = (
   delivery: Delivery,
   progressOf: (transferId: string) => TransferProgress | undefined,
-): Rollup => {
-  let confirmed = 0;
-  let failed = false;
-  let inFlight = 0;
-  let local = false;
-  let speed = 0;
-  let uploading = false;
-  let interrupted = false;
+) => {
+  let roll = idle;
   for (const transfer of delivery.transfers) {
-    const progress = progressOf(transfer.id);
-    if (transfer.state === "complete") {
-      confirmed += transfer.size;
-      continue;
-    }
-    if (transfer.state === "cancelled") {
-      continue;
-    }
-    if (progress === undefined) {
-      interrupted = true;
-      continue;
-    }
-    local = true;
-    confirmed += progress.confirmed;
-    inFlight += progress.inFlight;
-    speed += progress.bytesPerSecond;
-    failed ||= progress.phase === "failed";
-    uploading ||= progress.phase === "queued" || progress.phase === "uploading";
+    roll = addTransfer(roll, transfer, progressOf(transfer.id));
   }
-  return { confirmed, failed, inFlight, interrupted, local, speed, uploading };
+  return roll;
 };
 
-export const statusOf = (delivery: Delivery, roll: Rollup, online: boolean): Status => {
+// Settled server states win. Past that, failed and interrupted stay visible
+// offline: only a genuinely in-flight local upload reads as paused.
+export const statusOf = (delivery: Delivery, roll: Rollup, online: boolean) => {
   const total = totalSize(delivery);
-  const settled = Match.value(delivery.status).pipe(
-    Match.when("cancelled", (): Status => ({
+  const pct = total === 0 ? 0 : Math.floor((roll.confirmed / total) * 100);
+  const progress = `${bytes(roll.confirmed)} of ${bytes(total)} confirmed`;
+  const eta = etaAt(total - roll.confirmed, roll.speed);
+  return Match.value({ ...roll, online, status: delivery.status }).pipe(
+    Match.withReturnType<Status>(),
+    Match.when({ status: "cancelled" }, () => ({
       long: "Cancelled.",
       short: "Cancelled",
       tone: "mut",
     })),
-    Match.when("expired", (): Status => ({
+    Match.when({ status: "expired" }, () => ({
       long: "Expired. Files are deleted.",
       short: "Expired",
       tone: "mut",
     })),
-    Match.when("ready", (): Status => ({
+    Match.when({ status: "ready" }, () => ({
       long: `Ready. The link works${delivery.expiresAt === null ? "" : ` until ${untilDate(delivery.expiresAt)}`}.`,
       short: `Expires ${delivery.expiresAt === null ? "later" : shortDateAt(delivery.expiresAt)}`,
       tone: "ok",
     })),
-    Match.orElse((): undefined => undefined),
-  );
-  if (settled !== undefined) {
-    return settled;
-  }
-  // Failed and interrupted stay visible offline: only a genuinely in-flight
-  // local upload reads as paused.
-  if (roll.failed) {
-    return {
+    Match.when({ failed: true }, () => ({
       long: "Something stopped the upload. Retry to keep going.",
       short: "Needs a retry",
       tone: "rust",
-    };
-  }
-  if (!roll.local) {
-    return {
+    })),
+    Match.when({ local: false }, () => ({
       long: "Interrupted. This browser can't resume it yet.",
       short: "Interrupted",
       tone: "rust",
-    };
-  }
-  if (!online) {
-    return {
+    })),
+    Match.when({ online: false }, () => ({
       long: "Connection lost. We'll continue when you're back online.",
       short: "Paused, offline",
       tone: "amber",
-    };
-  }
-  if (roll.uploading) {
-    const pct = total === 0 ? 0 : Math.floor((roll.confirmed / total) * 100);
-    if (roll.speed <= 0) {
-      return {
-        long: `${bytes(roll.confirmed)} of ${bytes(total)} confirmed · starting…`,
-        short: `${pct}%`,
-        tone: "blue",
-      };
-    }
-    return {
-      long: `${bytes(roll.confirmed)} of ${bytes(total)} confirmed · ${speedAt(roll.speed)} · ${etaAt(
-        total - roll.confirmed,
-        roll.speed,
-      )} left`,
-      short: `${pct}% · ${etaAt(total - roll.confirmed, roll.speed)}`,
+    })),
+    Match.when({ speed: (speed) => speed <= 0, uploading: true }, () => ({
+      long: `${progress} · starting…`,
+      short: `${pct}%`,
       tone: "blue",
-    };
-  }
-  return { long: "Every byte is uploaded. Finishing up.", short: "Finishing up", tone: "blue" };
+    })),
+    Match.when({ uploading: true }, () => ({
+      long: `${progress} · ${speedAt(roll.speed)} · ${eta} left`,
+      short: `${pct}% · ${eta}`,
+      tone: "blue",
+    })),
+    Match.orElse(() => ({
+      long: "Every byte is uploaded. Finishing up.",
+      short: "Finishing up",
+      tone: "blue",
+    })),
+  );
 };
 
 export const toneText: Record<Tone, string> = {

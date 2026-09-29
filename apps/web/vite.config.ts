@@ -1,4 +1,3 @@
-import { fileURLToPath } from "node:url";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { fileRoutes } from "filesystem-routing/vite";
 import { prerender } from "prerender-crawler/vite";
@@ -27,7 +26,7 @@ export default defineConfig({
     ssr: { build: { rolldownOptions: { external: [/^cloudflare:/u] } } },
   },
   fmt: {
-    ignorePatterns: ["**/file-routes.d.ts", "**/solid-env.d.ts"],
+    ignorePatterns: ["**/file-routes.d.ts"],
   },
   lint: webLint,
   plugins: [
@@ -45,7 +44,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "styled-system": fileURLToPath(new URL("styled-system", import.meta.url)),
+      "styled-system": `${import.meta.dirname}/styled-system`,
     },
   },
   root: import.meta.dirname,
@@ -57,31 +56,9 @@ export default defineConfig({
     "*": "vp check --fix",
   },
   test: {
+    environment: "jsdom",
     globals: false,
-    projects: [
-      {
-        extends: true,
-        test: {
-          environment: "jsdom",
-          include: ["src/**/*.test.tsx"],
-          name: "client",
-        },
-      },
-      {
-        extends: true,
-        test: {
-          alias: [
-            {
-              find: "virtual:env/server",
-              replacement: fileURLToPath(new URL("vitest-env-server-stub.ts", import.meta.url)),
-            },
-          ],
-          environment: "node",
-          include: ["src/server/**/*.test.ts"],
-          name: "server",
-        },
-      },
-    ],
+    include: ["src/**/*.test.tsx"],
     setupFiles: ["./vitest-setup.ts"],
   },
 });

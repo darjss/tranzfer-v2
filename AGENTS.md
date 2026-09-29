@@ -23,8 +23,9 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 - When a check fails, reproduce it on unchanged `origin/main` before blaming the current diff.
 - After the same step fails twice, stop and report the exact error and evidence.
 - The API Worker's resources and bindings live in `apps/api` (`resources.ts`, `index.ts`); `infra/alchemy.run.ts` composes the stack. Each resource has one definition.
-- Deploy only from the main checkout, after build and plan review. Leave generated `apps/web/file-routes.d.ts` and `apps/web/solid-env.d.ts` unstaged.
+- Deploy only from the main checkout, after build and plan review. Leave generated `apps/web/file-routes.d.ts` unstaged.
 - Staging lives at staging.tranzfer.app and deploys from the `dev` branch via CI; `main` deploys production. Manual staging deploy: `vp run --filter @tranzfer/infra deploy:staging`. Sign in with `POST /api/auth/staging-login`.
+- Each same-repo PR deploys its own stack, stage `pr-<number>`, at `https://pr-<number>.tranzfer.app` and runs the e2e suite against it; closing the PR destroys it (`.github/workflows/preview.yml`). Use it to check your work on a real deployment. Only `production`, `staging`, `pr-<number>` and local `dev_<user>` stages boot; anything else fails the deploy.
 - Delegate well-scoped implementation and verification to `run_subagent` swe-2 profiles (`subagent_general` for write work, `subagent_explore` for read-only); parallel agents get scratchpad worktrees under `~/dev/scratchpad/tranzfer2`.
 - Worker `name` props stay unset: Alchemy derives stage-scoped names, and an explicit name makes every stage overwrite one worker.
 
