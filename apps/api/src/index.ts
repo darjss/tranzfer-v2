@@ -2,7 +2,6 @@ import { Api } from "@tranzfer/contracts";
 import { Database, Drizzle } from "@tranzfer/db";
 import { Random, RuntimeContext } from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
-import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
@@ -32,8 +31,6 @@ export default ApiWorker.make(
   },
   Effect.gen(function* impl() {
     const db = yield* Cloudflare.D1.QueryDatabase(App);
-    // The accessor stays lazy: this impl also evaluates at deploy time, when
-    // the env holds no D1 binding.
     const database = Layer.succeed(Database, db.raw.pipe(Effect.provide(RuntimeContext.phantom)));
     const stage = yield* deployStage;
     const auth = yield* Match.value(stage).pipe(
@@ -54,21 +51,12 @@ export default ApiWorker.make(
     const linkSecret = yield* Random("LinkSecret");
     const links = Links.make((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom)));
 
-    // Init builds each service once per isolate; only the auth-dependent part
-    // of the RPC stack is rebuilt per request (the Me middleware needs HttpServerRequest).
-    const services = yield* Layer.build(
-      Layer.mergeAll(Drizzle.layer, storage, links).pipe(Layer.provide(database)),
-    );
-    const servicesLayer = Layer.succeedContext(services);
-    const rpcInit = yield* Layer.build(
+    const shared = yield* Layer.build(
       Layer.mergeAll(InfraHandlers, LinkHandlers, RpcSerialization.layerJson).pipe(
-        Layer.provide(servicesLayer),
-      ),
-    );
-    const rpcRequest = Layer.fresh(
-      Layer.mergeAll(AuthHandlers, AuthenticatedLive, DeliveriesHandlers).pipe(
-        Layer.provide(servicesLayer),
-        Layer.provide(Layer.succeed(Auth, auth)),
+        Layer.provideMerge(
+          Layer.mergeAll(Drizzle.layer, storage, links, Layer.succeed(Auth, auth)),
+        ),
+        Layer.provide(database),
       ),
     );
 
@@ -77,11 +65,14 @@ export default ApiWorker.make(
       HttpRouter.add(
         "POST",
         "/rpc",
-        Effect.gen(function* rpc() {
-          const context = Context.merge(rpcInit, yield* Layer.build(rpcRequest));
-          const handle = yield* RpcServer.toHttpEffect(Api).pipe(Effect.provideContext(context));
-          return yield* handle;
-        }),
+        Effect.flatten(RpcServer.toHttpEffect(Api)).pipe(
+          // Authenticated requires the HttpServerRequest, so these build per
+          // request in a fresh memo map.
+          Effect.provide(Layer.mergeAll(AuthHandlers, AuthenticatedLive, DeliveriesHandlers), {
+            local: true,
+          }),
+          Effect.provideContext(shared),
+        ),
       ),
       HttpRouter.add("GET", "/health", HttpServerResponse.json({ ok: true })),
     );
