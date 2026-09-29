@@ -10,13 +10,13 @@ New test files still need explicit user approval under [AGENTS.md](../AGENTS.md)
 
 Each layer answers one question. Don't ask a layer a question it can't answer.
 
-| Layer          | Tool                                   | Answers                                                                      |
-| -------------- | -------------------------------------- | ---------------------------------------------------------------------------- |
-| Types and lint | `vp check`                             | Is this code possible, and does it respect the boundaries?                   |
-| Pure tests     | `@effect/vitest` through `vp run test` | Is the transfer logic right when you hand it plain values?                   |
-| Staging checks | `pnpm test:e2e` (vitest in `e2e/`)     | Does the deployed staging build honor the API contract end to end?           |
-| Scenarios      | Playwright inside `e2e/`               | Does a real user journey survive real failure against the running stack?     |
-| Release gates  | People, real files, real networks      | Does 10, 100 or 350 GB actually make it? The table in RELIABILITY.md decides |
+| Layer          | Tool                                   | Answers                                                                        |
+| -------------- | -------------------------------------- | ------------------------------------------------------------------------------ |
+| Types and lint | `vp check`                             | Is this code possible, and does it respect the boundaries?                     |
+| Pure tests     | `@effect/vitest` through `vp run test` | Is the transfer logic right when you hand it plain values?                     |
+| Staging checks | `pnpm test:e2e` (vitest in `e2e/`)     | Does a deployed staging or PR preview build honor the API contract end to end? |
+| Scenarios      | Playwright inside `e2e/`               | Does a real user journey survive real failure against the running stack?       |
+| Release gates  | People, real files, real networks      | Does 10, 100 or 350 GB actually make it? The table in RELIABILITY.md decides   |
 
 ## Pure tests
 

@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Match from "effect/Match";
 
 import ApiWorkerLive, { ApiWorker } from "../apps/api/src/index";
+import { isPreviewStage } from "../apps/api/src/services/stage";
 
 const envFile = new URL("../.env", import.meta.url);
 if (existsSync(envFile)) {
@@ -27,6 +28,8 @@ export default Alchemy.Stack(
     const domain = Match.value(stage).pipe(
       Match.when("production", () => "tranzfer.app"),
       Match.when("staging", () => "staging.tranzfer.app"),
+      // One level under the zone so Universal SSL covers it.
+      Match.when(isPreviewStage, (pr) => `${pr}.tranzfer.app`),
       Match.orElse((): undefined => undefined),
     );
 
