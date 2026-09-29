@@ -35,8 +35,15 @@ export const button = cva({
     size: {
       md: { fontSize: "15", px: "6", py: "[15px]" },
       sm: { px: "4", py: "[11px]", textStyle: "sm" },
+      xs: { fontSize: "13", minH: "8", px: "3", py: "1", rounded: "lg" },
     },
     variant: {
+      danger: {
+        _hover: { filter: "[brightness(1.06)]" },
+        bg: "rust",
+        color: "white",
+        shadow: "[inset 0 1px 0 rgba(255,255,255,.2),0 1px 2px rgba(23,24,28,.2)]",
+      },
       fill: {
         _hover: { filter: "[brightness(1.06)]" },
         bgGradient: "to-b",

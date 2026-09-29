@@ -1,6 +1,5 @@
-import type { Delivery } from "@tranzfer/contracts";
+import type { Delivery, Transfer } from "@tranzfer/contracts";
 import * as Match from "effect/Match";
-import { css } from "styled-system/css";
 
 import type { TransferProgress } from "../uploads/store";
 
@@ -18,7 +17,7 @@ export const bytes = (size: number) => {
   }`;
 };
 
-export const items = (count: number) => `${count} ${count === 1 ? "item" : "items"}`;
+export const files = (count: number) => `${count} ${count === 1 ? "file" : "files"}`;
 
 const sentFormat = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -37,9 +36,18 @@ const untilFormat = new Intl.DateTimeFormat("en-GB", {
 
 export const untilDate = (date: Date) => untilFormat.format(date);
 
-const shortDate = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+const DAY = 24 * 60 * 60 * 1000;
+const relative = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto" });
 
-export const shortDateAt = (date: Date) => shortDate.format(date);
+/** "in 3 days", "tomorrow", "in 5 hours": the expiry as a person says it. */
+export const fromNow = (date: Date) => {
+  const left = date.getTime() - Date.now();
+  if (Math.abs(left) < DAY) {
+    const hours = Math.round(left / (60 * 60 * 1000));
+    return hours === 0 ? "within the hour" : relative.format(hours, "hour");
+  }
+  return relative.format(Math.round(left / DAY), "day");
+};
 
 export const speedAt = (bytesPerSecond: number) => `${bytes(bytesPerSecond)}/s`;
 
@@ -48,8 +56,8 @@ export const etaAt = (bytesLeft: number, bytesPerSecond: number) => {
     return "a while";
   }
   const minutes = Math.ceil(bytesLeft / bytesPerSecond / 60);
-  if (minutes < 1) {
-    return "about 1 min";
+  if (minutes <= 1) {
+    return "about a minute";
   }
   if (minutes < 60) {
     return `about ${minutes} min`;
@@ -58,19 +66,13 @@ export const etaAt = (bytesLeft: number, bytesPerSecond: number) => {
   return `about ${hours} h ${minutes - hours * 60} min`;
 };
 
-export type Tone = "amber" | "blue" | "mut" | "ok" | "rust";
-
-export interface Status {
-  readonly long: string;
-  readonly short: string;
-  readonly tone: Tone;
-}
-
 export const totalSize = (delivery: Delivery) =>
   delivery.transfers.reduce((total, transfer) => total + transfer.size, 0);
 
 // What one file shows. The server state wins; local progress only speaks
-// for a transfer this tab still owns, and one it doesn't own is interrupted.
+// for a transfer this tab still owns. A "finalizing" transfer this tab lost
+// reads as interrupted: signing Complete doesn't prove the bytes landed, and
+// if they did the sweeper marks it complete within a minute.
 type TransferStatus =
   | { readonly _tag: "Active"; readonly progress: TransferProgress }
   | { readonly _tag: "Cancelled" }
@@ -78,19 +80,13 @@ type TransferStatus =
   | { readonly _tag: "Failed"; readonly progress: TransferProgress }
   | { readonly _tag: "Interrupted" };
 
-export const transferStatus = (
-  transfer: Delivery["transfers"][number],
-  local: TransferProgress | undefined,
-) =>
+export const transferStatus = (transfer: Transfer, local: TransferProgress | undefined) =>
   Match.value({ progress: local, state: transfer.state }).pipe(
     Match.withReturnType<TransferStatus>(),
     Match.when({ state: "complete" }, () => ({ _tag: "Complete" })),
     Match.when({ state: "cancelled" }, () => ({ _tag: "Cancelled" })),
     Match.when({ progress: { phase: "failed" } }, ({ progress }) => ({ _tag: "Failed", progress })),
-    Match.when({ progress: Match.defined }, ({ progress }) => ({
-      _tag: "Active",
-      progress,
-    })),
+    Match.when({ progress: Match.defined }, ({ progress }) => ({ _tag: "Active", progress })),
     Match.orElse(() => ({ _tag: "Interrupted" })),
   );
 
@@ -99,27 +95,21 @@ const idle = {
   failed: false,
   inFlight: 0,
   interrupted: false,
-  local: false,
   speed: 0,
   uploading: false,
 };
 
-type Rollup = typeof idle;
+export type Rollup = typeof idle;
 
 const withProgress = (roll: Rollup, progress: TransferProgress): Rollup => ({
   ...roll,
   confirmed: roll.confirmed + progress.confirmed,
   inFlight: roll.inFlight + progress.inFlight,
-  local: true,
   speed: roll.speed + progress.bytesPerSecond,
   uploading: roll.uploading || progress.phase === "queued" || progress.phase === "uploading",
 });
 
-const addTransfer = (
-  roll: Rollup,
-  transfer: Delivery["transfers"][number],
-  local: TransferProgress | undefined,
-) =>
+const addTransfer = (roll: Rollup, transfer: Transfer, local: TransferProgress | undefined) =>
   Match.valueTags(transferStatus(transfer, local), {
     Active: ({ progress }) => withProgress(roll, progress),
     Cancelled: () => roll,
@@ -139,77 +129,65 @@ export const rollup = (
   return roll;
 };
 
-// Settled server states win. Past that, failed and interrupted stay visible
-// offline: only a genuinely in-flight local upload reads as paused.
-export const statusOf = (delivery: Delivery, roll: Rollup, online: boolean) => {
-  const total = totalSize(delivery);
-  const pct = total === 0 ? 0 : Math.floor((roll.confirmed / total) * 100);
-  const progress = `${bytes(roll.confirmed)} of ${bytes(total)} confirmed`;
-  const eta = etaAt(total - roll.confirmed, roll.speed);
-  return Match.value({ ...roll, online, status: delivery.status }).pipe(
-    Match.withReturnType<Status>(),
-    Match.when({ status: "cancelled" }, () => ({
-      long: "Cancelled.",
-      short: "Cancelled",
-      tone: "mut",
-    })),
-    Match.when({ status: "expired" }, () => ({
-      long: "Expired. Files are deleted.",
-      short: "Expired",
-      tone: "mut",
-    })),
-    Match.when({ status: "ready" }, () => ({
-      long: `Ready. The link works${delivery.expiresAt === null ? "" : ` until ${untilDate(delivery.expiresAt)}`}.`,
-      short: `Expires ${delivery.expiresAt === null ? "later" : shortDateAt(delivery.expiresAt)}`,
-      tone: "ok",
-    })),
-    Match.when({ failed: true }, () => ({
-      long: "Something stopped the upload. Retry to keep going.",
-      short: "Needs a retry",
-      tone: "rust",
-    })),
-    Match.when({ local: false }, () => ({
-      long: "Interrupted. This browser can't resume it yet.",
-      short: "Interrupted",
-      tone: "rust",
-    })),
-    Match.when({ online: false }, () => ({
-      long: "Connection lost. We'll continue when you're back online.",
-      short: "Paused, offline",
-      tone: "amber",
-    })),
-    Match.when({ speed: (speed) => speed <= 0, uploading: true }, () => ({
-      long: `${progress} · starting…`,
-      short: `${pct}%`,
-      tone: "blue",
-    })),
-    Match.when({ uploading: true }, () => ({
-      long: `${progress} · ${speedAt(roll.speed)} · ${eta} left`,
-      short: `${pct}% · ${eta}`,
-      tone: "blue",
-    })),
-    Match.orElse(() => ({
-      long: "Every byte is uploaded. Finishing up.",
-      short: "Finishing up",
-      tone: "blue",
-    })),
+/** One state per delivery. It picks the board group, the icon and the words. */
+export type Kind =
+  | "cancelled"
+  | "expired"
+  | "failed"
+  | "finishing"
+  | "interrupted"
+  | "moving"
+  | "paused"
+  | "ready"
+  | "starting";
+
+// Settled server states win. Past that, a failure outranks everything local,
+// and an upload this tab lost reads as interrupted. Only a genuinely
+// in-flight local upload reads as paused when offline.
+export const kindOf = (status: Delivery["status"], roll: Rollup, online: boolean) =>
+  Match.value({ ...roll, online, status }).pipe(
+    Match.withReturnType<Kind>(),
+    Match.when({ status: "cancelled" }, () => "cancelled"),
+    Match.when({ status: "expired" }, () => "expired"),
+    Match.when({ status: "ready" }, () => "ready"),
+    Match.when({ failed: true }, () => "failed"),
+    Match.when({ interrupted: true }, () => "interrupted"),
+    Match.when({ online: false, uploading: true }, () => "paused"),
+    Match.when({ speed: (speed) => speed <= 0, uploading: true }, () => "starting"),
+    Match.when({ uploading: true }, () => "moving"),
+    Match.orElse(() => "finishing"),
   );
-};
 
-export const toneText: Record<Tone, string> = {
-  amber: css({ color: "amber" }),
-  blue: css({ color: "blue" }),
-  mut: css({ color: "mut" }),
-  ok: css({ color: "ok" }),
-  rust: css({ color: "rust" }),
-};
+export type Group = "moving" | "interrupted" | "ready" | "ended";
 
-export const toneBar: Record<Tone, string> = {
-  amber: css({ bg: "amber" }),
-  blue: css({ bg: "blue" }),
-  mut: css({ bg: "mut/40" }),
-  ok: css({ bg: "ok" }),
-  rust: css({ bg: "rust" }),
-};
+export const groupOf = (kind: Kind) =>
+  Match.value(kind).pipe(
+    Match.withReturnType<Group>(),
+    Match.when("ready", () => "ready"),
+    Match.when("interrupted", () => "interrupted"),
+    Match.whenOr("cancelled", "expired", () => "ended"),
+    Match.orElse(() => "moving"),
+  );
 
-export const retentionChoices = [1, 3, 7, 14] as const;
+/** What a person should know, and do next, in each state (RELIABILITY: what the user sees). */
+export const kindWords: Record<Kind, { readonly label: string; readonly detail: string }> = {
+  cancelled: { detail: "Cancelled. The link no longer works.", label: "Cancelled" },
+  expired: { detail: "Expired. The files are deleted.", label: "Expired" },
+  failed: {
+    detail: "Something stopped the upload. Retry to keep going.",
+    label: "Needs a retry",
+  },
+  finishing: { detail: "Every byte is uploaded. Finishing up on our end.", label: "Finishing up" },
+  interrupted: {
+    detail:
+      "This browser lost the upload when the page closed. It can't resume it yet, so cancel it and send the files again.",
+    label: "Interrupted",
+  },
+  moving: { detail: "", label: "Uploading" },
+  paused: {
+    detail: "Connection lost. We'll continue when you're back online.",
+    label: "Paused, offline",
+  },
+  ready: { detail: "Ready. Anyone with the link can download.", label: "Ready" },
+  starting: { detail: "", label: "Starting" },
+};

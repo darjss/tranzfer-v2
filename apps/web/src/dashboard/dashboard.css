@@ -1,0 +1,86 @@
+/* The delivery sheet slides in from the right on wide screens and up from
+   the bottom on phones. @starting-style gives the entry frame; display and
+   overlay transition discretely so the exit plays before the top layer
+   drops the dialog. */
+.sheet {
+  --sheet-from: 0 100%;
+  translate: 0 0;
+  transition:
+    translate 0.32s var(--easings-drawer),
+    display 0.32s allow-discrete,
+    overlay 0.32s allow-discrete;
+}
+.sheet:not([open]) {
+  translate: var(--sheet-from);
+  transition-duration: 0.2s;
+}
+@starting-style {
+  .sheet[open] {
+    translate: var(--sheet-from);
+  }
+}
+.sheet::backdrop {
+  opacity: 1;
+  transition:
+    opacity 0.32s ease,
+    display 0.32s allow-discrete,
+    overlay 0.32s allow-discrete;
+}
+.sheet:not([open])::backdrop {
+  opacity: 0;
+}
+@starting-style {
+  .sheet[open]::backdrop {
+    opacity: 0;
+  }
+}
+@media (min-width: 768px) {
+  .sheet {
+    --sheet-from: 100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    --sheet-from: 0 0;
+    opacity: 1;
+    transition:
+      opacity 0.2s ease,
+      display 0.2s allow-discrete,
+      overlay 0.2s allow-discrete;
+  }
+  .sheet:not([open]) {
+    opacity: 0;
+  }
+  @starting-style {
+    .sheet[open] {
+      opacity: 0;
+    }
+  }
+}
+
+/* Whole-window drop target, shown only while files are dragged over. */
+.drop-veil {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.drop-veil[data-on="true"] {
+  opacity: 1;
+}
+
+/* A strip of masking tape holding the empty-state note to the page. */
+.tape {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 96px;
+  height: 24px;
+  translate: -50% 0;
+  rotate: -3deg;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.18) 0 2px, transparent 2px 5px),
+    rgba(236, 222, 170, 0.62);
+  clip-path: polygon(0 12%, 3% 0, 6% 14%, 97% 4%, 100% 20%, 98% 100%, 94% 88%, 4% 96%, 0 82%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  mix-blend-mode: multiply;
+}
