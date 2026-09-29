@@ -26,16 +26,20 @@ const region = "auto" as Region.RegionName;
 // S3 DeleteObjects takes at most 1000 keys.
 const DELETE_BATCH = 1000;
 
-const uploadQuery = Match.type<UploadRequest>().pipe(
+const noHeaders: Record<string, string> = {};
+
+const uploadRequest = Match.type<UploadRequest>().pipe(
   Match.tagsExhaustive({
-    Complete: ({ uploadId }) => ({ method: "POST", query: { uploadId } }),
-    Create: () => ({ method: "POST", query: { uploads: "" } }),
-    List: ({ uploadId }) => ({ method: "GET", query: { uploadId } }),
+    Complete: ({ uploadId }) => ({ headers: noHeaders, method: "POST", query: { uploadId } }),
+    Create: () => ({ headers: noHeaders, method: "POST", query: { uploads: "" } }),
+    List: ({ uploadId }) => ({ headers: noHeaders, method: "GET", query: { uploadId } }),
     Part: ({ partNumber, uploadId }) => ({
+      headers: noHeaders,
       method: "PUT",
       query: { partNumber: String(partNumber), uploadId },
     }),
-    Put: () => ({ method: "PUT", query: {} }),
+    // Signed in: the PUT may create the object but never replace it.
+    Put: () => ({ headers: { "if-none-match": "*" }, method: "PUT", query: {} }),
   }),
 );
 
@@ -63,16 +67,22 @@ const make = (options: R2Options) =>
           ),
       );
 
-    const presign = (method: string, url: URL, ttl: Duration.Duration) =>
+    const presign = (
+      method: string,
+      url: URL,
+      ttl: Duration.Duration,
+      headers: Record<string, string> = noHeaders,
+    ) =>
       Effect.gen(function* signUrl() {
         const now = yield* Clock.currentTimeMillis;
         const signed = yield* Presign.presignUrl({
           expiresIn: Duration.toSeconds(ttl),
+          headers: Object.keys(headers).length === 0 ? undefined : headers,
           method,
           service: "s3",
           url: url.href,
         });
-        return { expiresAt: new Date(now + Duration.toMillis(ttl)), url: signed };
+        return { expiresAt: new Date(now + Duration.toMillis(ttl)), headers, url: signed };
       }).pipe(Effect.provide(presignContext), Effect.orDie);
 
     const multipartUploads = (bucket: string, prefix: string) =>
@@ -100,6 +110,20 @@ const make = (options: R2Options) =>
           ),
       );
 
+    const abortAll = (bucket: string, prefix: string, matches: (key: string) => boolean) =>
+      multipartUploads(bucket, prefix).pipe(
+        Stream.runForEach((upload) =>
+          upload.Key === undefined || upload.UploadId === undefined || !matches(upload.Key)
+            ? Effect.void
+            : abortMultipartUpload({
+                Bucket: bucket,
+                Key: upload.Key,
+                UploadId: upload.UploadId,
+              }).pipe(Effect.catchTag("NoSuchUpload", () => Effect.void)),
+        ),
+        Effect.mapError((cause) => new StorageError({ cause })),
+      );
+
     return Storage.of({
       head: Effect.fn("Storage.head")(function* head(key: string) {
         const bucket = yield* options.bucket;
@@ -117,18 +141,7 @@ const make = (options: R2Options) =>
 
       purge: Effect.fn("Storage.purge")(function* purge(prefix: string, keys: readonly string[]) {
         const bucket = yield* options.bucket;
-        yield* multipartUploads(bucket, prefix).pipe(
-          Stream.runForEach((upload) =>
-            upload.Key === undefined || upload.UploadId === undefined
-              ? Effect.void
-              : abortMultipartUpload({
-                  Bucket: bucket,
-                  Key: upload.Key,
-                  UploadId: upload.UploadId,
-                }).pipe(Effect.catchTag("NoSuchUpload", () => Effect.void)),
-          ),
-          Effect.mapError((cause) => new StorageError({ cause })),
-        );
+        yield* abortAll(bucket, prefix, () => true);
         yield* Effect.forEach(
           Arr.chunksOf(keys, DELETE_BATCH),
           (chunk) =>
@@ -138,6 +151,11 @@ const make = (options: R2Options) =>
             }),
           { discard: true },
         ).pipe(Effect.mapError((cause) => new StorageError({ cause })));
+      }),
+
+      seal: Effect.fn("Storage.seal")(function* seal(key: string) {
+        const bucket = yield* options.bucket;
+        yield* abortAll(bucket, key, (found) => found === key);
       }),
 
       signDownload: Effect.fn("Storage.signDownload")(function* signDownload(
@@ -159,11 +177,11 @@ const make = (options: R2Options) =>
         request: UploadRequest,
       ) {
         const url = yield* objectUrl(key);
-        const { method, query } = uploadQuery(request);
+        const { headers, method, query } = uploadRequest(request);
         for (const [name, value] of Object.entries(query)) {
           url.searchParams.set(name, value);
         }
-        return yield* presign(method, url, UPLOAD_URL_TTL);
+        return yield* presign(method, url, UPLOAD_URL_TTL, headers);
       }),
     });
   });

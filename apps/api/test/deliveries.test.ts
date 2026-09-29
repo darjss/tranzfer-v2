@@ -107,11 +107,11 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       expect(cancelled.transfers.every((t) => t.state === "cancelled")).toBe(true);
       expect(storage.objects.has(objectKey)).toBe(false);
       expect(storage.purged).toContain(`d/${created.id}/`);
-      // A pre-cancel upload URL can still land an object; the sweeper waits
-      // out those URLs, then purges once more and records it.
+      // A Complete in flight during the cancel lands late; the sweeper waits a
+      // few minutes, purges again and records it.
       storage.objects.set(objectKey, { etag: "late", size: 4 });
       expect(yield* deliveries.purgeEnded).toBe(0);
-      yield* TestClock.adjust("17 minutes");
+      yield* TestClock.adjust("6 minutes");
       expect(yield* deliveries.purgeEnded).toBe(1);
       expect(storage.objects.has(objectKey)).toBe(false);
       expect(yield* deliveries.purgeEnded).toBe(0);

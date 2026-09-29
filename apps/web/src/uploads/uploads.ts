@@ -2,7 +2,7 @@ import type { AwsS3Options } from "@uppy/aws-s3";
 import AwsS3 from "@uppy/aws-s3";
 import { Uppy } from "@uppy/core";
 import type { Body, Meta } from "@uppy/core/utils";
-import { DeliveryId, partSize, RelativePath, TransferId, usesMultipart } from "@tranzfer/contracts";
+import { DeliveryId, partSize, RelativePath, TransferId } from "@tranzfer/contracts";
 import type { RetentionDays, UploadRequest } from "@tranzfer/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -76,9 +76,8 @@ export const deliveryTitle = (files: readonly ChosenFile[]) => {
 };
 
 // Aborts are never signed: cancel is a server-side operation, and signing
-// one would be a bug. A PUT without an upload id is Uppy's single-request
-// upload, which it forces for files of 5 MiB or less even with
-// shouldUseMultipart set (S3Uploader's MIN_CHUNK_SIZE check).
+// one would be a bug. A PUT without an upload id is an empty file: Uppy
+// sends only those as a single request.
 export const toUploadRequest = (request: PresignableRequest): UploadRequest | null => {
   if (!("uploadId" in request)) {
     if (request.method === "POST") {
@@ -149,7 +148,9 @@ const make = Effect.gen(function* makeUploads() {
       return yield* Effect.die(new Error(`Tranzfer never signs this ${request.method}`));
     }
     const signed = yield* api.SignUpload({ key: request.key, request: upload });
-    return { url: signed.url };
+    // The headers are part of the signature (an empty file's PUT carries
+    // if-none-match), so Uppy must send them as given.
+    return { headers: signed.headers, url: signed.url };
   });
 
   // Once the bytes are in R2, finishing is the FinalizeTransfer retry loop.
@@ -182,9 +183,9 @@ const make = Effect.gen(function* makeUploads() {
         allowedMetaFields: [],
         generateObjectKey: (file) => file.meta.objectKey,
         getChunkSize: ({ size }) => partSize(size),
-        // Must agree with the server, which refuses a multipart Create for a
-        // file it expects as a single PUT.
-        shouldUseMultipart: (file) => usesMultipart(file.size ?? 0),
+        // Every file is multipart so finalize can seal its key (see
+        // RELIABILITY.md). Uppy still sends an empty file as a single PUT.
+        shouldUseMultipart: () => true,
         signRequest: async (request) => await runPromise(sign(request)),
       });
 

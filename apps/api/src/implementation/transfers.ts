@@ -5,7 +5,6 @@ import {
   partCount,
   StorageUnavailable,
   UploadClosed,
-  usesMultipart,
 } from "@tranzfer/contracts";
 import type {
   Delivery,
@@ -117,6 +116,27 @@ export class Transfers extends Context.Service<
         });
 
       /**
+       * Trusts the object only after closing its key. Nothing is sealed until
+       * an object exists, so a paused or still-running upload is never aborted.
+       * Then `finalizing` stops new uploads and parts, aborting every open
+       * multipart upload kills URLs signed earlier, and the second HEAD reads
+       * the object that can no longer change.
+       */
+      const settle = (transfer: Transfer) =>
+        Effect.gen(function* settleTransfer() {
+          yield* verify(transfer, yield* storage.head(transfer.objectKey));
+          yield* db
+            .update(schema.transfer)
+            .set({ state: "finalizing" })
+            .where(
+              and(eq(schema.transfer.id, transfer.id), eq(schema.transfer.state, "uploading")),
+            );
+          yield* storage.seal(transfer.objectKey);
+          const sealed = yield* verify(transfer, yield* storage.head(transfer.objectKey));
+          return yield* complete(transfer, sealed);
+        });
+
+      /**
        * Flips open deliveries whose every transfer is complete to ready, with
        * expiry counted from now. One conditional statement, so it is safe to run
        * after every finalize and on every sweep: that is what recovers a
@@ -153,12 +173,13 @@ export class Transfers extends Context.Service<
             return yield* new UploadClosed();
           }
           if (transfer.state !== "complete") {
-            const object = yield* storage.head(transfer.objectKey).pipe(
-              Effect.tapError((error) => Effect.logError("finalize head failed", error.cause)),
-              Effect.mapError(() => new StorageUnavailable()),
+            yield* settle(transfer).pipe(
+              Effect.catchTag("StorageError", (error) =>
+                Effect.logError("finalize storage failed", error.cause).pipe(
+                  Effect.andThen(Effect.fail(new StorageUnavailable())),
+                ),
+              ),
             );
-            const verified = yield* verify(transfer, object);
-            yield* complete(transfer, verified);
           }
           yield* markReady(transfer.deliveryId);
           return yield* deliveries.view(transfer.deliveryId);
@@ -186,9 +207,7 @@ export class Transfers extends Context.Service<
           const recovered = yield* Effect.forEach(
             stuck,
             (transfer) =>
-              storage.head(transfer.objectKey).pipe(
-                Effect.flatMap((object) => verify(transfer, object)),
-                Effect.flatMap((object) => complete(transfer, object)),
+              settle(transfer).pipe(
                 Effect.as(1),
                 // Not there yet, the wrong size, cancelled meanwhile, or a storage
                 // blip: check it again later; the lifecycle rule is the backstop.
@@ -196,7 +215,7 @@ export class Transfers extends Context.Service<
                   InvalidUpload: () => touch(transfer),
                   NotUploaded: () => touch(transfer),
                   StorageError: (error) =>
-                    Effect.logError("recover head failed", error.cause).pipe(
+                    Effect.logError("recover storage failed", error.cause).pipe(
                       Effect.andThen(touch(transfer)),
                     ),
                   UploadClosed: () => Effect.succeed(0),
@@ -217,13 +236,20 @@ export class Transfers extends Context.Service<
           if (transfer === undefined) {
             return yield* new DeliveryNotFound();
           }
-          if (
-            transfer.delivery.status !== "open" ||
-            (transfer.state !== "uploading" && transfer.state !== "finalizing")
-          ) {
+          if (transfer.delivery.status !== "open") {
             return yield* new UploadClosed();
           }
-          if (usesMultipart(transfer.size) === (request._tag === "Put")) {
+          const allowed = Match.value(transfer.state).pipe(
+            Match.when("uploading", () => true),
+            // Only retries of the final steps; no new upload, no new parts.
+            Match.when("finalizing", () => request._tag === "Complete" || request._tag === "List"),
+            Match.orElse(() => false),
+          );
+          if (!allowed) {
+            return yield* new UploadClosed();
+          }
+          // An empty file is a single guarded PUT; anything else is multipart.
+          if ((request._tag === "Put") !== (transfer.size === 0)) {
             return yield* new InvalidUpload();
           }
           if (request._tag === "Part" && request.partNumber > partCount(transfer.size)) {

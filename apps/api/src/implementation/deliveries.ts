@@ -11,13 +11,13 @@ import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 
 import { LinkTokens, newLinkId } from "./link-tokens";
-import { Storage, UPLOAD_URL_TTL } from "./storage";
+import { Storage } from "./storage";
 
 // D1 caps a statement at 100 bound parameters and a transfer row binds 8.
 const TRANSFER_ROWS_PER_INSERT = 12;
 // Deliveries purged per sweep; each is one list plus one bulk delete per 1000 files.
 const PURGE_BATCH = 20;
-const UPLOAD_URL_GRACE = Duration.sum(UPLOAD_URL_TTL, Duration.minutes(1));
+const CANCEL_SETTLE = Duration.minutes(5);
 
 export const objectPrefix = (deliveryId: DeliveryId) => `d/${deliveryId}/`;
 
@@ -52,7 +52,7 @@ export class Deliveries extends Context.Service<
       input: NewDelivery,
     ) => Effect.Effect<Delivery, DeliveryConflict>;
     readonly list: (senderId: string) => Effect.Effect<readonly Delivery[]>;
-    /** Stops signing, kills the link and removes the objects; the sweeper purges once more later. */
+    /** Stops signing, kills the link, aborts uploads and removes the objects; the sweeper confirms later. */
     readonly cancel: (
       senderId: string,
       deliveryId: DeliveryId,
@@ -100,6 +100,17 @@ export class Deliveries extends Context.Service<
         });
       });
 
+      const markPurged = (deliveryId: DeliveryId) =>
+        Effect.flatMap(Clock.currentTimeMillis, (now) =>
+          db
+
+            .update(schema.delivery)
+
+            .set({ purgedAt: new Date(now) })
+
+            .where(eq(schema.delivery.id, deliveryId)),
+        );
+
       const removeObjects = (deliveryId: DeliveryId, objectKeys: readonly string[]) =>
         storage.purge(objectPrefix(deliveryId), objectKeys).pipe(
           Effect.as(true),
@@ -137,6 +148,7 @@ export class Deliveries extends Context.Service<
           ]);
           yield* removeObjects(
             deliveryId,
+
             row.transfers.map((transfer) => transfer.objectKey),
           );
           return yield* view(deliveryId);
@@ -224,12 +236,12 @@ export class Deliveries extends Context.Service<
             limit: PURGE_BATCH,
             where: {
               OR: [
-                // Cancel already removed the objects once. An upload URL signed
-                // before the cancel can still land an object, so purge again only
-                // after every such URL has expired.
+                // Cancel removed the objects already. A Complete that was in
+                // flight at that moment can still land one, so purge again once
+                // such requests are long over, and only then record it.
                 {
                   status: "cancelled",
-                  updatedAt: { lte: new Date(now - Duration.toMillis(UPLOAD_URL_GRACE)) },
+                  updatedAt: { lte: new Date(now - Duration.toMillis(CANCEL_SETTLE)) },
                 },
                 { expiresAt: { lte: new Date(now) }, status: "ready" },
               ],
@@ -243,16 +255,7 @@ export class Deliveries extends Context.Service<
               removeObjects(
                 delivery.id,
                 delivery.transfers.map((transfer) => transfer.objectKey),
-              ).pipe(
-                Effect.tap((removed) =>
-                  removed
-                    ? db
-                        .update(schema.delivery)
-                        .set({ purgedAt: new Date(now) })
-                        .where(eq(schema.delivery.id, delivery.id))
-                    : Effect.void,
-                ),
-              ),
+              ).pipe(Effect.tap((removed) => (removed ? markPurged(delivery.id) : Effect.void))),
             { concurrency: 4 },
           );
           return purged.filter(Boolean).length;

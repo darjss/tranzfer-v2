@@ -18,6 +18,7 @@ import { Transfers } from "../src/implementation/transfers";
 export const makeMemoryStorage = () => {
   const objects = new Map<string, StoredObject>();
   const purged: string[] = [];
+  const sealed: string[] = [];
   const layer = Layer.succeed(
     Storage,
     Storage.of({
@@ -29,12 +30,21 @@ export const makeMemoryStorage = () => {
             objects.delete(key);
           }
         }),
-      signDownload: (key) => Effect.succeed({ expiresAt: new Date(0), url: `memory://get/${key}` }),
+      seal: (key) =>
+        Effect.sync(() => {
+          sealed.push(key);
+        }),
+      signDownload: (key) =>
+        Effect.succeed({ expiresAt: new Date(0), headers: {}, url: `memory://get/${key}` }),
       signUpload: (key, request) =>
-        Effect.succeed({ expiresAt: new Date(0), url: `memory://${request._tag}/${key}` }),
+        Effect.succeed({
+          expiresAt: new Date(0),
+          headers: {},
+          url: `memory://${request._tag}/${key}`,
+        }),
     }),
   );
-  return { layer, objects, purged };
+  return { layer, objects, purged, sealed };
 };
 
 /** The domain over a fresh migrated local D1 and the given storage. */
