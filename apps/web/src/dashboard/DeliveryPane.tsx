@@ -1,5 +1,5 @@
 import type { Delivery } from "@tranzfer/contracts";
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
 
 import PhCheckBold from "~icons/ph/check-bold";
 import PhCopyBold from "~icons/ph/copy-bold";
@@ -20,6 +20,7 @@ import {
   statusOf,
   toneText,
   totalSize,
+  transferStatus,
   untilDate,
 } from "./format";
 import { Progress } from "./parts";
@@ -193,41 +194,31 @@ export function DeliveryPane(props: Props) {
         <ul class="mt-2 divide-y divide-line/70 border-y border-line">
           <For each={props.delivery.transfers}>
             {(transfer) => {
-              const progress = createMemo(() => transfers[transfer.id]);
+              const file = createMemo(() => transferStatus(transfer, transfers[transfer.id])._tag);
               return (
                 <li class="grid grid-cols-[20px_1fr_140px_80px] items-center gap-4 py-3">
                   <PhFileBold class="size-4 text-mut" />
                   <span class="truncate font-mono text-sm">{transfer.path}</span>
-                  <Show
-                    when={transfer.state !== "complete"}
-                    fallback={<PhCheckBold class="size-4 justify-self-end text-ok" />}
+                  <Switch
+                    fallback={
+                      <div class="h-1 overflow-hidden rounded-full bg-ink/8">
+                        <div
+                          class="h-full bg-blue"
+                          style={{
+                            width: `${
+                              transfer.size === 0
+                                ? 0
+                                : ((transfers[transfer.id]?.confirmed ?? 0) / transfer.size) * 100
+                            }%`,
+                          }}
+                        />
+                      </div>
+                    }
                   >
-                    <Show
-                      when={progress()?.phase === "failed"}
-                      fallback={
-                        <Show
-                          when={progress() !== undefined}
-                          fallback={
-                            <span class="text-right text-xs text-rust">
-                              {transfer.state === "cancelled" ? "cancelled" : "interrupted"}
-                            </span>
-                          }
-                        >
-                          <div class="h-1 overflow-hidden rounded-full bg-ink/8">
-                            <div
-                              class="h-full bg-blue"
-                              style={{
-                                width: `${
-                                  transfer.size === 0
-                                    ? 0
-                                    : ((progress()?.confirmed ?? 0) / transfer.size) * 100
-                                }%`,
-                              }}
-                            />
-                          </div>
-                        </Show>
-                      }
-                    >
+                    <Match when={file() === "Complete"}>
+                      <PhCheckBold class="size-4 justify-self-end text-ok" />
+                    </Match>
+                    <Match when={file() === "Failed"}>
                       <button
                         class="justify-self-end text-xs text-ink underline"
                         onClick={() => {
@@ -237,8 +228,14 @@ export function DeliveryPane(props: Props) {
                       >
                         Retry
                       </button>
-                    </Show>
-                  </Show>
+                    </Match>
+                    <Match when={file() === "Cancelled"}>
+                      <span class="text-right text-xs text-rust">cancelled</span>
+                    </Match>
+                    <Match when={file() === "Interrupted"}>
+                      <span class="text-right text-xs text-rust">interrupted</span>
+                    </Match>
+                  </Switch>
                   <span class="text-right font-mono text-sm text-mut">{bytes(transfer.size)}</span>
                 </li>
               );

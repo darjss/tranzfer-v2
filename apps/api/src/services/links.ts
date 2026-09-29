@@ -61,7 +61,9 @@ export class Links extends Context.Service<
         return Layer.succeed(
           Links,
           Links.of({
-            issue: (linkId) => Effect.map(sign(linkId), (sig) => `${linkId}.${sig}`),
+            issue: Effect.fn("Links.issue")(function* issue(linkId: string) {
+              return `${linkId}.${yield* sign(linkId)}`;
+            }),
             verify: Effect.fn("Links.verify")(function* verify(token: string) {
               const dot = token.indexOf(".");
               if (dot <= 0) {
