@@ -439,6 +439,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@effect/sql-d1':
+        specifier: 4.0.0-rc.115
+        version: 4.0.0-rc.115(effect@4.0.0-rc.115)
       drizzle-orm:
         specifier: 'catalog:'
         version: 1.0.0-rc.5-ab785fc(@cloudflare/workers-types@5.20260911.1)(@effect/sql-d1@4.0.0-rc.115(effect@4.0.0-rc.115))(@effect/sql-sqlite-do@4.0.0-rc.115(effect@4.0.0-rc.115))(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.4)(effect@4.0.0-rc.115)(valibot@1.4.2(typescript@7.0.2))(zod@4.6.2)
@@ -455,6 +458,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      wrangler:
+        specifier: 4.131.1
+        version: 4.131.1(@cloudflare/workers-types@5.20260911.1)(@types/node@26.4.1)
 
 packages:
 

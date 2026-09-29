@@ -1,20 +1,21 @@
 import * as Schema from "effect/Schema";
 
+export const DeliveryId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand("DeliveryId"));
+export type DeliveryId = typeof DeliveryId.Type;
+
+export const TransferId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand("TransferId"));
+export type TransferId = typeof TransferId.Type;
+
 export const RetentionDays = Schema.Literals([1, 3, 7, 14]);
-export const defaultRetentionDays = 3;
+export type RetentionDays = typeof RetentionDays.Type;
+export const defaultRetentionDays: RetentionDays = 3;
 
-const MIB = 1024 * 1024;
-const MAX_PARTS = 10_000;
-
-// 64 MiB stands until the 10 GB gate benchmark.
-export const partSize = (size: number) =>
-  Math.max(64 * MIB, Math.ceil(size / MAX_PARTS / MIB) * MIB);
-export const usesMultipart = (size: number) => size > partSize(size);
-export const partCount = (size: number) => Math.ceil(size / partSize(size));
+/** The contract's file cap; D1's bound-parameter limit is handled server-side. */
+export const maxFiles = 1000;
 
 // Recipient-disk safe paths: forward slashes only, no traversal, no control
 // characters, and segments that fit a filename.
-const RelativePathSchema = Schema.String.check(
+export const RelativePath = Schema.String.check(
   Schema.isLengthBetween(1, 1024),
   Schema.makeFilter((value) => {
     if (value.startsWith("/") || value.includes("\\")) {
@@ -34,71 +35,73 @@ const RelativePathSchema = Schema.String.check(
     return true;
   }),
 );
-export { RelativePathSchema as RelativePath };
-export type RelativePath = typeof RelativePathSchema.Type;
 
-const NewFileSchema = Schema.Struct({
+export const NewFile = Schema.Struct({
   contentType: Schema.NullOr(Schema.String.check(Schema.isMaxLength(255))),
-  id: Schema.String.check(Schema.isUUID()),
+  id: TransferId,
   lastModified: Schema.Int,
-  path: RelativePathSchema,
+  path: RelativePath,
   size: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
-export { NewFileSchema as NewFile };
-export type NewFile = typeof NewFileSchema.Type;
+export interface NewFile extends Schema.Schema.Type<typeof NewFile> {}
 
-const NewDeliverySchema = Schema.Struct({
-  files: Schema.Array(NewFileSchema).check(
+/** The sender picks every id, so a retried create is a replay rather than a duplicate. */
+export const NewDelivery = Schema.Struct({
+  files: Schema.Array(NewFile).check(
     Schema.isMinLength(1),
-    Schema.isMaxLength(1000),
+    Schema.isMaxLength(maxFiles),
     // Case-variant paths would collide on the recipient's disk.
     Schema.makeFilter(
       (files) =>
         new Set(files.map((file) => file.path.toLowerCase())).size === files.length ||
         "file paths must be unique case-insensitively",
     ),
-    // File ids become transfer primary keys; a duplicate fails the insert.
     Schema.makeFilter(
       (files) =>
         new Set(files.map((file) => file.id)).size === files.length || "file ids must be unique",
     ),
   ),
-  id: Schema.String.check(Schema.isUUID()),
+  id: DeliveryId,
   retentionDays: RetentionDays,
   title: Schema.Trim.check(Schema.isLengthBetween(1, 200)),
 });
-export { NewDeliverySchema as NewDelivery };
-export type NewDelivery = typeof NewDeliverySchema.Type;
+export interface NewDelivery extends Schema.Schema.Type<typeof NewDelivery> {}
 
 export const DeliveryStatus = Schema.Literals(["open", "ready", "cancelled", "expired"]);
-export const TransferState = Schema.Literals(["uploading", "finalizing", "complete", "cancelled"]);
+export type DeliveryStatus = typeof DeliveryStatus.Type;
 
-const TransferSchema = Schema.Struct({
-  id: Schema.String,
+export const TransferState = Schema.Literals(["uploading", "finalizing", "complete", "cancelled"]);
+export type TransferState = typeof TransferState.Type;
+
+export const Transfer = Schema.Struct({
+  id: TransferId,
   objectKey: Schema.String,
   path: Schema.String,
   size: Schema.Int,
   state: TransferState,
 });
-export { TransferSchema as Transfer };
-export type Transfer = typeof TransferSchema.Type;
+export interface Transfer extends Schema.Schema.Type<typeof Transfer> {}
 
-export class Delivery extends Schema.Class<Delivery>("Delivery")({
+export const Delivery = Schema.Struct({
   createdAt: Schema.DateFromString,
   expiresAt: Schema.NullOr(Schema.DateFromString),
-  id: Schema.String,
+  id: DeliveryId,
   link: Schema.String,
   retentionDays: RetentionDays,
   status: DeliveryStatus,
   title: Schema.String,
-  transfers: Schema.Array(TransferSchema),
-}) {}
-
-const SharedDeliverySchema = Schema.Struct({
-  expiresAt: Schema.NullOr(Schema.DateFromString),
-  files: Schema.Array(Schema.Struct({ path: Schema.String, size: Schema.Int, url: Schema.String })),
-  senderName: Schema.String,
-  title: Schema.String,
+  transfers: Schema.Array(Transfer),
 });
-export { SharedDeliverySchema as SharedDelivery };
-export type SharedDelivery = typeof SharedDeliverySchema.Type;
+export interface Delivery extends Schema.Schema.Type<typeof Delivery> {}
+
+/** The id is taken by a delivery or transfer whose contents differ from this request. */
+export class DeliveryConflict extends Schema.TaggedError<DeliveryConflict>()(
+  "DeliveryConflict",
+  {},
+) {}
+
+/** Missing, or owned by someone else; the two look the same. */
+export class DeliveryNotFound extends Schema.TaggedError<DeliveryNotFound>()(
+  "DeliveryNotFound",
+  {},
+) {}

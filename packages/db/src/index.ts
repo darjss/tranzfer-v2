@@ -1,3 +1,2 @@
-export { Database, Drizzle } from "./client";
-export { DrizzleError } from "./errors/drizzle";
+export { Database, dieOnDatabaseError, relations } from "./database";
 export * as schema from "./schema";
