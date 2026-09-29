@@ -2,14 +2,7 @@ import type { AwsS3Options } from "@uppy/aws-s3";
 import AwsS3 from "@uppy/aws-s3";
 import { Uppy } from "@uppy/core";
 import type { Body, Meta } from "@uppy/core/utils";
-import {
-  DeliveryId,
-  NotUploaded,
-  partSize,
-  RelativePath,
-  TransferId,
-  usesMultipart,
-} from "@tranzfer/contracts";
+import { DeliveryId, NotUploaded, partSize, RelativePath, TransferId } from "@tranzfer/contracts";
 import type { NewFile, UploadRequest } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import type { ManagedRuntime } from "effect/ManagedRuntime";
@@ -79,11 +72,13 @@ const deliveryTitle = (files: readonly ChosenFile[]) => {
 
 const toUploadRequest = (request: PresignableRequest): UploadRequest =>
   Match.value(request).pipe(
-    Match.when({ method: "PUT" }, (put): UploadRequest =>
-      "uploadId" in put
-        ? { _tag: "Part", partNumber: put.partNumber, uploadId: put.uploadId }
-        : { _tag: "Put" },
-    ),
+    Match.when({ method: "PUT" }, (put): UploadRequest => {
+      if (!("uploadId" in put)) {
+        // shouldUseMultipart is always true, so Uppy never asks for a single PUT.
+        throw new Error("Single PUT uploads are not signed");
+      }
+      return { _tag: "Part", partNumber: put.partNumber, uploadId: put.uploadId };
+    }),
     Match.when({ method: "GET" }, (get): UploadRequest => ({
       _tag: "List",
       uploadId: get.uploadId,
@@ -179,7 +174,8 @@ export const getUploads = (runtime: Runtime) => {
     allowedMetaFields: [],
     generateObjectKey: (file) => metaString(file.meta, "objectKey") ?? file.name,
     getChunkSize: ({ size }) => partSize(size),
-    shouldUseMultipart: (file) => usesMultipart(file.size ?? 0),
+    // Every file is multipart so finalize can seal its key (see RELIABILITY.md).
+    shouldUseMultipart: () => true,
     signRequest: async (request) => {
       const signed = await sign(runtime, request);
       return { url: signed.url };

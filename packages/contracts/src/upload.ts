@@ -6,12 +6,16 @@ const MAX_PARTS = 10_000;
 // 64 MiB stands until the 10 GB gate benchmark.
 export const partSize = (size: number) =>
   Math.max(64 * MIB, Math.ceil(size / MAX_PARTS / MIB) * MIB);
-export const usesMultipart = (size: number) => size > partSize(size);
-export const partCount = (size: number) => Math.ceil(size / partSize(size));
+// An empty file still uploads one (empty) part.
+export const partCount = (size: number) => Math.max(1, Math.ceil(size / partSize(size)));
 
-/** The S3 requests Uppy asks the API to sign. Aborts are not here: cancel is server-side. */
+/**
+ * The S3 requests Uppy asks the API to sign. Every file is a multipart upload,
+ * so finalize can close the key: a completed or aborted upload id accepts no
+ * more writes, and there is no single-PUT URL to replay. Aborts are not here:
+ * cancel is server-side.
+ */
 export const UploadRequest = Schema.Union([
-  Schema.TaggedStruct("Put", {}),
   Schema.TaggedStruct("Create", {}),
   Schema.TaggedStruct("Part", {
     partNumber: Schema.Int.check(Schema.isBetween({ maximum: MAX_PARTS, minimum: 1 })),

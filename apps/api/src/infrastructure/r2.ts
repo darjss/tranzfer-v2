@@ -35,7 +35,6 @@ const uploadQuery = Match.type<UploadRequest>().pipe(
       method: "PUT",
       query: { partNumber: String(partNumber), uploadId },
     }),
-    Put: () => ({ method: "PUT", query: {} }),
   }),
 );
 
@@ -100,6 +99,20 @@ const make = (options: R2Options) =>
           ),
       );
 
+    const abortAll = (bucket: string, prefix: string, matches: (key: string) => boolean) =>
+      multipartUploads(bucket, prefix).pipe(
+        Stream.runForEach((upload) =>
+          upload.Key === undefined || upload.UploadId === undefined || !matches(upload.Key)
+            ? Effect.void
+            : abortMultipartUpload({
+                Bucket: bucket,
+                Key: upload.Key,
+                UploadId: upload.UploadId,
+              }).pipe(Effect.catchTag("NoSuchUpload", () => Effect.void)),
+        ),
+        Effect.mapError((cause) => new StorageError({ cause })),
+      );
+
     return Storage.of({
       head: Effect.fn("Storage.head")(function* head(key: string) {
         const bucket = yield* options.bucket;
@@ -117,18 +130,7 @@ const make = (options: R2Options) =>
 
       purge: Effect.fn("Storage.purge")(function* purge(prefix: string, keys: readonly string[]) {
         const bucket = yield* options.bucket;
-        yield* multipartUploads(bucket, prefix).pipe(
-          Stream.runForEach((upload) =>
-            upload.Key === undefined || upload.UploadId === undefined
-              ? Effect.void
-              : abortMultipartUpload({
-                  Bucket: bucket,
-                  Key: upload.Key,
-                  UploadId: upload.UploadId,
-                }).pipe(Effect.catchTag("NoSuchUpload", () => Effect.void)),
-          ),
-          Effect.mapError((cause) => new StorageError({ cause })),
-        );
+        yield* abortAll(bucket, prefix, () => true);
         yield* Effect.forEach(
           Arr.chunksOf(keys, DELETE_BATCH),
           (chunk) =>
@@ -138,6 +140,11 @@ const make = (options: R2Options) =>
             }),
           { discard: true },
         ).pipe(Effect.mapError((cause) => new StorageError({ cause })));
+      }),
+
+      seal: Effect.fn("Storage.seal")(function* seal(key: string) {
+        const bucket = yield* options.bucket;
+        yield* abortAll(bucket, key, (found) => found === key);
       }),
 
       signDownload: Effect.fn("Storage.signDownload")(function* signDownload(

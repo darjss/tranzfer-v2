@@ -2,7 +2,6 @@ import { expect, layer } from "@effect/vitest";
 import { Database, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
-import * as TestClock from "effect/testing/TestClock";
 
 import { Deliveries } from "../src/implementation/deliveries";
 import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } from "./support";
@@ -91,8 +90,6 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
 
   it.effect("cancels only for the sender, and purges the objects", () =>
     Effect.gen(function* scenario() {
-      // D1 stamps updatedAt from the wall clock; start the test clock there too.
-      yield* TestClock.setTime(Date.now());
       yield* addUser("gina");
       const deliveries = yield* Deliveries;
       const created = yield* deliveries.create("gina", newDelivery([newFile("f.bin", 4)]));
@@ -107,13 +104,7 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       expect(cancelled.transfers.every((t) => t.state === "cancelled")).toBe(true);
       expect(storage.objects.has(objectKey)).toBe(false);
       expect(storage.purged).toContain(`d/${created.id}/`);
-      // A pre-cancel upload URL can still land an object; the sweeper waits
-      // out those URLs, then purges once more and records it.
-      storage.objects.set(objectKey, { etag: "late", size: 4 });
-      expect(yield* deliveries.purgeEnded).toBe(0);
-      yield* TestClock.adjust("17 minutes");
-      expect(yield* deliveries.purgeEnded).toBe(1);
-      expect(storage.objects.has(objectKey)).toBe(false);
+      // Recorded as purged: the sweeper has nothing left to do for it.
       expect(yield* deliveries.purgeEnded).toBe(0);
     }),
   );
