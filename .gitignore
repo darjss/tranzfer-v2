@@ -23,6 +23,7 @@ node_modules
 .settings/
 
 # Temp
+e2e/runs
 gitignore
 
 # System Files

@@ -76,7 +76,7 @@ The parts ledger is the most important thing in the harness. Part bytes go strai
 
 ## Identity
 
-Sign-in is Google only, and scenarios don't go through Google. Outside production, the API exposes a dev-only identity route that uses Better Auth's `testUtils` plugin to create a user and a real session. Every request after that goes through real session validation. Production never registers the route.
+Sign-in is Google only, and scenarios don't go through Google. Outside production, when `TEST_LOGIN_KEY` is set, the API registers `POST /api/auth/staging-login` (`apps/api/src/services/staging-login.ts`). It checks the key, then creates the staging user and a real session. Every request after that goes through real session validation. Production never registers the route.
 
 One scenario checks that sign-in redirects to Google with the right callback URL. The real OAuth round trip gets checked by hand against the deployment.
 
