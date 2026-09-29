@@ -21,6 +21,14 @@ catalog:
   solid-js: 2.0.0-rc.8
   "@solidjs/web": 2.0.0-rc.8
   "@solidjs/diagnostics": 2.0.0-rc.8
+  effect: 4.0.0-rc.115
+  "@effect/platform-node": 4.0.0-rc.115
+  "@effect/vitest": 4.0.0-rc.115
+  typescript: 7.0.2
+  "@types/node": 26.4.1
+  "@cloudflare/workers-types": 5.20260911.1
+  drizzle-orm: 1.0.0-rc.5-ab785fc
+  drizzle-kit: 1.0.0-rc.5-ab785fc
 overrides:
   vite@*: "catalog:"
   # Keep oxlint at 1.82/tsgolint at 7.0.2001: `effect-tsgo patch` refuses
@@ -29,7 +37,7 @@ overrides:
   "vite-plus>oxlint": "1.82.0"
   "oxlint>oxlint-tsgolint": "7.0.2001"
   oxlint-tsgolint: "7.0.2001"
-  "@better-auth/drizzle-adapter>drizzle-orm": "1.0.0-rc.5-ab785fc"
+  "@better-auth/drizzle-adapter>drizzle-orm": "catalog:"
 peerDependencyRules:
   allowAny:
     - vite

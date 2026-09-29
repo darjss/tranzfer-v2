@@ -13,15 +13,16 @@ export const route = {
 
 export default function NotFound() {
   return (
-    <main>
-      <Title>Not Found - Solid App</Title>
-      <h1>Page Not Found</h1>
-      <p>
-        Visit{" "}
-        <a href="https://docs.solidjs.com" target="_blank" rel="noreferrer">
-          docs.solidjs.com
-        </a>{" "}
-        to learn how to build Solid apps.
+    <main class="paper-dots min-h-screen px-6 py-16 sm:px-12">
+      <Title>Not found · Tranzfer</Title>
+      <h1 class="text-[40px] leading-tight font-semibold tracking-[-0.035em]">Nothing here.</h1>
+      <p class="mt-3 text-mut">
+        This page doesn't exist. If someone sent you a link, ask them for a fresh one.
+      </p>
+      <p class="mt-6">
+        <a class="underline" href="/">
+          Go to Tranzfer
+        </a>
       </p>
     </main>
   );

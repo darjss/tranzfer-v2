@@ -27,9 +27,7 @@ All native oxlint rules in `lint.config.ts`. No custom plugin.
 - Add an `e2e` workspace package with `playwright` and `@effect/vitest`. Its global setup attaches to `E2E_URL`, or boots `vp run dev`, and waits for `/infra`.
 - Port executor's `scenario()` without the viewer, film splicing or test-source extraction. Add `Target`, `Api`, `Browser`, `NetControl` and `Storage` as TESTING.md describes.
 - Before building on either of these, verify:
-  - Better Auth's `testUtils` plugin (1.7.4) can create users and sessions in workerd through the Drizzle D1 adapter.
   - Which bucket local dev presigns against, so `Storage` reads the same one.
-- Add the dev-only identity route. `infra/alchemy.run.ts` sets the enabling binding for non-production stages only, and the route returns 404 without it.
 - First scenarios:
   - refresh mid-upload resumes, and the ledger shows each part sent once
   - offline mid-part pauses, then resumes
