@@ -42,11 +42,7 @@ export default ApiWorker.make(
       Effect.provide(database),
     );
 
-    const storage = yield* Match.value(stage).pipe(
-      Match.whenOr("production", "staging", () => Storage.deployed),
-      Match.when("dev", () => Effect.succeed(Storage.unavailable)),
-      Match.exhaustive,
-    );
+    const storage = yield* Storage.deployed;
 
     const linkSecret = yield* Random("LinkSecret");
     const links = Links.make((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom)));
