@@ -50,7 +50,7 @@ export class Deliveries extends Context.Service<
       input: NewDelivery,
     ) => Effect.Effect<Delivery, DeliveryConflict>;
     readonly list: (senderId: string) => Effect.Effect<readonly Delivery[]>;
-    /** Stops signing and kills the link at once; the sweeper removes the objects. */
+    /** Stops signing, kills the link and removes the objects; the sweeper retries a failed removal. */
     readonly cancel: (
       senderId: string,
       deliveryId: DeliveryId,
@@ -98,6 +98,31 @@ export class Deliveries extends Context.Service<
         });
       });
 
+      // Removes a delivery's objects and records it. A storage failure leaves
+
+      // purgedAt unset, so the sweeper retries it.
+
+      const purge = (deliveryId: DeliveryId, objectKeys: readonly string[]) =>
+        storage.purge(objectPrefix(deliveryId), objectKeys).pipe(
+          Effect.andThen(Clock.currentTimeMillis),
+
+          Effect.flatMap((now) =>
+            db
+
+              .update(schema.delivery)
+
+              .set({ purgedAt: new Date(now) })
+
+              .where(eq(schema.delivery.id, deliveryId)),
+          ),
+
+          Effect.as(true),
+
+          Effect.catchTag("StorageError", (error) =>
+            Effect.logError("purge failed", { deliveryId }, error.cause).pipe(Effect.as(false)),
+          ),
+        );
+
       const view = Effect.fn("Deliveries.view")(function* view(deliveryId: DeliveryId) {
         const row = yield* load(deliveryId);
         if (row === undefined) {
@@ -125,6 +150,10 @@ export class Deliveries extends Context.Service<
               .set({ state: "cancelled" })
               .where(eq(schema.transfer.deliveryId, deliveryId)),
           ]);
+          yield* purge(
+            deliveryId,
+            row.transfers.map((transfer) => transfer.objectKey),
+          );
           return yield* view(deliveryId);
         }, dieOnDatabaseError),
 
@@ -217,29 +246,13 @@ export class Deliveries extends Context.Service<
           const purged = yield* Effect.forEach(
             ended,
             (delivery) =>
-              storage
-                .purge(
-                  objectPrefix(delivery.id),
-                  delivery.transfers.map((transfer) => transfer.objectKey),
-                )
-                .pipe(
-                  Effect.andThen(
-                    db
-                      .update(schema.delivery)
-                      .set({ purgedAt: new Date(now) })
-                      .where(eq(schema.delivery.id, delivery.id)),
-                  ),
-                  Effect.as(1),
-                  // One bucket failure must not stall the rest; the next sweep retries it.
-                  Effect.catchTag("StorageError", (error) =>
-                    Effect.logError("purge failed", { deliveryId: delivery.id }, error.cause).pipe(
-                      Effect.as(0),
-                    ),
-                  ),
-                ),
+              purge(
+                delivery.id,
+                delivery.transfers.map((transfer) => transfer.objectKey),
+              ),
             { concurrency: 4 },
           );
-          return purged.reduce((total, count) => total + count, 0);
+          return purged.filter(Boolean).length;
         }).pipe(Effect.withSpan("Deliveries.purgeEnded"), dieOnDatabaseError),
 
         view,
