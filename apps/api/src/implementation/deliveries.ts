@@ -20,9 +20,12 @@ const PURGE_BATCH = 20;
 // A Complete or empty-file Put signed before a cancel can still land an object
 // until its URL expires, so the confirming purge waits out the URL's lifetime.
 const CANCEL_SETTLE = Duration.sum(UPLOAD_URL_TTL, Duration.minutes(1));
-// R2 aborts incomplete multipart uploads after 7 days, so an open delivery
-// older than that can never finish.
-const ABANDON_AFTER = Duration.days(7);
+/**
+ * A delivery has this long to finish uploading. R2 aborts incomplete multipart
+ * uploads after 7 days, so the window matches what storage can honor. Signing
+ * refuses past it, and the sweeper ends what is still open.
+ */
+export const UPLOAD_WINDOW = Duration.days(7);
 
 export const objectPrefix = (deliveryId: DeliveryId) => `d/${deliveryId}/`;
 
@@ -242,7 +245,7 @@ export class Deliveries extends Context.Service<
             columns: { id: true },
             limit: PURGE_BATCH,
             where: {
-              createdAt: { lte: new Date(now - Duration.toMillis(ABANDON_AFTER)) },
+              createdAt: { lte: new Date(now - Duration.toMillis(UPLOAD_WINDOW)) },
               status: "open",
             },
           });
@@ -253,10 +256,17 @@ export class Deliveries extends Context.Service<
                 .update(schema.delivery)
                 .set({ status: "cancelled" })
                 .where(and(inArray(schema.delivery.id, ids), eq(schema.delivery.status, "open"))),
+              // Only transfers of deliveries the statement above really ended:
+              // a finalize can flip one to ready between the query and here.
               db
                 .update(schema.transfer)
                 .set({ state: "cancelled" })
-                .where(inArray(schema.transfer.deliveryId, ids)),
+                .where(
+                  and(
+                    inArray(schema.transfer.deliveryId, ids),
+                    sql`EXISTS (SELECT 1 FROM delivery WHERE delivery.id = transfer.delivery_id AND delivery.status = 'cancelled')`,
+                  ),
+                ),
             ]);
             yield* Effect.logInfo("abandoned deliveries cancelled", { count: ids.length });
           }

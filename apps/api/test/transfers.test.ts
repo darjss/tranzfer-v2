@@ -188,4 +188,19 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       yield* transfers.sign("gus", objectKey, { _tag: "Put" });
     }),
   );
+
+  it.effect("stops signing once the delivery is past its upload window", () =>
+    Effect.gen(function* scenario() {
+      yield* atWallClock;
+      const created = yield* seed("ivy", [newFile("slow.bin", 9)]);
+      const transfers = yield* Transfers;
+      const { objectKey } = first(created.transfers);
+
+      yield* TestClock.adjust("6 days");
+      yield* transfers.sign("ivy", objectKey, { _tag: "Create" });
+      yield* TestClock.adjust("2 days");
+      const late = yield* Effect.flip(transfers.sign("ivy", objectKey, { _tag: "Create" }));
+      expect(late._tag).toBe("UploadClosed");
+    }),
+  );
 });
