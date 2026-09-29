@@ -157,7 +157,7 @@ const finishTransfer = (
 // navigation: Uppy aborts remote uploads on uninstall and on file removal,
 // and the server refuses to sign aborts anyway, so teardown would silently
 // kill in-flight work (law 11).
-let engine: { uppy: Uppy<Meta, Body>; runtime: Runtime } | undefined;
+let engine: Uppy<Meta, Body> | undefined;
 
 export const getUploads = (runtime: Runtime) => {
   wireWindow();
@@ -237,8 +237,8 @@ export const getUploads = (runtime: Runtime) => {
     });
   });
 
-  engine = { runtime, uppy };
-  return engine;
+  engine = uppy;
+  return uppy;
 };
 
 export const sendFiles = async (
@@ -246,7 +246,7 @@ export const sendFiles = async (
   files: readonly ChosenFile[],
   retentionDays: 1 | 3 | 7 | 14,
 ) => {
-  const { uppy } = getUploads(runtime);
+  const uppy = getUploads(runtime);
   const delivery = await runtime.runPromise(
     ApiClient.pipe(
       Effect.flatMap((api) =>
@@ -323,7 +323,7 @@ export const sendFiles = async (
 };
 
 export const retryTransfer = (runtime: Runtime, transferId: string) => {
-  const { uppy } = getUploads(runtime);
+  const uppy = getUploads(runtime);
   const file = uppy
     .getFiles()
     .find((candidate) => metaString(candidate.meta, "transferId") === transferId);
@@ -343,7 +343,7 @@ export const retryTransfer = (runtime: Runtime, transferId: string) => {
 };
 
 export const cancelDelivery = async (runtime: Runtime, deliveryId: string) => {
-  const { uppy } = getUploads(runtime);
+  const uppy = getUploads(runtime);
   const cancelled = await runtime.runPromise(
     ApiClient.pipe(Effect.flatMap((api) => api.CancelDelivery({ deliveryId }))),
   );
