@@ -32,9 +32,13 @@ const shortDate = new Intl.DateTimeFormat("en-GB", {
 
 /** A delivery's live state: server status plus whatever this tab is uploading. */
 export const liveDelivery = (source: { readonly delivery: Delivery; readonly online: boolean }) => {
-  const roll = createMemo(() => rollup(source.delivery, (id) => transfers[id]));
-  const kind = createMemo(() => kindOf(source.delivery.status, roll(), source.online));
-  const total = createMemo(() => totalSize(source.delivery));
+  const roll = createMemo(() => rollup(source.delivery, (id) => transfers[id]), {
+    name: "Row.roll",
+  });
+  const kind = createMemo(() => kindOf(source.delivery.status, roll(), source.online), {
+    name: "Row.kind",
+  });
+  const total = createMemo(() => totalSize(source.delivery), { name: "Row.total" });
   return { kind, roll, total };
 };
 
@@ -147,6 +151,15 @@ interface RowActions {
   readonly select: (id: string) => void;
   readonly sendAgain: () => void;
 }
+
+const sameMembers = (a: readonly Delivery[], b: readonly Delivery[]) =>
+  a.length === b.length && a.every((delivery, index) => delivery === b[index]);
+
+const sameGroups = (a: Record<Group, Delivery[]>, b: Record<Group, Delivery[]>) =>
+  sameMembers(a.ended, b.ended) &&
+  sameMembers(a.interrupted, b.interrupted) &&
+  sameMembers(a.moving, b.moving) &&
+  sameMembers(a.ready, b.ready);
 
 function Row(
   props: RowActions & {
@@ -326,19 +339,24 @@ export function Board(
 ) {
   // Grouping reads live progress, so a finished upload moves to "Ready"
   // the moment the refreshed list says so.
-  const groups = createMemo(() => {
-    const byGroup: Record<Group, Delivery[]> = {
-      ended: [],
-      interrupted: [],
-      moving: [],
-      ready: [],
-    };
-    for (const delivery of props.deliveries) {
-      const roll = rollup(delivery, (id) => transfers[id]);
-      byGroup[groupOf(kindOf(delivery.status, roll, props.online))].push(delivery);
-    }
-    return byGroup;
-  });
+  const groups = createMemo(
+    () => {
+      const byGroup: Record<Group, Delivery[]> = {
+        ended: [],
+        interrupted: [],
+        moving: [],
+        ready: [],
+      };
+      for (const delivery of props.deliveries) {
+        const roll = rollup(delivery, (id) => transfers[id]);
+        byGroup[groupOf(kindOf(delivery.status, roll, props.online))].push(delivery);
+      }
+      return byGroup;
+      // Progress ticks rerun this, but rarely move a delivery between groups;
+      // unchanged membership stops here instead of re-diffing every list.
+    },
+    { equals: sameGroups, name: "Board.groups" },
+  );
 
   return (
     <div class={css({ display: "grid", gap: "10" })}>
