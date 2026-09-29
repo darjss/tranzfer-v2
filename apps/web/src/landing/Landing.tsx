@@ -225,10 +225,10 @@ export default function Landing() {
               alignItems: "center",
               color: "mut",
               display: "flex",
-              fontSize: "sm",
               fontWeight: "medium",
               gap: "7",
               listStyle: "none",
+              textStyle: "sm",
             })}
           >
             <li class={css({ display: { base: "none", md: "block" } })}>
@@ -381,12 +381,12 @@ export default function Landing() {
                 "rv",
                 css({
                   color: "[#3a3b40]",
-                  fontSize: "xl",
                   fontWeight: "medium",
                   lineHeight: "[1.4]",
                   maxW: "[34ch]",
                   mb: "[34px]",
                   mt: "6.5",
+                  textStyle: "xl",
                   textWrap: "[pretty]",
                 }),
               )}
@@ -478,7 +478,7 @@ export default function Landing() {
               <i>Keep the work already done.</i>
             </h2>
             <p
-              class={cx("rv", css({ color: "mut", fontSize: "lg", maxW: "[52ch]", mt: "4.5" }))}
+              class={cx("rv", css({ color: "mut", maxW: "[52ch]", mt: "4.5", textStyle: "lg" }))}
               style="--d:80ms"
             >
               The goal is to check which parts arrived, verify that the source file is unchanged,
@@ -542,18 +542,18 @@ export default function Landing() {
                   </div>
                   <h3
                     class={css({
-                      fontSize: "xl",
                       fontWeight: "semibold",
                       letterSpacing: "snug",
                       lineHeight: "compact",
                       mb: "1.5",
                       mt: "4",
                       mx: "1.5",
+                      textStyle: "xl",
                     })}
                   >
                     {f.h}
                   </h3>
-                  <p class={css({ color: "mut", fontSize: "sm", mx: "1.5" })}>{f.p}</p>
+                  <p class={css({ color: "mut", mx: "1.5", textStyle: "sm" })}>{f.p}</p>
                   <span
                     class={cx(
                       "r",
@@ -649,8 +649,8 @@ export default function Landing() {
                       class={css({
                         color: "[#9fb0ff]",
                         fontFamily: "mono",
-                        fontSize: "xs",
                         letterSpacing: "widest",
+                        textStyle: "xs",
                       })}
                     >
                       0{i() + 1}

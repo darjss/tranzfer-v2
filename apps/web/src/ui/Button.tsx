@@ -34,7 +34,7 @@ export const button = cva({
   variants: {
     size: {
       md: { fontSize: "15", px: "6", py: "[15px]" },
-      sm: { fontSize: "sm", px: "4", py: "[11px]" },
+      sm: { px: "4", py: "[11px]", textStyle: "sm" },
     },
     variant: {
       fill: {

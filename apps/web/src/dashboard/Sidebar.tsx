@@ -103,12 +103,12 @@ export function Sidebar(props: Props) {
                 class={css({
                   color: "mut",
                   display: "flex",
-                  fontSize: "xs",
                   fontWeight: "semibold",
                   gap: "2",
                   pb: "1.5",
                   pt: "5",
                   px: "3",
+                  textStyle: "xs",
                 })}
               >
                 {label}{" "}
@@ -166,7 +166,7 @@ export function Sidebar(props: Props) {
                         >
                           {delivery.title}
                         </b>
-                        <small class={css({ color: "mut", fontFamily: "mono", fontSize: "xs" })}>
+                        <small class={css({ color: "mut", fontFamily: "mono", textStyle: "xs" })}>
                           {bytes(total())}
                         </small>
                       </span>
@@ -177,7 +177,7 @@ export function Sidebar(props: Props) {
                           tone={status().tone}
                         />
                       </Show>
-                      <small class={cx(css({ fontSize: "xs" }), toneText[status().tone])}>
+                      <small class={cx(css({ textStyle: "xs" }), toneText[status().tone])}>
                         {status().short}
                       </small>
                     </button>
@@ -194,11 +194,11 @@ export function Sidebar(props: Props) {
           borderColor: "line",
           borderTopWidth: "1px",
           display: "flex",
-          fontSize: "sm",
           gap: "3",
           lgDown: { order: "3" },
           px: "4",
           py: "3",
+          textStyle: "sm",
         })}
       >
         <Avatar name={props.principal.name} />

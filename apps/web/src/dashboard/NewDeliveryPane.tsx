@@ -79,12 +79,12 @@ export function NewDeliveryPane(props: Props) {
           class={css({
             color: "blue/80",
             fontFamily: "hand",
-            fontSize: "2xl",
             fontWeight: "semibold",
             lineHeight: "tight",
             pos: "absolute",
             right: "4",
             rotate: "[-4deg]",
+            textStyle: "2xl",
             top: "-10",
             userSelect: "none",
             zIndex: 10,
@@ -96,7 +96,7 @@ export function NewDeliveryPane(props: Props) {
           <span
             class={css({
               display: { base: "inline", sm: "none" },
-              fontSize: "lg",
+              textStyle: "lg",
               whiteSpace: "nowrap",
             })}
           >
@@ -165,7 +165,7 @@ export function NewDeliveryPane(props: Props) {
               <PhUploadSimpleBold class={css({ boxSize: "6" })} />
             </span>
             <p class={css({ fontSize: "17", fontWeight: "semibold" })}>Drop a folder or files</p>
-            <p class={css({ color: "mut", fontSize: "sm" })}>
+            <p class={css({ color: "mut", textStyle: "sm" })}>
               or{" "}
               <button
                 class={css({
@@ -235,7 +235,7 @@ export function NewDeliveryPane(props: Props) {
       >
         <fieldset class={css({ alignItems: "center", display: "flex", gap: "2" })}>
           <legend class={css({ srOnly: true })}>Keep files for</legend>
-          <span class={css({ fontSize: "sm", fontWeight: "medium" })}>Keep files for</span>
+          <span class={css({ fontWeight: "medium", textStyle: "sm" })}>Keep files for</span>
           <For each={retentionChoices}>
             {(days) => (
               <label
@@ -244,9 +244,9 @@ export function NewDeliveryPane(props: Props) {
                     borderRadius: "full",
                     cursor: "pointer",
                     fontFamily: "mono",
-                    fontSize: "sm",
                     px: "3",
                     py: "1",
+                    textStyle: "sm",
                     transitionDuration: "fast",
                     transitionProperty: "colors",
                     transitionTimingFunction: "default",
@@ -283,8 +283,8 @@ export function NewDeliveryPane(props: Props) {
           class={css({
             color: "mut",
             fontFamily: "mono",
-            fontSize: "xs",
             marginLeft: "auto",
+            textStyle: "xs",
           })}
         >
           counted from when the upload finishes
@@ -292,12 +292,12 @@ export function NewDeliveryPane(props: Props) {
       </div>
 
       <Show when={sending()}>
-        <p class={css({ color: "mut", fontSize: "sm", mt: "4" })}>Setting the delivery up…</p>
+        <p class={css({ color: "mut", mt: "4", textStyle: "sm" })}>Setting the delivery up…</p>
       </Show>
       <Show when={problems().length > 0}>
         <div class={css({ mt: "4" })} role="alert">
           <For each={problems()}>
-            {(problem) => <p class={css({ color: "rust", fontSize: "sm" })}>{problem}</p>}
+            {(problem) => <p class={css({ color: "rust", textStyle: "sm" })}>{problem}</p>}
           </For>
         </div>
       </Show>

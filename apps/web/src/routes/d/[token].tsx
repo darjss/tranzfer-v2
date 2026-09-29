@@ -39,7 +39,7 @@ const LinkError = (props: { error: unknown }) => (
     <Match when={props.error instanceof LinkNotReady ? props.error : null}>
       {(current) => (
         <section class={errorSection}>
-          <p class={css({ color: "mut", fontFamily: "mono", fontSize: "xs" })}>
+          <p class={css({ color: "mut", fontFamily: "mono", textStyle: "xs" })}>
             from {current().senderName}
           </p>
           <h1 class={cx(errorTitle, css({ mt: "2" }))}>{current().title}</h1>
@@ -105,7 +105,9 @@ const LinkPage = () => {
       </nav>
       <Loading
         fallback={
-          <div class={css({ color: "mut", fontSize: "sm", px: { base: "6", sm: "12" }, py: "16" })}>
+          <div
+            class={css({ color: "mut", px: { base: "6", sm: "12" }, py: "16", textStyle: "sm" })}
+          >
             Loading…
           </div>
         }
@@ -126,7 +128,7 @@ const LinkPage = () => {
                 </p>
                 <Show when={delivery()?.expiresAt ?? null}>
                   {(expiresAt) => (
-                    <p class={css({ color: "mut", fontSize: "sm", mt: "1" })}>
+                    <p class={css({ color: "mut", mt: "1", textStyle: "sm" })}>
                       Available until {untilDate(expiresAt())}
                     </p>
                   )}
@@ -153,15 +155,15 @@ const LinkPage = () => {
                           py: "3",
                         })}
                       >
-                        <span class={css({ fontFamily: "mono", fontSize: "sm", truncate: true })}>
+                        <span class={css({ fontFamily: "mono", textStyle: "sm", truncate: true })}>
                           {file.path}
                         </span>
                         <span
                           class={css({
                             color: "mut",
                             fontFamily: "mono",
-                            fontSize: "sm",
                             textAlign: "right",
+                            textStyle: "sm",
                           })}
                         >
                           {bytes(file.size)}
@@ -174,11 +176,11 @@ const LinkPage = () => {
                             borderRadius: "xl",
                             color: "paper",
                             display: "inline-flex",
-                            fontSize: "sm",
                             fontWeight: "semibold",
                             gap: "2",
                             px: "4",
                             py: "2",
+                            textStyle: "sm",
                             transitionDuration: "fast",
                             transitionProperty: "[transform,translate,scale,rotate]",
                             transitionTimingFunction: "default",
@@ -195,7 +197,7 @@ const LinkPage = () => {
                     )}
                   </For>
                 </ul>
-                <p class={css({ color: "mut", fontSize: "sm", mt: "4" })}>
+                <p class={css({ color: "mut", mt: "4", textStyle: "sm" })}>
                   Interrupted downloads can resume in your browser's download manager while the link
                   is fresh.
                 </p>
@@ -223,7 +225,9 @@ export default function PublicDelivery() {
     <LazyLink
       fallback={
         <main class={cx("paper-dots", css({ minH: "screen" }))}>
-          <div class={css({ color: "mut", fontSize: "sm", px: { base: "6", sm: "12" }, py: "16" })}>
+          <div
+            class={css({ color: "mut", px: { base: "6", sm: "12" }, py: "16", textStyle: "sm" })}
+          >
             Loading…
           </div>
         </main>

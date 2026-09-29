@@ -97,7 +97,6 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
                 bgGradient: "to-b",
                 borderRadius: "full",
                 display: "inline-flex",
-                fontSize: "xs",
                 fontWeight: "medium",
                 gap: "2",
                 gradientFrom: "white",
@@ -110,6 +109,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
                 scale: "[.94]",
                 shadow:
                   "[inset 0 1px 0 #fff,0 0 0 1px var(--colors-line),0 10px 20px -12px rgba(23,24,28,.4)]",
+                textStyle: "xs",
                 top: "-3.5",
                 transition:
                   "[translate .6s var(--easings-smooth) 1s,scale .6s var(--easings-smooth) 1s,opacity .4s ease 1s]",
@@ -145,9 +145,9 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
                 alignItems: "center",
                 color: "mut",
                 display: "inline-flex",
-                fontSize: "xs",
                 fontWeight: "medium",
                 gap: "2",
+                textStyle: "xs",
               })}
             >
               Preview
@@ -226,10 +226,10 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
                     alt=""
                   />
                   <div>
-                    <b class={css({ display: "block", fontSize: "sm", fontWeight: "semibold" })}>
+                    <b class={css({ display: "block", fontWeight: "semibold", textStyle: "sm" })}>
                       {f.name}
                     </b>
-                    <small class={css({ color: "mut", fontFamily: "mono", fontSize: "xs" })}>
+                    <small class={css({ color: "mut", fontFamily: "mono", textStyle: "xs" })}>
                       {f.meta}
                     </small>
                   </div>

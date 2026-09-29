@@ -59,7 +59,7 @@ const DeliveriesPage = () => {
                   role="alert"
                 >
                   <div class={css({ textAlign: "center" })}>
-                    <p class={css({ color: "mut", fontSize: "sm" })}>
+                    <p class={css({ color: "mut", textStyle: "sm" })}>
                       We couldn't load your deliveries.
                     </p>
                     <button
@@ -100,9 +100,9 @@ const DeliveriesPage = () => {
                     borderBottomWidth: "1px",
                     borderColor: "line",
                     color: "amber",
-                    fontSize: "sm",
                     px: { base: "6", sm: "12" },
                     py: "2.5",
+                    textStyle: "sm",
                   })}
                 >
                   Connection lost. We'll continue when you're back online.

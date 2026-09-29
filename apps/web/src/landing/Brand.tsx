@@ -25,10 +25,10 @@ export default function Brand() {
           alignItems: "center",
           color: "ink",
           display: "inline-flex",
-          fontSize: "xl",
           fontWeight: "bold",
           gap: "[9px]",
           letterSpacing: "snug",
+          textStyle: "xl",
         }),
       )}
       href="/"

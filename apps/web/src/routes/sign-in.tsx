@@ -166,12 +166,12 @@ export default function SignIn() {
           class={css({
             color: "blue/70",
             fontFamily: "hand",
-            fontSize: "2xl",
             fontWeight: "semibold",
             left: "[58%]",
             lineHeight: "tight",
             pos: "absolute",
             rotate: "[-6deg]",
+            textStyle: "2xl",
             top: "[64%]",
             w: "[200px]",
           })}
@@ -284,11 +284,11 @@ export default function SignIn() {
             {pending() ? "Opening Google…" : "Continue with Google"}
           </button>
           <Show when={failed()}>
-            <p class={css({ color: "rust", fontSize: "sm", mt: "3" })} role="alert">
+            <p class={css({ color: "rust", mt: "3", textStyle: "sm" })} role="alert">
               Google sign-in didn't open. Try again.
             </p>
           </Show>
-          <p class={css({ color: "mut", fontSize: "sm", mt: "6" })}>{scopes}</p>
+          <p class={css({ color: "mut", mt: "6", textStyle: "sm" })}>{scopes}</p>
           <Show when={staging()}>
             <form
               class={css({
@@ -303,7 +303,7 @@ export default function SignIn() {
                 void signInWithKey(key());
               }}
             >
-              <label class={css({ fontSize: "sm", fontWeight: "medium" })} for="staging-key">
+              <label class={css({ fontWeight: "medium", textStyle: "sm" })} for="staging-key">
                 Staging key
               </label>
               <div class={css({ display: "flex", gap: "2", mt: "2" })}>
@@ -359,14 +359,14 @@ export default function SignIn() {
                 </button>
               </div>
               <Show when={keyFailed()}>
-                <p class={css({ color: "rust", fontSize: "sm", mt: "3" })} role="alert">
+                <p class={css({ color: "rust", mt: "3", textStyle: "sm" })} role="alert">
                   That key didn't work. Try again.
                 </p>
               </Show>
             </form>
           </Show>
         </div>
-        <a class={css({ _hover: { color: "ink" }, color: "mut", fontSize: "sm" })} href="/">
+        <a class={css({ _hover: { color: "ink" }, color: "mut", textStyle: "sm" })} href="/">
           ← Back to tranzfer.app
         </a>
       </main>

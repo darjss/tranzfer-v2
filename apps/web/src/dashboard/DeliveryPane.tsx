@@ -77,7 +77,7 @@ export function DeliveryPane(props: Props) {
 
   return (
     <section class={css({ maxW: "pane", pb: "32", px: { base: "6", sm: "12" }, py: "10" })}>
-      <p class={css({ color: "mut", fontFamily: "mono", fontSize: "xs" })}>
+      <p class={css({ color: "mut", fontFamily: "mono", textStyle: "xs" })}>
         Sent {sentAt(props.delivery.createdAt)} · keeps {props.delivery.retentionDays}{" "}
         {props.delivery.retentionDays === 1 ? "day" : "days"} after upload
       </p>
@@ -104,7 +104,7 @@ export function DeliveryPane(props: Props) {
       >
         <p class={css({ fontFamily: "mono", fontSize: "26", letterSpacing: "snug" })}>
           {bytes(roll().confirmed)}
-          <span class={css({ color: "mut", fontSize: "md" })}> of {bytes(total())} confirmed</span>
+          <span class={css({ color: "mut", textStyle: "md" })}> of {bytes(total())} confirmed</span>
         </p>
         <Progress
           class={css({ mt: "4" })}
@@ -115,7 +115,7 @@ export function DeliveryPane(props: Props) {
         />
         <p class={cx(css({ fontSize: "15", mt: "3" }), toneText[status().tone])}>{status().long}</p>
         <Show when={roll().uploading && props.online && roll().speed > 0}>
-          <p class={css({ color: "mut", fontFamily: "mono", fontSize: "xs", mt: "1" })}>
+          <p class={css({ color: "mut", fontFamily: "mono", mt: "1", textStyle: "xs" })}>
             {speedAt(roll().speed)} · {etaAt(total() - roll().confirmed, roll().speed)} left
           </p>
         </Show>
@@ -144,7 +144,7 @@ export function DeliveryPane(props: Props) {
               </Show>
             }
           >
-            <span class={css({ color: "mut", fontSize: "sm" })}>
+            <span class={css({ color: "mut", textStyle: "sm" })}>
               Cancel it? Uploads stop and the link dies.
             </span>
             <Button
@@ -158,7 +158,7 @@ export function DeliveryPane(props: Props) {
               {cancelling() ? "Cancelling…" : "Yes, cancel"}
             </Button>
             <button
-              class={css({ color: "ink", fontSize: "sm", textDecoration: "underline" })}
+              class={css({ color: "ink", textDecoration: "underline", textStyle: "sm" })}
               onClick={() => {
                 setConfirming(false);
               }}
@@ -169,14 +169,14 @@ export function DeliveryPane(props: Props) {
           </Show>
         </div>
         <Show when={problem() !== undefined}>
-          <p class={css({ color: "rust", fontSize: "sm", mt: "3" })} role="alert">
+          <p class={css({ color: "rust", mt: "3", textStyle: "sm" })} role="alert">
             {problem()}
           </p>
         </Show>
       </section>
 
       <section class={css({ mt: "8" })}>
-        <h2 class={css({ fontSize: "sm", fontWeight: "semibold" })}>Link</h2>
+        <h2 class={css({ fontWeight: "semibold", textStyle: "sm" })}>Link</h2>
         <div
           class={css({
             alignItems: "center",
@@ -193,7 +193,7 @@ export function DeliveryPane(props: Props) {
         >
           <span
             class={cx(
-              css({ flex: "1", fontFamily: "mono", fontSize: "sm", truncate: true }),
+              css({ flex: "1", fontFamily: "mono", textStyle: "sm", truncate: true }),
               props.delivery.status === "expired" || props.delivery.status === "cancelled"
                 ? css({ color: "mut", textDecoration: "line-through" })
                 : undefined,
@@ -212,7 +212,7 @@ export function DeliveryPane(props: Props) {
             <PhCopyBold /> {copied() ? "Copied" : "Copy"}
           </Button>
         </div>
-        <p class={css({ color: "mut", fontSize: "sm", mt: "2" })}>
+        <p class={css({ color: "mut", mt: "2", textStyle: "sm" })}>
           <Show
             when={props.delivery.status === "ready" && props.delivery.expiresAt !== null}
             fallback="Share it now. It starts working once every file is finished."
@@ -225,10 +225,10 @@ export function DeliveryPane(props: Props) {
       </section>
 
       <section class={css({ mt: "8" })}>
-        <h2 class={css({ fontSize: "sm", fontWeight: "semibold" })}>
+        <h2 class={css({ fontWeight: "semibold", textStyle: "sm" })}>
           Files{" "}
           <span
-            class={css({ color: "mut", fontFamily: "mono", fontSize: "xs", fontWeight: "normal" })}
+            class={css({ color: "mut", fontFamily: "mono", fontWeight: "normal", textStyle: "xs" })}
           >
             {items(props.delivery.transfers.length)}
           </span>
@@ -257,7 +257,7 @@ export function DeliveryPane(props: Props) {
                   })}
                 >
                   <PhFileBold class={css({ boxSize: "4", color: "mut" })} />
-                  <span class={css({ fontFamily: "mono", fontSize: "sm", truncate: true })}>
+                  <span class={css({ fontFamily: "mono", textStyle: "sm", truncate: true })}>
                     {transfer.path}
                   </span>
                   <Switch
@@ -290,9 +290,9 @@ export function DeliveryPane(props: Props) {
                       <button
                         class={css({
                           color: "ink",
-                          fontSize: "xs",
                           justifySelf: "end",
                           textDecoration: "underline",
+                          textStyle: "xs",
                         })}
                         onClick={() => {
                           retryTransfer(props.runtime, transfer.id);
@@ -303,12 +303,12 @@ export function DeliveryPane(props: Props) {
                       </button>
                     </Match>
                     <Match when={file() === "Cancelled"}>
-                      <span class={css({ color: "rust", fontSize: "xs", textAlign: "right" })}>
+                      <span class={css({ color: "rust", textAlign: "right", textStyle: "xs" })}>
                         cancelled
                       </span>
                     </Match>
                     <Match when={file() === "Interrupted"}>
-                      <span class={css({ color: "rust", fontSize: "xs", textAlign: "right" })}>
+                      <span class={css({ color: "rust", textAlign: "right", textStyle: "xs" })}>
                         interrupted
                       </span>
                     </Match>
@@ -317,8 +317,8 @@ export function DeliveryPane(props: Props) {
                     class={css({
                       color: "mut",
                       fontFamily: "mono",
-                      fontSize: "sm",
                       textAlign: "right",
+                      textStyle: "sm",
                     })}
                   >
                     {bytes(transfer.size)}
