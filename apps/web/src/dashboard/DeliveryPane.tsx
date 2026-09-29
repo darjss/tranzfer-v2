@@ -1,5 +1,5 @@
 import type { Delivery } from "@tranzfer/contracts";
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 
 import PhCheckBold from "~icons/ph/check-bold";
 import PhCopyBold from "~icons/ph/copy-bold";
@@ -42,10 +42,20 @@ export function DeliveryPane(props: Props) {
   const link = () => `${location.origin}${props.delivery.link}`;
   const cancellable = () => props.delivery.status === "open" || props.delivery.status === "ready";
 
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => {
+    clearTimeout(copiedTimer);
+  });
   const copy = async () => {
-    await navigator.clipboard.writeText(link());
+    try {
+      await navigator.clipboard.writeText(link());
+    } catch {
+      setProblem("Couldn't copy the link. Select it and copy it by hand.");
+      return;
+    }
     setCopied(true);
-    setTimeout(() => {
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => {
       setCopied(false);
     }, 1600);
   };
