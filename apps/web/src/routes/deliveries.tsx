@@ -3,29 +3,20 @@ import { useNavigate, useSearchParams } from "@solidjs/router";
 import { clientOnly } from "@solidjs/web";
 import { defaultRetentionDays } from "@tranzfer/contracts";
 import type { RetentionDays } from "@tranzfer/contracts";
-import * as Exit from "effect/Exit";
-import {
-  createMemo,
-  createSignal,
-  Errored,
-  Loading,
-  onSettled,
-  refresh,
-  Show,
-  useContext,
-} from "solid-js";
+import { createMemo, createSignal, Errored, Loading, onSettled, Show, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
 
 import { ApiClient } from "../api/client";
 import { appError } from "../api/errors";
 import { runEffect, RuntimeContext } from "../api/solid-effect";
 import { Board } from "../dashboard/Board";
+import { createDeliveries } from "../dashboard/deliveries";
 import { DeliverySheet } from "../dashboard/DeliverySheet";
 import { SendCard } from "../dashboard/SendCard";
 import { TopBar } from "../dashboard/TopBar";
 import { inkStrokes } from "../landing/notebook";
-import { online, transfers, wireWindow } from "../uploads/store";
-import { chosenFiles, getDroppedFiles, invalidPaths, Uploads } from "../uploads/uploads";
+import { online, wireWindow } from "../uploads/store";
+import { chosenFiles, getDroppedFiles, invalidPaths } from "../uploads/uploads";
 import "../dashboard/dashboard.css";
 
 const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
@@ -86,33 +77,21 @@ const DeliveriesPage = () => {
   };
 
   const me = createMemo(() => runEffect(ApiClient.use((api) => api.Me())));
-  // A finished local upload changes its delivery on the server, so the list
-  // re-reads whenever one lands. Sends and cancels refresh it themselves.
-  const finished = createMemo(
-    () => Object.values(transfers).filter((progress) => progress.phase === "done").length,
-  );
-  const deliveries = createMemo(() => {
-    finished();
-    return runEffect(ApiClient.use((api) => api.Deliveries()));
-  });
+  const { cancel, deliveries, send, sending } = createDeliveries(runtime);
   const selected = () => {
     const id = searchParams.d;
-    return id === undefined ? undefined : deliveries().find((delivery) => delivery.id === id);
+    return id === undefined ? undefined : deliveries.find((delivery) => delivery.id === id);
   };
   const hasLive = () =>
-    deliveries().some((delivery) => delivery.status === "open" || delivery.status === "ready");
-  const changed = () => {
-    void refresh(deliveries);
-  };
+    deliveries.some((delivery) => delivery.status === "open" || delivery.status === "ready");
 
   const [retention, setRetention] = createSignal<RetentionDays>(defaultRetentionDays);
-  const [sending, setSending] = createSignal(false);
   const [problems, setProblems] = createSignal<readonly string[]>([]);
   const [dragging, setDragging] = createSignal(false);
   let filesInput: HTMLInputElement | undefined;
   let folderInput: HTMLInputElement | undefined;
 
-  const send = async (picked: Iterable<File>) => {
+  const pick = async (picked: Iterable<File>) => {
     if (sending()) {
       return;
     }
@@ -126,19 +105,14 @@ const DeliveriesPage = () => {
       return;
     }
     setProblems([]);
-    setSending(true);
-    const days = retention();
-    const exit = await runtime.runPromiseExit(Uploads.use((uploads) => uploads.send(chosen, days)));
-    setSending(false);
-    if (Exit.isFailure(exit)) {
-      setProblems([`${appError(exit.cause).message} Nothing was uploaded.`]);
-      return;
+    const failure = await send(chosen, retention());
+    if (failure !== undefined) {
+      setProblems([`${failure} Nothing was uploaded.`]);
     }
-    changed();
   };
 
   const sendDropped = async (dropped: DataTransfer) => {
-    await send(await getDroppedFiles(dropped));
+    await pick(await getDroppedFiles(dropped));
   };
 
   // The whole window is the drop target. dragleave with no relatedTarget
@@ -176,7 +150,7 @@ const DeliveriesPage = () => {
 
   const onPicked = (event: Event & { currentTarget: HTMLInputElement }) => {
     const input = event.currentTarget;
-    void send([...(input.files ?? [])]);
+    void pick([...(input.files ?? [])]);
     input.value = "";
   };
 
@@ -316,11 +290,11 @@ const DeliveriesPage = () => {
                   sit above the fold; the send card follows. */}
               <div class={cx(hasLive() && css({ lgDown: { order: "-1" } }))}>
                 <Show when={!hasLive()}>
-                  <Empty firstRun={deliveries().length === 0} />
+                  <Empty firstRun={deliveries.length === 0} />
                 </Show>
                 <Board
-                  changed={changed}
-                  deliveries={deliveries()}
+                  cancel={cancel}
+                  deliveries={deliveries}
                   online={online()}
                   select={select}
                   sendAgain={() => {
@@ -366,7 +340,7 @@ const DeliveriesPage = () => {
             data-on={String(dragging())}
           />
           <DeliverySheet
-            changed={changed}
+            cancel={cancel}
             close={() => {
               select();
             }}

@@ -1,12 +1,10 @@
 import type { Delivery, DeliveryId } from "@tranzfer/contracts";
-import * as Exit from "effect/Exit";
 import { createMemo, createSignal, For, Match, Show, Switch, useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { css, cx } from "styled-system/css";
 
 import PhCaretDownBold from "~icons/ph/caret-down-bold";
 
-import { appError } from "../api/errors";
 import { RuntimeContext } from "../api/solid-effect";
 import { Button } from "../ui/Button";
 import { transfers } from "../uploads/store";
@@ -34,9 +32,13 @@ const shortDate = new Intl.DateTimeFormat("en-GB", {
 
 /** A delivery's live state: server status plus whatever this tab is uploading. */
 export const liveDelivery = (source: { readonly delivery: Delivery; readonly online: boolean }) => {
-  const roll = createMemo(() => rollup(source.delivery, (id) => transfers[id]));
-  const kind = createMemo(() => kindOf(source.delivery.status, roll(), source.online));
-  const total = createMemo(() => totalSize(source.delivery));
+  const roll = createMemo(() => rollup(source.delivery, (id) => transfers[id]), {
+    name: "Row.roll",
+  });
+  const kind = createMemo(() => kindOf(source.delivery.status, roll(), source.online), {
+    name: "Row.kind",
+  });
+  const total = createMemo(() => totalSize(source.delivery), { name: "Row.total" });
   return { kind, roll, total };
 };
 
@@ -57,25 +59,22 @@ const count = css({ color: "mut", fontFamily: "mono", fontSize: "13", fontWeight
  * same way the sheet does.
  */
 function InterruptedActions(props: {
-  changed: () => void;
+  cancel: (deliveryId: DeliveryId) => Promise<string | undefined>;
   deliveryId: DeliveryId;
   sendAgain: () => void;
 }) {
-  const runtime = useContext(RuntimeContext);
   const [confirming, setConfirming] = createSignal(false);
-  const [cancelling, setCancelling] = createSignal(false);
   const [problem, setProblem] = createSignal<string>();
+  // The action moves the delivery to cancelled at once; only a failure
+  // comes back here, and the optimistic move reverts on its own.
   const cancel = async () => {
-    setCancelling(true);
     setProblem(undefined);
-    const { deliveryId } = props;
-    const exit = await runtime.runPromiseExit(Uploads.use((uploads) => uploads.cancel(deliveryId)));
-    setCancelling(false);
-    if (Exit.isFailure(exit)) {
-      setProblem(appError(exit.cause).message);
-      return;
+    const failure = await props.cancel(props.deliveryId);
+    if (failure === undefined) {
+      setConfirming(false);
+    } else {
+      setProblem(failure);
     }
-    props.changed();
   };
   return (
     <div
@@ -118,14 +117,13 @@ function InterruptedActions(props: {
           Cancel it? The link stops working and the files are deleted.
         </span>
         <Button
-          disabled={cancelling()}
           onClick={() => {
             void cancel();
           }}
           size="xs"
           variant="danger"
         >
-          {cancelling() ? "Cancelling…" : "Yes, cancel it"}
+          Yes, cancel it
         </Button>
         <Button
           onClick={() => {
@@ -149,10 +147,19 @@ function InterruptedActions(props: {
 }
 
 interface RowActions {
-  readonly changed: () => void;
+  readonly cancel: (deliveryId: DeliveryId) => Promise<string | undefined>;
   readonly select: (id: string) => void;
   readonly sendAgain: () => void;
 }
+
+const sameMembers = (a: readonly Delivery[], b: readonly Delivery[]) =>
+  a.length === b.length && a.every((delivery, index) => delivery === b[index]);
+
+const sameGroups = (a: Record<Group, Delivery[]>, b: Record<Group, Delivery[]>) =>
+  sameMembers(a.ended, b.ended) &&
+  sameMembers(a.interrupted, b.interrupted) &&
+  sameMembers(a.moving, b.moving) &&
+  sameMembers(a.ready, b.ready);
 
 function Row(
   props: RowActions & {
@@ -271,7 +278,7 @@ function Row(
         </Show>
         <Show when={live.kind() === "interrupted"}>
           <InterruptedActions
-            changed={props.changed}
+            cancel={props.cancel}
             deliveryId={props.delivery.id}
             sendAgain={props.sendAgain}
           />
@@ -332,19 +339,24 @@ export function Board(
 ) {
   // Grouping reads live progress, so a finished upload moves to "Ready"
   // the moment the refreshed list says so.
-  const groups = createMemo(() => {
-    const byGroup: Record<Group, Delivery[]> = {
-      ended: [],
-      interrupted: [],
-      moving: [],
-      ready: [],
-    };
-    for (const delivery of props.deliveries) {
-      const roll = rollup(delivery, (id) => transfers[id]);
-      byGroup[groupOf(kindOf(delivery.status, roll, props.online))].push(delivery);
-    }
-    return byGroup;
-  });
+  const groups = createMemo(
+    () => {
+      const byGroup: Record<Group, Delivery[]> = {
+        ended: [],
+        interrupted: [],
+        moving: [],
+        ready: [],
+      };
+      for (const delivery of props.deliveries) {
+        const roll = rollup(delivery, (id) => transfers[id]);
+        byGroup[groupOf(kindOf(delivery.status, roll, props.online))].push(delivery);
+      }
+      return byGroup;
+      // Progress ticks rerun this, but rarely move a delivery between groups;
+      // unchanged membership stops here instead of re-diffing every list.
+    },
+    { equals: sameGroups, name: "Board.groups" },
+  );
 
   return (
     <div class={css({ display: "grid", gap: "10" })}>
@@ -357,7 +369,7 @@ export function Board(
                   delivery={delivery}
                   online={props.online}
                   select={props.select}
-                  changed={props.changed}
+                  cancel={props.cancel}
                   sendAgain={props.sendAgain}
                 />
               )}
@@ -374,7 +386,7 @@ export function Board(
                   delivery={delivery}
                   online={props.online}
                   select={props.select}
-                  changed={props.changed}
+                  cancel={props.cancel}
                   sendAgain={props.sendAgain}
                 />
               )}
@@ -396,7 +408,7 @@ export function Board(
                   delivery={delivery}
                   online={props.online}
                   select={props.select}
-                  changed={props.changed}
+                  cancel={props.cancel}
                   sendAgain={props.sendAgain}
                 />
               )}
@@ -439,7 +451,7 @@ export function Board(
                   delivery={delivery}
                   online={props.online}
                   select={props.select}
-                  changed={props.changed}
+                  cancel={props.cancel}
                   sendAgain={props.sendAgain}
                 />
               )}
