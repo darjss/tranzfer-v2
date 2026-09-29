@@ -33,16 +33,14 @@ const seed = (sender: string, files: ReturnType<typeof newFile>[]) =>
   });
 
 layer(domainLayer(storage.layer))("Transfers", (it) => {
-  it.effect("signs only the upload shape that fits the file size", () =>
+  it.effect("signs uploads while open, then only the final steps once finalizing", () =>
     Effect.gen(function* scenario() {
-      const created = yield* seed("ann", [newFile("small.txt", 10), newFile("big.bin", 200 * MIB)]);
+      const created = yield* seed("ann", [newFile("big.bin", 200 * MIB), newFile("small.txt", 10)]);
       const transfers = yield* Transfers;
       const [{ objectKey: bigKey }, { objectKey: smallKey }] = firstTwo(created.transfers);
 
-      const put = yield* transfers.sign("ann", smallKey, { _tag: "Put" });
-      expect(put.url).toBe(`memory://Put/${smallKey}`);
-      const wrong = yield* Effect.flip(transfers.sign("ann", bigKey, { _tag: "Put" }));
-      expect(wrong._tag).toBe("InvalidUpload");
+      const create = yield* transfers.sign("ann", smallKey, { _tag: "Create" });
+      expect(create.url).toBe(`memory://Create/${smallKey}`);
       const tooFar = yield* Effect.flip(
         transfers.sign("ann", bigKey, {
           _tag: "Part",
@@ -51,8 +49,20 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
         }),
       );
       expect(tooFar._tag).toBe("InvalidUpload");
-      const stranger = yield* Effect.flip(transfers.sign("someone", smallKey, { _tag: "Put" }));
+      const stranger = yield* Effect.flip(transfers.sign("someone", smallKey, { _tag: "Create" }));
       expect(stranger._tag).toBe("DeliveryNotFound");
+
+      // Signing Complete moves the transfer to finalizing: retries of the last
+      // steps still sign, a new upload or new parts do not.
+      yield* transfers.sign("ann", smallKey, { _tag: "Complete", uploadId: "u" });
+      yield* transfers.sign("ann", smallKey, { _tag: "Complete", uploadId: "u" });
+      yield* transfers.sign("ann", smallKey, { _tag: "List", uploadId: "u" });
+      const reopen = yield* Effect.flip(transfers.sign("ann", smallKey, { _tag: "Create" }));
+      expect(reopen._tag).toBe("UploadClosed");
+      const morePart = yield* Effect.flip(
+        transfers.sign("ann", smallKey, { _tag: "Part", partNumber: 1, uploadId: "u" }),
+      );
+      expect(morePart._tag).toBe("UploadClosed");
     }),
   );
 
@@ -76,6 +86,10 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       expect(halfway.status).toBe("open");
       expect(yield* transfers.finalize("ben", one.id)).toEqual(halfway);
 
+      expect(storage.sealed).toContain(one.objectKey);
+      // A missing object is never sealed, so an upload still running survives.
+      expect(storage.sealed).not.toContain(two.objectKey);
+
       storage.objects.set(two.objectKey, { etag: "b", size: 6 });
       const ready = yield* transfers.finalize("ben", two.id);
       expect(ready.status).toBe("ready");
@@ -91,7 +105,7 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       const [one] = firstTwo(created.transfers);
       yield* deliveries.cancel("cat", created.id);
 
-      const sign = yield* Effect.flip(transfers.sign("cat", one.objectKey, { _tag: "Put" }));
+      const sign = yield* Effect.flip(transfers.sign("cat", one.objectKey, { _tag: "Create" }));
       expect(sign._tag).toBe("UploadClosed");
       storage.objects.set(one.objectKey, { etag: "x", size: 1 });
       const finalize = yield* Effect.flip(transfers.finalize("cat", one.id));
@@ -106,9 +120,9 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       const transfers = yield* Transfers;
       const [left, stays] = firstTwo(created.transfers);
 
-      // Signing the PUT marks the transfer finalizing; the browser then vanishes.
-      yield* transfers.sign("dan", left.objectKey, { _tag: "Put" });
-      yield* transfers.sign("dan", stays.objectKey, { _tag: "Put" });
+      // Signing Complete marks the transfer finalizing; the browser then vanishes.
+      yield* transfers.sign("dan", left.objectKey, { _tag: "Complete", uploadId: "u" });
+      yield* transfers.sign("dan", stays.objectKey, { _tag: "Complete", uploadId: "u" });
       storage.objects.set(left.objectKey, { etag: "l", size: 7 });
 
       expect(yield* transfers.recoverFinalizing).toBe(0);

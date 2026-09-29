@@ -16,7 +16,7 @@ export interface StoredObject {
   readonly size: number;
 }
 
-/** Object storage. Signing is local crypto; only head and purge reach the network. */
+/** Object storage. Signing is local crypto; head, seal and purge reach the network. */
 export class Storage extends Context.Service<
   Storage,
   {
@@ -27,6 +27,8 @@ export class Storage extends Context.Service<
       ttl: Duration.Duration,
     ) => Effect.Effect<SignedUrl>;
     readonly head: (key: string) => Effect.Effect<Option.Option<StoredObject>, StorageError>;
+    /** Aborts every open multipart upload on `key`, so no signed URL can write it again. */
+    readonly seal: (key: string) => Effect.Effect<void, StorageError>;
     /** Aborts multipart uploads under `prefix` and deletes `keys`. Safe to repeat. */
     readonly purge: (prefix: string, keys: readonly string[]) => Effect.Effect<void, StorageError>;
   }

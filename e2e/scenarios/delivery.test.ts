@@ -19,12 +19,13 @@ const send = async (
   url: string,
   body?: Uint8Array | string,
   contentType?: string,
+  signedHeaders: Readonly<Record<string, string>> = {},
 ) => {
-  const response = await fetch(url, {
-    body,
-    headers: contentType === undefined ? undefined : { "content-type": contentType },
-    method,
-  });
+  const headers = new Headers(signedHeaders);
+  if (contentType !== undefined) {
+    headers.set("content-type", contentType);
+  }
+  const response = await fetch(url, { body, headers, method });
   return {
     body: Buffer.from(await response.arrayBuffer()),
     headers: response.headers,
@@ -37,6 +38,49 @@ const required = <A>(value: A | null | undefined, message: string) =>
 
 const uploadId = (body: Buffer) =>
   /<UploadId>(?<id>[^<]+)<\/UploadId>/u.exec(body.toString("utf-8"))?.groups?.id;
+
+const createUpload = (api: Api, key: string) =>
+  Effect.gen(function* startUpload() {
+    const signed = yield* api.SignUpload({ key, request: { _tag: "Create" } });
+    const created = yield* Effect.promise(
+      async () => await send("POST", signed.url, new Uint8Array(0)),
+    );
+    expect(created.status).toBe(200);
+    return yield* required(uploadId(created.body), "CreateMultipartUpload returned no UploadId");
+  });
+
+const putPart = (api: Api, key: string, mpuId: string, partNumber: number, chunk: Buffer) =>
+  Effect.gen(function* uploadPart() {
+    const signed = yield* api.SignUpload({
+      key,
+      request: { _tag: "Part", partNumber, uploadId: mpuId },
+    });
+    const result = yield* Effect.promise(async () => await send("PUT", signed.url, chunk));
+    expect(result.status).toBe(200);
+    return yield* required(
+      result.headers.get("etag")?.replaceAll('"', ""),
+      `part ${partNumber} returned no ETag`,
+    );
+  });
+
+const completeXml = (etags: readonly string[]) =>
+  `<CompleteMultipartUpload>${etags
+    .map(
+      (etag, index) => `<Part><PartNumber>${index + 1}</PartNumber><ETag>"${etag}"</ETag></Part>`,
+    )
+    .join("")}</CompleteMultipartUpload>`;
+
+// Every non-empty file is multipart; a small one is a single part.
+const uploadWhole = (api: Api, key: string, bytes: Buffer) =>
+  Effect.gen(function* uploadFile() {
+    const mpuId = yield* createUpload(api, key);
+    const etag = yield* putPart(api, key, mpuId, 1, bytes);
+    const complete = yield* api.SignUpload({ key, request: { _tag: "Complete", uploadId: mpuId } });
+    const completed = yield* Effect.promise(
+      async () => await send("POST", complete.url, completeXml([etag]), "application/xml"),
+    );
+    expect(completed.status).toBe(200);
+  });
 
 // R2 can take a moment to make a completed multipart object visible to HEAD;
 // the web client retries NotUploaded with the same backoff.
@@ -67,6 +111,7 @@ layer(Target.layer)("staging deliveries", (it) => {
       const deliveryId = DeliveryId.make(randomUUID());
       const smallId = TransferId.make(randomUUID());
       const bigId = TransferId.make(randomUUID());
+      const emptyId = TransferId.make(randomUUID());
       const newDelivery: NewDelivery = {
         files: [
           {
@@ -82,6 +127,13 @@ layer(Target.layer)("staging deliveries", (it) => {
             lastModified: now,
             path: "Ep31/cam/big.bin",
             size: bigSize,
+          },
+          {
+            contentType: "text/plain",
+            id: emptyId,
+            lastModified: now,
+            path: "Ep31/empty.txt",
+            size: 0,
           },
         ],
         id: deliveryId,
@@ -102,50 +154,61 @@ layer(Target.layer)("staging deliveries", (it) => {
           transfers.get("Ep31/cam/big.bin"),
           "delivery is missing the big file transfer",
         );
-
-        // Small file: single presigned PUT, then finalize.
-        const put = yield* api.SignUpload({
-          key: smallTransfer.objectKey,
-          request: { _tag: "Put" },
-        });
-        const putResult = yield* Effect.promise(
-          async () => await send("PUT", put.url, small, "text/plain"),
+        const emptyTransfer = yield* required(
+          transfers.get("Ep31/empty.txt"),
+          "delivery is missing the empty file transfer",
         );
-        expect(putResult.status).toBe(200);
 
+        // A small file is a one-part multipart upload.
+        yield* uploadWhole(api, smallTransfer.objectKey, small);
         const afterSmall = yield* finalize(api, smallId);
         expect(afterSmall.transfers.find((t) => t.id === smallId)?.state).toBe("complete");
+        // An empty file is one PUT signed with If-None-Match, so replaying it
+        // can't replace the object once it exists.
+        const emptyPut = yield* api.SignUpload({
+          key: emptyTransfer.objectKey,
+          request: { _tag: "Put" },
+        });
+        expect(emptyPut.headers).toEqual({ "if-none-match": "*" });
+        const putEmpty = yield* Effect.promise(
+          async () =>
+            await send("PUT", emptyPut.url, new Uint8Array(0), undefined, emptyPut.headers),
+        );
+        expect(putEmpty.status).toBe(200);
+        const replayEmpty = yield* Effect.promise(
+          async () =>
+            await send("PUT", emptyPut.url, new Uint8Array(0), undefined, emptyPut.headers),
+        );
+        expect(replayEmpty.status).toBe(412);
+        yield* finalize(api, emptyId);
 
         // Big file: multipart create, three signed part PUTs, list, complete.
-        const create = yield* api.SignUpload({
-          key: bigTransfer.objectKey,
-          request: { _tag: "Create" },
-        });
-        const created = yield* Effect.promise(
-          async () => await send("POST", create.url, new Uint8Array(0)),
-        );
-        expect(created.status).toBe(200);
-        const mpuId = yield* required(
-          uploadId(created.body),
-          "CreateMultipartUpload returned no UploadId",
-        );
-
+        const mpuId = yield* createUpload(api, bigTransfer.objectKey);
         const part = partSize(bigSize);
         const etags = yield* Effect.forEach([1, 2, 3], (partNumber) =>
-          Effect.gen(function* uploadPart() {
-            const signed = yield* api.SignUpload({
-              key: bigTransfer.objectKey,
-              request: { _tag: "Part", partNumber, uploadId: mpuId },
-            });
-            const chunk = big.subarray((partNumber - 1) * part, partNumber * part);
-            const result = yield* Effect.promise(async () => await send("PUT", signed.url, chunk));
-            expect(result.status).toBe(200);
-            return yield* required(
-              result.headers.get("etag")?.replaceAll('"', ""),
-              `part ${partNumber} returned no ETag`,
-            );
-          }),
+          putPart(
+            api,
+            bigTransfer.objectKey,
+            mpuId,
+            partNumber,
+            big.subarray((partNumber - 1) * part, partNumber * part),
+          ),
         );
+
+        // A second upload on the same key, fully prepared before finalize, is
+        // the replay a sender could try later to swap the file.
+        const rogueId = yield* createUpload(api, bigTransfer.objectKey);
+        const rogueEtag = yield* putPart(
+          api,
+          bigTransfer.objectKey,
+          rogueId,
+          1,
+          Buffer.from("swapped"),
+        );
+        const rogueComplete = yield* api.SignUpload({
+          key: bigTransfer.objectKey,
+          request: { _tag: "Complete", uploadId: rogueId },
+        });
 
         const list = yield* api.SignUpload({
           key: bigTransfer.objectKey,
@@ -158,23 +221,29 @@ layer(Target.layer)("staging deliveries", (it) => {
         ].map((match) => match.groups?.n);
         expect(partNumbers).toEqual(["1", "2", "3"]);
 
-        const completeXml = `<CompleteMultipartUpload>${etags
-          .map(
-            (etag, index) =>
-              `<Part><PartNumber>${index + 1}</PartNumber><ETag>"${etag}"</ETag></Part>`,
-          )
-          .join("")}</CompleteMultipartUpload>`;
         const complete = yield* api.SignUpload({
           key: bigTransfer.objectKey,
           request: { _tag: "Complete", uploadId: mpuId },
         });
         const completed = yield* Effect.promise(
-          async () => await send("POST", complete.url, completeXml, "application/xml"),
+          async () => await send("POST", complete.url, completeXml(etags), "application/xml"),
         );
         expect(completed.status).toBe(200);
 
         const ready = yield* finalize(api, bigId);
         expect(ready.status).toBe("ready");
+
+        // Finalize sealed the key: the rogue upload was aborted and no new
+        // upload can start, so the verified bytes are the only bytes.
+        const replayed = yield* Effect.promise(
+          async () =>
+            await send("POST", rogueComplete.url, completeXml([rogueEtag]), "application/xml"),
+        );
+        expect(replayed.status).not.toBe(200);
+        const reopened = yield* Effect.flip(
+          api.SignUpload({ key: bigTransfer.objectKey, request: { _tag: "Create" } }),
+        );
+        expect(reopened._tag).toBe("UploadClosed");
         const expiresAt = yield* required(ready.expiresAt, "ready delivery has no expiresAt");
         const daysToExpiry = (expiresAt.getTime() - Date.now()) / 86_400_000;
         expect(daysToExpiry).toBeGreaterThan(2.5);
@@ -201,10 +270,11 @@ layer(Target.layer)("staging deliveries", (it) => {
         // Anonymous link: downloads verify byte-for-byte, no session cookie.
         const token = delivery.link.slice("/d/".length);
         const shared = yield* anon.OpenLink({ token });
-        expect(shared.files).toHaveLength(2);
+        expect(shared.files).toHaveLength(3);
         const digests = new Map([
           ["Ep31/small.txt", sha256(small)],
           ["Ep31/cam/big.bin", sha256(big)],
+          ["Ep31/empty.txt", sha256(Buffer.alloc(0))],
         ]);
         yield* Effect.forEach(shared.files, (file) =>
           Effect.promise(async () => {
@@ -216,7 +286,7 @@ layer(Target.layer)("staging deliveries", (it) => {
           }),
         );
 
-        const tampered = `${token.split(".")[0]}.${"A".repeat(22)}`;
+        const tampered = `${token.split(".")[0]}.${"A".repeat(43)}`;
         const badLink = yield* Effect.flip(anon.OpenLink({ token: tampered }));
         expect(badLink._tag).toBe("LinkNotFound");
       }).pipe(Effect.ensuring(cleanup(api, delivery.id)));
@@ -243,9 +313,6 @@ layer(Target.layer)("staging deliveries", (it) => {
       yield* Effect.gen(function* rejected() {
         const key = delivery.transfers[0].objectKey;
 
-        const put = yield* Effect.flip(api.SignUpload({ key, request: { _tag: "Put" } }));
-        expect(put._tag).toBe("InvalidUpload");
-
         const part4 = yield* Effect.flip(
           api.SignUpload({
             key,
@@ -255,7 +322,7 @@ layer(Target.layer)("staging deliveries", (it) => {
         expect(part4._tag).toBe("InvalidUpload");
 
         const unknown = yield* Effect.flip(
-          api.SignUpload({ key: "d/nope/nope", request: { _tag: "Put" } }),
+          api.SignUpload({ key: "d/nope/nope", request: { _tag: "Create" } }),
         );
         expect(unknown._tag).toBe("DeliveryNotFound");
 
@@ -323,7 +390,7 @@ layer(Target.layer)("staging deliveries", (it) => {
         expect(orphan.status).not.toBe(200);
         expect(orphan.body.toString("utf-8")).toContain("NoSuchUpload");
 
-        const closed = yield* Effect.flip(api.SignUpload({ key, request: { _tag: "Put" } }));
+        const closed = yield* Effect.flip(api.SignUpload({ key, request: { _tag: "Create" } }));
         expect(closed._tag).toBe("UploadClosed");
 
         const again = yield* api.CancelDelivery({ deliveryId });
