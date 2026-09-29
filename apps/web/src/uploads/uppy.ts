@@ -268,37 +268,57 @@ export const sendFiles = async (
   bumpDeliveries((version) => version + 1);
 
   const byPath = new Map(delivery.transfers.map((transfer) => [transfer.path, transfer]));
-  for (const { file, path } of files) {
-    const transfer = byPath.get(path);
-    if (transfer === undefined) {
-      continue;
-    }
-    patchTransfer(transfer.id, { phase: "queued" });
-    uppy.addFile({
-      data: file,
-      meta: {
-        deliveryId: delivery.id,
-        objectKey: transfer.objectKey,
-        relativePath: path,
-        transferId: transfer.id,
-      },
-      name: file.name,
-      type: file.type,
-    });
-  }
-  // upload() resolves only once every file settles; the delivery must
-  // surface now, so per-file errors keep flowing through upload-error and a
-  // rejection here means a pre-flight failure no event covers.
-  void (async () => {
-    try {
-      await uppy.upload();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Upload failed";
-      for (const transfer of delivery.transfers) {
-        patchTransfer(transfer.id, { bytesPerSecond: 0, error: message, phase: "failed" });
+  const added: { fileId: string; transferId: string }[] = [];
+  try {
+    for (const { file, path } of files) {
+      const transfer = byPath.get(path);
+      if (transfer === undefined) {
+        continue;
       }
+      patchTransfer(transfer.id, { phase: "queued" });
+      const fileId = uppy.addFile({
+        data: file,
+        meta: {
+          deliveryId: delivery.id,
+          objectKey: transfer.objectKey,
+          // Uppy derives file ids from relativePath and rejects duplicates,
+          // so the path alone would refuse the same file in a second delivery.
+          relativePath: transfer.objectKey,
+          transferId: transfer.id,
+        },
+        name: file.name,
+        type: file.type,
+      });
+      added.push({ fileId, transferId: transfer.id });
     }
-  })();
+  } catch (error) {
+    // The delivery exists but nothing will upload: drop what landed and say
+    // so, instead of leaving transfers queued forever.
+    const message = error instanceof Error ? error.message : "Couldn't queue the files";
+    for (const { fileId } of added) {
+      uppy.removeFile(fileId);
+    }
+    for (const transfer of delivery.transfers) {
+      patchTransfer(transfer.id, { error: message, phase: "failed" });
+    }
+    return delivery;
+  }
+  // upload() would first re-run every failed file in Uppy, other deliveries'
+  // included, so each file starts on its own. Per-file errors flow through
+  // upload-error; a rejection here is a pre-flight failure no event covers.
+  for (const { fileId, transferId } of added) {
+    void (async () => {
+      try {
+        await uppy.retryUpload(fileId);
+      } catch (error) {
+        patchTransfer(transferId, {
+          bytesPerSecond: 0,
+          error: error instanceof Error ? error.message : "Upload failed",
+          phase: "failed",
+        });
+      }
+    })();
+  }
   return delivery;
 };
 
@@ -324,13 +344,18 @@ export const retryTransfer = (runtime: Runtime, transferId: string) => {
 
 export const cancelDelivery = async (runtime: Runtime, deliveryId: string) => {
   const { uppy } = getUploads(runtime);
-  await runtime.runPromise(
+  const cancelled = await runtime.runPromise(
     ApiClient.pipe(Effect.flatMap((api) => api.CancelDelivery({ deliveryId }))),
   );
   for (const file of uppy.getFiles()) {
     if (metaString(file.meta, "deliveryId") === deliveryId) {
       uppy.removeFile(file.id);
     }
+  }
+  // Removed files fire no terminal event, so their progress would stay
+  // active and keep beforeunload armed.
+  for (const transfer of cancelled.transfers) {
+    patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
   }
   bumpDeliveries((version) => version + 1);
 };
