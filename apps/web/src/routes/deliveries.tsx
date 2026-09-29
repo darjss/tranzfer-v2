@@ -1,7 +1,6 @@
 import { Meta, Title } from "@solidjs/meta";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import { clientOnly, isServer } from "@solidjs/web";
-import type { ManagedRuntime } from "effect/ManagedRuntime";
 import { Unauthorized } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import { createMemo, Errored, Loading, onSettled, Show, useContext } from "solid-js";
@@ -22,15 +21,8 @@ const Redirect = (props: { to: string }) => {
   return null;
 };
 
-const runtimeOrThrow = (runtime: ManagedRuntime<ApiClient, never> | undefined) => {
-  if (runtime === undefined) {
-    throw new Error("RuntimeContext is not provided");
-  }
-  return runtime;
-};
-
 const DeliveriesPage = () => {
-  const runtime = runtimeOrThrow(useContext(RuntimeContext));
+  const runtime = useContext(RuntimeContext);
   // The upload engine is client-only; constructing it touches window.
   if (!isServer) {
     getUploads(runtime);
