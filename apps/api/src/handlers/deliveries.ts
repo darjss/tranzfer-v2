@@ -1,7 +1,6 @@
 import {
   Api,
   CurrentPrincipal,
-  Delivery,
   DeliveryConflict,
   DeliveryNotFound,
   InvalidUpload,
@@ -12,7 +11,7 @@ import {
 } from "@tranzfer/contracts";
 import type { NewDelivery, UploadRequest } from "@tranzfer/contracts";
 import { Drizzle, schema } from "@tranzfer/db";
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -20,43 +19,13 @@ import * as Result from "effect/Result";
 
 import { Links, newLinkId } from "../services/links";
 import { Storage, toStorageUnavailable } from "../services/storage";
+import { deliveryView, loadDeliveryRows, viewFromRows } from "./delivery-rows";
+import type { DeliveryRow, TransferRow } from "./delivery-rows";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CANCEL_CONCURRENCY = 8;
 
-type DeliveryRow = typeof schema.delivery.$inferSelect;
-type LinkRow = typeof schema.link.$inferSelect;
-type TransferRow = typeof schema.transfer.$inferSelect;
-
 const objectKey = (deliveryId: string, transferId: string) => `d/${deliveryId}/${transferId}`;
-
-// `expired` is computed on read and never stored.
-const toDelivery = (
-  delivery: DeliveryRow,
-  transfers: readonly TransferRow[],
-  linkToken: string,
-): Delivery =>
-  new Delivery({
-    createdAt: delivery.createdAt,
-    expiresAt: delivery.expiresAt,
-    id: delivery.id,
-    link: `/d/${linkToken}`,
-    retentionDays: delivery.retentionDays,
-    status:
-      delivery.status === "ready" &&
-      delivery.expiresAt !== null &&
-      delivery.expiresAt.getTime() <= Date.now()
-        ? "expired"
-        : delivery.status,
-    title: delivery.title,
-    transfers: transfers.map((transfer) => ({
-      id: transfer.id,
-      objectKey: transfer.objectKey,
-      path: transfer.path,
-      size: transfer.size,
-      state: transfer.state,
-    })),
-  });
 
 const sameFileSet = (files: NewDelivery["files"], transfers: readonly TransferRow[]) =>
   files.length === transfers.length &&
@@ -77,56 +46,6 @@ const sameDelivery = (
   delivery.retentionDays === input.retentionDays &&
   delivery.title === input.title &&
   sameFileSet(input.files, transfers);
-
-// The link is written in the same batch as the delivery; a missing row is a
-// broken invariant, never a not-found.
-const viewFromRows = (
-  links: Links["Service"],
-  delivery: DeliveryRow,
-  transfers: readonly TransferRow[],
-  link: LinkRow | undefined,
-) =>
-  Effect.gen(function* view() {
-    if (link === undefined) {
-      return yield* Effect.die(new Error(`Delivery ${delivery.id} has no link row`));
-    }
-    const token = yield* links.issue(link.id);
-    return toDelivery(delivery, transfers, token);
-  });
-
-const loadDeliveryRows = (db: Drizzle["Service"], deliveryId: string, op: string) =>
-  db.run(op, async (d) => {
-    const deliveries = await d
-      .select()
-      .from(schema.delivery)
-      .where(eq(schema.delivery.id, deliveryId));
-    if (deliveries.length === 0) {
-      return null;
-    }
-    const [transfers, linkRows] = await Promise.all([
-      d
-        .select()
-        .from(schema.transfer)
-        .where(eq(schema.transfer.deliveryId, deliveryId))
-        .orderBy(asc(schema.transfer.path)),
-      d.select().from(schema.link).where(eq(schema.link.deliveryId, deliveryId)),
-    ]);
-    return { delivery: deliveries[0], link: linkRows[0], transfers };
-  });
-
-const deliveryView = (
-  db: Drizzle["Service"],
-  links: Links["Service"],
-  deliveryId: string,
-  op: string,
-) =>
-  Effect.gen(function* view() {
-    const loaded = yield* loadDeliveryRows(db, deliveryId, op);
-    if (loaded === null) {
-      return yield* Effect.die(new Error(`Delivery ${deliveryId} vanished after write`));
-    }
-    return yield* viewFromRows(links, loaded.delivery, loaded.transfers, loaded.link);
-  });
 
 export const DeliveriesHandlers = Layer.mergeAll(
   Api.toLayerHandler(

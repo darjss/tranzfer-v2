@@ -6,6 +6,7 @@ import * as Option from "effect/Option";
 
 import { Links } from "../services/links";
 import { Storage, toStorageUnavailable } from "../services/storage";
+import { isExpired } from "./delivery-rows";
 
 const basename = (path: string) => path.split("/").at(-1) ?? path;
 
@@ -44,7 +45,7 @@ export const LinkHandlers = Api.toLayerHandler(
           title: delivery.title,
         });
       }
-      if (delivery.expiresAt !== null && delivery.expiresAt.getTime() <= Date.now()) {
+      if (isExpired(delivery)) {
         return yield* new LinkExpired({
           expiredAt: delivery.expiresAt,
           message: "This link has expired",
