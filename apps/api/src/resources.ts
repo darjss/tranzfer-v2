@@ -1,3 +1,4 @@
+import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Output from "alchemy/Output";
 import { Stage } from "alchemy/Stage";
@@ -10,11 +11,16 @@ import { isPreviewStage } from "./infrastructure/stage";
 
 const DAY_SECONDS = 24 * 60 * 60;
 
+// Stateful resources run live even under `alchemy dev` (Alchemy.remote()).
+// Stack state lives in the shared Cloudflare state store, so an emulated
+// D1 under one checkout's infra/.alchemy/local drifts from the migrations
+// that state records as applied, and fresh worktrees start empty. Browser
+// uploads also need presigned S3 URLs, which only real R2 serves.
 export const App = Cloudflare.D1.Database("App", {
   // Resolved against process.cwd() by the provider, which is infra/ for
   // dev/plan/deploy.
   migrations: { dir: "../packages/db/migrations", table: "drizzle_migrations" },
-});
+}).pipe(Alchemy.remote());
 
 export const Files = Cloudflare.R2.Bucket("Files", {
   cors: [
@@ -56,4 +62,4 @@ export const Files = Cloudflare.R2.Bucket("Files", {
       prefix: "d/",
     },
   ],
-});
+}).pipe(Alchemy.remote());

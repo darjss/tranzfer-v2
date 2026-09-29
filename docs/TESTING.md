@@ -14,7 +14,7 @@ Each layer answers one question. Don't ask a layer a question it can't answer.
 | -------------- | -------------------------------------- | ------------------------------------------------------------------------------ |
 | Types and lint | `vp check`                             | Is this code possible, and does it respect the boundaries?                     |
 | Pure tests     | `@effect/vitest` through `vp run test` | Is the transfer logic right when you hand it plain values?                     |
-| Staging checks | `pnpm test:e2e` (vitest in `e2e/`)     | Does a deployed staging or PR preview build honor the API contract end to end? |
+| Staging checks | `vp run test:e2e` (vitest in `e2e/`)   | Does a deployed staging or PR preview build honor the API contract end to end? |
 | Scenarios      | Playwright inside `e2e/`               | Does a real user journey survive real failure against the running stack?       |
 | Release gates  | People, real files, real networks      | Does 10, 100 or 350 GB actually make it? The table in RELIABILITY.md decides   |
 
@@ -30,9 +30,19 @@ We don't build an in-memory R2. R2 has rules a fake would get subtly wrong: unif
 
 Browsers upload through presigned URLs, and a presigned URL has to point at a real S3 endpoint. So scenarios already talk to real R2. Use small files, like three 5 MiB parts plus a tail, generated deterministically in the run directory. Big files belong to the release gates.
 
+## Staging checks locally
+
+`vp run test:e2e` targets staging by default. Against a running `vp run dev`, point it at your Portless URL and trust the Portless CA:
+
+```text
+E2E_BASE_URL=https://tranzfer.localhost NODE_EXTRA_CA_CERTS=~/.portless/ca.pem TEST_LOGIN_KEY=<key from .env> vp run test:e2e
+```
+
+The key must match `TEST_LOGIN_KEY` in the `.env` that `alchemy dev` loaded. A worktree uses its own host, such as `https://<branch>.tranzfer.localhost`.
+
 ## Scenarios
 
-A scenario is one user-meaningful journey, run black box against the local stack at `https://tranzfer.localhost`. It uses the real Workers, local D1 and real R2.
+A scenario is one user-meaningful journey, run black box against the local stack at `https://tranzfer.localhost`. It uses the real Workers and your dev stage's real D1 and R2.
 
 ```ts
 scenario(

@@ -38,5 +38,5 @@ All native oxlint rules in `lint.config.ts`. No custom plugin.
 
 ## Later
 
-- `Restart`: restart `alchemy dev` while keeping local D1 and R2 state, for server-death scenarios.
+- `Restart`: restart `alchemy dev` mid-scenario, for server-death scenarios.
 - A context-budget report listing the largest files, the largest functions and fan-out, once code starts pressing against the ceilings.
