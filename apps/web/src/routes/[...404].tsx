@@ -1,6 +1,7 @@
 import { Title } from "@solidjs/meta";
 import type { RouteDefinition } from "@solidjs/router";
 import { httpStatus } from "@solidjs/web";
+import { css, cx } from "styled-system/css";
 
 // The catch-all route. httpStatus() sets the response status during SSR
 // (a no-op in the browser); it runs in preload so the status code is set
@@ -13,14 +14,23 @@ export const route = {
 
 export default function NotFound() {
   return (
-    <main class="paper-dots min-h-screen px-6 py-16 sm:px-12">
+    <main class={cx("paper-dots", css({ minH: "screen", px: { base: "6", sm: "12" }, py: "16" }))}>
       <Title>Not found · Tranzfer</Title>
-      <h1 class="text-[40px] leading-tight font-semibold tracking-[-0.035em]">Nothing here.</h1>
-      <p class="mt-3 text-mut">
+      <h1
+        class={css({
+          fontSize: "40",
+          fontWeight: "semibold",
+          letterSpacing: "title",
+          lineHeight: "tight",
+        })}
+      >
+        Nothing here.
+      </h1>
+      <p class={css({ color: "mut", mt: "3" })}>
         This page doesn't exist. If someone sent you a link, ask them for a fresh one.
       </p>
-      <p class="mt-6">
-        <a class="underline" href="/">
+      <p class={css({ mt: "6" })}>
+        <a class={css({ textDecoration: "underline" })} href="/">
           Go to Tranzfer
         </a>
       </p>
