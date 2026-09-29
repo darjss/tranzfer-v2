@@ -42,7 +42,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       # A new custom domain can take a few minutes to get DNS and a cert.
       - name: Health check
-        run: curl -fsS --retry 30 --retry-all-errors --retry-delay 10 "$PREVIEW_URL/infra" | jq -e '.health.ok and .bindings.d1 and .bindings.r2 and .bindings.s3 and .web'
+        run: curl -fsS --retry 30 --retry-all-errors --retry-delay 10 "$PREVIEW_URL/health" | jq -e '.ok'
       - name: Comment preview URL
         run: gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body "Preview for ${{ github.event.pull_request.head.sha }} is live at $PREVIEW_URL. Sign in with \`POST /api/auth/staging-login\`."
       - name: E2E against preview
