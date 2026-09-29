@@ -1,6 +1,5 @@
 import { Api, LinkExpired, LinkNotFound, LinkNotReady } from "@tranzfer/contracts";
-import { Drizzle, schema } from "@tranzfer/db";
-import { eq, isNull, and } from "drizzle-orm";
+import { Drizzle } from "@tranzfer/db";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -23,21 +22,21 @@ export const LinkHandlers = Api.toLayerHandler(
         return yield* new LinkNotFound({ message: "This link is not valid" });
       }
 
-      const rows = yield* db.run("links.open.lookup", (d) =>
-        d
-          .select({ delivery: schema.delivery, sender: schema.user })
-          .from(schema.link)
-          .innerJoin(schema.delivery, eq(schema.link.deliveryId, schema.delivery.id))
-          .innerJoin(schema.user, eq(schema.delivery.senderId, schema.user.id))
-          .where(and(eq(schema.link.id, linkId.value), isNull(schema.link.revokedAt))),
+      const link = yield* db.run(
+        "links.open.lookup",
+        async (d) =>
+          await d.query.link.findFirst({
+            where: { id: linkId.value, revokedAt: { isNull: true } },
+            with: { delivery: { with: { sender: true, transfers: true } } },
+          }),
       );
-      const [row] = rows;
       // Cancelled, unknown and bad-signature links all look the same.
-      if (row === undefined || row.delivery.status === "cancelled") {
+      if (link === undefined || link.delivery.status === "cancelled") {
         return yield* new LinkNotFound({ message: "This link is not valid" });
       }
 
-      const { delivery, sender } = row;
+      const { delivery } = link;
+      const { sender, transfers } = delivery;
       if (delivery.status === "open") {
         return yield* new LinkNotReady({
           message: "This delivery is not ready yet",
@@ -52,10 +51,6 @@ export const LinkHandlers = Api.toLayerHandler(
           title: delivery.title,
         });
       }
-
-      const transfers = yield* db.run("links.open.transfers", (d) =>
-        d.select().from(schema.transfer).where(eq(schema.transfer.deliveryId, delivery.id)),
-      );
 
       // A download URL must never outlive the link that issued it.
       const expiresInSeconds =

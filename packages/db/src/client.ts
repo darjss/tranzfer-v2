@@ -16,7 +16,19 @@ export class Database extends Context.Service<Database, Effect.Effect<D1Database
   "tranzfer/Database",
 ) {}
 
-const relations = defineRelations(schema);
+const relations = defineRelations(schema, (r) => ({
+  delivery: {
+    link: r.one.link({ from: r.delivery.id, to: r.link.deliveryId }),
+    sender: r.one.user({ from: r.delivery.senderId, optional: false, to: r.user.id }),
+    transfers: r.many.transfer(),
+  },
+  link: {
+    delivery: r.one.delivery({ from: r.link.deliveryId, optional: false, to: r.delivery.id }),
+  },
+  transfer: {
+    delivery: r.one.delivery({ from: r.transfer.deliveryId, optional: false, to: r.delivery.id }),
+  },
+}));
 
 export class Drizzle extends Context.Service<
   Drizzle,

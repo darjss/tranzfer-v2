@@ -11,7 +11,7 @@ import {
 } from "@tranzfer/contracts";
 import type { NewDelivery, UploadRequest } from "@tranzfer/contracts";
 import { Drizzle, schema } from "@tranzfer/db";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -20,14 +20,14 @@ import * as Result from "effect/Result";
 import { Links, newLinkId } from "../services/links";
 import { Storage, toStorageUnavailable } from "../services/storage";
 import { deliveryView, loadDeliveryRows, viewFromRows } from "./delivery-rows";
-import type { DeliveryRow, TransferRow } from "./delivery-rows";
+import type { DeliveryRows } from "./delivery-rows";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CANCEL_CONCURRENCY = 8;
 
 const objectKey = (deliveryId: string, transferId: string) => `d/${deliveryId}/${transferId}`;
 
-const sameFileSet = (files: NewDelivery["files"], transfers: readonly TransferRow[]) =>
+const sameFileSet = (files: NewDelivery["files"], transfers: DeliveryRows["transfers"]) =>
   files.length === transfers.length &&
   files.every((file) =>
     transfers.some(
@@ -38,14 +38,11 @@ const sameFileSet = (files: NewDelivery["files"], transfers: readonly TransferRo
 
 // A retried create only replays when every field matches; a changed payload
 // under the same id is a conflict, not a silent accept.
-const sameDelivery = (
-  input: NewDelivery,
-  delivery: DeliveryRow,
-  transfers: readonly TransferRow[],
-) =>
-  delivery.retentionDays === input.retentionDays &&
-  delivery.title === input.title &&
-  sameFileSet(input.files, transfers);
+const sameDelivery = (input: NewDelivery, senderId: string, row: DeliveryRows) =>
+  row.senderId === senderId &&
+  row.retentionDays === input.retentionDays &&
+  row.title === input.title &&
+  sameFileSet(input.files, row.transfers);
 
 export const DeliveriesHandlers = Layer.mergeAll(
   Api.toLayerHandler(
@@ -57,11 +54,8 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const principal = yield* CurrentPrincipal;
 
         const existing = yield* loadDeliveryRows(db, input.id, "deliveries.create.lookup");
-        if (existing !== null) {
-          if (
-            existing.delivery.senderId === principal.id &&
-            sameDelivery(input, existing.delivery, existing.transfers)
-          ) {
+        if (existing !== undefined) {
+          if (sameDelivery(input, principal.id, existing)) {
             return yield* deliveryView(db, links, input.id, "deliveries.create.view");
           }
           return yield* new DeliveryConflict({ message: "Delivery already exists" });
@@ -114,14 +108,10 @@ export const DeliveriesHandlers = Layer.mergeAll(
               .from(schema.transfer)
               .where(inArray(schema.transfer.id, transferIds)),
           );
-          if (
-            landed !== null &&
-            landed.delivery.senderId === principal.id &&
-            sameDelivery(input, landed.delivery, landed.transfers)
-          ) {
+          if (landed !== undefined && sameDelivery(input, principal.id, landed)) {
             return yield* deliveryView(db, links, input.id, "deliveries.create.view");
           }
-          if (landed !== null || taken.length > 0) {
+          if (landed !== undefined || taken.length > 0) {
             return yield* new DeliveryConflict({ message: "Delivery already exists" });
           }
           return yield* Effect.fail(inserted.failure);
@@ -141,32 +131,18 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const links = yield* Links;
         const principal = yield* CurrentPrincipal;
 
-        const rows = yield* db.run("deliveries.list", async (d) => {
-          const found = await d
-            .select()
-            .from(schema.delivery)
-            .where(eq(schema.delivery.senderId, principal.id))
-            .orderBy(desc(schema.delivery.createdAt))
-            .limit(50);
-          if (found.length === 0) {
-            return { deliveries: [], links: [], transfers: [] };
-          }
-          const ids = found.map((delivery) => delivery.id);
-          const [transfers, linkRows] = await Promise.all([
-            d.select().from(schema.transfer).where(inArray(schema.transfer.deliveryId, ids)),
-            d.select().from(schema.link).where(inArray(schema.link.deliveryId, ids)),
-          ]);
-          return { deliveries: found, links: linkRows, transfers };
-        });
-
-        return yield* Effect.forEach(rows.deliveries, (delivery) =>
-          viewFromRows(
-            links,
-            delivery,
-            rows.transfers.filter((transfer) => transfer.deliveryId === delivery.id),
-            rows.links.find((link) => link.deliveryId === delivery.id),
-          ),
+        const rows = yield* db.run(
+          "deliveries.list",
+          async (d) =>
+            await d.query.delivery.findMany({
+              limit: 50,
+              orderBy: { createdAt: "desc" },
+              where: { senderId: principal.id },
+              with: { link: true, transfers: true },
+            }),
         );
+
+        return yield* Effect.forEach(rows, (row) => viewFromRows(links, row));
       },
       Effect.catchTag("DrizzleError", Effect.die),
     ),
@@ -180,24 +156,19 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const storage = yield* Storage;
         const principal = yield* CurrentPrincipal;
 
-        const rows = yield* db.run("deliveries.signUpload.lookup", (d) =>
-          d
-            .select({ delivery: schema.delivery, transfer: schema.transfer })
-            .from(schema.transfer)
-            .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
-            .where(
-              and(
-                eq(schema.transfer.objectKey, input.key),
-                eq(schema.delivery.senderId, principal.id),
-              ),
-            ),
+        const transfer = yield* db.run(
+          "deliveries.signUpload.lookup",
+          async (d) =>
+            await d.query.transfer.findFirst({
+              where: { delivery: { senderId: principal.id }, objectKey: input.key },
+              with: { delivery: true },
+            }),
         );
-        const [row] = rows;
-        if (row === undefined) {
+        if (transfer === undefined) {
           return yield* new DeliveryNotFound({ message: "Delivery not found" });
         }
 
-        const { delivery, transfer } = row;
+        const { delivery } = transfer;
         if (
           delivery.status !== "open" ||
           (transfer.state !== "uploading" && transfer.state !== "finalizing")
@@ -245,23 +216,18 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const storage = yield* Storage;
         const principal = yield* CurrentPrincipal;
 
-        const rows = yield* db.run("deliveries.finalize.lookup", (d) =>
-          d
-            .select({ delivery: schema.delivery, transfer: schema.transfer })
-            .from(schema.transfer)
-            .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
-            .where(
-              and(
-                eq(schema.transfer.id, input.transferId),
-                eq(schema.delivery.senderId, principal.id),
-              ),
-            ),
+        const transfer = yield* db.run(
+          "deliveries.finalize.lookup",
+          async (d) =>
+            await d.query.transfer.findFirst({
+              where: { delivery: { senderId: principal.id }, id: input.transferId },
+              with: { delivery: true },
+            }),
         );
-        const [row] = rows;
-        if (row === undefined) {
+        if (transfer === undefined) {
           return yield* new DeliveryNotFound({ message: "Delivery not found" });
         }
-        const { delivery, transfer } = row;
+        const { delivery } = transfer;
 
         if (transfer.state === "complete") {
           return yield* deliveryView(db, links, delivery.id, "deliveries.finalize.view");
@@ -346,7 +312,7 @@ export const DeliveriesHandlers = Layer.mergeAll(
         const principal = yield* CurrentPrincipal;
 
         const loaded = yield* loadDeliveryRows(db, input.deliveryId, "deliveries.cancel.lookup");
-        if (loaded === null || loaded.delivery.senderId !== principal.id) {
+        if (loaded === undefined || loaded.senderId !== principal.id) {
           return yield* new DeliveryNotFound({ message: "Delivery not found" });
         }
 
