@@ -39,7 +39,7 @@ const uploadId = (body: Buffer) =>
   /<UploadId>(?<id>[^<]+)<\/UploadId>/u.exec(body.toString("utf-8"))?.groups?.id;
 
 const createUpload = (api: Api, key: string) =>
-  Effect.gen(function* createUpload() {
+  Effect.gen(function* startUpload() {
     const signed = yield* api.SignUpload({ key, request: { _tag: "Create" } });
     const created = yield* Effect.promise(
       async () => await send("POST", signed.url, new Uint8Array(0)),
