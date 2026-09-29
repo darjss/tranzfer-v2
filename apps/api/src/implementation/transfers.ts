@@ -23,7 +23,7 @@ import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 
-import { Deliveries } from "./deliveries";
+import { Deliveries, UPLOAD_WINDOW } from "./deliveries";
 import { Storage } from "./storage";
 import type { StoredObject } from "./storage";
 
@@ -239,10 +239,22 @@ export class Transfers extends Context.Service<
           if (transfer.delivery.status !== "open") {
             return yield* new UploadClosed();
           }
+          // The sweeper ends deliveries past the window, so stop signing at the
+          // same point instead of letting an upload run into that cancel.
+          const now = yield* Clock.currentTimeMillis;
+          if (now - transfer.delivery.createdAt.getTime() > Duration.toMillis(UPLOAD_WINDOW)) {
+            return yield* new UploadClosed();
+          }
           const allowed = Match.value(transfer.state).pipe(
             Match.when("uploading", () => true),
-            // Only retries of the final steps; no new upload, no new parts.
-            Match.when("finalizing", () => request._tag === "Complete" || request._tag === "List"),
+            // Only retries of the final steps; no new upload, no new parts. The
+            // empty-file Put is safe to sign again: If-None-Match makes a second
+            // write fail, and a lost response must not strand the transfer.
+            Match.when(
+              "finalizing",
+              () =>
+                request._tag === "Complete" || request._tag === "List" || request._tag === "Put",
+            ),
             Match.orElse(() => false),
           );
           if (!allowed) {

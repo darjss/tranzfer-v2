@@ -10,6 +10,8 @@ export interface TransferProgress {
   readonly error: unknown;
   readonly inFlight: number;
   readonly phase: TransferPhase;
+  /** Uppy finished the upload, so the object exists and only finalize is left. */
+  readonly uploaded: boolean;
 }
 
 const empty = (): TransferProgress => ({
@@ -18,6 +20,7 @@ const empty = (): TransferProgress => ({
   error: undefined,
   inFlight: 0,
   phase: "queued",
+  uploaded: false,
 });
 
 export const [transfers, setTransfersRaw] = createRoot(() =>
@@ -29,8 +32,10 @@ export const [transfers, setTransfersRaw] = createRoot(() =>
 export const patchTransfer = (transferId: string, patch: Partial<TransferProgress>) => {
   runWithOwner(null, () => {
     setTransfersRaw((current) => {
-      const previous = current[transferId] ?? empty();
-      current[transferId] = { ...previous, ...patch };
+      // Mutate the record's own keys: a fresh object would re-run every reader
+      // of the record when a tick changes one field.
+      current[transferId] ??= empty();
+      Object.assign(current[transferId], patch);
     });
   });
 };

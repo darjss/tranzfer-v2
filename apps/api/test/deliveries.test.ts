@@ -82,7 +82,7 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       const { db } = yield* Database;
       yield* db
         .update(schema.delivery)
-        .set({ createdAt: new Date(0) })
+        .set({ createdAt: new Date(Date.now() - 60_000) })
         .where(eq(schema.delivery.id, older.id));
       const listed = yield* deliveries.list("erin");
       expect(listed.map((delivery) => delivery.id)).toEqual([newer.id, older.id]);
@@ -111,10 +111,38 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       // few minutes, purges again and records it.
       storage.objects.set(objectKey, { etag: "late", size: 4 });
       expect(yield* deliveries.purgeEnded).toBe(0);
+      // The window covers a signed upload URL's whole lifetime (15 minutes).
       yield* TestClock.adjust("6 minutes");
+      expect(yield* deliveries.purgeEnded).toBe(0);
+      yield* TestClock.adjust("11 minutes");
       expect(yield* deliveries.purgeEnded).toBe(1);
       expect(storage.objects.has(objectKey)).toBe(false);
       expect(yield* deliveries.purgeEnded).toBe(0);
+    }),
+  );
+
+  it.effect("ends an open delivery that never finished, then purges it", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("hank");
+      const deliveries = yield* Deliveries;
+      const created = yield* deliveries.create("hank", newDelivery([newFile("half.bin", 9)]));
+      const recent = yield* deliveries.create("hank", newDelivery([newFile("fresh.bin", 9)]));
+
+      yield* TestClock.adjust("6 days");
+      expect(yield* deliveries.purgeEnded).toBe(0);
+      expect((yield* deliveries.view(created.id)).status).toBe("open");
+
+      // Past R2's 7-day multipart window nothing can complete, so the sweeper
+      // ends it the way a cancel would.
+      yield* TestClock.adjust("2 days");
+      yield* deliveries.purgeEnded;
+      expect((yield* deliveries.view(created.id)).status).toBe("cancelled");
+      expect((yield* deliveries.view(created.id)).transfers.map((t) => t.state)).toEqual([
+        "cancelled",
+      ]);
+      expect((yield* deliveries.view(recent.id)).status).toBe("cancelled");
+      expect(storage.purged).toContain(`d/${created.id}/`);
     }),
   );
 });

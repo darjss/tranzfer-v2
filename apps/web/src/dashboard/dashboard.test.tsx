@@ -116,14 +116,17 @@ const readyCount = () => screen.getByRole("heading", { name: /Ready to share/u }
 describe("dashboard reactivity", () => {
   afterEach(cleanup);
 
-  it("a progress tick recomputes only the moving row and the grouping check", async () => {
+  it("a steady-state progress tick updates the moving row and re-runs no conditions", async () => {
     const moving = delivery("Moving", "open", [200 * MB, 100 * MB]);
     const ready = [delivery("ReadyA", "ready", [5 * MB]), delivery("ReadyB", "ready", [7 * MB])];
-    const [first] = moving.transfers;
-    if (first === undefined) {
-      throw new Error("fixture has no transfer");
+    const [first, second] = moving.transfers;
+    if (first === undefined || second === undefined) {
+      throw new Error("fixture needs two transfers");
     }
-    patchTransfer(first.id, { confirmed: 10 * MB, phase: "uploading" });
+    // Every transfer has local progress and the first is already at speed, so
+    // the row reads as moving and the tick below is steady state.
+    patchTransfer(first.id, { bytesPerSecond: 30 * MB, confirmed: 10 * MB, phase: "uploading" });
+    patchTransfer(second.id, { phase: "uploading" });
     const runtime = makeWorld([moving, ...ready]);
     render(() => (
       <RuntimeContext value={runtime}>
@@ -144,16 +147,19 @@ describe("dashboard reactivity", () => {
       { scenario: "progress-tick" },
     );
 
+    // The tick reached the screen: the moving row shows the new speed.
+    flush();
+    expect(screen.getByText(/40 MB\/s/u)).toBeInTheDocument();
     expect(artifact).toHaveNoDiagnostics();
-    // One tick recomputes the moving row's rollup (the real change), and the
-    // two memos that confirm nothing moved: the row's kind and the board's
-    // grouping. Nothing else on the board runs.
-    assertBudget(artifact, { allow: [], maxReruns: 3, maxWastedRuns: 2 });
-    expect((artifact.attribution?.reruns ?? []).map((run) => run.nodeName).toSorted()).toEqual([
-      "Board.groups",
-      "Row.kind",
-      "Row.roll",
-    ]);
+    // Steady state, one tick: the moving row's rollup recomputes, the two
+    // memos that confirm nothing regrouped stop there, and the four bindings
+    // that show the new numbers (percent, bar, speed, time left) update. No
+    // condition (<Show>/<Match>) re-runs, and only those two confirming memos
+    // are allowed to be wasted.
+    assertBudget(artifact, { allow: [], maxReruns: 7, maxWastedRuns: 2 });
+    const reruns = (artifact.attribution?.reruns ?? []).map((run) => run.nodeName);
+    expect(reruns).toEqual(expect.arrayContaining(["Board.groups", "Row.kind", "Row.roll"]));
+    expect(reruns).not.toContain("condition value");
     await runtime.dispose();
   });
 

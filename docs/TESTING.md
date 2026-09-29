@@ -107,3 +107,5 @@ Vitest browser mode runs test code inside an iframe next to a rendered component
 ## CI
 
 `vp check` and `vp run test` gate every PR. The API service tests in `apps/api/test` run on wrangler's local D1 (`@tranzfer/db/testing`) with an in-memory `Storage`; use `TestClock` for anything time-based. Scenarios stay out of the PR gate until they prove fast and stable against the local stack. Then they get their own workflow.
+
+PR previews (`.github/workflows/preview.yml`) run the PR branch's own deploy code with the `staging` environment's Cloudflare token and `TEST_LOGIN_KEY`. Fork PRs are skipped, so this is safe while everyone with write access is trusted. Before adding outside collaborators, require approval on the `staging` environment or give previews a token scoped to `pr-*` resources.
