@@ -1,172 +1,339 @@
 import { Meta, Title } from "@solidjs/meta";
 import { useParams } from "@solidjs/router";
 import { clientOnly, getRequestEvent, isServer } from "@solidjs/web";
-import { LinkExpired, LinkNotFound, LinkNotReady } from "@tranzfer/contracts";
-import * as Effect from "effect/Effect";
-import {
-  createMemo,
-  createSignal,
-  Errored,
-  For,
-  Loading,
-  Match,
-  Show,
-  Switch,
-  useContext,
-} from "solid-js";
+import { LinkExpired, LinkNotReady } from "@tranzfer/contracts";
+import type { SharedDelivery } from "@tranzfer/contracts";
+import * as Cause from "effect/Cause";
+import * as Exit from "effect/Exit";
+import * as Schema from "effect/Schema";
+import { createMemo, createSignal, Errored, For, Loading, Show, useContext } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { css, cx } from "styled-system/css";
+
+import PhClockBold from "~icons/ph/clock-bold";
+import PhDownloadSimpleBold from "~icons/ph/download-simple-bold";
+import PhFileBold from "~icons/ph/file-bold";
+import PhHourglassMediumBold from "~icons/ph/hourglass-medium-bold";
+import PhLinkBreakBold from "~icons/ph/link-break-bold";
 
 import { ApiClient } from "../../api/client";
+import { appError } from "../../api/errors";
 import { runEffect, RuntimeContext } from "../../api/solid-effect";
-import { bytes, items, untilDate } from "../../dashboard/format";
+import { bytes, files, fromNow, untilDate } from "../../dashboard/format";
 import Brand from "../../landing/Brand";
 
-const LinkError = (props: { error: unknown }) => (
-  <Switch>
-    <Match when={props.error instanceof LinkNotReady ? props.error : null}>
-      {(current) => (
-        <section class="mx-auto max-w-[720px] px-6 py-10 sm:px-12">
-          <p class="font-mono text-xs text-mut">from {current().senderName}</p>
-          <h1 class="mt-2 text-[36px] leading-tight font-semibold tracking-[-0.03em]">
-            {current().title}
-          </h1>
-          <p class="mt-3 text-blue">
-            Still uploading. This link starts working once every file is finished.
-          </p>
-        </section>
-      )}
-    </Match>
-    <Match when={props.error instanceof LinkExpired ? props.error : null}>
-      {(current) => (
-        <section class="mx-auto max-w-[720px] px-6 py-10 sm:px-12">
-          <h1 class="text-[36px] leading-tight font-semibold tracking-[-0.03em]">
-            {current().title}
-          </h1>
-          <p class="mt-3 text-mut">Expired on {untilDate(current().expiredAt)}.</p>
-        </section>
-      )}
-    </Match>
-    <Match when={true}>
-      <section class="mx-auto max-w-[720px] px-6 py-10 sm:px-12">
-        <h1 class="text-[36px] leading-tight font-semibold tracking-[-0.03em]">
-          This link doesn't work.
-        </h1>
-        <p class="mt-3 text-mut">
-          {props.error instanceof LinkNotFound
-            ? "It may have been cancelled."
-            : "Something went wrong opening it. Try again in a moment."}
-        </p>
-      </section>
-    </Match>
-  </Switch>
+const ghost = css({
+  bg: "panel",
+  borderRadius: "card",
+  inset: "0",
+  pos: "absolute",
+  shadow: "paperGhost",
+});
+
+const title = css({
+  fontSize: { base: "26", sm: "40" },
+  fontWeight: "semibold",
+  letterSpacing: "title",
+  lineHeight: "compact",
+  overflowWrap: "anywhere",
+  textWrap: "balance",
+});
+
+const from = css({ color: "mut", fontFamily: "mono", fontSize: "13" });
+
+/** A stack of paper, the landing's card language, holding one delivery. */
+const Paper = (props: { children: JSX.Element }) => (
+  <div class={css({ marginInline: "auto", maxW: "[680px]", pos: "relative" })}>
+    <div class={cx(ghost, css({ transform: "[rotate(-2.5deg) translate(-10px,12px)]" }))} />
+    <div class={cx(ghost, css({ transform: "[rotate(2deg) translate(10px,8px)]" }))} />
+    <div
+      class={css({
+        bg: "panel",
+        borderRadius: "card",
+        p: { base: "5", sm: "8" },
+        pos: "relative",
+        rotate: { base: "[0deg]", sm: "[-0.6deg]" },
+        shadow: "paper",
+      })}
+    >
+      {props.children}
+    </div>
+  </div>
+);
+
+const StateIcon = (props: { children: JSX.Element; tone: "blue" | "mut" | "rust" }) => (
+  <span
+    aria-hidden="true"
+    class={cx(
+      css({ borderRadius: "full", boxSize: "11", display: "grid", mb: "5", placeItems: "center" }),
+      props.tone === "blue" && css({ bg: "blue/10", color: "blue" }),
+      props.tone === "mut" && css({ bg: "ink/6", color: "mut" }),
+      props.tone === "rust" && css({ bg: "rust/10", color: "rust" }),
+    )}
+  >
+    {props.children}
+  </span>
+);
+
+const iconSize = css({ boxSize: "5" });
+
+// The three ways a link can fail each get their own page; anything else
+// reads through the shared error words.
+const LinkError = (props: { error: unknown }) => {
+  const error = () => appError(props.error);
+  return (
+    <Paper>
+      <Show
+        when={Schema.is(LinkNotReady)(props.error) ? props.error : undefined}
+        fallback={
+          <Show
+            when={Schema.is(LinkExpired)(props.error) ? props.error : undefined}
+            fallback={
+              <>
+                <StateIcon tone="rust">
+                  <PhLinkBreakBold class={iconSize} />
+                </StateIcon>
+                <h1 class={title}>This link doesn't work.</h1>
+                <p class={css({ color: "mut", mt: "3" })}>
+                  {error().tag === "LinkNotFound"
+                    ? "It may have been cancelled, or the address is incomplete. Ask the sender for a fresh link."
+                    : error().message}
+                </p>
+              </>
+            }
+          >
+            {(expired) => (
+              <>
+                <StateIcon tone="mut">
+                  <PhClockBold class={iconSize} />
+                </StateIcon>
+                <Title>{expired().title} · Tranzfer</Title>
+                <h1 class={title}>{expired().title}</h1>
+                <p class={css({ color: "mut", mt: "3" })}>
+                  This link expired on {untilDate(expired().expiredAt)} and its files are deleted.
+                  Ask the sender to send it again.
+                </p>
+              </>
+            )}
+          </Show>
+        }
+      >
+        {(notReady) => (
+          <>
+            <StateIcon tone="blue">
+              <PhHourglassMediumBold class={iconSize} />
+            </StateIcon>
+            <Title>{notReady().title} · Tranzfer</Title>
+            <p class={from}>from {notReady().senderName}</p>
+            <h1 class={cx(title, css({ mt: "1.5" }))}>{notReady().title}</h1>
+            <p class={css({ color: "ink/80", mt: "3" })}>
+              Still uploading. This link starts working once every file is finished, so check back
+              in a little while.
+            </p>
+          </>
+        )}
+      </Show>
+    </Paper>
+  );
+};
+
+const Delivery = (props: { delivery: SharedDelivery; download: (path: string) => void }) => {
+  const total = () => props.delivery.files.reduce((sum, file) => sum + file.size, 0);
+  return (
+    <Paper>
+      <Title>{props.delivery.title} · Tranzfer</Title>
+      <p class={from}>from {props.delivery.senderName}</p>
+      <h1 class={cx(title, css({ mt: "1.5" }))}>{props.delivery.title}</h1>
+      <p
+        class={css({
+          display: "flex",
+          flexWrap: "wrap",
+          fontFamily: "mono",
+          fontSize: "13",
+          fontVariantNumeric: "tabular-nums",
+          gap: "[4px 14px]",
+          mt: "3",
+        })}
+      >
+        <span>
+          {files(props.delivery.files.length)} · {bytes(total())}
+        </span>
+        <Show when={props.delivery.expiresAt}>
+          {(expiresAt) => (
+            <span
+              class={css({
+                alignItems: "center",
+                color: "mut",
+                display: "inline-flex",
+                gap: "1.5",
+              })}
+            >
+              <PhClockBold class={css({ boxSize: "3.5" })} />
+              available until {untilDate(expiresAt())}, {fromNow(expiresAt())}
+            </span>
+          )}
+        </Show>
+      </p>
+
+      <ul class={css({ borderColor: "line", borderTopWidth: "1px", listStyle: "none", mt: "6" })}>
+        <For each={props.delivery.files}>
+          {(file) => (
+            <li
+              class={css({
+                alignItems: "center",
+                borderBottomWidth: "1px",
+                borderColor: "line/70",
+                columnGap: "3",
+                display: "grid",
+                gridTemplateColumns: "[auto minmax(0,1fr) auto auto]",
+                py: "3",
+              })}
+            >
+              <PhFileBold aria-hidden="true" class={css({ boxSize: "4", color: "mut" })} />
+              <span
+                class={css({ fontFamily: "mono", fontSize: "13", truncate: true })}
+                title={file.path}
+              >
+                {file.path}
+              </span>
+              <span
+                class={css({
+                  color: "mut",
+                  display: { base: "none", sm: "block" },
+                  fontFamily: "mono",
+                  fontSize: "13",
+                  fontVariantNumeric: "tabular-nums",
+                })}
+              >
+                {bytes(file.size)}
+              </span>
+              <a
+                aria-label={`Download ${file.path}, ${bytes(file.size)}`}
+                class={css({
+                  _active: { scale: "[.96]" },
+                  _hover: { bg: "[#23252b]" },
+                  alignItems: "center",
+                  bg: "ink",
+                  borderRadius: "xl",
+                  color: "paper",
+                  display: "inline-flex",
+                  fontWeight: "semibold",
+                  gap: "2",
+                  minH: "10",
+                  px: "3.5",
+                  textStyle: "sm",
+                  transitionDuration: "fast",
+                  transitionProperty: "[background-color,scale]",
+                  transitionTimingFunction: "smooth",
+                })}
+                href={file.url}
+                onClick={(event) => {
+                  event.preventDefault();
+                  props.download(file.path);
+                }}
+              >
+                <PhDownloadSimpleBold class={css({ boxSize: "4" })} />
+                <span class={css({ display: { base: "none", sm: "inline" } })}>Download</span>
+              </a>
+            </li>
+          )}
+        </For>
+      </ul>
+      <p class={css({ color: "mut", mt: "5", textStyle: "sm" })}>
+        If a download stops, your browser's download manager can usually resume it while this link
+        is live.
+      </p>
+    </Paper>
+  );
+};
+
+const Opening = () => (
+  <Paper>
+    <p class={css({ color: "mut", textStyle: "sm" })}>Opening the link…</p>
+  </Paper>
 );
 
 const LinkPage = () => {
   const params = useParams<{ token: string }>();
   const runtime = useContext(RuntimeContext);
   const delivery = createMemo(() =>
-    runEffect(ApiClient.pipe(Effect.flatMap((api) => api.OpenLink({ token: params.token })))),
+    runEffect(ApiClient.use((api) => api.OpenLink({ token: params.token }))),
   );
-  const total = () => (delivery()?.files ?? []).reduce((sum, file) => sum + file.size, 0);
 
   // Rendered URLs expire, so a click re-opens the link for a fresh one and
   // surfaces a dead link the same way the load-time boundary does.
   const [linkError, setLinkError] = createSignal<unknown>();
   const download = async (path: string) => {
-    if (runtime === undefined) {
+    const exit = await runtime.runPromiseExit(
+      ApiClient.use((api) => api.OpenLink({ token: params.token })),
+    );
+    if (Exit.isFailure(exit)) {
+      setLinkError(Cause.squash(exit.cause));
       return;
     }
-    try {
-      const fresh = await runtime.runPromise(
-        ApiClient.pipe(Effect.flatMap((api) => api.OpenLink({ token: params.token }))),
-      );
-      const file = fresh.files.find((candidate) => candidate.path === path);
-      if (file !== undefined) {
-        location.assign(file.url);
-      }
-    } catch (error) {
-      setLinkError(error);
+    const file = exit.value.files.find((candidate) => candidate.path === path);
+    if (file !== undefined) {
+      location.assign(file.url);
     }
   };
 
   return (
-    <main class="paper-dots min-h-screen">
-      <Meta name="description" content="Download files shared with you through Tranzfer." />
-      <nav class="flex h-16 items-center px-6 sm:px-12">
-        <Brand />
-      </nav>
-      <Loading fallback={<div class="px-6 py-16 text-sm text-mut sm:px-12">Loading…</div>}>
-        <Errored fallback={(error) => <LinkError error={error()} />}>
-          <Show
-            when={linkError()}
-            fallback={
-              <section class="mx-auto max-w-[720px] px-6 py-10 sm:px-12">
-                <Title>{delivery()?.title ?? "Tranzfer"}</Title>
-                <h1 class="text-[36px] leading-tight font-semibold tracking-[-0.03em]">
-                  {delivery()?.title}
-                </h1>
-                <p class="mt-2 text-mut">
-                  from <b class="font-medium text-ink">{delivery()?.senderName}</b> ·{" "}
-                  {items(delivery()?.files.length ?? 0)} · {bytes(total())}
-                </p>
-                <Show when={delivery()?.expiresAt ?? null}>
-                  {(expiresAt) => (
-                    <p class="mt-1 text-sm text-mut">Available until {untilDate(expiresAt())}</p>
-                  )}
-                </Show>
-
-                <ul class="mt-8 divide-y divide-line/70 border-y border-line">
-                  <For each={delivery()?.files ?? []}>
-                    {(file) => (
-                      <li class="grid grid-cols-[1fr_80px_auto] items-center gap-4 py-3">
-                        <span class="truncate font-mono text-sm">{file.path}</span>
-                        <span class="text-right font-mono text-sm text-mut">
-                          {bytes(file.size)}
-                        </span>
-                        <a
-                          class="inline-flex items-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-paper transition-transform hover:-translate-y-px"
-                          href={file.url}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            void download(file.path);
-                          }}
-                        >
-                          Download
-                        </a>
-                      </li>
-                    )}
-                  </For>
-                </ul>
-                <p class="mt-4 text-sm text-mut">
-                  Interrupted downloads can resume in your browser's download manager while the link
-                  is fresh.
-                </p>
-              </section>
-            }
-          >
-            {(error) => <LinkError error={error()} />}
-          </Show>
-        </Errored>
-      </Loading>
-    </main>
+    <Loading fallback={<Opening />}>
+      <Errored fallback={(error) => <LinkError error={error()} />}>
+        <Show
+          when={linkError()}
+          fallback={
+            <Delivery
+              delivery={delivery()}
+              download={(path) => {
+                void download(path);
+              }}
+            />
+          }
+        >
+          {(error) => <LinkError error={error()} />}
+        </Show>
+      </Errored>
+    </Loading>
   );
 };
 
-// Schema class instances cannot cross the SSR hydration boundary, so the
-// page mounts client-side only; the server renders the loading shell.
+// Client-only for now. With SSR the page renders and hydrates, but Solid
+// re-runs the OpenLink read on the client during hydration (a second fetch
+// that re-signs every URL), and that request never settles, which leaves
+// the RPC client stuck so Download hangs. The server renders the shell.
 const LazyLink = clientOnly(async () => await Promise.resolve({ default: LinkPage }));
 
 export default function PublicDelivery() {
-  // Signed URLs are rendered into the HTML, so the page must never be cached.
+  // Signed URLs reach the page, so it must never be cached.
   if (isServer) {
     getRequestEvent()?.response.headers.set("cache-control", "no-store");
   }
   return (
-    <LazyLink
-      fallback={
-        <main class="paper-dots min-h-screen">
-          <div class="px-6 py-16 text-sm text-mut sm:px-12">Loading…</div>
-        </main>
-      }
-    />
+    <div
+      class={css({
+        marginInline: "auto",
+        maxW: "page",
+        minH: "screen",
+        pb: "24",
+        px: { base: "5", sm: "7" },
+      })}
+    >
+      <Meta name="description" content="Download files shared with you through Tranzfer." />
+      <nav
+        class={css({
+          alignItems: "center",
+          borderBottomWidth: "1px",
+          borderColor: "ink",
+          display: "flex",
+          h: "16",
+        })}
+      >
+        <Brand />
+      </nav>
+      <main class={css({ pt: { base: "10", sm: "16" } })}>
+        <LazyLink fallback={<Opening />} />
+      </main>
+    </div>
   );
 }

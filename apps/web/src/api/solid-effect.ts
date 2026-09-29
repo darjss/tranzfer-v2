@@ -2,9 +2,12 @@ import type { Layer } from "effect";
 import { Cause, Effect, Exit, Fiber, ManagedRuntime } from "effect";
 import { createContext, onCleanup, useContext } from "solid-js";
 
+import type { Uploads } from "../uploads/uploads";
 import type { ApiClient } from "./client";
 
-export const RuntimeContext = createContext<ManagedRuntime.ManagedRuntime<ApiClient, never>>();
+export type AppServices = ApiClient | Uploads;
+
+export const RuntimeContext = createContext<ManagedRuntime.ManagedRuntime<AppServices, never>>();
 
 export const createRuntime = <R>(layer: Layer.Layer<R>) => {
   const runtime = ManagedRuntime.make(layer);
@@ -17,7 +20,7 @@ export const createRuntime = <R>(layer: Layer.Layer<R>) => {
 /** Run an Effect as a Solid-consumable async source. Interruptible: if the
  * consuming computation re-runs or disposes before the fiber settles, the
  * fiber is interrupted and finalizers run. */
-export const runEffect = <A, E>(effect: Effect.Effect<A, E, ApiClient>): AsyncIterable<A> => {
+export const runEffect = <A, E>(effect: Effect.Effect<A, E, AppServices>): AsyncIterable<A> => {
   // context resolves at the *reading* computation
   const runtime = useContext(RuntimeContext);
   return {

@@ -19,8 +19,11 @@ vp run dev
 ```
 
 That is `portless` running the single `tranzfer` app in `portless.json`, which
-runs `alchemy dev` from `infra/alchemy.run.ts` (stage `dev_$USER`, local workerd
-with D1/R2 simulators under `infra/.alchemy/local`, bindings owned by the stack).
+runs `alchemy dev` from `infra/alchemy.run.ts` (stage `dev_$USER`, Workers in
+local workerd). D1 and R2 are real Cloudflare resources for that stage
+(`Alchemy.remote()` in `apps/api/src/resources.ts`), shared by every checkout
+of the same user. The bucket's CORS allows only `APP_URL`, so the last checkout
+to start wins browser uploads.
 The proxy serves TLS. Hosts:
 
 ```text
@@ -35,7 +38,7 @@ From an agent shell, start detached so tool timeouts cannot kill it:
 
 ```text
 pkill -f alchemy/bin/exec; pkill -f "cli.js dev"
-setsid -f sh -c 'cd /home/darjs/dev/tranzfer2 && exec vp run dev > /tmp/dev.log 2>&1 < /dev/null'
+setsid -f sh -c 'cd "$(git rev-parse --show-toplevel)" && exec vp run dev > /tmp/dev.log 2>&1 < /dev/null'
 ```
 
 Worker logs live under `infra/.alchemy/log/<stage>/{Api,Web}`.

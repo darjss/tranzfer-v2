@@ -1,6 +1,4 @@
-import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Predicate from "effect/Predicate";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as HttpClient from "effect/unstable/http/HttpClient";
@@ -58,14 +56,3 @@ export const serverLayer = (cookie: string | null, responseHeaders: Headers) =>
       return response;
     }),
   );
-
-const buildApi = () => {
-  const runtime = ManagedRuntime.make(serverLayer(null, new Headers()));
-  return { client: runtime.runSync(Effect.service(ApiClient)), runtime };
-};
-
-let api: ReturnType<typeof buildApi> | undefined;
-
-// `env.API` is the same service binding for the isolate's life, so one client
-// and runtime serve every request.
-export const apiOverBinding = () => (api ??= buildApi());

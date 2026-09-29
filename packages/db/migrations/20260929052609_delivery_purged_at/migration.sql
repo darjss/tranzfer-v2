@@ -1,0 +1,1 @@
+ALTER TABLE `delivery` ADD `purged_at` integer;

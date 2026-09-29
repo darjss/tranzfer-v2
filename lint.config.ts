@@ -5,7 +5,7 @@ import type { OxlintConfig } from "oxlint";
 import antiSlop from "ultracite/oxlint/anti-slop";
 import core from "ultracite/oxlint/core";
 
-const generatedIgnores = ["**/file-routes.d.ts", "**/solid-env.d.ts", "docs/design/**"];
+const generatedIgnores = ["**/file-routes.d.ts", "docs/design/**", "**/styled-system/**"];
 
 const effectErrorRules = {
   "effecttsgo/floating-effect": "error",
@@ -106,19 +106,18 @@ export const lintConfig = (
       },
       ...effectOverride,
       {
-        files: ["packages/contracts/src/auth.ts"],
-        rules: {
-          // The middleware tag and the context key it provides are one seam;
-          // Authenticated is meaningless without CurrentPrincipal.
-          "max-classes-per-file": "off",
-        },
-      },
-      {
         files: ["packages/contracts/**", "**/*-error.ts", "**/errors/*.ts"],
         rules: {
           // `Schema.TaggedError<E>()(...)` is a class factory, not a thrown
           // error; the rule matches on the callee name alone.
           "unicorn/throw-new-error": "off",
+        },
+      },
+      {
+        files: ["packages/*/src/index.ts"],
+        rules: {
+          // A package's public surface is one import path by design.
+          "oxc/no-barrel-file": "off",
         },
       },
       {
@@ -129,18 +128,17 @@ export const lintConfig = (
           "sort-keys": "off",
         },
       },
-      {
-        files: ["packages/db/src/client.ts"],
-        rules: {
-          // Database and Drizzle are one seam — both derive from the same D1
-          // handle, so they live in one file.
-          "max-classes-per-file": "off",
-        },
-      },
     ],
     plugins: [...(core.plugins ?? []), "effecttsgo"],
     rules: {
       "import/no-namespace": "off",
+      // Effect idioms these generic rules misread: a domain's tagged errors
+      // share a file, `const X = Schema.Struct(...)` pairs with
+      // `interface X extends Schema.Schema.Type<typeof X> {}`.
+      "max-classes-per-file": "off",
+      "no-redeclare": "off",
+      "typescript/no-empty-interface": "off",
+      "typescript/no-empty-object-type": "off",
       "vite-plus/prefer-vite-plus-imports": "error",
     },
     settings: solidV2Strict.settings,
@@ -153,9 +151,15 @@ export const lintConfig = (
 
 export const rootLint = lintConfig(
   {
-    api: ["apps/api/**", "packages/contracts/**"],
+    api: ["apps/api/**", "e2e/**", "packages/contracts/**"],
     components: ["apps/web/**/*.tsx"],
-    effect: ["apps/api/**", "packages/**", "apps/web/src/api/**", "apps/web/src/uploads/**"],
+    effect: [
+      "apps/api/**",
+      "e2e/**",
+      "packages/**",
+      "apps/web/src/api/**",
+      "apps/web/src/uploads/**",
+    ],
     web: ["apps/web/**"],
   },
   { root: true },

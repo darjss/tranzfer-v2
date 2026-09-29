@@ -16,6 +16,11 @@
     // Type Checking & Safety
     "strict": true,
     "skipLibCheck": true,
-    "types": ["vite-plus/client", "@cloudflare/workers-types"]
+    "types": ["vite-plus/client", "@cloudflare/workers-types"],
+
+    // Paths
+    "paths": {
+      "styled-system/*": ["./styled-system/*"]
+    }
   }
 }

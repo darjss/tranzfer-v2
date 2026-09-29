@@ -4,6 +4,9 @@
   "description": "Tranzfer HTTP API Worker.",
   "license": "MIT",
   "type": "module",
+  "scripts": {
+    "test": "vp test"
+  },
   "dependencies": {
     "@alchemy.run/better-auth": "2.0.0-beta.79",
     "@distilled.cloud/aws": "1.0.0-rc.12",
@@ -12,12 +15,14 @@
     "@tranzfer/db": "workspace:*",
     "alchemy": "2.0.0-beta.79",
     "better-auth": "1.7.4",
-    "drizzle-orm": "1.0.0-rc.5-ab785fc",
-    "effect": "4.0.0-rc.115"
+    "drizzle-orm": "catalog:",
+    "effect": "catalog:"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260911.1",
-    "@types/node": "^22.20.2",
-    "typescript": "7.0.2"
+    "@cloudflare/workers-types": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "5.0.1"
   }
 }
