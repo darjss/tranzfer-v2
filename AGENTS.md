@@ -4,7 +4,7 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 
 ## Read for the task
 
-- Solid components or reactivity: [.agents/skills/solidjs-v2/SKILL.md](.agents/skills/solidjs-v2/SKILL.md). Check installed Solid docs and types; use its reactivity diagnostics guide for reported diagnostics.
+- Solid components or reactivity: [.agents/skills/solidjs-v2/SKILL.md](.agents/skills/solidjs-v2/SKILL.md). Check installed Solid docs and types. For any reactivity change, follow "Reactivity changes" below.
 - Effect workflows or layers: [.agents/skills/effect/SKILL.md](.agents/skills/effect/SKILL.md). Installed package types take precedence over examples.
 - Local serving: [.agents/skills/portless/SKILL.md](.agents/skills/portless/SKILL.md), then `vp run dev`.
 - Product scope: [docs/VISION.md](docs/VISION.md). Product judgment and tone: [docs/SOUL.md](docs/SOUL.md).
@@ -18,6 +18,7 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 ## Change and verify
 
 - Use `vp` for package and project commands. After changes run `vp check`, `vp run test`, and the relevant `vp run build`. Report missing tests or blocked checks as such.
+- Reactivity changes (components, memos, stores, actions): dev builds run with Solid diagnostics on (`diagnostics: true` in `apps/web/vite.config.ts`). A diagnostic code is a defect or a real cost; read its repair in `node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md` and fix it, never allowlist one you haven't understood. Prove the change with a `captureArtifact` test from `@solidjs/diagnostics` next to the component (see `apps/web/src/dashboard/dashboard.test.tsx`): `toHaveNoDiagnostics()` plus a re-run budget for the interaction. The loop guide is `node_modules/@solidjs/diagnostics/skills/agent-loops/SKILL.md`. Details in [docs/TESTING.md](docs/TESTING.md).
 - Keep lint enabled. An exception needs user approval, a file-scoped override and a one-line reason.
 - Comments explain runtime quirks and non-obvious constraints.
 - When a check fails, reproduce it on unchanged `origin/main` before blaming the current diff.

@@ -4,6 +4,7 @@ import "@solidjs/diagnostics/vitest";
 import { cleanup, render, screen } from "@solidjs/testing-library";
 import { Api, Authenticated, CurrentPrincipal, DeliveryId, TransferId } from "@tranzfer/contracts";
 import type { Delivery } from "@tranzfer/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -45,7 +46,7 @@ const delivery = (
 
 // The API side of the dashboard, in memory: a server list the fake cancel
 // really changes, behind the typed RPC client the page uses.
-const makeWorld = (server: Delivery[]) => {
+const makeWorld = (server: Delivery[], gate?: Deferred.Deferred<boolean>) => {
   const api = Layer.effect(ApiClient, RpcTest.makeClient(Api)).pipe(
     Layer.provide(
       Api.toLayer(
@@ -80,11 +81,15 @@ const makeWorld = (server: Delivery[]) => {
     Uploads,
     Uploads.of({
       cancel: (deliveryId) =>
-        Effect.sync(() => {
+        Effect.gen(function* fakeCancel() {
+          // Hold the reply until the test has looked at the optimistic state.
+          if (gate !== undefined) {
+            yield* Deferred.await(gate);
+          }
           const index = server.findIndex((row) => row.id === deliveryId);
           const row = server[index];
           if (row === undefined) {
-            throw new Error("unknown delivery");
+            return yield* Effect.die(new Error("unknown delivery"));
           }
           const cancelled = Struct.evolve(row, { status: () => "cancelled" as const });
           server[index] = cancelled;
@@ -154,7 +159,9 @@ describe("dashboard reactivity", () => {
 
   it("cancel moves the delivery to Ended before the server answers", async () => {
     const target = delivery("Doomed", "ready", [3 * MB]);
-    const runtime = makeWorld([target, delivery("Keeper", "ready", [2 * MB])]);
+    const gate = Deferred.makeUnsafe<boolean>();
+    const server = [target, delivery("Keeper", "ready", [2 * MB])];
+    const runtime = makeWorld(server, gate);
     let cancel: ReturnType<typeof createDeliveries>["cancel"] | undefined;
     const Harness = () => {
       const state = createDeliveries(runtime);
@@ -183,8 +190,11 @@ describe("dashboard reactivity", () => {
       async () => {
         const pending = cancel?.(target.id);
         flush();
-        // Optimistic: already out of Ready, before the fake server replies.
+        // Optimistic: already out of Ready while the server is still holding
+        // its reply, so the server list has not changed yet.
         expect(readyCount()).toContain("1");
+        expect(server.map((row) => row.status)).toEqual(["ready", "ready"]);
+        Deferred.doneUnsafe(gate, Effect.succeed(true));
         return await pending;
       },
       { scenario: "cancel" },

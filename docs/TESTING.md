@@ -24,6 +24,16 @@ Part-size policy, reconciliation planning, fingerprint versions, state transitio
 
 Name tests after the guarantee they protect: `recovery_never_resends_confirmed_parts`, `lost_finalize_response_converges_to_complete`, `process_exit_does_not_abort_remote_upload`. Import from `@effect/vitest`, never `vitest`. Put the test file next to the code it covers.
 
+## Reactivity tests
+
+Solid's dev build reports known anti-patterns as stable diagnostic codes, and `@solidjs/diagnostics` records them together with why each reactive node re-ran. `captureArtifact(() => interaction, { scenario })` runs an interaction against a mounted tree and returns both. Assert on it:
+
+- `expect(artifact).toHaveNoDiagnostics()` fails on any rule code.
+- `assertBudget(artifact, { allow: [], maxReruns, maxWastedRuns })` caps how much recomputes. `artifact.attribution.reruns` names each run (`nodeName`), whether its value changed, and the write that caused it. Give the memos you care about a `name` option so they read in the report.
+- A run with `changed: false` was wasted. Fix the cause (an unstable memo output, a read that is too wide) instead of raising the budget.
+
+`apps/web/src/dashboard/dashboard.test.tsx` shows both shapes. One progress tick must recompute only the moving row and the grouping check. Cancel must leave Ready before a held server reply, and fail if the optimistic write is removed. Its fake server is `RpcTest.makeClient(Api)` over in-memory handlers, so the page runs its real typed client. Call `flush()` before reading the DOM after a write; Solid updates it asynchronously.
+
 ## No R2 fake
 
 We don't build an in-memory R2. R2 has rules a fake would get subtly wrong: uniform part sizes, the 10,000-part cap, incomplete uploads expiring, `ListParts` pagination, the exact ETag it hands back. A fake that gets one of those wrong makes the tests pass and the product lie. Pure logic doesn't need a fake, and wire behavior gets tested against the real thing.
