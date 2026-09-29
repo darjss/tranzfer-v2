@@ -17,7 +17,7 @@ const files = [
 
 const ghost = css({
   bg: "panel",
-  borderRadius: "[20px]",
+  borderRadius: "card",
   inset: "0",
   pos: "absolute",
   shadow: "[0 0 0 1px var(--colors-line),0 30px 60px -40px rgba(23,24,28,.4)]",
@@ -70,7 +70,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
             css({
               _groupHover: { rotate: "[0deg]" },
               bg: "panel",
-              borderRadius: "[20px]",
+              borderRadius: "card",
               p: "5.5",
               pos: "relative",
               rotate: "[-2deg]",
@@ -129,7 +129,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
           >
             <div>
               <b class={css({ fontWeight: "semibold" })}>Example transfer</b>
-              <small class={css({ color: "mut", display: "block", fontSize: "[13px]" })}>
+              <small class={css({ color: "mut", display: "block", fontSize: "13" })}>
                 To Marcus · your editor in Berlin
               </small>
             </div>
@@ -164,7 +164,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
               overflow: "hidden",
               pos: "relative",
               px: "5.5",
-              py: "[26px]",
+              py: "6.5",
               textAlign: "center",
             })}
           >
@@ -189,7 +189,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
               <PhUploadSimpleBold class={css({ boxSize: "6" })} />
             </div>
             <b class={css({ display: "block", fontWeight: "semibold" })}>Upload design preview</b>
-            <span class={css({ color: "mut", fontSize: "[13px]" })}>
+            <span class={css({ color: "mut", fontSize: "13" })}>
               File uploads are not available yet.
             </span>
           </div>
@@ -211,7 +211,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
                       px: "3",
                       py: "2.5",
                       rotate: "[2deg]",
-                      shadow: "[0 0 0 1px var(--colors-line)]",
+                      shadow: "ring",
                       transition:
                         "[translate .6s var(--easings-spring),rotate .6s var(--easings-spring),opacity .4s]",
                       transitionDelay: "var(--d)",
@@ -261,7 +261,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
               pt: "4",
             })}
           >
-            <small class={css({ color: "mut", fontFamily: "mono", fontSize: "[13px]" })}>
+            <small class={css({ color: "mut", fontFamily: "mono", fontSize: "13" })}>
               463 GB · link lives 7 days
             </small>
             <Button size="sm" disabled>

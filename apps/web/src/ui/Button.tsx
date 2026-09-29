@@ -8,7 +8,7 @@ export const button = cva({
   base: {
     "& svg": {
       boxSize: "4",
-      transitionDuration: "[250ms]",
+      transitionDuration: "nudge",
       transitionProperty: "[transform]",
       transitionTimingFunction: "smooth",
     },
@@ -32,7 +32,7 @@ export const button = cva({
   },
   variants: {
     size: {
-      md: { fontSize: "[15px]", px: "6", py: "[15px]" },
+      md: { fontSize: "15", px: "6", py: "[15px]" },
       sm: { fontSize: "sm", px: "4", py: "[11px]" },
     },
     variant: {

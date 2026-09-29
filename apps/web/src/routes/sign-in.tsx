@@ -139,7 +139,7 @@ export default function SignIn() {
           <img
             class={css({
               aspectRatio: "landscape",
-              borderRadius: "[3px]",
+              borderRadius: "photo",
               filter: "[saturate(.9)]",
               objectFit: "cover",
               w: "full",
@@ -154,7 +154,7 @@ export default function SignIn() {
               fontFamily: "mono",
               fontSize: "[10px]",
               left: "3.5",
-              letterSpacing: "[.08em]",
+              letterSpacing: "label",
               pos: "absolute",
               textTransform: "uppercase",
             })}
@@ -184,7 +184,7 @@ export default function SignIn() {
             color: "mut",
             display: "grid",
             fontFamily: "mono",
-            fontSize: "[13px]",
+            fontSize: "13",
             gap: "1",
             left: "12",
             pos: "absolute",
@@ -226,19 +226,19 @@ export default function SignIn() {
         <div class={css({ lg: { visibility: "hidden" } })}>
           <Brand />
         </div>
-        <div class={css({ marginBlock: "auto", maxW: "[380px]", py: "16" })}>
+        <div class={css({ marginBlock: "auto", maxW: "narrow", py: "16" })}>
           <h1
             class={css({
-              fontSize: "[40px]",
+              fontSize: "40",
               fontWeight: "semibold",
-              letterSpacing: "[-0.035em]",
+              letterSpacing: "title",
               lineHeight: "[1.02]",
               textWrap: "balance",
             })}
           >
             Sign in to send <i class={css({ color: "blue" })}>the big stuff.</i>
           </h1>
-          <p class={css({ color: "mut", fontSize: "[17px]", mt: "4" })}>
+          <p class={css({ color: "mut", fontSize: "17", mt: "4" })}>
             One Google account. No password, no setup.
           </p>
           <button
@@ -247,7 +247,7 @@ export default function SignIn() {
               _disabled: { opacity: 0.6, pointerEvents: "none" },
               _focusVisible: {
                 outlineColor: "blue",
-                outlineOffset: "[3px]",
+                outlineOffset: "0.75",
                 outlineStyle: "solid",
                 outlineWidth: "2px",
               },
@@ -260,14 +260,14 @@ export default function SignIn() {
               borderRadius: "full",
               color: "[#1f1f1f]",
               display: "inline-flex",
-              fontSize: "[15px]",
+              fontSize: "15",
               fontWeight: "medium",
               gap: "3",
               h: "12",
               justifyContent: "center",
               mt: "8",
               px: "6",
-              shadow: "[0 0 0 1px #747775]",
+              shadow: "ringGoogle",
               transitionDuration: "normal",
               transitionProperty: "[background-color,box-shadow,translate]",
               transitionTimingFunction: "smooth",
@@ -312,18 +312,18 @@ export default function SignIn() {
                   class={css({
                     _focusVisible: {
                       outlineColor: "blue",
-                      outlineOffset: "[3px]",
+                      outlineOffset: "0.75",
                       outlineStyle: "solid",
                       outlineWidth: "2px",
                     },
                     bg: "white",
                     borderRadius: "full",
                     flex: "1",
-                    fontSize: "[15px]",
+                    fontSize: "15",
                     h: "12",
                     minW: "0",
                     px: "5",
-                    shadow: "[0 0 0 1px #747775]",
+                    shadow: "ringGoogle",
                   })}
                   id="staging-key"
                   name="key"
@@ -343,7 +343,7 @@ export default function SignIn() {
                     color: "paper",
                     display: "inline-flex",
                     flexShrink: 0,
-                    fontSize: "[15px]",
+                    fontSize: "15",
                     fontWeight: "medium",
                     h: "12",
                     justifyContent: "center",

@@ -28,7 +28,7 @@ export default function Brand() {
           fontSize: "xl",
           fontWeight: "bold",
           gap: "[9px]",
-          letterSpacing: "[-0.02em]",
+          letterSpacing: "snug",
         }),
       )}
       href="/"

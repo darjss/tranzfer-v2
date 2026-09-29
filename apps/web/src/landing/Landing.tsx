@@ -129,8 +129,8 @@ const shift = (i: number) => (i % 2 ? 1 : -1) * (8 + i * 4);
 const mono = css({
   color: "mut",
   fontFamily: "mono",
-  fontSize: "[11px]",
-  letterSpacing: "[.1em]",
+  fontSize: "11",
+  letterSpacing: "widest",
   textTransform: "uppercase",
 });
 const head = css({ maxW: "[60ch]", mb: "16" });
@@ -206,7 +206,7 @@ export default function Landing() {
       }}
       class={css({ overflowX: "clip" })}
     >
-      <div class={css({ marginInline: "auto", maxW: "[1180px]", pos: "relative", px: "7" })}>
+      <div class={css({ marginInline: "auto", maxW: "page", pos: "relative", px: "7" })}>
         <nav
           class={css({
             alignItems: "center",
@@ -386,7 +386,7 @@ export default function Landing() {
                   lineHeight: "[1.4]",
                   maxW: "[34ch]",
                   mb: "[34px]",
-                  mt: "[26px]",
+                  mt: "6.5",
                   textWrap: "[pretty]",
                 }),
               )}
@@ -398,7 +398,7 @@ export default function Landing() {
             <div
               class={cx(
                 "rv",
-                css({ alignItems: "center", display: "flex", flexWrap: "wrap", gap: "[26px]" }),
+                css({ alignItems: "center", display: "flex", flexWrap: "wrap", gap: "6.5" }),
               )}
               style="--d:200ms"
             >
@@ -409,7 +409,7 @@ export default function Landing() {
                 class={css({
                   "& span": {
                     display: "inline-block",
-                    transitionDuration: "[250ms]",
+                    transitionDuration: "nudge",
                     transitionProperty: "[translate]",
                     transitionTimingFunction: "smooth",
                   },
@@ -418,7 +418,7 @@ export default function Landing() {
                   borderBottomWidth: "1px",
                   borderColor: "ink/25",
                   color: "ink",
-                  fontSize: "[15px]",
+                  fontSize: "15",
                   fontWeight: "semibold",
                   paddingBottom: "0.5",
                   transitionDuration: "normal",
@@ -448,8 +448,8 @@ export default function Landing() {
         </div>
       </div>
 
-      <div class={css({ marginInline: "auto", maxW: "[1180px]", pos: "relative", px: "7" })}>
-        <section id="desk" class={css({ pos: "relative", py: { base: "20", lg: "[120px]" } })}>
+      <div class={css({ marginInline: "auto", maxW: "page", pos: "relative", px: "7" })}>
+        <section id="desk" class={css({ pos: "relative", py: { base: "20", lg: "30" } })}>
           <Ring style="left:60%;top:2%;width:120px;height:120px" />
           <Ink tone="red" style="left:34%;top:9%;width:120px;height:60px" viewBox="0 0 120 60">
             <path d="M4 50 C 30 10, 70 10, 112 30" style="--len:200" />
@@ -522,7 +522,7 @@ export default function Landing() {
                       "ph",
                       css({
                         aspectRatio: "landscape",
-                        borderRadius: "[3px]",
+                        borderRadius: "photo",
                         overflow: "hidden",
                         pos: "relative",
                       }),
@@ -544,8 +544,8 @@ export default function Landing() {
                     class={css({
                       fontSize: "xl",
                       fontWeight: "semibold",
-                      letterSpacing: "[-0.02em]",
-                      lineHeight: "[1.1]",
+                      letterSpacing: "snug",
+                      lineHeight: "compact",
                       mb: "1.5",
                       mt: "4",
                       mx: "1.5",
@@ -561,8 +561,8 @@ export default function Landing() {
                         color: "ok",
                         display: "inline-block",
                         fontFamily: "mono",
-                        fontSize: "[11px]",
-                        letterSpacing: "[.08em]",
+                        fontSize: "11",
+                        letterSpacing: "label",
                         mt: "3",
                         mx: "1.5",
                         textTransform: "uppercase",
@@ -577,7 +577,7 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="how" class={css({ pos: "relative", py: { base: "20", lg: "[120px]" } })}>
+        <section id="how" class={css({ pos: "relative", py: { base: "20", lg: "30" } })}>
           <Hand style="right:0;top:6%;--r:4deg;--d:.5s">
             planned for laptops
             <br />
@@ -617,14 +617,14 @@ export default function Landing() {
                         pos: "absolute",
                       },
                       bg: "panel",
-                      borderRadius: "[20px]",
+                      borderRadius: "card",
                       display: "flex",
                       flexDir: "column",
                       justifyContent: "flex-end",
                       minH: "[380px]",
                       overflow: "hidden",
                       pos: "relative",
-                      shadow: "[0 0 0 1px var(--colors-line)]",
+                      shadow: "ring",
                     }),
                   )}
                   style={`--d:${i() * 80}ms`}
@@ -644,28 +644,28 @@ export default function Landing() {
                     alt=""
                     loading="lazy"
                   />
-                  <div class={css({ color: "paper", p: "[26px]", pos: "relative", zIndex: 1 })}>
+                  <div class={css({ color: "paper", p: "6.5", pos: "relative", zIndex: 1 })}>
                     <span
                       class={css({
                         color: "[#9fb0ff]",
                         fontFamily: "mono",
                         fontSize: "xs",
-                        letterSpacing: "[.1em]",
+                        letterSpacing: "widest",
                       })}
                     >
                       0{i() + 1}
                     </span>
                     <h3
                       class={css({
-                        fontSize: "[26px]",
+                        fontSize: "26",
                         fontWeight: "semibold",
-                        letterSpacing: "[-0.025em]",
+                        letterSpacing: "tight",
                         my: "2.5",
                       })}
                     >
                       {s.h}
                     </h3>
-                    <p class={css({ color: "[#c9c6bc]", fontSize: "[15px]" })}>{s.p}</p>
+                    <p class={css({ color: "[#c9c6bc]", fontSize: "15" })}>{s.p}</p>
                   </div>
                 </div>
               )}
@@ -725,7 +725,7 @@ export default function Landing() {
             borderTopWidth: "1px",
             color: "mut",
             display: "flex",
-            fontSize: "[13px]",
+            fontSize: "13",
             justifyContent: "space-between",
             paddingBottom: "[60px]",
             pt: "7",

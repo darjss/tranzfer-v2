@@ -65,16 +65,16 @@ export function DeliveryPane(props: Props) {
   };
 
   return (
-    <section class={css({ maxW: "[860px]", pb: "32", px: { base: "6", sm: "12" }, py: "10" })}>
+    <section class={css({ maxW: "pane", pb: "32", px: { base: "6", sm: "12" }, py: "10" })}>
       <p class={css({ color: "mut", fontFamily: "mono", fontSize: "xs" })}>
         Sent {sentAt(props.delivery.createdAt)} · keeps {props.delivery.retentionDays}{" "}
         {props.delivery.retentionDays === 1 ? "day" : "days"} after upload
       </p>
       <h1
         class={css({
-          fontSize: "[40px]",
+          fontSize: "40",
           fontWeight: "semibold",
-          letterSpacing: "[-0.035em]",
+          letterSpacing: "title",
           lineHeight: "tight",
           mt: "2",
         })}
@@ -88,10 +88,10 @@ export function DeliveryPane(props: Props) {
           borderRadius: "2xl",
           mt: "8",
           p: "6",
-          shadow: "[0 0 0 1px var(--colors-line)]",
+          shadow: "ring",
         })}
       >
-        <p class={css({ fontFamily: "mono", fontSize: "[26px]", letterSpacing: "[-0.02em]" })}>
+        <p class={css({ fontFamily: "mono", fontSize: "26", letterSpacing: "snug" })}>
           {bytes(roll().confirmed)}
           <span class={css({ color: "mut", fontSize: "md" })}> of {bytes(total())} confirmed</span>
         </p>
@@ -102,9 +102,7 @@ export function DeliveryPane(props: Props) {
           thick
           tone={status().tone}
         />
-        <p class={cx(css({ fontSize: "[15px]", mt: "3" }), toneText[status().tone])}>
-          {status().long}
-        </p>
+        <p class={cx(css({ fontSize: "15", mt: "3" }), toneText[status().tone])}>{status().long}</p>
         <Show when={roll().uploading && props.online && roll().speed > 0}>
           <p class={css({ color: "mut", fontFamily: "mono", fontSize: "xs", mt: "1" })}>
             {speedAt(roll().speed)} · {etaAt(total() - roll().confirmed, roll().speed)} left
@@ -179,7 +177,7 @@ export function DeliveryPane(props: Props) {
             pl: "4",
             pr: "1.5",
             py: "1.5",
-            shadow: "[0 0 0 1px var(--colors-line)]",
+            shadow: "ring",
           })}
         >
           <span

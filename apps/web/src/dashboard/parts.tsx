@@ -53,7 +53,7 @@ export const Avatar = (props: { name: string }) => (
       boxSize: "8",
       color: "paper",
       display: "grid",
-      fontSize: "[13px]",
+      fontSize: "13",
       fontWeight: "semibold",
       placeItems: "center",
     })}

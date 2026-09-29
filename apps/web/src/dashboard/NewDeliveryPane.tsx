@@ -62,12 +62,12 @@ export function NewDeliveryPane(props: Props) {
   };
 
   return (
-    <section class={css({ maxW: "[860px]", px: { base: "6", sm: "12" }, py: "10" })}>
+    <section class={css({ maxW: "pane", px: { base: "6", sm: "12" }, py: "10" })}>
       <h1
         class={css({
-          fontSize: "[40px]",
+          fontSize: "40",
           fontWeight: "semibold",
-          letterSpacing: "[-0.035em]",
+          letterSpacing: "title",
           lineHeight: "tight",
         })}
       >
@@ -164,9 +164,7 @@ export function NewDeliveryPane(props: Props) {
             >
               <PhUploadSimpleBold class={css({ boxSize: "6" })} />
             </span>
-            <p class={css({ fontSize: "[17px]", fontWeight: "semibold" })}>
-              Drop a folder or files
-            </p>
+            <p class={css({ fontSize: "17", fontWeight: "semibold" })}>Drop a folder or files</p>
             <p class={css({ color: "mut", fontSize: "sm" })}>
               or{" "}
               <button
@@ -257,12 +255,12 @@ export function NewDeliveryPane(props: Props) {
                     ? css({
                         bg: "ink",
                         color: "paper",
-                        shadow: "[0 0 0 1px var(--colors-ink)]",
+                        shadow: "ringInk",
                       })
                     : css({
                         _hover: { bg: "panel" },
                         color: "ink",
-                        shadow: "[0 0 0 1px var(--colors-line)]",
+                        shadow: "ring",
                       }),
                 )}
               >

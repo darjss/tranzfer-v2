@@ -24,7 +24,7 @@ export function Hand(props: ParentProps<{ tone?: Tone; style: string }>) {
           fontFamily: "hand",
           fontSize: "[22px]",
           fontWeight: "semibold",
-          lineHeight: "[1.1]",
+          lineHeight: "compact",
           opacity: 0,
           pointerEvents: "none",
           pos: "absolute",
@@ -127,7 +127,7 @@ export function Still(props: { src: string; label: string; style: string; in?: b
             fontFamily: "mono",
             fontSize: "[9px]",
             left: "2",
-            letterSpacing: "[.08em]",
+            letterSpacing: "label",
             pos: "absolute",
             textTransform: "uppercase",
           },
@@ -160,7 +160,7 @@ export function Still(props: { src: string; label: string; style: string; in?: b
         src={props.src}
         alt=""
         class={css({
-          borderRadius: "[3px]",
+          borderRadius: "photo",
           boxSize: "full",
           filter: "[saturate(.9) contrast(1.05)]",
           objectFit: "cover",

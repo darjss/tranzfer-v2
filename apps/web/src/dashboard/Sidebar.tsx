@@ -139,7 +139,7 @@ export function Sidebar(props: Props) {
                         props.selectedId === delivery.id
                           ? css({
                               bg: "paper",
-                              shadow: "[0 0 0 1px var(--colors-line)]",
+                              shadow: "ring",
                             })
                           : css({ _hover: { bg: "paper/60" } }),
                       )}
@@ -159,7 +159,7 @@ export function Sidebar(props: Props) {
                       >
                         <b
                           class={css({
-                            fontSize: "[15px]",
+                            fontSize: "15",
                             fontWeight: "semibold",
                             truncate: true,
                           })}
