@@ -69,7 +69,7 @@ function Row(props: {
     <li
       class={cx(
         css({
-          "&:has(> button:focus-visible)": {
+          "&:has([data-open]:focus-visible)": {
             outline: "[2px solid var(--colors-blue)]",
             outlineOffset: "[2px]",
           },
@@ -107,6 +107,7 @@ function Row(props: {
             textAlign: "left",
             truncate: true,
           })}
+          data-open=""
           onClick={() => {
             props.select(props.delivery.id);
           }}
