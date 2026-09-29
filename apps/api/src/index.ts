@@ -22,8 +22,6 @@ import { deployStage } from "./infrastructure/stage";
 import { App } from "./resources";
 import { ApiWorker } from "./worker";
 
-export { ApiWorker } from "./worker";
-
 export default ApiWorker.make(
   {
     compatibility: { date: "2026-09-08" },
