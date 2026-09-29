@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-${{ github.ref_name }}
+  group: deploy-${{ github.ref_name == 'main' && 'production' || 'staging' }}
   cancel-in-progress: false
 
 permissions:
@@ -14,6 +14,8 @@ permissions:
 
 jobs:
   deploy:
+    # workflow_dispatch can target any branch; only main and dev may deploy.
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
@@ -25,6 +27,7 @@ jobs:
         with:
           node-version: "24"
           cache: true
+      - run: vp check
       - name: Deploy production
         if: github.ref == 'refs/heads/main'
         run: vp run deploy
@@ -36,11 +39,16 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy staging
-        if: github.ref != 'refs/heads/main'
+        if: github.ref == 'refs/heads/dev'
         run: vp run --filter @tranzfer/infra deploy:staging
         env:
           TEST_LOGIN_KEY: ${{ secrets.TEST_LOGIN_KEY }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Health check
-        run: curl -fsS --retry 10 --retry-all-errors --retry-delay 6 https://${{ github.ref_name == 'main' && 'tranzfer.app' || 'staging.tranzfer.app' }}/infra | jq -e '.health.ok and .bindings.d1 and .bindings.r2 and .bindings.s3 and .web'
+      # Production doesn't serve the /infra binding probe.
+      - name: Health check production
+        if: github.ref == 'refs/heads/main'
+        run: curl -fsS --retry 10 --retry-all-errors --retry-delay 6 https://tranzfer.app/api/auth/ok | jq -e '.ok'
+      - name: Health check staging
+        if: github.ref == 'refs/heads/dev'
+        run: curl -fsS --retry 10 --retry-all-errors --retry-delay 6 https://staging.tranzfer.app/infra | jq -e '.health.ok and .bindings.d1 and .bindings.r2 and .bindings.s3 and .web'

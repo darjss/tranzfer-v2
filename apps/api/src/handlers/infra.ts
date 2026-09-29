@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { Files } from "../resources";
+import { deployStage } from "../services/stage";
 import { Storage } from "../services/storage";
 
 export const InfraHandlers = Layer.mergeAll(
@@ -20,6 +21,7 @@ export const InfraHandlers = Layer.mergeAll(
       const db = yield* Drizzle;
       const files = yield* Cloudflare.R2.ReadBucket(Files);
       const storage = yield* Storage;
+      const stage = yield* deployStage;
 
       const probeD1 = db
         .run("infra.probeD1", (d) => d.get<{ ok: number }>(sql`SELECT 1 AS ok`))
@@ -51,12 +53,15 @@ export const InfraHandlers = Layer.mergeAll(
         Effect.asVoid,
       );
 
+      // The probe is public and unauthenticated; production doesn't serve it.
       return Effect.fn("InfraHandlers.Infra")(() =>
-        probeD1.pipe(
-          Effect.andThen(probeR2),
-          Effect.andThen(storage.available ? probeS3 : Effect.void),
-          Effect.map(() => ({ d1: true, r2: true, s3: storage.available })),
-        ),
+        stage === "production"
+          ? Effect.die(new Error("Infra probe is off in production"))
+          : probeD1.pipe(
+              Effect.andThen(probeR2),
+              Effect.andThen(storage.available ? probeS3 : Effect.void),
+              Effect.map(() => ({ d1: true, r2: true, s3: storage.available })),
+            ),
       );
     }),
   ),

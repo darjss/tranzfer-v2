@@ -1,8 +1,12 @@
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Output from "alchemy/Output";
+import { Stage } from "alchemy/Stage";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+
+import { isPreviewStage } from "./services/stage";
 
 const DAY_SECONDS = 24 * 60 * 60;
 
@@ -31,15 +35,22 @@ export const Files = Cloudflare.R2.Bucket("Files", {
       maxAgeSeconds: 3600,
     },
   ],
+  // Preview stacks are torn down when their PR closes; R2 refuses to delete
+  // a bucket that still holds objects.
+  forceDestroy: Output.fromEffect(
+    Effect.map(Effect.serviceOption(Stage), Option.exists(isPreviewStage)),
+  ),
   lifecycleRules: [
     {
       abortMultipartUploadsTransition: { condition: { maxAge: 7 * DAY_SECONDS, type: "Age" } },
       id: "abort-incomplete-multipart",
     },
     {
-      // Backstop only; the app-level sweeper owns real expiry. This must
-      // outlive max retention (14 days from finalization) plus open/upload
-      // time, so objects under a live link are never deleted early.
+      // Backstop only. No app-level expiry sweep exists yet (planned in
+      // docs/plan/01-foundation.md), so objects can outlive retention until
+      // this fires. It must outlive max retention (14 days from finalization)
+      // plus open/upload time, so objects under a live link are never deleted
+      // early.
       deleteObjectsTransition: { condition: { maxAge: 30 * DAY_SECONDS, type: "Age" } },
       id: "expire-deliveries",
       prefix: "d/",
