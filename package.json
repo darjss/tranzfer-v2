@@ -10,7 +10,7 @@
     "build": "vp run -r build",
     "build:web": "vp run --filter @tranzfer/web build",
     "start": "vp run --filter @tranzfer/web start",
-    "test": "vp run --filter @tranzfer/web test",
+    "test": "vp run --filter @tranzfer/api test",
     "test:e2e": "vp run --filter @tranzfer/e2e test",
     "lint": "vp lint",
     "fmt": "vp fmt",

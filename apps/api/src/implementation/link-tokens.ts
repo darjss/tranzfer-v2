@@ -7,9 +7,6 @@ import * as Redacted from "effect/Redacted";
 
 const encoder = new TextEncoder();
 
-// 22 base64url chars keep 132 bits of the HMAC; plenty against forgery.
-const SIGNATURE_LENGTH = 22;
-
 /** A fresh, unguessable link id. */
 export const newLinkId = Effect.sync(() =>
   Encoding.encodeBase64Url(crypto.getRandomValues(new Uint8Array(16))),
@@ -40,7 +37,7 @@ export class LinkTokens extends Context.Service<
                   encoder.encode(Redacted.value(value)),
                   { hash: "SHA-256", name: "HMAC" },
                   false,
-                  ["sign"],
+                  ["sign", "verify"],
                 ),
             ),
           ),
@@ -50,11 +47,7 @@ export class LinkTokens extends Context.Service<
             Effect.promise(
               async () => await crypto.subtle.sign("HMAC", hmac, encoder.encode(linkId)),
             ),
-          ).pipe(
-            Effect.map((digest) =>
-              Encoding.encodeBase64Url(new Uint8Array(digest)).slice(0, SIGNATURE_LENGTH),
-            ),
-          );
+          ).pipe(Effect.map((digest) => Encoding.encodeBase64Url(new Uint8Array(digest))));
 
         return LinkTokens.of({
           issue: Effect.fn("LinkTokens.issue")(function* issue(linkId: string) {
@@ -65,12 +58,17 @@ export class LinkTokens extends Context.Service<
             if (!linkId || signature === undefined || rest.length > 0) {
               return Option.none();
             }
-            const expected = encoder.encode(yield* sign(linkId));
-            const provided = encoder.encode(signature);
-            return provided.length === expected.length &&
-              crypto.subtle.timingSafeEqual(provided, expected)
-              ? Option.some(linkId)
-              : Option.none();
+            const decoded = Encoding.decodeBase64Url(signature);
+            if (decoded._tag === "Failure") {
+              return Option.none();
+            }
+            const hmac = yield* key;
+            // WebCrypto's HMAC verify compares in constant time.
+            const valid = yield* Effect.promise(
+              async () =>
+                await crypto.subtle.verify("HMAC", hmac, decoded.success, encoder.encode(linkId)),
+            );
+            return valid ? Option.some(linkId) : Option.none();
           }),
         });
       }),

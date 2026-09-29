@@ -4,6 +4,9 @@
   "description": "Tranzfer HTTP API Worker.",
   "license": "MIT",
   "type": "module",
+  "scripts": {
+    "test": "vp test"
+  },
   "dependencies": {
     "@alchemy.run/better-auth": "2.0.0-beta.79",
     "@distilled.cloud/aws": "1.0.0-rc.12",
@@ -17,7 +20,9 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
+    "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "5.0.1"
   }
 }
