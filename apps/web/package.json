@@ -28,6 +28,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.54.8",
     "@cloudflare/workers-types": "catalog:",
+    "@effect/vitest": "catalog:",
     "@iconify-json/ph": "1.2.2",
     "@pandacss/dev": "1.12.1",
     "@pandacss/preset-base": "1.12.1",

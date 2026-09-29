@@ -6,7 +6,8 @@ export type TransferPhase = "queued" | "uploading" | "finalizing" | "done" | "fa
 export interface TransferProgress {
   readonly bytesPerSecond: number;
   readonly confirmed: number;
-  readonly error: string | undefined;
+  /** What stopped a failed transfer; the UI turns it into words with appError. */
+  readonly error: unknown;
   readonly inFlight: number;
   readonly phase: TransferPhase;
 }
@@ -39,11 +40,6 @@ export const isActive = (progress: TransferProgress | undefined) =>
   (progress.phase === "queued" ||
     progress.phase === "uploading" ||
     progress.phase === "finalizing");
-
-// Uppy callbacks write this from arbitrary scopes.
-export const [deliveriesVersion, bumpDeliveries] = createRoot(() =>
-  createSignal(0, { ownedWrite: true }),
-);
 
 export const [online, setOnline] = createRoot(() => createSignal(true, { ownedWrite: true }));
 
