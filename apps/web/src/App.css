@@ -30,6 +30,13 @@
     display: block;
     max-width: 100%;
   }
+  :focus-visible {
+    outline: 2px solid var(--colors-blue);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background-color: rgb(39 64 196 / 0.18);
+  }
 }
 
 .paper-dots {

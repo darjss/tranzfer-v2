@@ -1,18 +1,34 @@
 import { Meta, Title } from "@solidjs/meta";
 import { useNavigate, useSearchParams } from "@solidjs/router";
-import { clientOnly, isServer } from "@solidjs/web";
-import { Unauthorized } from "@tranzfer/contracts";
-import * as Effect from "effect/Effect";
-import { createMemo, Errored, Loading, onSettled, Show, useContext } from "solid-js";
+import { clientOnly } from "@solidjs/web";
+import { defaultRetentionDays } from "@tranzfer/contracts";
+import type { RetentionDays } from "@tranzfer/contracts";
+import * as Exit from "effect/Exit";
+import {
+  createMemo,
+  createSignal,
+  Errored,
+  Loading,
+  onSettled,
+  refresh,
+  Show,
+  useContext,
+} from "solid-js";
 import { css, cx } from "styled-system/css";
 
 import { ApiClient } from "../api/client";
+import { appError } from "../api/errors";
 import { runEffect, RuntimeContext } from "../api/solid-effect";
-import { DeliveryPane } from "../dashboard/DeliveryPane";
-import { NewDeliveryPane } from "../dashboard/NewDeliveryPane";
-import { Sidebar } from "../dashboard/Sidebar";
-import { deliveriesVersion, online } from "../uploads/store";
-import { getUploads } from "../uploads/uppy";
+import { Board } from "../dashboard/Board";
+import { DeliverySheet } from "../dashboard/DeliverySheet";
+import { SendCard } from "../dashboard/SendCard";
+import { TopBar } from "../dashboard/TopBar";
+import { inkStrokes } from "../landing/notebook";
+import { online, transfers, wireWindow } from "../uploads/store";
+import { chosenFiles, getDroppedFiles, invalidPaths, Uploads } from "../uploads/uploads";
+import "../dashboard/dashboard.css";
+
+const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
 
 const Redirect = (props: { to: string }) => {
   const navigate = useNavigate();
@@ -22,37 +38,155 @@ const Redirect = (props: { to: string }) => {
   return null;
 };
 
+// First run, or nothing live right now: one warm note, no fake data.
+const Empty = (props: { firstRun: boolean }) => (
+  <div
+    class={css({
+      bg: "panel",
+      borderRadius: "photo",
+      maxW: "[420px]",
+      mb: "12",
+      mt: { base: "4", lg: "16" },
+      mx: "auto",
+      pos: "relative",
+      px: "7",
+      py: "8",
+      rotate: "[1.5deg]",
+      shadow: "paper",
+    })}
+  >
+    <span aria-hidden="true" class="tape" />
+    <p
+      class={css({
+        color: "blue",
+        fontFamily: "hand",
+        fontSize: "26",
+        fontWeight: "semibold",
+        lineHeight: "compact",
+        rotate: "[-2deg]",
+      })}
+    >
+      {props.firstRun ? "your first delivery lands here" : "all quiet on the desk"}
+    </p>
+    <h2 class={css({ fontWeight: "semibold", mt: "4" })}>
+      {props.firstRun ? "Nothing sent yet." : "Nothing moving right now."}
+    </h2>
+    <p class={css({ color: "mut", mt: "1.5", textStyle: "sm" })}>
+      Drop files on the card. They show up here with live progress, then a link you can copy and
+      send to anyone.
+    </p>
+  </div>
+);
+
 const DeliveriesPage = () => {
   const runtime = useContext(RuntimeContext);
-  // The upload engine is client-only; constructing it touches window.
-  if (!isServer) {
-    getUploads(runtime);
-  }
-
   const [searchParams, setSearchParams] = useSearchParams<{ d?: string }>();
-  const select = (id: string | undefined) => {
+  const select = (id?: string) => {
     setSearchParams({ d: id });
   };
 
-  const me = createMemo(() => runEffect(ApiClient.pipe(Effect.flatMap((api) => api.Me()))));
+  const me = createMemo(() => runEffect(ApiClient.use((api) => api.Me())));
+  // A finished local upload changes its delivery on the server, so the list
+  // re-reads whenever one lands. Sends and cancels refresh it themselves.
+  const finished = createMemo(
+    () => Object.values(transfers).filter((progress) => progress.phase === "done").length,
+  );
   const deliveries = createMemo(() => {
-    deliveriesVersion();
-    return runEffect(ApiClient.pipe(Effect.flatMap((api) => api.Deliveries())));
+    finished();
+    return runEffect(ApiClient.use((api) => api.Deliveries()));
   });
   const selected = () => {
     const id = searchParams.d;
-    return id === undefined ? undefined : deliveries()?.find((d) => d.id === id);
+    return id === undefined ? undefined : deliveries().find((delivery) => delivery.id === id);
+  };
+  const changed = () => {
+    void refresh(deliveries);
+  };
+
+  const [retention, setRetention] = createSignal<RetentionDays>(defaultRetentionDays);
+  const [sending, setSending] = createSignal(false);
+  const [problems, setProblems] = createSignal<readonly string[]>([]);
+  const [dragging, setDragging] = createSignal(false);
+  let filesInput: HTMLInputElement | undefined;
+  let folderInput: HTMLInputElement | undefined;
+
+  const send = async (picked: Iterable<File>) => {
+    if (sending()) {
+      return;
+    }
+    const chosen = chosenFiles(picked);
+    if (chosen.length === 0) {
+      return;
+    }
+    const bad = invalidPaths(chosen);
+    if (bad.length > 0) {
+      setProblems(bad.map((path) => `"${path}" isn't a path we can carry safely.`));
+      return;
+    }
+    setProblems([]);
+    setSending(true);
+    const days = retention();
+    const exit = await runtime.runPromiseExit(Uploads.use((uploads) => uploads.send(chosen, days)));
+    setSending(false);
+    if (Exit.isFailure(exit)) {
+      setProblems([`${appError(exit.cause).message} Nothing was uploaded.`]);
+      return;
+    }
+    changed();
+  };
+
+  const sendDropped = async (dropped: DataTransfer) => {
+    await send(await getDroppedFiles(dropped));
+  };
+
+  // The whole window is the drop target. dragleave with no relatedTarget
+  // means the pointer left the window, not just moved between children.
+  onSettled(() => {
+    wireWindow();
+    const over = (event: DragEvent) => {
+      if (hasFiles(event)) {
+        event.preventDefault();
+        setDragging(true);
+      }
+    };
+    const leave = (event: DragEvent) => {
+      if (event.relatedTarget === null) {
+        setDragging(false);
+      }
+    };
+    const drop = (event: DragEvent) => {
+      if (!hasFiles(event) || event.dataTransfer === null) {
+        return;
+      }
+      event.preventDefault();
+      setDragging(false);
+      void sendDropped(event.dataTransfer);
+    };
+    window.addEventListener("dragover", over);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("drop", drop);
+    };
+  });
+
+  const onPicked = (event: Event & { currentTarget: HTMLInputElement }) => {
+    const input = event.currentTarget;
+    void send([...(input.files ?? [])]);
+    input.value = "";
   };
 
   return (
     <>
-      <Title>Deliveries — Tranzfer</Title>
+      <Title>Deliveries · Tranzfer</Title>
       <Meta name="description" content="Your Tranzfer deliveries." />
       <Loading fallback={<main class={css({ minH: "screen" })} />}>
         <Errored
           fallback={(error, retry) => (
             <Show
-              when={error() instanceof Unauthorized}
+              when={appError(error()).tag === "Unauthorized"}
               fallback={
                 <main
                   class={css({ display: "grid", minH: "screen", placeItems: "center" })}
@@ -60,7 +194,7 @@ const DeliveriesPage = () => {
                 >
                   <div class={css({ textAlign: "center" })}>
                     <p class={css({ color: "mut", textStyle: "sm" })}>
-                      We couldn't load your deliveries.
+                      {appError(error()).message}
                     </p>
                     <button
                       class={css({ color: "ink", mt: "3", textDecoration: "underline" })}
@@ -79,53 +213,164 @@ const DeliveriesPage = () => {
         >
           <div
             class={css({
-              display: "flex",
-              flexDir: "column",
-              lg: { display: "grid", gridTemplateColumns: "[300px 1fr]" },
+              marginInline: "auto",
+              maxW: "page",
               minH: "screen",
+              pb: "24",
+              px: { base: "5", sm: "7" },
             })}
           >
-            <Sidebar
-              deliveries={deliveries()}
-              online={online()}
+            <TopBar
               principal={me()}
-              select={select}
-              selectedId={searchParams.d}
+              send={() => {
+                filesInput?.click();
+              }}
             />
-            <main class={cx("paper-dots", css({ lgDown: { order: "1" }, minH: "screen" }))}>
-              <Show when={!online()}>
-                <p
+            <Show when={!online()}>
+              <p
+                class={css({
+                  bg: "amber/10",
+                  borderRadius: "xl",
+                  color: "[#8a4f00]",
+                  fontWeight: "medium",
+                  mt: "4",
+                  px: "4",
+                  py: "2.5",
+                  textStyle: "sm",
+                })}
+                role="status"
+              >
+                Connection lost. We'll continue when you're back online.
+              </p>
+            </Show>
+            <main
+              class={css({
+                alignItems: "start",
+                display: "grid",
+                gap: { base: "10", lg: "16" },
+                gridTemplateColumns: { base: "1fr", lg: "[minmax(0,5fr) minmax(0,6fr)]" },
+                pt: { base: "6", lg: "12" },
+              })}
+            >
+              <div class={css({ lg: { pos: "sticky", top: "8" } })}>
+                <h1
                   class={css({
-                    bg: "panel",
-                    borderBottomWidth: "1px",
-                    borderColor: "line",
-                    color: "amber",
-                    px: { base: "6", sm: "12" },
-                    py: "2.5",
-                    textStyle: "sm",
+                    fontSize: { base: "[34px]", lg: "[56px]" },
+                    fontWeight: "semibold",
+                    letterSpacing: "[-0.04em]",
+                    lineHeight: "[.98]",
+                    mb: { base: "6", lg: "4" },
+                    textWrap: "balance",
                   })}
                 >
-                  Connection lost. We'll continue when you're back online.
-                </p>
-              </Show>
-              <Show
-                when={selected()}
-                fallback={<NewDeliveryPane runtime={runtime} select={select} />}
-              >
-                {(delivery) => (
-                  <DeliveryPane delivery={delivery()} online={online()} runtime={runtime} />
-                )}
-              </Show>
+                  Send something <br />
+                  <span class={css({ display: "inline-block", pos: "relative" })}>
+                    <span class={css({ color: "blue", fontStyle: "italic" })}>big.</span>
+                    <svg
+                      aria-hidden="true"
+                      class={cx(
+                        "in",
+                        inkStrokes,
+                        css({
+                          bottom: "-1.5",
+                          color: "blue",
+                          h: "3.5",
+                          left: "-1",
+                          opacity: 0.8,
+                          overflow: "visible",
+                          pointerEvents: "none",
+                          pos: "absolute",
+                          right: "-1",
+                        }),
+                      )}
+                      preserveAspectRatio="none"
+                      viewBox="0 0 120 20"
+                    >
+                      <path d="M3 14 C 30 5, 70 17, 117 7" style="--len:130" />
+                    </svg>
+                  </span>
+                </h1>
+                <SendCard
+                  dragging={dragging()}
+                  pickFiles={() => {
+                    filesInput?.click();
+                  }}
+                  pickFolder={() => {
+                    folderInput?.click();
+                  }}
+                  problems={problems()}
+                  retention={retention()}
+                  sending={sending()}
+                  setRetention={(days) => {
+                    setRetention(days);
+                  }}
+                />
+              </div>
+              <div>
+                <Show
+                  when={
+                    !deliveries().some(
+                      (delivery) => delivery.status === "open" || delivery.status === "ready",
+                    )
+                  }
+                >
+                  <Empty firstRun={deliveries().length === 0} />
+                </Show>
+                <Board deliveries={deliveries()} online={online()} select={select} />
+              </div>
             </main>
           </div>
+          <input
+            class={css({ display: "none" })}
+            multiple
+            onChange={onPicked}
+            ref={(element) => {
+              filesInput = element;
+            }}
+            type="file"
+          />
+          <input
+            class={css({ display: "none" })}
+            onChange={onPicked}
+            ref={(element) => {
+              folderInput = element;
+            }}
+            type="file"
+            webkitdirectory=""
+          />
+          <div
+            aria-hidden="true"
+            class={cx(
+              "drop-veil",
+              css({
+                bg: "paper/70",
+                borderColor: "blue",
+                borderRadius: "card",
+                borderStyle: "dashed",
+                borderWidth: "[2px]",
+                inset: "3",
+                pos: "fixed",
+                zIndex: 50,
+              }),
+            )}
+            data-on={String(dragging())}
+          />
+          <DeliverySheet
+            changed={changed}
+            close={() => {
+              select();
+            }}
+            delivery={selected()}
+            online={online()}
+          />
         </Errored>
       </Loading>
     </>
   );
 };
 
-// Schema class instances cannot cross the SSR hydration boundary, so the
-// page mounts client-side only; the server renders the loading shell.
+// Uppy and the window listeners are browser-only, so the dashboard mounts
+// on the client; the server renders the empty shell.
 const LazyDeliveries = clientOnly(async () => await Promise.resolve({ default: DeliveriesPage }));
 
 export default function Deliveries() {
