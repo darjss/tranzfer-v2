@@ -116,13 +116,15 @@ export class Transfers extends Context.Service<
         });
 
       /**
-       * Closes the key, then checks what landed. `finalizing` stops new uploads
-       * from being created or given parts; aborting every open multipart upload
-       * kills URLs signed earlier. After that only the verified object remains,
-       * and no signed URL can replace it.
+       * Trusts the object only after closing its key. Nothing is sealed until
+       * an object exists, so a paused or still-running upload is never aborted.
+       * Then `finalizing` stops new uploads and parts, aborting every open
+       * multipart upload kills URLs signed earlier, and the second HEAD reads
+       * the object that can no longer change.
        */
       const settle = (transfer: Transfer) =>
         Effect.gen(function* settleTransfer() {
+          yield* verify(transfer, yield* storage.head(transfer.objectKey));
           yield* db
             .update(schema.transfer)
             .set({ state: "finalizing" })
@@ -130,8 +132,8 @@ export class Transfers extends Context.Service<
               and(eq(schema.transfer.id, transfer.id), eq(schema.transfer.state, "uploading")),
             );
           yield* storage.seal(transfer.objectKey);
-          const object = yield* storage.head(transfer.objectKey);
-          return yield* complete(transfer, yield* verify(transfer, object));
+          const sealed = yield* verify(transfer, yield* storage.head(transfer.objectKey));
+          return yield* complete(transfer, sealed);
         });
 
       /**

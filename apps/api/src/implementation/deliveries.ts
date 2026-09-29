@@ -5,6 +5,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
@@ -16,6 +17,7 @@ import { Storage } from "./storage";
 const TRANSFER_ROWS_PER_INSERT = 12;
 // Deliveries purged per sweep; each is one list plus one bulk delete per 1000 files.
 const PURGE_BATCH = 20;
+const CANCEL_SETTLE = Duration.minutes(5);
 
 export const objectPrefix = (deliveryId: DeliveryId) => `d/${deliveryId}/`;
 
@@ -50,7 +52,7 @@ export class Deliveries extends Context.Service<
       input: NewDelivery,
     ) => Effect.Effect<Delivery, DeliveryConflict>;
     readonly list: (senderId: string) => Effect.Effect<readonly Delivery[]>;
-    /** Stops signing, kills the link, aborts uploads and removes the objects. */
+    /** Stops signing, kills the link, aborts uploads and removes the objects; the sweeper confirms later. */
     readonly cancel: (
       senderId: string,
       deliveryId: DeliveryId,
@@ -148,7 +150,7 @@ export class Deliveries extends Context.Service<
             deliveryId,
 
             row.transfers.map((transfer) => transfer.objectKey),
-          ).pipe(Effect.tap((removed) => (removed ? markPurged(deliveryId) : Effect.void)));
+          );
           return yield* view(deliveryId);
         }, dieOnDatabaseError),
 
@@ -233,7 +235,16 @@ export class Deliveries extends Context.Service<
             columns: { id: true },
             limit: PURGE_BATCH,
             where: {
-              OR: [{ status: "cancelled" }, { expiresAt: { lte: new Date(now) }, status: "ready" }],
+              OR: [
+                // Cancel removed the objects already. A Complete that was in
+                // flight at that moment can still land one, so purge again once
+                // such requests are long over, and only then record it.
+                {
+                  status: "cancelled",
+                  updatedAt: { lte: new Date(now - Duration.toMillis(CANCEL_SETTLE)) },
+                },
+                { expiresAt: { lte: new Date(now) }, status: "ready" },
+              ],
               purgedAt: { isNull: true },
             },
             with: { transfers: { columns: { objectKey: true } } },

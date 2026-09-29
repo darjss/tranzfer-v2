@@ -217,10 +217,10 @@ How the API does it today:
 
 - Every non-empty file uploads as multipart. A multipart upload id stops accepting writes once it is completed or aborted, so no earlier URL can replace the object. An empty file has no part to send; it is one `PUT` signed with `If-None-Match: *`, which can create the object but never replace it. This is how a finalized file stays the file that was verified.
 - Signing `Complete` moves the transfer to `finalizing`. From then on only `Complete` and `List` sign; no new upload, no new parts.
-- Finalize seals the key before trusting it: it aborts every other open multipart upload on the key, then checks the object and records its ETag. A second upload a sender prepared earlier dies with `NoSuchUpload`. The sweeper finishes `finalizing` transfers the same way when the browser left.
+- Finalize seals the key before trusting it, but only once an object exists, so a paused upload is never aborted. It aborts every other open multipart upload on the key, then reads the object again and records that ETag. A second upload a sender prepared earlier dies with `NoSuchUpload`. The sweeper finishes `finalizing` transfers the same way when the browser left.
 - Finalize claims the transfer with a conditional update, then flips the delivery to `ready` only when no transfer is left incomplete. The flip is one idempotent statement that every finalize and every sweep runs, so a finalize that died between the two writes heals on the next sweep. Concurrent finalizes, the sweeper and a racing cancel all converge.
 - Transfers stuck in `finalizing` are rechecked oldest-first; a miss bumps `updated_at`, so misses rotate instead of starving newer rows.
-- Cancel writes D1 first, so signing stops and the link dies at once. Then it aborts the delivery's multipart uploads and bulk-deletes its objects. Nothing signed before the cancel can bring an object back. A storage failure leaves `purged_at` unset and the per-minute sweeper retries; it also purges expired deliveries.
+- Cancel writes D1 first, so signing stops and the link dies at once. Then it aborts the delivery's multipart uploads and bulk-deletes its objects. A `Complete` already in flight can still land an object, so five minutes later the sweeper purges again and only then records `purged_at`. A storage failure leaves it unset and the next sweep retries. The sweeper also purges expired deliveries.
 - Opening a link signs download URLs without re-checking each object: the seal above is what makes that safe.
 
 ## Downloads

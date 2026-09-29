@@ -87,6 +87,8 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       expect(yield* transfers.finalize("ben", one.id)).toEqual(halfway);
 
       expect(storage.sealed).toContain(one.objectKey);
+      // A missing object is never sealed, so an upload still running survives.
+      expect(storage.sealed).not.toContain(two.objectKey);
 
       storage.objects.set(two.objectKey, { etag: "b", size: 6 });
       const ready = yield* transfers.finalize("ben", two.id);
