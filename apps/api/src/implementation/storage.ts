@@ -1,9 +1,12 @@
 import type { SignedUrl, UploadRequest } from "@tranzfer/contracts";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
-import type * as Duration from "effect/Duration";
+import * as Duration from "effect/Duration";
 import type * as Effect from "effect/Effect";
 import type * as Option from "effect/Option";
+
+/** How long a signed upload URL stays usable. Uppy signs right before each request. */
+export const UPLOAD_URL_TTL = Duration.minutes(15);
 
 /** Not a wire error: callers map it to StorageUnavailable or let it die. */
 export class StorageError extends Data.TaggedError("StorageError")<{ readonly cause: unknown }> {}

@@ -5,17 +5,19 @@ import { eq, inArray, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 
 import { LinkTokens, newLinkId } from "./link-tokens";
-import { Storage } from "./storage";
+import { Storage, UPLOAD_URL_TTL } from "./storage";
 
 // D1 caps a statement at 100 bound parameters and a transfer row binds 8.
 const TRANSFER_ROWS_PER_INSERT = 12;
 // Deliveries purged per sweep; each is one list plus one bulk delete per 1000 files.
 const PURGE_BATCH = 20;
+const UPLOAD_URL_GRACE = Duration.sum(UPLOAD_URL_TTL, Duration.minutes(1));
 
 export const objectPrefix = (deliveryId: DeliveryId) => `d/${deliveryId}/`;
 
@@ -50,7 +52,7 @@ export class Deliveries extends Context.Service<
       input: NewDelivery,
     ) => Effect.Effect<Delivery, DeliveryConflict>;
     readonly list: (senderId: string) => Effect.Effect<readonly Delivery[]>;
-    /** Stops signing, kills the link and removes the objects; the sweeper retries a failed removal. */
+    /** Stops signing, kills the link and removes the objects; the sweeper purges once more later. */
     readonly cancel: (
       senderId: string,
       deliveryId: DeliveryId,
@@ -98,26 +100,9 @@ export class Deliveries extends Context.Service<
         });
       });
 
-      // Removes a delivery's objects and records it. A storage failure leaves
-
-      // purgedAt unset, so the sweeper retries it.
-
-      const purge = (deliveryId: DeliveryId, objectKeys: readonly string[]) =>
+      const removeObjects = (deliveryId: DeliveryId, objectKeys: readonly string[]) =>
         storage.purge(objectPrefix(deliveryId), objectKeys).pipe(
-          Effect.andThen(Clock.currentTimeMillis),
-
-          Effect.flatMap((now) =>
-            db
-
-              .update(schema.delivery)
-
-              .set({ purgedAt: new Date(now) })
-
-              .where(eq(schema.delivery.id, deliveryId)),
-          ),
-
           Effect.as(true),
-
           Effect.catchTag("StorageError", (error) =>
             Effect.logError("purge failed", { deliveryId }, error.cause).pipe(Effect.as(false)),
           ),
@@ -150,7 +135,7 @@ export class Deliveries extends Context.Service<
               .set({ state: "cancelled" })
               .where(eq(schema.transfer.deliveryId, deliveryId)),
           ]);
-          yield* purge(
+          yield* removeObjects(
             deliveryId,
             row.transfers.map((transfer) => transfer.objectKey),
           );
@@ -238,7 +223,16 @@ export class Deliveries extends Context.Service<
             columns: { id: true },
             limit: PURGE_BATCH,
             where: {
-              OR: [{ status: "cancelled" }, { expiresAt: { lte: new Date(now) }, status: "ready" }],
+              OR: [
+                // Cancel already removed the objects once. An upload URL signed
+                // before the cancel can still land an object, so purge again only
+                // after every such URL has expired.
+                {
+                  status: "cancelled",
+                  updatedAt: { lte: new Date(now - Duration.toMillis(UPLOAD_URL_GRACE)) },
+                },
+                { expiresAt: { lte: new Date(now) }, status: "ready" },
+              ],
               purgedAt: { isNull: true },
             },
             with: { transfers: { columns: { objectKey: true } } },
@@ -246,9 +240,18 @@ export class Deliveries extends Context.Service<
           const purged = yield* Effect.forEach(
             ended,
             (delivery) =>
-              purge(
+              removeObjects(
                 delivery.id,
                 delivery.transfers.map((transfer) => transfer.objectKey),
+              ).pipe(
+                Effect.tap((removed) =>
+                  removed
+                    ? db
+                        .update(schema.delivery)
+                        .set({ purgedAt: new Date(now) })
+                        .where(eq(schema.delivery.id, delivery.id))
+                    : Effect.void,
+                ),
               ),
             { concurrency: 4 },
           );

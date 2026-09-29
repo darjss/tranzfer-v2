@@ -16,15 +16,12 @@ import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 
-import { Storage, StorageError } from "../implementation/storage";
+import { Storage, StorageError, UPLOAD_URL_TTL } from "../implementation/storage";
 import { Files } from "../resources";
 
 // SAFETY: R2's S3 API signs against the pseudo-region "auto", which the AWS
 // RegionName union does not include.
 const region = "auto" as Region.RegionName;
-
-// Uppy signs right before each request, so upload URLs can be short-lived.
-const UPLOAD_URL_TTL = Duration.minutes(15);
 
 // S3 DeleteObjects takes at most 1000 keys.
 const DELETE_BATCH = 1000;

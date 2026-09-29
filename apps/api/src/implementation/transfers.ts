@@ -7,7 +7,13 @@ import {
   UploadClosed,
   usesMultipart,
 } from "@tranzfer/contracts";
-import type { Delivery, SignedUrl, TransferId, UploadRequest } from "@tranzfer/contracts";
+import type {
+  Delivery,
+  DeliveryId,
+  SignedUrl,
+  TransferId,
+  UploadRequest,
+} from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
@@ -25,7 +31,7 @@ import type { StoredObject } from "./storage";
 const DAY_MS = 24 * 60 * 60 * 1000;
 // A finalizing transfer older than this lost its browser; the sweeper finishes it.
 const RECOVER_AFTER = Duration.minutes(2);
-// Multipart uploads R2 has not aborted yet (its lifecycle rule allows 7 days).
+// Transfers created within R2's 7-day window for incomplete multipart uploads.
 const RECOVER_WITHIN = Duration.days(7);
 const RECOVER_BATCH = 50;
 
@@ -85,7 +91,7 @@ export class Transfers extends Context.Service<
        * was the last one. Both updates are conditional, so concurrent finalizes
        * and the sweeper converge, and a cancel stays final.
        */
-      const complete = (transfer: Transfer, object: StoredObject, retentionDays: number) =>
+      const complete = (transfer: Transfer, object: StoredObject) =>
         Effect.gen(function* completeTransfer() {
           const now = yield* Clock.currentTimeMillis;
           const claimed = yield* db
@@ -107,19 +113,32 @@ export class Transfers extends Context.Service<
               return yield* new UploadClosed();
             }
           }
-          // Flip only when this was the last transfer; a no-op otherwise.
-          return yield* db
+          return claimed.length > 0;
+        });
+
+      /**
+       * Flips open deliveries whose every transfer is complete to ready, with
+       * expiry counted from now. One conditional statement, so it is safe to run
+       * after every finalize and on every sweep: that is what recovers a
+       * delivery whose finalize died between the two writes.
+       */
+      const markReady = (deliveryId?: DeliveryId) =>
+        Effect.flatMap(Clock.currentTimeMillis, (now) =>
+          db
             .update(schema.delivery)
-            .set({ expiresAt: new Date(now + retentionDays * DAY_MS), status: "ready" })
+            .set({
+              expiresAt: sql`${now} + ${schema.delivery.retentionDays} * ${DAY_MS}`,
+              status: "ready",
+            })
             .where(
               and(
-                eq(schema.delivery.id, transfer.deliveryId),
+                deliveryId === undefined ? undefined : eq(schema.delivery.id, deliveryId),
                 eq(schema.delivery.status, "open"),
-                sql`NOT EXISTS (SELECT 1 FROM transfer WHERE delivery_id = ${transfer.deliveryId} AND state != 'complete')`,
+                sql`EXISTS (SELECT 1 FROM transfer WHERE transfer.delivery_id = ${schema.delivery.id})`,
+                sql`NOT EXISTS (SELECT 1 FROM transfer WHERE transfer.delivery_id = ${schema.delivery.id} AND transfer.state != 'complete')`,
               ),
-            )
-            .pipe(Effect.asVoid);
-        });
+            ),
+        );
 
       return Transfers.of({
         finalize: Effect.fn("Transfers.finalize")(function* finalize(
@@ -139,45 +158,53 @@ export class Transfers extends Context.Service<
               Effect.mapError(() => new StorageUnavailable()),
             );
             const verified = yield* verify(transfer, object);
-            yield* complete(transfer, verified, transfer.delivery.retentionDays);
+            yield* complete(transfer, verified);
           }
+          yield* markReady(transfer.deliveryId);
           return yield* deliveries.view(transfer.deliveryId);
         }, dieOnDatabaseError),
 
         recoverFinalizing: Effect.gen(function* recoverFinalizing() {
           const now = yield* Clock.currentTimeMillis;
+          // Oldest-checked first; a miss touches updatedAt, so rows that keep
+          // missing rotate to the back instead of filling every batch.
           const stuck = yield* db.query.transfer.findMany({
             limit: RECOVER_BATCH,
+            orderBy: { updatedAt: "asc" },
             where: {
+              createdAt: { gte: new Date(now - Duration.toMillis(RECOVER_WITHIN)) },
               state: "finalizing",
-              updatedAt: {
-                gte: new Date(now - Duration.toMillis(RECOVER_WITHIN)),
-                lte: new Date(now - Duration.toMillis(RECOVER_AFTER)),
-              },
+              updatedAt: { lte: new Date(now - Duration.toMillis(RECOVER_AFTER)) },
             },
-            with: { delivery: { columns: { retentionDays: true } } },
           });
+          const touch = (transfer: Transfer) =>
+            db
+              .update(schema.transfer)
+              .set({ updatedAt: new Date(now) })
+              .where(eq(schema.transfer.id, transfer.id))
+              .pipe(Effect.as(0));
           const recovered = yield* Effect.forEach(
             stuck,
             (transfer) =>
               storage.head(transfer.objectKey).pipe(
                 Effect.flatMap((object) => verify(transfer, object)),
-                Effect.flatMap((object) =>
-                  complete(transfer, object, transfer.delivery.retentionDays),
-                ),
+                Effect.flatMap((object) => complete(transfer, object)),
                 Effect.as(1),
                 // Not there yet, the wrong size, cancelled meanwhile, or a storage
-                // blip: leave it for the next sweep or the lifecycle rule.
+                // blip: check it again later; the lifecycle rule is the backstop.
                 Effect.catchTags({
-                  InvalidUpload: () => Effect.succeed(0),
-                  NotUploaded: () => Effect.succeed(0),
+                  InvalidUpload: () => touch(transfer),
+                  NotUploaded: () => touch(transfer),
                   StorageError: (error) =>
-                    Effect.logError("recover head failed", error.cause).pipe(Effect.as(0)),
+                    Effect.logError("recover head failed", error.cause).pipe(
+                      Effect.andThen(touch(transfer)),
+                    ),
                   UploadClosed: () => Effect.succeed(0),
                 }),
               ),
             { concurrency: 8 },
           );
+          yield* markReady();
           return recovered.reduce((total, count) => total + count, 0);
         }).pipe(Effect.withSpan("Transfers.recoverFinalizing"), dieOnDatabaseError),
 

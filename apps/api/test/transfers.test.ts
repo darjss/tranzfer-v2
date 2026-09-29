@@ -1,5 +1,7 @@
 import { expect, layer } from "@effect/vitest";
 import { partSize } from "@tranzfer/contracts";
+import { Database, schema } from "@tranzfer/db";
+import { eq } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
@@ -134,6 +136,27 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       expect((yield* deliveries.view(created.id)).status).toBe("expired");
       expect(yield* deliveries.purgeEnded).toBeGreaterThanOrEqual(1);
       expect(storage.objects.has(only.objectKey)).toBe(false);
+    }),
+  );
+
+  it.effect("a sweep flips a delivery whose finalize died between its two writes", () =>
+    Effect.gen(function* scenario() {
+      yield* atWallClock;
+      const start = yield* Clock.currentTimeMillis;
+      const created = yield* seed("fay", [newFile("done.txt", 5)]);
+      const transfers = yield* Transfers;
+      const { db } = yield* Database;
+      // The transfer write landed; the delivery flip never ran.
+      yield* db
+        .update(schema.transfer)
+        .set({ state: "complete" })
+        .where(eq(schema.transfer.deliveryId, created.id));
+
+      yield* transfers.recoverFinalizing;
+      const deliveries = yield* Deliveries;
+      const view = yield* deliveries.view(created.id);
+      expect(view.status).toBe("ready");
+      expect(view.expiresAt?.getTime()).toBe(start + 3 * DAY_MS);
     }),
   );
 });
