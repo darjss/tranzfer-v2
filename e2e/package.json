@@ -10,12 +10,12 @@
   },
   "dependencies": {
     "@tranzfer/contracts": "workspace:*",
-    "effect": "4.0.0-rc.115"
+    "effect": "catalog:"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0-rc.115",
-    "@types/node": "^26.4.1",
-    "typescript": "7.0.2",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
     "vitest": "5.0.1"
   }
 }
