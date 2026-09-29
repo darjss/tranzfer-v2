@@ -4,7 +4,7 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 
 - UI: Solid 2 and Solid Router. Reads go through the [Effect read adapter](SOLID-EFFECT-BINDING.md). No Effect Atom, no query cache.
 - Build: Vite+ over a pnpm workspace. The Cloudflare Vite plugin runs SSR in workerd.
-- Styling: Tailwind, `cva` for variants, `cnfast` for class merging.
+- Styling: Panda CSS with `strictTokens`, `css()`/`cva()`/`cx()` from `styled-system`. Bespoke keyframes and reveal hooks stay in plain CSS.
 - Components: native elements first. Kobalte for complex accessible widgets, once its Solid 2 support is verified.
 - Icons: Phosphor Bold through `unplugin-icons`. The brand and notebook drawings stay custom.
 - Forms: native controls. TanStack Form only when a real screen needs it and a Solid 2 adapter works.

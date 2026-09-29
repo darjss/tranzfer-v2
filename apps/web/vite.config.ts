@@ -1,5 +1,4 @@
 import { cloudflare } from "@cloudflare/vite-plugin";
-import tailwindcss from "@tailwindcss/vite";
 import { fileRoutes } from "filesystem-routing/vite";
 import { prerender } from "prerender-crawler/vite";
 import Icons from "unplugin-icons/vite";
@@ -32,7 +31,6 @@ export default defineConfig({
   lint: webLint,
   plugins: [
     ...workerSsr,
-    tailwindcss(),
     solid({
       diagnostics: true,
       extensions: [".jsx", ".tsx"],
@@ -44,6 +42,11 @@ export default defineConfig({
     Icons({ compiler: "solid" }),
     prerender({ crawlLinks: false, emitPages: (p) => p === "/", mode: "hybrid", pages: ["/"] }),
   ],
+  resolve: {
+    alias: {
+      "styled-system": `${import.meta.dirname}/styled-system`,
+    },
+  },
   root: import.meta.dirname,
   server: {
     host: "127.0.0.1",

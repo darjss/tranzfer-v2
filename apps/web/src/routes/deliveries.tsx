@@ -4,6 +4,7 @@ import { clientOnly, isServer } from "@solidjs/web";
 import { Unauthorized } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import { createMemo, Errored, Loading, onSettled, Show, useContext } from "solid-js";
+import { css, cx } from "styled-system/css";
 
 import { ApiClient } from "../api/client";
 import { runEffect, RuntimeContext } from "../api/solid-effect";
@@ -47,16 +48,25 @@ const DeliveriesPage = () => {
     <>
       <Title>Deliveries — Tranzfer</Title>
       <Meta name="description" content="Your Tranzfer deliveries." />
-      <Loading fallback={<main class="min-h-screen" />}>
+      <Loading fallback={<main class={css({ minH: "screen" })} />}>
         <Errored
           fallback={(error, retry) => (
             <Show
               when={error() instanceof Unauthorized}
               fallback={
-                <main class="grid min-h-screen place-items-center" role="alert">
-                  <div class="text-center">
-                    <p class="text-sm text-mut">We couldn't load your deliveries.</p>
-                    <button class="mt-3 text-ink underline" onClick={retry} type="button">
+                <main
+                  class={css({ display: "grid", minH: "screen", placeItems: "center" })}
+                  role="alert"
+                >
+                  <div class={css({ textAlign: "center" })}>
+                    <p class={css({ color: "mut", textStyle: "sm" })}>
+                      We couldn't load your deliveries.
+                    </p>
+                    <button
+                      class={css({ color: "ink", mt: "3", textDecoration: "underline" })}
+                      onClick={retry}
+                      type="button"
+                    >
                       Try again
                     </button>
                   </div>
@@ -67,7 +77,14 @@ const DeliveriesPage = () => {
             </Show>
           )}
         >
-          <div class="flex min-h-screen flex-col lg:grid lg:grid-cols-[300px_1fr]">
+          <div
+            class={css({
+              display: "flex",
+              flexDir: "column",
+              lg: { display: "grid", gridTemplateColumns: "[300px 1fr]" },
+              minH: "screen",
+            })}
+          >
             <Sidebar
               deliveries={deliveries()}
               online={online()}
@@ -75,9 +92,19 @@ const DeliveriesPage = () => {
               select={select}
               selectedId={searchParams.d}
             />
-            <main class="paper-dots min-h-screen max-lg:order-1">
+            <main class={cx("paper-dots", css({ lgDown: { order: "1" }, minH: "screen" }))}>
               <Show when={!online()}>
-                <p class="border-b border-line bg-panel px-6 py-2.5 text-sm text-amber sm:px-12">
+                <p
+                  class={css({
+                    bg: "panel",
+                    borderBottomWidth: "1px",
+                    borderColor: "line",
+                    color: "amber",
+                    px: { base: "6", sm: "12" },
+                    py: "2.5",
+                    textStyle: "sm",
+                  })}
+                >
                   Connection lost. We'll continue when you're back online.
                 </p>
               </Show>
@@ -102,5 +129,5 @@ const DeliveriesPage = () => {
 const LazyDeliveries = clientOnly(async () => await Promise.resolve({ default: DeliveriesPage }));
 
 export default function Deliveries() {
-  return <LazyDeliveries fallback={<main class="min-h-screen" />} />;
+  return <LazyDeliveries fallback={<main class={css({ minH: "screen" })} />} />;
 }

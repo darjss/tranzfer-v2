@@ -1,37 +1,13 @@
-@import "tailwindcss";
-
-@theme {
-  --color-paper: #f3efe6;
-  --color-panel: #fbf9f4;
-  --color-ink: #17181c;
-  --color-mut: #6b6a62;
-  --color-line: #ddd7c9;
-  --color-blue: #2740c4;
-  --color-amber: #d97b00;
-  --color-ok: #1f7a45;
-  --color-rust: #c8412b;
-  --font-sans: "Archivo", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --font-hand: "Caveat", cursive;
-  --ease-smooth: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@utility paper-dots {
-  --dots-ink: rgb(23 24 28 / 0.16);
-  background-color: var(--color-paper);
-  background-image: radial-gradient(var(--dots-ink) 1px, transparent 1.5px);
-  background-size: 18px 18px;
-}
+@layer reset, base, tokens, recipes, utilities;
 
 @layer base {
   html {
     scroll-behavior: smooth;
   }
   body {
-    background-color: var(--color-paper);
-    color: var(--color-ink);
-    font-family: var(--font-sans);
+    background-color: var(--colors-paper);
+    color: var(--colors-ink);
+    font-family: var(--fonts-sans);
     font-size: 16px;
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
@@ -54,4 +30,11 @@
     display: block;
     max-width: 100%;
   }
+}
+
+.paper-dots {
+  --dots-ink: rgb(23 24 28 / 0.16);
+  background-color: var(--colors-paper);
+  background-image: radial-gradient(var(--dots-ink) 1px, transparent 1.5px);
+  background-size: 18px 18px;
 }
