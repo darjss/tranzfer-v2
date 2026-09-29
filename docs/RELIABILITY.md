@@ -213,6 +213,14 @@ Pause is not cancel. Closing the tab is not cancel. Unload is not cancel.
 
 Expiry and confirmed abandonment can trigger cleanup too, but maintenance respects the advertised resume window. Cleanup racing active work is a scenario we test, not one we hope away.
 
+How the API does it today:
+
+- Cancel writes D1 first, so signing stops and the link dies at once. Then it aborts the delivery's multipart uploads and bulk-deletes its objects. If storage fails, `purged_at` stays unset and the per-minute sweeper retries.
+- The sweeper also purges expired deliveries, which read as `expired` from the moment `expires_at` passes.
+- Signing a `Put` or a `Complete` moves the transfer to `finalizing`: from then on the bytes can land without the browser living to say so. The sweeper finishes `finalizing` transfers whose object is present at the declared size.
+- Finalize claims the transfer with a conditional update and flips the delivery to `ready` only when no transfer is left incomplete. Concurrent finalizes, the sweeper and a racing cancel all converge.
+- Opening a link signs download URLs without re-checking each object. A sender still holding an unexpired upload URL (15 minutes) could replace their own file after finalize; the recipient would get the sender's replacement. Revisit before public uploads.
+
 ## Downloads
 
 An upload change is not finished until the recipient can download the correct file through an authorized link. Expiry is stated clearly on the page. Define download recovery, and do not make anyone redownload confirmed bytes where the client supports ranges.
