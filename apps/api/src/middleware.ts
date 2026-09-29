@@ -18,7 +18,11 @@ export const AuthenticatedLive = Layer.effect(
     const auth = yield* Auth;
     return Authenticated.of((effect, { headers }) =>
       auth.session(new Headers(headers)).pipe(
-        Effect.tapError(Effect.logError),
+        // The cause wraps better-auth internals that can carry session
+        // tokens, so only the tag and op reach the logs.
+        Effect.tapError((error) =>
+          Effect.logError("session check failed", { op: error.op, tag: error._tag }),
+        ),
         Effect.mapError(
           () =>
             new AuthenticationUnavailable({ message: "Unable to check your session. Try again." }),
