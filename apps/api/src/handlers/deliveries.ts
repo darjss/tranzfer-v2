@@ -14,7 +14,9 @@ import { Drizzle, schema } from "@tranzfer/db";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as Result from "effect/Result";
 
 import { Links, newLinkId } from "../services/links";
@@ -108,13 +110,16 @@ export const DeliveriesHandlers = Layer.mergeAll(
               .from(schema.transfer)
               .where(inArray(schema.transfer.id, transferIds)),
           );
-          if (landed !== undefined && sameDelivery(input, principal.id, landed)) {
-            return yield* deliveryView(db, links, input.id, "deliveries.create.view");
-          }
-          if (landed !== undefined || taken.length > 0) {
-            return yield* new DeliveryConflict({ message: "Delivery already exists" });
-          }
-          return yield* Effect.fail(inserted.failure);
+          return yield* Match.value({ landed, taken: taken.length > 0 }).pipe(
+            Match.when(
+              { landed: (row) => row !== undefined && sameDelivery(input, principal.id, row) },
+              () => deliveryView(db, links, input.id, "deliveries.create.view"),
+            ),
+            Match.whenOr({ landed: Predicate.isNotUndefined }, { taken: true }, () =>
+              Effect.fail(new DeliveryConflict({ message: "Delivery already exists" })),
+            ),
+            Match.orElse(() => Effect.fail(inserted.failure)),
+          );
         }
 
         return yield* deliveryView(db, links, input.id, "deliveries.create.view");
