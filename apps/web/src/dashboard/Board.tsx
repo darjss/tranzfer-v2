@@ -1,12 +1,10 @@
 import type { Delivery, DeliveryId } from "@tranzfer/contracts";
-import * as Exit from "effect/Exit";
 import { createMemo, createSignal, For, Match, Show, Switch, useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { css, cx } from "styled-system/css";
 
 import PhCaretDownBold from "~icons/ph/caret-down-bold";
 
-import { appError } from "../api/errors";
 import { RuntimeContext } from "../api/solid-effect";
 import { Button } from "../ui/Button";
 import { transfers } from "../uploads/store";
@@ -57,25 +55,22 @@ const count = css({ color: "mut", fontFamily: "mono", fontSize: "13", fontWeight
  * same way the sheet does.
  */
 function InterruptedActions(props: {
-  changed: () => void;
+  cancel: (deliveryId: DeliveryId) => Promise<string | undefined>;
   deliveryId: DeliveryId;
   sendAgain: () => void;
 }) {
-  const runtime = useContext(RuntimeContext);
   const [confirming, setConfirming] = createSignal(false);
-  const [cancelling, setCancelling] = createSignal(false);
   const [problem, setProblem] = createSignal<string>();
+  // The action moves the delivery to cancelled at once; only a failure
+  // comes back here, and the optimistic move reverts on its own.
   const cancel = async () => {
-    setCancelling(true);
     setProblem(undefined);
-    const { deliveryId } = props;
-    const exit = await runtime.runPromiseExit(Uploads.use((uploads) => uploads.cancel(deliveryId)));
-    setCancelling(false);
-    if (Exit.isFailure(exit)) {
-      setProblem(appError(exit.cause).message);
-      return;
+    const failure = await props.cancel(props.deliveryId);
+    if (failure === undefined) {
+      setConfirming(false);
+    } else {
+      setProblem(failure);
     }
-    props.changed();
   };
   return (
     <div
@@ -118,14 +113,13 @@ function InterruptedActions(props: {
           Cancel it? The link stops working and the files are deleted.
         </span>
         <Button
-          disabled={cancelling()}
           onClick={() => {
             void cancel();
           }}
           size="xs"
           variant="danger"
         >
-          {cancelling() ? "Cancelling…" : "Yes, cancel it"}
+          Yes, cancel it
         </Button>
         <Button
           onClick={() => {
@@ -149,7 +143,7 @@ function InterruptedActions(props: {
 }
 
 interface RowActions {
-  readonly changed: () => void;
+  readonly cancel: (deliveryId: DeliveryId) => Promise<string | undefined>;
   readonly select: (id: string) => void;
   readonly sendAgain: () => void;
 }
@@ -271,7 +265,7 @@ function Row(
         </Show>
         <Show when={live.kind() === "interrupted"}>
           <InterruptedActions
-            changed={props.changed}
+            cancel={props.cancel}
             deliveryId={props.delivery.id}
             sendAgain={props.sendAgain}
           />
@@ -357,7 +351,7 @@ export function Board(
                   delivery={delivery}
                   online={props.online}
                   select={props.select}
-                  changed={props.changed}
+                  cancel={props.cancel}
                   sendAgain={props.sendAgain}
                 />
               )}
@@ -374,7 +368,7 @@ export function Board(
                   delivery={delivery}
                   online={props.online}
                   select={props.select}
-                  changed={props.changed}
+                  cancel={props.cancel}
                   sendAgain={props.sendAgain}
                 />
               )}
@@ -396,7 +390,7 @@ export function Board(
                   delivery={delivery}
                   online={props.online}
                   select={props.select}
-                  changed={props.changed}
+                  cancel={props.cancel}
                   sendAgain={props.sendAgain}
                 />
               )}
@@ -439,7 +433,7 @@ export function Board(
                   delivery={delivery}
                   online={props.online}
                   select={props.select}
-                  changed={props.changed}
+                  cancel={props.cancel}
                   sendAgain={props.sendAgain}
                 />
               )}

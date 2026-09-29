@@ -1,5 +1,4 @@
-import type { Delivery } from "@tranzfer/contracts";
-import * as Exit from "effect/Exit";
+import type { Delivery, DeliveryId } from "@tranzfer/contracts";
 import {
   createEffect,
   createMemo,
@@ -51,26 +50,27 @@ const fileKind = {
   Interrupted: "interrupted",
 } satisfies Record<ReturnType<typeof transferStatus>["_tag"], Kind>;
 
-function Details(props: { delivery: Delivery; online: boolean; changed: () => void }) {
+function Details(props: {
+  cancel: (deliveryId: DeliveryId) => Promise<string | undefined>;
+  delivery: Delivery;
+  online: boolean;
+}) {
   const runtime = useContext(RuntimeContext);
   const live = liveDelivery(props);
   const [confirming, setConfirming] = createSignal(false);
-  const [cancelling, setCancelling] = createSignal(false);
   const [problem, setProblem] = createSignal<string>();
   const shareable = () => props.delivery.status === "open" || props.delivery.status === "ready";
 
+  // The action moves the delivery to cancelled at once; only a failure
+  // comes back here, and the optimistic move reverts on its own.
   const cancel = async () => {
-    setCancelling(true);
     setProblem(undefined);
-    const deliveryId = props.delivery.id;
-    const exit = await runtime.runPromiseExit(Uploads.use((uploads) => uploads.cancel(deliveryId)));
-    setCancelling(false);
-    if (Exit.isFailure(exit)) {
-      setProblem(appError(exit.cause).message);
-      return;
+    const failure = await props.cancel(props.delivery.id);
+    if (failure === undefined) {
+      setConfirming(false);
+    } else {
+      setProblem(failure);
     }
-    setConfirming(false);
-    props.changed();
   };
 
   return (
@@ -292,14 +292,13 @@ function Details(props: { delivery: Delivery; online: boolean; changed: () => vo
             </p>
             <div class={css({ display: "flex", flexWrap: "wrap", gap: "2.5", mt: "3" })}>
               <Button
-                disabled={cancelling()}
                 onClick={() => {
                   void cancel();
                 }}
                 size="sm"
                 variant="danger"
               >
-                {cancelling() ? "Cancelling…" : "Yes, cancel it"}
+                Yes, cancel it
               </Button>
               <Button
                 onClick={() => {
@@ -331,7 +330,7 @@ function Details(props: { delivery: Delivery; online: boolean; changed: () => vo
  * Escape and an inert page; closing it clears ?d=.
  */
 export function DeliverySheet(props: {
-  changed: () => void;
+  cancel: (deliveryId: DeliveryId) => Promise<string | undefined>;
   close: () => void;
   delivery: Delivery | undefined;
   online: boolean;
@@ -449,7 +448,7 @@ export function DeliverySheet(props: {
                 <PhXBold class={css({ boxSize: "4" })} />
               </button>
             </header>
-            <Details changed={props.changed} delivery={delivery()} online={props.online} />
+            <Details cancel={props.cancel} delivery={delivery()} online={props.online} />
           </div>
         )}
       </Show>
