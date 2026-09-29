@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@effect/sql-d1": "4.0.0-rc.115",
+    "@tranzfer/contracts": "workspace:*",
     "drizzle-orm": "catalog:",
     "effect": "catalog:"
   },

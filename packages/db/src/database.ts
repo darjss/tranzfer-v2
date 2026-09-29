@@ -5,7 +5,8 @@ import { defineRelations } from "drizzle-orm/relations";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { SqlError } from "effect/unstable/sql/SqlError";
+import { SqlError } from "effect/unstable/sql/SqlError";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 
 import * as schema from "./schema";
 
@@ -55,11 +56,14 @@ export class Database extends Context.Service<
   );
 
   static readonly fromD1 = (db: D1Database) =>
-    Database.layer.pipe(Layer.provide(D1Client.layer({ db })));
+    Database.layer.pipe(Layer.provide(D1Client.layer({ db })), Layer.orDie);
 }
 
+type DatabaseError = EffectDrizzleQueryError | SqlError;
+
+const isDatabaseError = <E>(error: E): error is Extract<E, DatabaseError> =>
+  error instanceof EffectDrizzleQueryError || error instanceof SqlError;
+
 /** Database failures are infrastructure faults, never outcomes a caller can act on. */
-export const dieOnDatabaseError = Effect.catchTags({
-  EffectDrizzleQueryError: Effect.die,
-  SqlError: Effect.die,
-});
+export const dieOnDatabaseError = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  Effect.catchIf(effect, isDatabaseError, Effect.die, Effect.fail);

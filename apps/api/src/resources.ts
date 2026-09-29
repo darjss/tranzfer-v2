@@ -6,7 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { isPreviewStage } from "./services/stage";
+import { isPreviewStage } from "./infrastructure/stage";
 
 const DAY_SECONDS = 24 * 60 * 60;
 

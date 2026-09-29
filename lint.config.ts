@@ -114,9 +114,9 @@ export const lintConfig = (
         },
       },
       {
-        files: ["packages/contracts/src/index.ts"],
+        files: ["packages/*/src/index.ts"],
         rules: {
-          // The package's public surface is one import path by design.
+          // A package's public surface is one import path by design.
           "oxc/no-barrel-file": "off",
         },
       },

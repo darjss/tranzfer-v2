@@ -1,3 +1,4 @@
+import type { DeliveryId, RetentionDays, TransferId } from "@tranzfer/contracts";
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
@@ -88,7 +89,7 @@ export const verification = sqliteTable(
 export const delivery = sqliteTable(
   "delivery",
   {
-    id: text("id").primaryKey(),
+    id: text("id").$type<DeliveryId>().primaryKey(),
     // No cascade: account deletion needs an R2 object cleanup path first.
     senderId: text("sender_id")
       .notNull()
@@ -97,8 +98,10 @@ export const delivery = sqliteTable(
     status: text("status", { enum: ["open", "ready", "cancelled"] })
       .default("open")
       .notNull(),
-    retentionDays: integer("retention_days").$type<1 | 3 | 7 | 14>().notNull(),
+    retentionDays: integer("retention_days").$type<RetentionDays>().notNull(),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+    // Set once the sweeper has removed a cancelled or expired delivery's objects.
+    purgedAt: integer("purged_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
@@ -113,8 +116,9 @@ export const delivery = sqliteTable(
 export const transfer = sqliteTable(
   "transfer",
   {
-    id: text("id").primaryKey(),
+    id: text("id").$type<TransferId>().primaryKey(),
     deliveryId: text("delivery_id")
+      .$type<DeliveryId>()
       .notNull()
       .references(() => delivery.id),
     objectKey: text("object_key").notNull().unique(),
@@ -146,6 +150,7 @@ export const link = sqliteTable(
   {
     id: text("id").primaryKey(),
     deliveryId: text("delivery_id")
+      .$type<DeliveryId>()
       .notNull()
       .references(() => delivery.id),
     revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
