@@ -77,7 +77,7 @@ export function Sidebar(props: Props) {
         })}
       >
         <Button
-          class={css({ w: "full" })}
+          css={css.raw({ w: "full" })}
           onClick={() => {
             props.select();
           }}

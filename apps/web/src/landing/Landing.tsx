@@ -712,7 +712,7 @@ export default function Landing() {
             Large files. <i>Still building.</i>
           </h2>
           <a
-            class={cx(button(), "rv", css({ pos: "relative", zIndex: 1 }))}
+            class={cx(css(button.raw(), { pos: "relative", zIndex: 1 }), "rv")}
             href="/sign-in"
             style="--d:80ms"
           >

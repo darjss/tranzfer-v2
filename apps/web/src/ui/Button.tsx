@@ -1,8 +1,9 @@
 import { omit } from "solid-js";
 import type { ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { cva } from "styled-system/css";
+import { css, cva } from "styled-system/css";
 import type { RecipeVariantProps } from "styled-system/css";
+import type { SystemStyleObject } from "styled-system/types";
 
 export const button = cva({
   base: {
@@ -57,14 +58,17 @@ export const button = cva({
 
 export function Button(
   props: ParentProps<
-    RecipeVariantProps<typeof button> & JSX.ButtonHTMLAttributes<HTMLButtonElement>
+    RecipeVariantProps<typeof button> & { css?: SystemStyleObject } & Omit<
+        JSX.ButtonHTMLAttributes<HTMLButtonElement>,
+        "class"
+      >
   >,
 ) {
-  const rest = omit(props, "children", "class", "type", "size", "style", "variant");
+  const rest = omit(props, "children", "css", "type", "size", "style", "variant");
   return (
     <button
       {...rest}
-      class={[button({ size: props.size, variant: props.variant }), props.class]}
+      class={css(button.raw({ size: props.size, variant: props.variant }), props.css)}
       type={props.type ?? "button"}
       style={props.style}
     >
