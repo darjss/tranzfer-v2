@@ -21,14 +21,11 @@ const send = async (
   contentType?: string,
   signedHeaders: Readonly<Record<string, string>> = {},
 ) => {
-  const response = await fetch(url, {
-    body,
-    headers: {
-      ...signedHeaders,
-      ...(contentType === undefined ? {} : { "content-type": contentType }),
-    },
-    method,
-  });
+  const headers = new Headers(signedHeaders);
+  if (contentType !== undefined) {
+    headers.set("content-type", contentType);
+  }
+  const response = await fetch(url, { body, headers, method });
   return {
     body: Buffer.from(await response.arrayBuffer()),
     headers: response.headers,
