@@ -46,25 +46,26 @@ export type DeliveryRows = NonNullable<Effect.Success<ReturnType<typeof loadDeli
 
 // The link is written in the same batch as the delivery; a missing row is a
 // broken invariant, never a not-found.
-export const viewFromRows = (links: Links["Service"], row: DeliveryRows) =>
-  Effect.gen(function* view() {
-    if (row.link === null) {
-      return yield* Effect.die(new Error(`Delivery ${row.id} has no link row`));
-    }
-    const token = yield* links.issue(row.link.id);
-    return toDelivery(row, token);
-  });
+export const viewFromRows = Effect.fn("Deliveries.viewFromRows")(function* viewFromRows(
+  links: Links["Service"],
+  row: DeliveryRows,
+) {
+  if (row.link === null) {
+    return yield* Effect.die(new Error(`Delivery ${row.id} has no link row`));
+  }
+  const token = yield* links.issue(row.link.id);
+  return toDelivery(row, token);
+});
 
-export const deliveryView = (
+export const deliveryView = Effect.fn("Deliveries.deliveryView")(function* deliveryView(
   db: Drizzle["Service"],
   links: Links["Service"],
   deliveryId: string,
   op: string,
-) =>
-  Effect.gen(function* view() {
-    const row = yield* loadDeliveryRows(db, deliveryId, op);
-    if (row === undefined) {
-      return yield* Effect.die(new Error(`Delivery ${deliveryId} vanished after write`));
-    }
-    return yield* viewFromRows(links, row);
-  });
+) {
+  const row = yield* loadDeliveryRows(db, deliveryId, op);
+  if (row === undefined) {
+    return yield* Effect.die(new Error(`Delivery ${deliveryId} vanished after write`));
+  }
+  return yield* viewFromRows(links, row);
+});
