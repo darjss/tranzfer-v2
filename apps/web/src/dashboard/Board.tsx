@@ -1,10 +1,12 @@
-import type { Delivery } from "@tranzfer/contracts";
-import { createMemo, For, Match, Show, Switch, useContext } from "solid-js";
+import type { Delivery, DeliveryId } from "@tranzfer/contracts";
+import * as Exit from "effect/Exit";
+import { createMemo, createSignal, For, Match, Show, Switch, useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { css, cx } from "styled-system/css";
 
 import PhCaretDownBold from "~icons/ph/caret-down-bold";
 
+import { appError } from "../api/errors";
 import { RuntimeContext } from "../api/solid-effect";
 import { Button } from "../ui/Button";
 import { transfers } from "../uploads/store";
@@ -49,12 +51,116 @@ const sectionTitle = css({
 
 const count = css({ color: "mut", fontFamily: "mono", fontSize: "13", fontWeight: "normal" });
 
-function Row(props: {
-  delivery: Delivery;
-  online: boolean;
-  select: (id: string) => void;
-  compact?: boolean;
+/**
+ * The group note tells people to cancel an interrupted delivery and send the
+ * files again, so both actions sit on the row. Cancel confirms in place, the
+ * same way the sheet does.
+ */
+function InterruptedActions(props: {
+  changed: () => void;
+  deliveryId: DeliveryId;
+  sendAgain: () => void;
 }) {
+  const runtime = useContext(RuntimeContext);
+  const [confirming, setConfirming] = createSignal(false);
+  const [cancelling, setCancelling] = createSignal(false);
+  const [problem, setProblem] = createSignal<string>();
+  const cancel = async () => {
+    setCancelling(true);
+    setProblem(undefined);
+    const { deliveryId } = props;
+    const exit = await runtime.runPromiseExit(Uploads.use((uploads) => uploads.cancel(deliveryId)));
+    setCancelling(false);
+    if (Exit.isFailure(exit)) {
+      setProblem(appError(exit.cause).message);
+      return;
+    }
+    props.changed();
+  };
+  return (
+    <div
+      class={css({
+        alignItems: "center",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "2",
+        mt: "2.5",
+        pos: "relative",
+        zIndex: 1,
+      })}
+    >
+      <Show
+        when={confirming()}
+        fallback={
+          <>
+            <Button
+              onClick={() => {
+                setConfirming(true);
+              }}
+              size="xs"
+              variant="outline"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                props.sendAgain();
+              }}
+              size="xs"
+              variant="outline"
+            >
+              Send again
+            </Button>
+          </>
+        }
+      >
+        <span class={css({ fontWeight: "medium", textStyle: "sm", w: "full" })}>
+          Cancel it? The link stops working and the files are deleted.
+        </span>
+        <Button
+          disabled={cancelling()}
+          onClick={() => {
+            void cancel();
+          }}
+          size="xs"
+          variant="danger"
+        >
+          {cancelling() ? "Cancelling…" : "Yes, cancel it"}
+        </Button>
+        <Button
+          onClick={() => {
+            setConfirming(false);
+          }}
+          size="xs"
+          variant="outline"
+        >
+          Keep it
+        </Button>
+      </Show>
+      <Show when={problem()}>
+        {(message) => (
+          <p class={css({ color: "rust", textStyle: "sm", w: "full" })} role="alert">
+            {message()}
+          </p>
+        )}
+      </Show>
+    </div>
+  );
+}
+
+interface RowActions {
+  readonly changed: () => void;
+  readonly select: (id: string) => void;
+  readonly sendAgain: () => void;
+}
+
+function Row(
+  props: RowActions & {
+    delivery: Delivery;
+    online: boolean;
+    compact?: boolean;
+  },
+) {
   const runtime = useContext(RuntimeContext);
   const live = liveDelivery(props);
   const moving = () => groupOf(live.kind()) === "moving";
@@ -135,7 +241,10 @@ function Row(props: {
             <Match when={live.kind() === "ready" ? props.delivery.expiresAt : null}>
               {(expiresAt) => (
                 <span>
-                  expires {fromNow(expiresAt())}, {shortDate.format(expiresAt())}
+                  expires {fromNow(expiresAt())}
+                  <span class={css({ display: { base: "none", sm: "inline" } })}>
+                    , {shortDate.format(expiresAt())}
+                  </span>
                 </span>
               )}
             </Match>
@@ -158,6 +267,13 @@ function Row(props: {
             kind={live.kind()}
             label={`${props.delivery.title} upload`}
             total={live.total()}
+          />
+        </Show>
+        <Show when={live.kind() === "interrupted"}>
+          <InterruptedActions
+            changed={props.changed}
+            deliveryId={props.delivery.id}
+            sendAgain={props.sendAgain}
           />
         </Show>
       </div>
@@ -208,11 +324,12 @@ function Section(props: { children: JSX.Element; count: number; note?: string; t
   );
 }
 
-export function Board(props: {
-  deliveries: readonly Delivery[];
-  online: boolean;
-  select: (id: string) => void;
-}) {
+export function Board(
+  props: RowActions & {
+    deliveries: readonly Delivery[];
+    online: boolean;
+  },
+) {
   // Grouping reads live progress, so a finished upload moves to "Ready"
   // the moment the refreshed list says so.
   const groups = createMemo(() => {
@@ -236,7 +353,13 @@ export function Board(props: {
           <ul class={list}>
             <For each={groups().moving}>
               {(delivery) => (
-                <Row delivery={delivery} online={props.online} select={props.select} />
+                <Row
+                  delivery={delivery}
+                  online={props.online}
+                  select={props.select}
+                  changed={props.changed}
+                  sendAgain={props.sendAgain}
+                />
               )}
             </For>
           </ul>
@@ -247,7 +370,13 @@ export function Board(props: {
           <ul class={list}>
             <For each={groups().ready}>
               {(delivery) => (
-                <Row delivery={delivery} online={props.online} select={props.select} />
+                <Row
+                  delivery={delivery}
+                  online={props.online}
+                  select={props.select}
+                  changed={props.changed}
+                  sendAgain={props.sendAgain}
+                />
               )}
             </For>
           </ul>
@@ -262,7 +391,14 @@ export function Board(props: {
           <ul class={list}>
             <For each={groups().interrupted}>
               {(delivery) => (
-                <Row compact delivery={delivery} online={props.online} select={props.select} />
+                <Row
+                  compact
+                  delivery={delivery}
+                  online={props.online}
+                  select={props.select}
+                  changed={props.changed}
+                  sendAgain={props.sendAgain}
+                />
               )}
             </For>
           </ul>
@@ -298,7 +434,14 @@ export function Board(props: {
           <ul class={list}>
             <For each={groups().ended}>
               {(delivery) => (
-                <Row compact delivery={delivery} online={props.online} select={props.select} />
+                <Row
+                  compact
+                  delivery={delivery}
+                  online={props.online}
+                  select={props.select}
+                  changed={props.changed}
+                  sendAgain={props.sendAgain}
+                />
               )}
             </For>
           </ul>

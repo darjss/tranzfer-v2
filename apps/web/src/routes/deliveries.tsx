@@ -99,6 +99,8 @@ const DeliveriesPage = () => {
     const id = searchParams.d;
     return id === undefined ? undefined : deliveries().find((delivery) => delivery.id === id);
   };
+  const hasLive = () =>
+    deliveries().some((delivery) => delivery.status === "open" || delivery.status === "ready");
   const changed = () => {
     void refresh(deliveries);
   };
@@ -254,14 +256,18 @@ const DeliveriesPage = () => {
             >
               <div class={css({ lg: { pos: "sticky", top: "8" } })}>
                 <h1
-                  class={css({
-                    fontSize: { base: "[34px]", lg: "[56px]" },
-                    fontWeight: "semibold",
-                    letterSpacing: "[-0.04em]",
-                    lineHeight: "[.98]",
-                    mb: { base: "6", lg: "4" },
-                    textWrap: "balance",
-                  })}
+                  class={cx(
+                    css({
+                      fontSize: { base: "[34px]", lg: "[56px]" },
+                      fontWeight: "semibold",
+                      letterSpacing: "[-0.04em]",
+                      lineHeight: "[.98]",
+                      mb: { base: "6", lg: "4" },
+                      textWrap: "balance",
+                    }),
+                    // The board leads on phones, so the heading steps aside.
+                    hasLive() && css({ lgDown: { srOnly: true } }),
+                  )}
                 >
                   Send something <br />
                   <span class={css({ display: "inline-block", pos: "relative" })}>
@@ -306,17 +312,21 @@ const DeliveriesPage = () => {
                   }}
                 />
               </div>
-              <div>
-                <Show
-                  when={
-                    !deliveries().some(
-                      (delivery) => delivery.status === "open" || delivery.status === "ready",
-                    )
-                  }
-                >
+              {/* On phones, live deliveries come first so progress and links
+                  sit above the fold; the send card follows. */}
+              <div class={cx(hasLive() && css({ lgDown: { order: "-1" } }))}>
+                <Show when={!hasLive()}>
                   <Empty firstRun={deliveries().length === 0} />
                 </Show>
-                <Board deliveries={deliveries()} online={online()} select={select} />
+                <Board
+                  changed={changed}
+                  deliveries={deliveries()}
+                  online={online()}
+                  select={select}
+                  sendAgain={() => {
+                    filesInput?.click();
+                  }}
+                />
               </div>
             </main>
           </div>
