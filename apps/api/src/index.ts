@@ -31,8 +31,6 @@ export default ApiWorker.make(
   },
   Effect.gen(function* impl() {
     const db = yield* Cloudflare.D1.QueryDatabase(App);
-    // The accessor stays lazy: this impl also evaluates at deploy time, when
-    // the env holds no D1 binding.
     const database = Layer.succeed(Database, db.raw.pipe(Effect.provide(RuntimeContext.phantom)));
     const stage = yield* deployStage;
     const auth = yield* Match.value(stage).pipe(
@@ -53,7 +51,6 @@ export default ApiWorker.make(
     const linkSecret = yield* Random("LinkSecret");
     const links = Links.make((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom)));
 
-    // Services and handlers that never read the request build once per isolate.
     const shared = yield* Layer.build(
       Layer.mergeAll(InfraHandlers, LinkHandlers, RpcSerialization.layerJson).pipe(
         Layer.provideMerge(

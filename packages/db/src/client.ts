@@ -44,8 +44,6 @@ export class Drizzle extends Context.Service<
     Effect.gen(function* makeDrizzle() {
       const raw = yield* Database;
       return Drizzle.of({
-        // The binding only exists inside an invocation, so the handle and the
-        // drizzle instance are both resolved per call.
         run: (op, fn) =>
           raw.pipe(
             Effect.flatMap((handle) =>

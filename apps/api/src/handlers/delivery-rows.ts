@@ -6,8 +6,6 @@ import type { Links } from "../services/links";
 
 export type DeliveryRow = typeof schema.delivery.$inferSelect;
 
-// A predicate on the row, not on `expiresAt`: narrowing `Date | null` would
-// wrongly make a future expiry read as null on the false branch.
 export const isExpired = (
   delivery: DeliveryRow,
 ): delivery is DeliveryRow & { readonly expiresAt: Date } =>
