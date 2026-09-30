@@ -18,7 +18,7 @@ import { RuntimeContext } from "../api/solid-effect";
 import { Button } from "../ui/Button";
 import { transfers } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
-import { liveDelivery } from "./Board";
+import { liveDelivery } from "./deliveries";
 import {
   bytes,
   etaAt,

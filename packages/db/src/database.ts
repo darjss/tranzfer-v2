@@ -10,7 +10,7 @@ import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 
 import * as schema from "./schema";
 
-export const relations = defineRelations(schema, (r) => ({
+const relations = defineRelations(schema, (r) => ({
   delivery: {
     link: r.one.link({ from: r.delivery.id, to: r.link.deliveryId }),
     sender: r.one.user({ from: r.delivery.senderId, optional: false, to: r.user.id }),
