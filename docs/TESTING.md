@@ -15,7 +15,7 @@ Each layer answers one question. Don't ask a layer a question it can't answer.
 | Types and lint | `vp check`                             | Is this code possible, and does it respect the boundaries?                     |
 | Service tests  | `@effect/vitest` through `vp run test` | Do the API services keep their rules on a real local D1, with storage faked?   |
 | Staging checks | `vp run test:e2e` (vitest in `e2e/`)   | Does a deployed staging or PR preview build honor the API contract end to end? |
-| Scenarios      | Playwright inside `e2e/`               | Does a real user journey survive real failure against the running stack?       |
+| Scenarios      | Playwright inside `e2e/` (planned)     | Does a real user journey survive real failure against the running stack?       |
 | Release gates  | People, real files, real networks      | Does 10, 100 or 350 GB actually make it? The table in RELIABILITY.md decides   |
 
 ## Pure tests
@@ -51,6 +51,8 @@ E2E_BASE_URL=https://tranzfer.localhost NODE_EXTRA_CA_CERTS=~/.portless/ca.pem T
 The key must match `TEST_LOGIN_KEY` in the `.env` that `alchemy dev` loaded. A worktree uses its own host, such as `https://<branch>.tranzfer.localhost`.
 
 ## Scenarios
+
+Planned, not built. `e2e/` today holds only the fetch-based staging checks; the `Browser`, `NetControl` and `Storage` services below, the parts ledger and `scenario()` don't exist yet. Build them with the resume milestone, which is the first thing that needs them.
 
 A scenario is one user-meaningful journey, run black box against the local stack at `https://tranzfer.localhost`. It uses the real Workers and your dev stage's real D1 and R2.
 
@@ -96,7 +98,7 @@ The parts ledger is the most important thing in the harness. Part bytes go strai
 
 ## Identity
 
-Sign-in is Google only, and scenarios don't go through Google. Outside production, when `TEST_LOGIN_KEY` is set, the API registers `POST /api/auth/staging-login` (`apps/api/src/services/staging-login.ts`). It checks the key, then creates the staging user and a real session. Every request after that goes through real session validation. Production never registers the route.
+Sign-in is Google only, and scenarios don't go through Google. Outside production, when `TEST_LOGIN_KEY` is set, the API registers `POST /api/auth/staging-login` (`apps/api/src/infrastructure/staging-login.ts`). It checks the key, then creates the staging user and a real session. Every request after that goes through real session validation. Production never registers the route.
 
 One scenario checks that sign-in redirects to Google with the right callback URL. The real OAuth round trip gets checked by hand against the deployment.
 

@@ -11,12 +11,12 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 - Public config: T3 Env with Effect Schema. Secrets and bindings stay on the server.
 - Backend: Effect 4 for workflows, typed errors and services. Pure math stays plain functions.
 - Protocol: Effect RPC, schemas in `packages/contracts`. Plain HTTP for Better Auth, webhooks, health and downloads.
-- Worker adapter: Alchemy's Effect Worker runtime. Init builds the router and services once per isolate.
-- Database: D1 through Drizzle, wrapped in the `Drizzle` service. Alchemy applies migrations.
-- Auth: `@alchemy.run/better-auth` on the Drizzle adapter, backed by the lazy D1 accessor.
+- Worker adapter: Alchemy's Effect Worker runtime. Init builds storage, link tokens and auth once per isolate. Domain services are built per request ([STRUCTURE.md](STRUCTURE.md)).
+- Database: D1 through Drizzle, wrapped in the `Database` service. Alchemy applies migrations.
+- Auth: `@alchemy.run/better-auth` on the Drizzle adapter, over the lazy D1 handle.
 - Upload transport: Uppy, straight from the browser to private R2 multipart.
 - Multipart signing: the `Storage` service signs Distilled S3 requests against the R2 endpoint, using a bucket-scoped API token Alchemy mints per stage.
-- Billing: Polar. Entitlements live in D1 and get reconciled from webhooks.
+- Billing, not built: Polar. Entitlements would live in D1 and get reconciled from webhooks.
 - Infrastructure: Alchemy v2 in `infra/alchemy.run.ts`, on the app's Effect version.
 - Local URLs: Portless.
 - Lint and format: oxlint with type-aware rules and Solid diagnostics, oxfmt. Rules live in `lint.config.ts`.
