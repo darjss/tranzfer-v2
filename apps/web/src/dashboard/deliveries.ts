@@ -3,7 +3,14 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import type * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Struct from "effect/Struct";
-import { action, createEffect, createOptimistic, createOptimisticStore, refresh } from "solid-js";
+import {
+  action,
+  createEffect,
+  createMemo,
+  createOptimistic,
+  createOptimisticStore,
+  refresh,
+} from "solid-js";
 
 import { ApiClient } from "../api/client";
 import { appError } from "../api/errors";
@@ -12,6 +19,7 @@ import type { AppServices } from "../api/solid-effect";
 import { transfers } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
 import type { ChosenFile } from "../uploads/uploads";
+import { kindOf, rollup, totalSize } from "./format";
 
 // What a cancel looks like before the server confirms it.
 const cancelled = (delivery: Delivery): Delivery =>
@@ -79,4 +87,16 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
   });
 
   return { cancel, deliveries, send, sending };
+};
+
+/** A delivery's live state: server status plus whatever this tab is uploading. */
+export const liveDelivery = (source: { readonly delivery: Delivery; readonly online: boolean }) => {
+  const roll = createMemo(() => rollup(source.delivery, (id) => transfers[id]), {
+    name: "Row.roll",
+  });
+  const kind = createMemo(() => kindOf(source.delivery.status, roll(), source.online), {
+    name: "Row.kind",
+  });
+  const total = createMemo(() => totalSize(source.delivery), { name: "Row.total" });
+  return { kind, roll, total };
 };

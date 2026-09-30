@@ -1,6 +1,6 @@
 # Testing and guardrails
 
-The rules are in [TESTING.md](../TESTING.md). This file only lists work still to do. The lint items can land now. The harness lands with the first transfer flow in [01-foundation.md](01-foundation.md).
+The rules are in [TESTING.md](../TESTING.md). This file only lists work still to do. The lint items can land now. The browser harness lands with resume in [01-foundation.md](01-foundation.md).
 
 ## Lint, landable now
 
@@ -14,7 +14,7 @@ All native oxlint rules in `lint.config.ts`. No custom plugin.
   - `apps/api`: no `solid-js`, `@uppy/*` or `apps/web` paths.
   - `apps/web`: no `drizzle-orm`, `@tranzfer/db`, `better-auth` server modules or `apps/api` paths.
   - Test files: no `vitest`. Use `@effect/vitest`.
-- Runtime boundary with `no-restricted-properties`: ban `Effect.runSync`, `runPromise`, `runFork`, `runPromiseExit` and `ManagedRuntime.make`. Allow them in `apps/web/src/api/**`, `apps/api/probe-r2.ts`, `infra/**`, `e2e/**` and test files. Those are today's only call sites.
+- Runtime boundary with `no-restricted-properties`: ban `Effect.runSync`, `runPromise`, `runFork`, `runPromiseExit` and `ManagedRuntime.make`. Allow them in `apps/web/src/api/**`, `apps/web/src/uploads/uploads.ts`, `apps/web/src/dashboard/{deliveries.ts,Board.tsx,DeliverySheet.tsx}`, `apps/web/src/routes/d/[token].tsx`, `infra/**`, `e2e/**` and test files. Those are today's call sites.
 - Prove each rule with a planted violation that fails `vp check`, then remove the plant.
 
 ## Contract snapshot
@@ -22,9 +22,11 @@ All native oxlint rules in `lint.config.ts`. No custom plugin.
 - Add a script that emits declarations for `packages/contracts` and diffs them against a committed snapshot. RPC tag names and struct fields survive as literal types, so renaming `Health` or dropping a field fails. Additions pass and get recorded with `--update`. Run it in the `verify` workflow.
 - When `upload-core` exists, add the IndexedDB recovery record schema to the snapshot. Future versions of the app have to read it.
 
-## Harness, with the first transfer flow
+## Browser harness, with resume
 
-- Add an `e2e` workspace package with `playwright` and `@effect/vitest`. Its global setup attaches to `E2E_URL`, or boots `vp run dev`, and waits for `/infra`.
+`e2e/` already holds the fetch-based staging checks. Add to it:
+
+- `playwright` and a global setup. The setup attaches to `E2E_URL`, or boots `vp run dev`, and waits for `/infra`.
 - Port executor's `scenario()` without the viewer, film splicing or test-source extraction. Add `Target`, `Api`, `Browser`, `NetControl` and `Storage` as TESTING.md describes.
 - Before building on either of these, verify:
   - Which bucket local dev presigns against, so `Storage` reads the same one.

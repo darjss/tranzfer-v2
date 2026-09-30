@@ -23,9 +23,10 @@ const empty = (): TransferProgress => ({
   uploaded: false,
 });
 
-export const [transfers, setTransfersRaw] = createRoot(() =>
+const [transfers, setTransfersRaw] = createRoot(() =>
   createStore<Record<string, TransferProgress>>({}),
 );
+export { transfers };
 
 // Store setters have no ownedWrite escape: writes must run with no owner,
 // so Uppy callbacks drop whatever scope fired them.
@@ -46,7 +47,8 @@ export const isActive = (progress: TransferProgress | undefined) =>
     progress.phase === "uploading" ||
     progress.phase === "finalizing");
 
-export const [online, setOnline] = createRoot(() => createSignal(true, { ownedWrite: true }));
+const [online, setOnline] = createRoot(() => createSignal(true, { ownedWrite: true }));
+export { online };
 
 let wired = false;
 

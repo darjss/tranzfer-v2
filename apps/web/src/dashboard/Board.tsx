@@ -19,9 +19,9 @@ import {
   kindWords,
   rollup,
   speedAt,
-  totalSize,
 } from "./format";
 import type { Group } from "./format";
+import { liveDelivery } from "./deliveries";
 import { CopyLink, KindIcon, kindText, Progress } from "./parts";
 
 const shortDate = new Intl.DateTimeFormat("en-GB", {
@@ -29,18 +29,6 @@ const shortDate = new Intl.DateTimeFormat("en-GB", {
   month: "short",
   weekday: "short",
 });
-
-/** A delivery's live state: server status plus whatever this tab is uploading. */
-export const liveDelivery = (source: { readonly delivery: Delivery; readonly online: boolean }) => {
-  const roll = createMemo(() => rollup(source.delivery, (id) => transfers[id]), {
-    name: "Row.roll",
-  });
-  const kind = createMemo(() => kindOf(source.delivery.status, roll(), source.online), {
-    name: "Row.kind",
-  });
-  const total = createMemo(() => totalSize(source.delivery), { name: "Row.total" });
-  return { kind, roll, total };
-};
 
 const sectionTitle = css({
   alignItems: "baseline",

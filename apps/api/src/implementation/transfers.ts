@@ -86,34 +86,36 @@ export class Transfers extends Context.Service<
         });
 
       /**
-       * Claims the transfer as complete, then flips its delivery to ready when it
-       * was the last one. Both updates are conditional, so concurrent finalizes
-       * and the sweeper converge, and a cancel stays final.
+       * Claims the transfer as complete. The claim is conditional, so concurrent
+       * finalizes and the sweeper converge, and a cancel stays final. Returns
+       * whether this call made the claim; `markReady` flips the delivery.
        */
-      const complete = (transfer: Transfer, object: StoredObject) =>
-        Effect.gen(function* completeTransfer() {
-          const now = yield* Clock.currentTimeMillis;
-          const claimed = yield* db
-            .update(schema.transfer)
-            .set({ completedAt: new Date(now), etag: object.etag, state: "complete" })
-            .where(
-              and(
-                eq(schema.transfer.id, transfer.id),
-                inArray(schema.transfer.state, ["uploading", "finalizing"]),
-              ),
-            )
-            .returning({ id: schema.transfer.id });
-          if (claimed.length === 0) {
-            const current = yield* db.query.transfer.findFirst({
-              columns: { state: true },
-              where: { id: transfer.id },
-            });
-            if (current?.state === "cancelled") {
-              return yield* new UploadClosed();
-            }
+      const complete = Effect.fn("Transfers.complete")(function* complete(
+        transfer: Transfer,
+        object: StoredObject,
+      ) {
+        const now = yield* Clock.currentTimeMillis;
+        const claimed = yield* db
+          .update(schema.transfer)
+          .set({ completedAt: new Date(now), etag: object.etag, state: "complete" })
+          .where(
+            and(
+              eq(schema.transfer.id, transfer.id),
+              inArray(schema.transfer.state, ["uploading", "finalizing"]),
+            ),
+          )
+          .returning({ id: schema.transfer.id });
+        if (claimed.length === 0) {
+          const current = yield* db.query.transfer.findFirst({
+            columns: { state: true },
+            where: { id: transfer.id },
+          });
+          if (current?.state === "cancelled") {
+            return yield* new UploadClosed();
           }
-          return claimed.length > 0;
-        });
+        }
+        return claimed.length > 0;
+      });
 
       /**
        * Trusts the object only after closing its key. Nothing is sealed until
@@ -122,19 +124,16 @@ export class Transfers extends Context.Service<
        * multipart upload kills URLs signed earlier, and the second HEAD reads
        * the object that can no longer change.
        */
-      const settle = (transfer: Transfer) =>
-        Effect.gen(function* settleTransfer() {
-          yield* verify(transfer, yield* storage.head(transfer.objectKey));
-          yield* db
-            .update(schema.transfer)
-            .set({ state: "finalizing" })
-            .where(
-              and(eq(schema.transfer.id, transfer.id), eq(schema.transfer.state, "uploading")),
-            );
-          yield* storage.seal(transfer.objectKey);
-          const sealed = yield* verify(transfer, yield* storage.head(transfer.objectKey));
-          return yield* complete(transfer, sealed);
-        });
+      const settle = Effect.fn("Transfers.settle")(function* settle(transfer: Transfer) {
+        yield* verify(transfer, yield* storage.head(transfer.objectKey));
+        yield* db
+          .update(schema.transfer)
+          .set({ state: "finalizing" })
+          .where(and(eq(schema.transfer.id, transfer.id), eq(schema.transfer.state, "uploading")));
+        yield* storage.seal(transfer.objectKey);
+        const sealed = yield* verify(transfer, yield* storage.head(transfer.objectKey));
+        return yield* complete(transfer, sealed);
+      });
 
       /**
        * Flips open deliveries whose every transfer is complete to ready, with

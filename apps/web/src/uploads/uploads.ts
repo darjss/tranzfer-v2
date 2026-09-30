@@ -155,8 +155,12 @@ const make = Effect.gen(function* makeUploads() {
 
   // Once the bytes are in R2, finishing is the FinalizeTransfer retry loop.
   // Both the upload-success path and a post-upload retry go through this.
-  const finish = (uppy: Uppy<TransferMeta, Body>, fileId: string, transferId: TransferId) =>
-    retryWhileNotUploaded(api.FinalizeTransfer({ transferId })).pipe(
+  const finish = Effect.fn("Uploads.finish")(function* finish(
+    uppy: Uppy<TransferMeta, Body>,
+    fileId: string,
+    transferId: TransferId,
+  ) {
+    return yield* retryWhileNotUploaded(api.FinalizeTransfer({ transferId })).pipe(
       Effect.match({
         onFailure: (error) => {
           patchTransfer(transferId, { error, phase: "failed" });
@@ -169,6 +173,7 @@ const make = Effect.gen(function* makeUploads() {
         },
       }),
     );
+  });
 
   // One Uppy for the session, created on first use. It is never destroyed,
   // uninstalled or cancelled by component cleanup or navigation: Uppy aborts
