@@ -47,7 +47,11 @@ const sameDelivery = (
   input.files.every((file) =>
     row.transfers.some(
       (transfer) =>
-        transfer.id === file.id && transfer.path === file.path && transfer.size === file.size,
+        transfer.id === file.id &&
+        transfer.path === file.path &&
+        transfer.size === file.size &&
+        transfer.contentType === file.contentType &&
+        transfer.sourceModifiedAt.getTime() === file.lastModified,
     ),
   );
 

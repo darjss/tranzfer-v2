@@ -148,7 +148,13 @@ const make = (options: R2Options) =>
             deleteObjects({
               Bucket: bucket,
               Delete: { Objects: chunk.map((key) => ({ Key: key })), Quiet: true },
-            }),
+            }).pipe(
+              // A 200 can still list keys that failed; quiet mode returns only those.
+              Effect.filterOrFail(
+                (result) => (result.Errors?.length ?? 0) === 0,
+                (result) => result.Errors,
+              ),
+            ),
           { discard: true },
         ).pipe(Effect.mapError((cause) => new StorageError({ cause })));
       }),
