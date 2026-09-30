@@ -44,6 +44,17 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
         }),
       );
       expect(changed._tag).toBe("DeliveryConflict");
+      for (const edit of [{ contentType: "image/png" }, { lastModified: 42 }]) {
+        const source = yield* Effect.flip(
+          deliveries.create("bob", {
+            files: [{ ...first(input.files), ...edit }],
+            id: input.id,
+            retentionDays: input.retentionDays,
+            title: input.title,
+          }),
+        );
+        expect(source._tag).toBe("DeliveryConflict");
+      }
       const stranger = yield* Effect.flip(deliveries.create("alice", input));
       expect(stranger._tag).toBe("DeliveryConflict");
     }),
