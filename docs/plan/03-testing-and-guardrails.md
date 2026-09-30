@@ -14,7 +14,7 @@ All native oxlint rules in `lint.config.ts`. No custom plugin.
   - `apps/api`: no `solid-js`, `@uppy/*` or `apps/web` paths.
   - `apps/web`: no `drizzle-orm`, `@tranzfer/db`, `better-auth` server modules or `apps/api` paths.
   - Test files: no `vitest`. Use `@effect/vitest`.
-- Runtime boundary with `no-restricted-properties`: ban `Effect.runSync`, `runPromise`, `runFork`, `runPromiseExit` and `ManagedRuntime.make`. Allow them in `apps/web/src/api/**`, `apps/web/src/uploads/uploads.ts`, `apps/web/src/dashboard/deliveries.ts`, `apps/web/src/dashboard/Board.tsx`, `infra/**`, `e2e/**` and test files. Those are today's call sites.
+- Runtime boundary with `no-restricted-properties`: ban `Effect.runSync`, `runPromise`, `runFork`, `runPromiseExit` and `ManagedRuntime.make`. Allow them in `apps/web/src/api/**`, `apps/web/src/uploads/uploads.ts`, `apps/web/src/dashboard/{deliveries.ts,Board.tsx,DeliverySheet.tsx}`, `apps/web/src/routes/d/[token].tsx`, `infra/**`, `e2e/**` and test files. Those are today's call sites.
 - Prove each rule with a planted violation that fails `vp check`, then remove the plant.
 
 ## Contract snapshot
