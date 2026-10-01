@@ -12,6 +12,8 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
 import { ApiClient } from "../api/client";
+import { fingerprint, forget, recordConfirmed, recordUploadId, remember } from "./recovery";
+import type { RecoveryRecord } from "./recovery";
 import { patchTransfer, transfers, wireWindow } from "./store";
 
 type SignRequest = Extract<
@@ -137,6 +139,12 @@ const make = Effect.gen(function* makeUploads() {
   const runFork = yield* FiberSet.makeRuntime();
   const runPromise = yield* FiberSet.makeRuntimePromise();
   const rates = new Map<string, { at: number; bytes: number }>();
+  // objectKey -> transferId, for every file this tab sent. Signing hands us
+  // keys, so this is how a signed request finds its record.
+  const keys = new Map<string, TransferId>();
+  // transferId -> the uploadId already persisted; a new multipart upload for
+  // the same transfer records again.
+  const uploadIdStored = new Map<TransferId, string>();
 
   const sampleSpeed = (transferId: string, bytesUploaded: number) => {
     const now = Date.now();
@@ -152,6 +160,17 @@ const make = Effect.gen(function* makeUploads() {
     const upload = toUploadRequest(request);
     if (upload === null) {
       return yield* Effect.die(new Error(`Tranzfer never signs this ${request.method}`));
+    }
+    // The upload id first reaches the browser inside a signed URL; the record
+    // has to hold it before that URL can be lost with the tab.
+    const transferId = keys.get(request.key);
+    if (
+      transferId !== undefined &&
+      "uploadId" in request &&
+      uploadIdStored.get(transferId) !== request.uploadId
+    ) {
+      uploadIdStored.set(transferId, request.uploadId);
+      yield* recordUploadId(transferId, request.uploadId);
     }
     const signed = yield* api.SignUpload({ key: request.key, request: upload });
     // The headers are part of the signature (an empty file's PUT carries
@@ -176,6 +195,7 @@ const make = Effect.gen(function* makeUploads() {
           // The uploader has already detached from this file, so removing it
           // frees memory without firing an abort.
           uppy.removeFile(fileId);
+          runFork(forget([transferId]));
         },
       }),
     );
@@ -207,6 +227,7 @@ const make = Effect.gen(function* makeUploads() {
         // lists, so a completed part N implies parts 1..N-1 are also done.
         const confirmed = Math.min(partSize(size) * part.PartNumber, size);
         patchTransfer(file.meta.transferId, { confirmed, phase: "uploading" });
+        runFork(recordConfirmed(file.meta.transferId, confirmed));
       });
 
       uppy.on("upload-progress", (file, progress) => {
@@ -265,18 +286,60 @@ const make = Effect.gen(function* makeUploads() {
     retentionDays: RetentionDays,
   ) {
     const uppy = yield* engine;
-    const delivery = yield* api.CreateDelivery({
-      files: files.map(({ file, path }) => ({
+    // Fingerprints and ids are fixed before anything is sent, so a retried
+    // CreateDelivery replays the same delivery instead of making a second.
+    const prepared = yield* Effect.forEach(
+      files,
+      ({ file, path }) =>
+        Effect.map(fingerprint(file), (print) => ({
+          file,
+          path,
+          print,
+          transferId: TransferId.make(crypto.randomUUID()),
+        })),
+      { concurrency: 4 },
+    );
+    const deliveryId = DeliveryId.make(crypto.randomUUID());
+    const payload = {
+      files: prepared.map(({ file, path, transferId }) => ({
         contentType: file.type === "" ? null : file.type,
-        id: TransferId.make(crypto.randomUUID()),
+        id: transferId,
         lastModified: file.lastModified,
         path,
         size: file.size,
       })),
-      id: DeliveryId.make(crypto.randomUUID()),
+      id: deliveryId,
       retentionDays,
       title: deliveryTitle(files),
-    });
+    };
+    // The records land before CreateDelivery: a create whose response is lost
+    // still leaves enough behind for restore to find the transfers.
+    yield* remember(
+      prepared.map(({ file, path, print, transferId }): RecoveryRecord => ({
+        confirmed: 0,
+        createdAt: Date.now(),
+        deliveryId,
+        fingerprint: print,
+        lastModified: file.lastModified,
+        partSize: partSize(file.size),
+        path,
+        size: file.size,
+        transferId,
+        version: 1,
+      })),
+    );
+    const delivery = yield* api.CreateDelivery(payload).pipe(
+      Effect.retry({
+        schedule: Schedule.exponential("1 second"),
+        times: 5,
+        while: (error) => error._tag === "RpcClientError",
+      }),
+      // A conflict means these ids already belong to different content, so
+      // nothing from this attempt exists to resume; its records go.
+      Effect.catchTag("DeliveryConflict", (error) =>
+        Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error)),
+      ),
+    );
 
     const byPath = new Map(delivery.transfers.map((transfer) => [transfer.path, transfer]));
     const added: { fileId: string; transferId: TransferId }[] = [];
@@ -290,6 +353,7 @@ const make = Effect.gen(function* makeUploads() {
           continue;
         }
         patchTransfer(transfer.id, { phase: "queued" });
+        keys.set(transfer.objectKey, transfer.id);
         const fileId = uppy.addFile({
           data: file,
           meta: {
@@ -310,8 +374,10 @@ const make = Effect.gen(function* makeUploads() {
             uppy.removeFile(fileId);
           }
           for (const transfer of delivery.transfers) {
+            keys.delete(transfer.objectKey);
             patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
           }
+          yield* forget(delivery.transfers.map((transfer) => transfer.id));
           // If this cancel fails too, the sweeper ends the open delivery.
           yield* Effect.ignore(api.CancelDelivery({ deliveryId: delivery.id }));
           return yield* Effect.die(error.cause);
@@ -354,8 +420,10 @@ const make = Effect.gen(function* makeUploads() {
     // Removed files fire no terminal event, so their progress would stay
     // active and keep beforeunload armed.
     for (const transfer of cancelled.transfers) {
+      keys.delete(transfer.objectKey);
       patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
     }
+    yield* forget(cancelled.transfers.map((transfer) => transfer.id));
     return cancelled;
   });
 

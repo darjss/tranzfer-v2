@@ -15,6 +15,7 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 - Database: D1 through Drizzle, wrapped in the `Database` service. Alchemy applies migrations.
 - Auth: `@alchemy.run/better-auth` on the Drizzle adapter, over the lazy D1 handle.
 - Upload transport: Uppy, straight from the browser to private R2 multipart. A pnpm patch makes its `ListParts` follow pagination.
+- Browser recovery metadata: idb-keyval.
 - Multipart signing: the `Storage` service signs Distilled S3 requests against the R2 endpoint, using a bucket-scoped API token Alchemy mints per stage.
 - Billing, not built: Polar. Entitlements would live in D1 and get reconciled from webhooks.
 - Infrastructure: Alchemy v2 in `infra/alchemy.run.ts`, on the app's Effect version.

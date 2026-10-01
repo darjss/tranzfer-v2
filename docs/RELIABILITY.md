@@ -225,6 +225,13 @@ How the API does it today:
 - An empty file's guarded `Put` can be signed again while the transfer is `finalizing`, so a lost response does not strand it; `If-None-Match` still stops a second write.
 - Opening a link signs download URLs without re-checking each object: the seal above is what makes that safe.
 
+How the browser recovers today:
+
+- Before `CreateDelivery` is called, one IndexedDB record per transfer holds the delivery and transfer ids, path, size, lastModified, the part size chosen for it and the file fingerprint. The call then replays the exact same payload on transport failure, so a lost response never creates a second delivery.
+- The multipart upload id joins the record as soon as the first signed request carries it, before that request's URL can be lost with the tab. Confirmed bytes update the record on every `part-uploaded`.
+- The fingerprint is version 1: SHA-256 of the whole file at 1 MiB and under; larger files hash 16 samples of 64 KiB spread from first byte to last. It is sampled, not whole-file integrity.
+- IndexedDB is bookkeeping, never a gate. A failed read or write logs a warning and the upload continues; it just won't survive a refresh.
+
 ## Downloads
 
 An upload change is not finished until the recipient can download the correct file through an authorized link. Expiry is stated clearly on the page. Define download recovery, and do not make anyone redownload confirmed bytes where the client supports ranges.
