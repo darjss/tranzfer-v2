@@ -60,7 +60,9 @@ export const recordUploadId = (transferId: TransferId, uploadId: string) =>
     await update<RecoveryRecord | undefined>(
       transferId,
       (record) =>
-        record === undefined ? undefined : Struct.evolve(record, { uploadId: () => uploadId }),
+        // Struct.assign, not Struct.evolve: evolve skips keys the record
+        // lacks, and a fresh record has no uploadId yet.
+        record === undefined ? undefined : Struct.assign({ uploadId })(record),
       idb(),
     );
   }).pipe(Effect.catch(warn("recordUploadId")));
