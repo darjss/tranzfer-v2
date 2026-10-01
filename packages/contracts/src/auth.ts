@@ -1,7 +1,7 @@
 import * as Context from "effect/Context";
 import * as Schema from "effect/Schema";
-import type * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
-import * as RpcMiddleware from "effect/unstable/rpc/RpcMiddleware";
+import type * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 
 export const Principal = Schema.Struct({
   email: Schema.String,

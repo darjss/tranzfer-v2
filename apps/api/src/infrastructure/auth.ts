@@ -15,11 +15,11 @@ import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
-import * as Cookies from "effect/unstable/http/Cookies";
-import type * as HttpBody from "effect/unstable/http/HttpBody";
-import type * as HttpServerError from "effect/unstable/http/HttpServerError";
-import type * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
-import type * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
+import * as Cookies from "effect/http/Cookies";
+import type * as HttpBody from "effect/http/HttpBody";
+import type * as HttpServerError from "effect/http/HttpServerError";
+import type * as HttpServerRequest from "effect/http/HttpServerRequest";
+import type * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { stagingLogin } from "./staging-login";
 

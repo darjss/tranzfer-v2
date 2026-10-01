@@ -10,8 +10,8 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
 import * as Struct from "effect/Struct";
-import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
-import * as RpcTest from "effect/unstable/rpc/RpcTest";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as RpcTest from "effect/rpc/RpcTest";
 import { flush, Loading } from "solid-js";
 
 import { ApiClient } from "../api/client";

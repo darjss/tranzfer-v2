@@ -21,7 +21,7 @@
     "prepare": "vp config && effect-tsgo patch --oxlint"
   },
   "devDependencies": {
-    "@effect/tsgo": "0.45.0",
+    "@effect/tsgo": "0.47.2",
     "effect": "catalog:",
     "eslint-plugin-solid": "0.18.0",
     "oxlint": "1.82.0",

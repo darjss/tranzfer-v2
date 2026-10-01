@@ -16,7 +16,8 @@ export const maxFiles = 1000;
 // Recipient-disk safe paths: forward slashes only, no traversal, no control
 // characters, and segments that fit a filename.
 export const RelativePath = Schema.String.check(
-  Schema.isLengthBetween(1, 1024),
+  Schema.isMinLength(1),
+  Schema.isMaxLength(1024),
   Schema.makeFilter((value) => {
     if (value.startsWith("/") || value.includes("\\")) {
       return "path must use forward slashes and stay relative";
@@ -63,7 +64,7 @@ export const NewDelivery = Schema.Struct({
   ),
   id: DeliveryId,
   retentionDays: RetentionDays,
-  title: Schema.Trim.check(Schema.isLengthBetween(1, 200)),
+  title: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
 });
 export interface NewDelivery extends Schema.Schema.Type<typeof NewDelivery> {}
 
