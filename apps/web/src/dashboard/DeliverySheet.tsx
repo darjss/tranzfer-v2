@@ -52,7 +52,10 @@ const fileKind = {
   NeedsFile: "needsFile",
 } satisfies Record<ReturnType<typeof transferStatus>["_tag"], Kind>;
 
-const resumeProblem = (problem: "changed" | "policy" | "unreadable" | "unknown", name: string) => {
+const resumeProblem = (
+  problem: "changed" | "gone" | "policy" | "unreadable" | "unknown",
+  name: string,
+) => {
   if (problem === "unknown") {
     return `"${name}" isn't one of the files this delivery is waiting for.`;
   }
@@ -61,6 +64,9 @@ const resumeProblem = (problem: "changed" | "policy" | "unreadable" | "unknown",
   }
   if (problem === "unreadable") {
     return `"${name}" couldn't be read. Pick it again.`;
+  }
+  if (problem === "gone") {
+    return `"${name}" can't continue because its partial upload is gone from storage. Cancel and send it again.`;
   }
   return `"${name}" was started by an older version of Tranzfer and can't continue. Cancel and send it again.`;
 };
@@ -75,6 +81,7 @@ function Details(props: {
   const [confirming, setConfirming] = createSignal(false);
   const [problem, setProblem] = createSignal<string>();
   const [resumeProblems, setResumeProblems] = createSignal<readonly string[]>([]);
+  const [checking, setChecking] = createSignal(false);
   const shareable = () => props.delivery.status === "open" || props.delivery.status === "ready";
   // Folder picks matter only when a transfer actually sits in one.
   const hasNestedPaths = () =>
@@ -89,9 +96,13 @@ function Details(props: {
       return;
     }
     const { delivery } = props;
+    // Verifying a reselected file hashes every stored part, so a big file can
+    // hold the pick for minutes; the block must say why it is waiting.
+    setChecking(true);
     const exit = await runtime.runPromiseExit(
       Uploads.use((uploads) => uploads.resume(delivery, picked)),
     );
+    setChecking(false);
     setResumeProblems(
       Exit.isSuccess(exit)
         ? exit.value.map(({ name, problem: tag }) => resumeProblem(tag, name))
@@ -187,6 +198,7 @@ function Details(props: {
           </p>
           <div class={css({ display: "flex", flexWrap: "wrap", gap: "2.5", mt: "3" })}>
             <Button
+              disabled={checking()}
               onClick={() => {
                 resumeFiles?.click();
               }}
@@ -196,6 +208,7 @@ function Details(props: {
             </Button>
             <Show when={hasNestedPaths()}>
               <Button
+                disabled={checking()}
                 onClick={() => {
                   resumeFolder?.click();
                 }}
@@ -206,6 +219,11 @@ function Details(props: {
               </Button>
             </Show>
           </div>
+          <Show when={checking()}>
+            <p class={css({ color: "mut", mt: "2.5", textStyle: "sm" })} role="status">
+              Checking the file against the parts already uploaded…
+            </p>
+          </Show>
           <input
             class={css({ display: "none" })}
             multiple
