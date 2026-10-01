@@ -57,6 +57,12 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       yield* transfers.sign("ann", smallKey, { _tag: "Complete", uploadId: "u" });
       yield* transfers.sign("ann", smallKey, { _tag: "Complete", uploadId: "u" });
       yield* transfers.sign("ann", smallKey, { _tag: "List", uploadId: "u" });
+      // ListParts pagination signs again with the page marker.
+      yield* transfers.sign("ann", smallKey, {
+        _tag: "List",
+        partNumberMarker: 1000,
+        uploadId: "u",
+      });
       const reopen = yield* Effect.flip(transfers.sign("ann", smallKey, { _tag: "Create" }));
       expect(reopen._tag).toBe("UploadClosed");
       const morePart = yield* Effect.flip(

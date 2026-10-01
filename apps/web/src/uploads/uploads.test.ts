@@ -67,6 +67,14 @@ describe("signing", () => {
       _tag: "List",
       uploadId: "u",
     });
+    // A continued ListParts page carries its marker into the signed request.
+    expect(
+      toUploadRequest({ key: "k", method: "GET", partNumberMarker: 1000, uploadId: "u" }),
+    ).toEqual({
+      _tag: "List",
+      partNumberMarker: 1000,
+      uploadId: "u",
+    });
     expect(toUploadRequest({ key: "k", method: "POST", uploadId: "u" })).toEqual({
       _tag: "Complete",
       uploadId: "u",

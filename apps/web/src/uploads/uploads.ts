@@ -89,7 +89,13 @@ export const toUploadRequest = (request: PresignableRequest): UploadRequest | nu
     return { _tag: "Part", partNumber: request.partNumber, uploadId: request.uploadId };
   }
   if (request.method === "GET") {
-    return { _tag: "List", uploadId: request.uploadId };
+    return request.partNumberMarker === undefined
+      ? { _tag: "List", uploadId: request.uploadId }
+      : {
+          _tag: "List",
+          partNumberMarker: request.partNumberMarker,
+          uploadId: request.uploadId,
+        };
   }
   if (request.method === "POST") {
     return { _tag: "Complete", uploadId: request.uploadId };

@@ -211,6 +211,9 @@ overrides:
   oxlint-tsgolint: 7.0.2001
   '@better-auth/drizzle-adapter>drizzle-orm': 1.0.0-rc.5-ab785fc
 
+patchedDependencies:
+  '@uppy/aws-s3@6.2.1': 18678621695a4205e9a6f3bd40dc57e234a9ffb5217868e80b003c1896e81843
+
 importers:
 
   .:
@@ -311,7 +314,7 @@ importers:
         version: link:../../packages/contracts
       '@uppy/aws-s3':
         specifier: 6.2.1
-        version: 6.2.1(@uppy/core@6.1.0)
+        version: 6.2.1(patch_hash=18678621695a4205e9a6f3bd40dc57e234a9ffb5217868e80b003c1896e81843)(@uppy/core@6.1.0)
       '@uppy/core':
         specifier: 6.1.0
         version: 6.1.0
@@ -8221,7 +8224,7 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@uppy/aws-s3@6.2.1(@uppy/core@6.1.0)':
+  '@uppy/aws-s3@6.2.1(patch_hash=18678621695a4205e9a6f3bd40dc57e234a9ffb5217868e80b003c1896e81843)(@uppy/core@6.1.0)':
     dependencies:
       '@uppy/core': 6.1.0
 

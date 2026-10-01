@@ -29,10 +29,26 @@ const DELETE_BATCH = 1000;
 const noHeaders: Record<string, string> = {};
 
 const uploadRequest = Match.type<UploadRequest>().pipe(
+  Match.withReturnType<{
+    headers: Record<string, string>;
+    method: string;
+    query: Record<string, string>;
+  }>(),
   Match.tagsExhaustive({
     Complete: ({ uploadId }) => ({ headers: noHeaders, method: "POST", query: { uploadId } }),
     Create: () => ({ headers: noHeaders, method: "POST", query: { uploads: "" } }),
-    List: ({ uploadId }) => ({ headers: noHeaders, method: "GET", query: { uploadId } }),
+    List: ({ partNumberMarker, uploadId }) => ({
+      headers: noHeaders,
+      method: "GET",
+      query: Object.fromEntries(
+        partNumberMarker === undefined
+          ? [["uploadId", uploadId]]
+          : [
+              ["part-number-marker", String(partNumberMarker)],
+              ["uploadId", uploadId],
+            ],
+      ),
+    }),
     Part: ({ partNumber, uploadId }) => ({
       headers: noHeaders,
       method: "PUT",
