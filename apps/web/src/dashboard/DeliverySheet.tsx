@@ -1,4 +1,5 @@
 import type { Delivery, DeliveryId } from "@tranzfer/contracts";
+import * as Exit from "effect/Exit";
 import {
   createEffect,
   createMemo,
@@ -48,7 +49,21 @@ const fileKind = {
   Complete: "ready",
   Failed: "failed",
   Interrupted: "interrupted",
+  NeedsFile: "needsFile",
 } satisfies Record<ReturnType<typeof transferStatus>["_tag"], Kind>;
+
+const resumeProblem = (problem: "changed" | "policy" | "unreadable" | "unknown", name: string) => {
+  if (problem === "unknown") {
+    return `"${name}" isn't one of the files this delivery is waiting for.`;
+  }
+  if (problem === "changed") {
+    return `"${name}" has changed since you sent it, so we won't continue with it.`;
+  }
+  if (problem === "unreadable") {
+    return `"${name}" couldn't be read. Pick it again.`;
+  }
+  return `"${name}" was started by an older version of Tranzfer and can't continue. Cancel and send it again.`;
+};
 
 function Details(props: {
   cancel: (deliveryId: DeliveryId) => Promise<string | undefined>;
@@ -59,7 +74,30 @@ function Details(props: {
   const live = liveDelivery(props);
   const [confirming, setConfirming] = createSignal(false);
   const [problem, setProblem] = createSignal<string>();
+  const [resumeProblems, setResumeProblems] = createSignal<readonly string[]>([]);
   const shareable = () => props.delivery.status === "open" || props.delivery.status === "ready";
+  // Folder picks matter only when a transfer actually sits in one.
+  const hasNestedPaths = () =>
+    props.delivery.transfers.some((transfer) => transfer.path.includes("/"));
+  let resumeFiles: HTMLInputElement | undefined;
+  let resumeFolder: HTMLInputElement | undefined;
+
+  const resumePicked = async (input: HTMLInputElement) => {
+    const picked = [...(input.files ?? [])];
+    input.value = "";
+    if (picked.length === 0) {
+      return;
+    }
+    const { delivery } = props;
+    const exit = await runtime.runPromiseExit(
+      Uploads.use((uploads) => uploads.resume(delivery, picked)),
+    );
+    setResumeProblems(
+      Exit.isSuccess(exit)
+        ? exit.value.map(({ name, problem: tag }) => resumeProblem(tag, name))
+        : [appError(exit.cause).message],
+    );
+  };
 
   // The action moves the delivery to cancelled at once; only a failure
   // comes back here, and the optimistic move reverts on its own.
@@ -140,6 +178,68 @@ function Details(props: {
           </Show>
         </p>
       </section>
+
+      <Show when={live.roll().needsFile}>
+        <section class={block}>
+          <h3 class={heading}>Continue the upload</h3>
+          <p class={css({ color: "ink/80", mt: "2", textStyle: "sm" })}>
+            {bytes(live.roll().confirmed)} already uploaded.
+          </p>
+          <div class={css({ display: "flex", flexWrap: "wrap", gap: "2.5", mt: "3" })}>
+            <Button
+              onClick={() => {
+                resumeFiles?.click();
+              }}
+              size="sm"
+            >
+              Choose files
+            </Button>
+            <Show when={hasNestedPaths()}>
+              <Button
+                onClick={() => {
+                  resumeFolder?.click();
+                }}
+                size="sm"
+                variant="outline"
+              >
+                Choose folder
+              </Button>
+            </Show>
+          </div>
+          <input
+            class={css({ display: "none" })}
+            multiple
+            onChange={(event) => {
+              void resumePicked(event.currentTarget);
+            }}
+            ref={(element) => {
+              resumeFiles = element;
+            }}
+            type="file"
+          />
+          <Show when={hasNestedPaths()}>
+            <input
+              class={css({ display: "none" })}
+              onChange={(event) => {
+                void resumePicked(event.currentTarget);
+              }}
+              ref={(element) => {
+                resumeFolder = element;
+              }}
+              type="file"
+              webkitdirectory=""
+            />
+          </Show>
+          <Show when={resumeProblems().length > 0}>
+            <ul
+              class={css({ color: "rust", listStyle: "none", mt: "3", textStyle: "sm" })}
+              role="alert"
+            >
+              <For each={resumeProblems()}>{(message) => <li>{message}</li>}</For>
+            </ul>
+          </Show>
+        </section>
+      </Show>
 
       <section class={block}>
         <h3 class={heading}>Link</h3>
@@ -232,6 +332,24 @@ function Details(props: {
                           <p class={css({ color: "rust", fontSize: "13", mt: "0.5" })}>
                             {appError(progress().error).message}
                           </p>
+                        )}
+                      </Match>
+                      <Match
+                        when={status()._tag === "NeedsFile" ? transfers[transfer.id] : undefined}
+                      >
+                        {(progress) => (
+                          <Show
+                            when={progress().error !== undefined}
+                            fallback={
+                              <p class={cx(css({ fontSize: "13", mt: "0.5" }), kindText(kind()))}>
+                                {kindWords[kind()].label}
+                              </p>
+                            }
+                          >
+                            <p class={css({ color: "rust", fontSize: "13", mt: "0.5" })}>
+                              {appError(progress().error).message}
+                            </p>
+                          </Show>
                         )}
                       </Match>
                       <Match when={status()._tag !== "Complete"}>

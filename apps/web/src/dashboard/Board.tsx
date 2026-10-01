@@ -284,6 +284,17 @@ function Row(
               Retry
             </Button>
           </Match>
+          <Match when={live.kind() === "needsFile"}>
+            <Button
+              onClick={() => {
+                props.select(props.delivery.id);
+              }}
+              size="sm"
+              variant="outline"
+            >
+              Continue
+            </Button>
+          </Match>
           <Match when={moving()}>
             <span
               class={css({
@@ -385,7 +396,7 @@ export function Board(
       <Show when={groups().interrupted.length > 0}>
         <Section
           count={groups().interrupted.length}
-          note="This browser can't resume these yet. Cancel them and send the files again."
+          note="Pick the original files to continue, or cancel and send them again."
           title="Interrupted"
         >
           <ul class={list}>

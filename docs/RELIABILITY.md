@@ -225,6 +225,17 @@ How the API does it today:
 - An empty file's guarded `Put` can be signed again while the transfer is `finalizing`, so a lost response does not strand it; `If-None-Match` still stops a second write.
 - Opening a link signs download URLs without re-checking each object: the seal above is what makes that safe.
 
+How the browser recovers today:
+
+- Before `CreateDelivery` is called, one IndexedDB record per transfer holds the delivery and transfer ids, path, size, lastModified, the part size chosen for it and the file fingerprint. The call then replays the exact same payload on transport failure, so a lost response never creates a second delivery.
+- The multipart upload id joins the record as soon as the first signed request carries it, before that request's URL can be lost with the tab. Confirmed bytes update the record on every `part-uploaded`.
+- The fingerprint is version 1: SHA-256 of the whole file at 1 MiB and under; larger files hash 16 samples of 64 KiB spread from first byte to last. It is sampled, not whole-file integrity, and it is only used to refuse a reselected file that changed.
+- On refresh, every deliveries read restores: a transfer the server calls `complete` or `cancelled` drops its record; `finalizing` gets a FinalizeTransfer retry loop; `uploading` becomes `needsFile`, which waits for the user to pick the file again. A record whose transfer is not listed and is older than 7 days is forgotten; the list only holds the newest 50 deliveries.
+- Reselection matches a picked file by the basename of the recorded path, then checks size, mtime, the current part-size policy and the fingerprint. Anything else is refused with a reason. A matched file goes into Uppy with the stored upload id, so ListParts marks what R2 already holds and only the missing parts are sent.
+- ListParts pages at 1,000 parts. The bundled Uppy reads page one only, so a pnpm patch makes `S3mini.listParts` follow `NextPartNumberMarker` and the `List` signature carries `part-number-marker` through to R2.
+- A signed `Complete` whose response is lost reconciles instead of restarting: the upload error runs FinalizeTransfer, and a retry after such an error finalizes first and resumes transport only on `NotUploaded`.
+- IndexedDB is bookkeeping, never a gate. A failed read or write logs a warning and the upload continues; it just won't survive a refresh.
+
 ## Downloads
 
 An upload change is not finished until the recipient can download the correct file through an authorized link. Expiry is stated clearly on the page. Define download recovery, and do not make anyone redownload confirmed bytes where the client supports ranges.

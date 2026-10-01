@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 
+import { fingerprint } from "./recovery";
 import { chosenFiles, deliveryTitle, retryWhileNotUploaded, toUploadRequest } from "./uploads";
 
 const file = (name: string, relativePath = "") =>
@@ -67,6 +68,14 @@ describe("signing", () => {
       _tag: "List",
       uploadId: "u",
     });
+    // A continued ListParts page carries its marker into the signed request.
+    expect(
+      toUploadRequest({ key: "k", method: "GET", partNumberMarker: 1000, uploadId: "u" }),
+    ).toEqual({
+      _tag: "List",
+      partNumberMarker: 1000,
+      uploadId: "u",
+    });
     expect(toUploadRequest({ key: "k", method: "POST", uploadId: "u" })).toEqual({
       _tag: "Complete",
       uploadId: "u",
@@ -74,6 +83,33 @@ describe("signing", () => {
     expect(toUploadRequest({ key: "k", method: "PUT" })).toEqual({ _tag: "Put" });
     expect(toUploadRequest({ key: "k", method: "DELETE", uploadId: "u" })).toBeNull();
   });
+});
+
+describe("fingerprint", () => {
+  it.effect("a small file hashes whole; a large one samples deterministically", () =>
+    Effect.gen(function* fingerprinting() {
+      // sha256("x"), the whole-file path.
+      expect((yield* fingerprint(new Blob(["x"]))).sha256).toBe(
+        "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+      );
+      const size = 2 * 1024 * 1024;
+      const data = Uint8Array.from({ length: size }, (_, index) => index % 251);
+      const first = yield* fingerprint(new Blob([data]));
+      // Sixteen 64 KiB samples at Math.floor(i * (size - 65536) / 15).
+      const samples = Array.from({ length: 16 }, (_, index) => {
+        const offset = Math.floor((index * (size - 65_536)) / 15);
+        return data.slice(offset, offset + 65_536);
+      });
+      const digest = yield* Effect.promise(
+        async () => await crypto.subtle.digest("SHA-256", await new Blob(samples).arrayBuffer()),
+      );
+      const expected = [...new Uint8Array(digest)]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      expect(first.sha256).toBe(expected);
+      expect(yield* fingerprint(new Blob([data]))).toEqual(first);
+    }),
+  );
 });
 
 describe("choosing files", () => {

@@ -211,6 +211,9 @@ overrides:
   oxlint-tsgolint: 7.0.2001
   '@better-auth/drizzle-adapter>drizzle-orm': 1.0.0-rc.5-ab785fc
 
+patchedDependencies:
+  '@uppy/aws-s3@6.2.1': 18678621695a4205e9a6f3bd40dc57e234a9ffb5217868e80b003c1896e81843
+
 importers:
 
   .:
@@ -311,7 +314,7 @@ importers:
         version: link:../../packages/contracts
       '@uppy/aws-s3':
         specifier: 6.2.1
-        version: 6.2.1(@uppy/core@6.1.0)
+        version: 6.2.1(patch_hash=18678621695a4205e9a6f3bd40dc57e234a9ffb5217868e80b003c1896e81843)(@uppy/core@6.1.0)
       '@uppy/core':
         specifier: 6.1.0
         version: 6.1.0
@@ -324,6 +327,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.115
+      idb-keyval:
+        specifier: ^6.3.0
+        version: 6.3.0
       solid-js:
         specifier: 'catalog:'
         version: 2.0.0-rc.8
@@ -4414,6 +4420,9 @@ packages:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
     engines: {node: '>=0.10.0'}
 
+  idb-keyval@6.3.0:
+    resolution: {integrity: sha512-um+2dgAWmYsu615EXpWVwSmapJhON0G43t3Ka/EVaohzPQXSMqKEqeDK/oIW3Ow+BXaF2PvSc+oBTFp793A5Ow==}
+
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
     engines: {node: '>= 4'}
@@ -8221,7 +8230,7 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@uppy/aws-s3@6.2.1(@uppy/core@6.1.0)':
+  '@uppy/aws-s3@6.2.1(patch_hash=18678621695a4205e9a6f3bd40dc57e234a9ffb5217868e80b003c1896e81843)(@uppy/core@6.1.0)':
     dependencies:
       '@uppy/core': 6.1.0
 
@@ -9260,6 +9269,8 @@ snapshots:
   iconv-lite@0.6.3:
     dependencies:
       safer-buffer: 2.1.2
+
+  idb-keyval@6.3.0: {}
 
   ignore@5.3.2: {}
 

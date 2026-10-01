@@ -1,7 +1,14 @@
 import { createRoot, createSignal, createStore, runWithOwner } from "solid-js";
 
 // Module state, not component state, so uploads survive navigation (law 11).
-export type TransferPhase = "queued" | "uploading" | "finalizing" | "done" | "failed" | "cancelled";
+export type TransferPhase =
+  | "queued"
+  | "uploading"
+  | "finalizing"
+  | "done"
+  | "failed"
+  | "cancelled"
+  | "needsFile";
 
 export interface TransferProgress {
   readonly bytesPerSecond: number;

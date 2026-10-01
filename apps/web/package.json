@@ -23,6 +23,7 @@
     "@uppy/drop-target": "5.0.0",
     "better-auth": "1.7.4",
     "effect": "catalog:",
+    "idb-keyval": "^6.3.0",
     "solid-js": "catalog:"
   },
   "devDependencies": {
