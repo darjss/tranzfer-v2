@@ -145,6 +145,9 @@ const make = Effect.gen(function* makeUploads() {
   // transferId -> the uploadId already persisted; a new multipart upload for
   // the same transfer records again.
   const uploadIdStored = new Map<TransferId, string>();
+  // Complete signed means the bytes may already be a finished object; an
+  // error after this point reconciles instead of restarting transport.
+  const completeSigned = new Set<TransferId>();
 
   const sampleSpeed = (transferId: string, bytesUploaded: number) => {
     const now = Date.now();
@@ -173,10 +176,23 @@ const make = Effect.gen(function* makeUploads() {
       yield* recordUploadId(transferId, request.uploadId);
     }
     const signed = yield* api.SignUpload({ key: request.key, request: upload });
+    if (upload._tag === "Complete" && transferId !== undefined) {
+      completeSigned.add(transferId);
+    }
     // The headers are part of the signature (an empty file's PUT carries
     // if-none-match), so Uppy must send them as given.
     return { headers: signed.headers, url: signed.url };
   });
+
+  // The uploader has already detached from this file by the time finish
+  // settles, so removing it frees memory without firing an abort.
+  const settled = (uppy: Uppy<TransferMeta, Body>, fileId: string, transferId: TransferId) =>
+    Effect.gen(function* settle() {
+      patchTransfer(transferId, { bytesPerSecond: 0, phase: "done" });
+      completeSigned.delete(transferId);
+      uppy.removeFile(fileId);
+      yield* forget([transferId]);
+    });
 
   // Once the bytes are in R2, finishing is the FinalizeTransfer retry loop.
   // Both the upload-success path and a post-upload retry go through this.
@@ -186,17 +202,12 @@ const make = Effect.gen(function* makeUploads() {
     transferId: TransferId,
   ) {
     return yield* retryWhileNotUploaded(api.FinalizeTransfer({ transferId })).pipe(
-      Effect.match({
-        onFailure: (error) => {
-          patchTransfer(transferId, { error, phase: "failed" });
-        },
-        onSuccess: () => {
-          patchTransfer(transferId, { bytesPerSecond: 0, phase: "done" });
-          // The uploader has already detached from this file, so removing it
-          // frees memory without firing an abort.
-          uppy.removeFile(fileId);
-          runFork(forget([transferId]));
-        },
+      Effect.matchEffect({
+        onFailure: (error) =>
+          Effect.sync(() => {
+            patchTransfer(transferId, { error, phase: "failed" });
+          }),
+        onSuccess: () => settled(uppy, fileId, transferId),
       }),
     );
   });
@@ -269,7 +280,15 @@ const make = Effect.gen(function* makeUploads() {
         if (file === undefined) {
           return;
         }
-        patchTransfer(file.meta.transferId, {
+        const { transferId } = file.meta;
+        // Complete was already signed, so the object may exist; reconcile
+        // through FinalizeTransfer instead of starting transport again.
+        if (completeSigned.has(transferId)) {
+          patchTransfer(transferId, { bytesPerSecond: 0, inFlight: 0, phase: "finalizing" });
+          runFork(finish(uppy, file.id, transferId));
+          return;
+        }
+        patchTransfer(transferId, {
           bytesPerSecond: 0,
           error,
           inFlight: 0,
@@ -375,6 +394,7 @@ const make = Effect.gen(function* makeUploads() {
           }
           for (const transfer of delivery.transfers) {
             keys.delete(transfer.objectKey);
+            completeSigned.delete(transfer.id);
             patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
           }
           yield* forget(delivery.transfers.map((transfer) => transfer.id));
@@ -405,6 +425,29 @@ const make = Effect.gen(function* makeUploads() {
       runFork(finish(uppy, file.id, transferId));
       return;
     }
+    if (completeSigned.has(transferId)) {
+      // The Complete response may be the only thing that was lost; settle the
+      // key first. NotUploaded means parts are genuinely missing, so transport
+      // resumes: Uppy lists parts and Completes again.
+      patchTransfer(transferId, { error: undefined, phase: "finalizing" });
+      runFork(
+        api.FinalizeTransfer({ transferId }).pipe(
+          Effect.matchEffect({
+            onFailure: (error) =>
+              Effect.sync(() => {
+                if (error._tag === "NotUploaded") {
+                  patchTransfer(transferId, { phase: "uploading" });
+                  runFork(start(uppy, file.id, transferId));
+                } else {
+                  patchTransfer(transferId, { error, phase: "failed" });
+                }
+              }),
+            onSuccess: () => settled(uppy, file.id, transferId),
+          }),
+        ),
+      );
+      return;
+    }
     patchTransfer(transferId, { error: undefined, phase: "uploading" });
     runFork(start(uppy, file.id, transferId));
   });
@@ -421,6 +464,7 @@ const make = Effect.gen(function* makeUploads() {
     // active and keep beforeunload armed.
     for (const transfer of cancelled.transfers) {
       keys.delete(transfer.objectKey);
+      completeSigned.delete(transfer.id);
       patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
     }
     yield* forget(cancelled.transfers.map((transfer) => transfer.id));

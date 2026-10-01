@@ -216,7 +216,7 @@ Expiry and confirmed abandonment can trigger cleanup too, but maintenance respec
 How the API does it today:
 
 - Every non-empty file uploads as multipart. A multipart upload id stops accepting writes once it is completed or aborted, so no earlier URL can replace the object. An empty file has no part to send; it is one `PUT` signed with `If-None-Match: *`, which can create the object but never replace it. This is how a finalized file stays the file that was verified.
-- Signing `Complete` moves the transfer to `finalizing`. From then on only `Complete` and `List` sign; no new upload, no new parts.
+- Signing `Complete` moves the transfer to `finalizing`. From then on `Complete`, `List` and `Part` on the existing upload id still sign, since a lost `Complete` can hide missing parts and `NotUploaded` sends transport back to fill them, but no `Create`, since no new upload id may start.
 - Finalize seals the key before trusting it, but only once an object exists, so a paused upload is never aborted. It aborts every other open multipart upload on the key, then reads the object again and records that ETag. A second upload a sender prepared earlier dies with `NoSuchUpload`. The sweeper finishes `finalizing` transfers the same way when the browser left.
 - Finalize claims the transfer with a conditional update, then flips the delivery to `ready` only when no transfer is left incomplete. The flip is one idempotent statement that every finalize and every sweep runs, so a finalize that died between the two writes heals on the next sweep. Concurrent finalizes, the sweeper and a racing cancel all converge.
 - Transfers stuck in `finalizing` are rechecked oldest-first; a miss bumps `updated_at`, so misses rotate instead of starving newer rows.
@@ -230,6 +230,7 @@ How the browser recovers today:
 - Before `CreateDelivery` is called, one IndexedDB record per transfer holds the delivery and transfer ids, path, size, lastModified, the part size chosen for it and the file fingerprint. The call then replays the exact same payload on transport failure, so a lost response never creates a second delivery.
 - The multipart upload id joins the record as soon as the first signed request carries it, before that request's URL can be lost with the tab. Confirmed bytes update the record on every `part-uploaded`.
 - The fingerprint is version 1: SHA-256 of the whole file at 1 MiB and under; larger files hash 16 samples of 64 KiB spread from first byte to last. It is sampled, not whole-file integrity.
+- A signed `Complete` whose response is lost reconciles instead of restarting: the upload error runs FinalizeTransfer, and a retry after such an error finalizes first and resumes transport only on `NotUploaded`.
 - IndexedDB is bookkeeping, never a gate. A failed read or write logs a warning and the upload continues; it just won't survive a refresh.
 
 ## Downloads

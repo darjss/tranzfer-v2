@@ -51,6 +51,24 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
       }
     },
   );
+  // A server-side finalizing transfer settles on its own (this tab's lost
+  // Complete, or the sweeper); poll until none are left so it lands as done.
+  createEffect(
+    () =>
+      deliveries.some((delivery) =>
+        delivery.transfers.some((transfer) => transfer.state === "finalizing"),
+      ),
+    (stuck) => {
+      const timer = stuck
+        ? setInterval(() => {
+            void refresh(deliveries);
+          }, 10_000)
+        : undefined;
+      return () => {
+        clearInterval(timer);
+      };
+    },
+  );
   const [sending, setSending] = createOptimistic(false);
 
   const send = action(async function* send(chosen: readonly ChosenFile[], days: RetentionDays) {
