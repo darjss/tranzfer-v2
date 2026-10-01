@@ -38,7 +38,16 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
   // and a cancelled one moves to Ended the moment it happens, then the
   // re-read reconciles.
   const [deliveries, setDeliveries] = createOptimisticStore<Delivery[]>(
-    () => runEffect(ApiClient.use((api) => api.Deliveries().pipe(Effect.map((list) => [...list])))),
+    () =>
+      runEffect(
+        ApiClient.use((api) =>
+          api.Deliveries().pipe(
+            // Every read rebuilds what this tab can still recover.
+            Effect.tap((list) => Uploads.use((uploads) => uploads.restore(list))),
+            Effect.map((list) => [...list]),
+          ),
+        ),
+      ),
     [],
     { key: "id" },
   );

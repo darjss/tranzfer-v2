@@ -7,6 +7,7 @@ import PhCheckBold from "~icons/ph/check-bold";
 import PhCircleNotchBold from "~icons/ph/circle-notch-bold";
 import PhClockBold from "~icons/ph/clock-bold";
 import PhCopyBold from "~icons/ph/copy-bold";
+import PhFileArrowUpBold from "~icons/ph/file-arrow-up-bold";
 import PhHourglassMediumBold from "~icons/ph/hourglass-medium-bold";
 import PhLinkBreakBold from "~icons/ph/link-break-bold";
 import PhWarningBold from "~icons/ph/warning-bold";
@@ -24,6 +25,7 @@ const toneOf: Record<Kind, Tone> = {
   finishing: "blue",
   interrupted: "rust",
   moving: "blue",
+  needsFile: "amber",
   paused: "amber",
   ready: "ok",
   starting: "blue",
@@ -64,6 +66,7 @@ const glyphs: Record<Kind, () => JSX.Element> = {
   finishing: () => <PhHourglassMediumBold class={icon} />,
   interrupted: () => <PhLinkBreakBold class={icon} />,
   moving: () => <PhArrowUpBold class={icon} />,
+  needsFile: () => <PhFileArrowUpBold class={icon} />,
   paused: () => <PhWifiSlashBold class={icon} />,
   ready: () => <PhCheckBold class={icon} />,
   starting: () => (

@@ -4,11 +4,22 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 
+import { md5 } from "hash-wasm";
+
 import { fingerprint } from "./recovery";
-import { chosenFiles, deliveryTitle, retryWhileNotUploaded, toUploadRequest } from "./uploads";
+import {
+  chosenFiles,
+  deliveryTitle,
+  retryWhileNotUploaded,
+  toUploadRequest,
+  verifyParts,
+} from "./uploads";
 
 const file = (name: string, relativePath = "") =>
   Object.assign(new File(["x"], name), { relativePath });
+
+const etag = (bytes: readonly number[]) =>
+  Effect.promise(async () => await md5(Uint8Array.from(bytes)));
 
 // Fails with each error in turn, then succeeds; counts every call.
 const finalizeFailing = (errors: readonly (NotUploaded | InvalidUpload)[]) => {
@@ -108,6 +119,34 @@ describe("fingerprint", () => {
         .join("");
       expect(first.sha256).toBe(expected);
       expect(yield* fingerprint(new Blob([data]))).toEqual(first);
+    }),
+  );
+});
+
+describe("verifyParts", () => {
+  it.effect("passes matching parts and fails a flipped byte or a wrong size", () =>
+    Effect.gen(function* verifying() {
+      const blob = new Blob([Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])]);
+      const parts = [
+        { etag: yield* etag([1, 2, 3, 4]), partNumber: 1, size: 4 },
+        { etag: yield* etag([5, 6, 7, 8]), partNumber: 2, size: 4 },
+        // The last part is the remainder, shorter than the part size.
+        { etag: yield* etag([9, 10]), partNumber: 3, size: 2 },
+      ];
+      expect(yield* verifyParts(blob, parts, 4)).toBe(true);
+
+      const flippedEtag = yield* etag([5, 6, 7, 0]);
+      const flipped = parts.map((part) =>
+        part.partNumber === 2 ? { ...part, etag: flippedEtag } : part,
+      );
+      expect(yield* verifyParts(blob, flipped, 4)).toBe(false);
+
+      const wrongSize = parts.map((part) => (part.partNumber === 2 ? { ...part, size: 5 } : part));
+      expect(yield* verifyParts(blob, wrongSize, 4)).toBe(false);
+
+      // A part number past partCount has no expected bytes left.
+      const extra = [...parts, { etag: yield* etag([11]), partNumber: 4, size: 1 }];
+      expect(yield* verifyParts(blob, extra, 4)).toBe(false);
     }),
   );
 });

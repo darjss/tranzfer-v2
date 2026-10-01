@@ -20,6 +20,15 @@ import { patchTransfer } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
 import { Board } from "./Board";
 import { createDeliveries } from "./deliveries";
+import { DeliverySheet } from "./DeliverySheet";
+
+// jsdom never implemented dialog's open/close; the sheet calls both.
+HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+  this.setAttribute("open", "");
+};
+HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+  this.removeAttribute("open");
+};
 
 const MB = 1_000_000;
 
@@ -95,6 +104,8 @@ const makeWorld = (server: Delivery[], gate?: Deferred.Deferred<boolean>) => {
           server[index] = cancelled;
           return cancelled;
         }),
+      restore: () => Effect.void,
+      resume: () => Effect.succeed([]),
       retry: () => Effect.die("unused"),
       send: () => Effect.die("unused"),
     }),
@@ -208,6 +219,45 @@ describe("dashboard reactivity", () => {
 
     expect(result).toBeUndefined();
     expect(artifact).toHaveNoDiagnostics();
+    await runtime.dispose();
+  });
+
+  it("a needsFile transfer asks for its files in the sheet", async () => {
+    const waiting = delivery("Waiting", "open", [60 * MB]);
+    const [transfer] = waiting.transfers;
+    if (transfer === undefined) {
+      throw new Error("fixture needs a transfer");
+    }
+    // restore() marked it: the server still says uploading, this browser has
+    // the record but not the file.
+    patchTransfer(transfer.id, { confirmed: 20 * MB, phase: "needsFile" });
+    const runtime = makeWorld([waiting]);
+    const { artifact } = await captureArtifact(
+      () => {
+        render(() => (
+          <RuntimeContext value={runtime}>
+            <Board
+              cancel={nothingToReport}
+              deliveries={[waiting]}
+              online
+              select={noop}
+              sendAgain={noop}
+            />
+            <DeliverySheet cancel={nothingToReport} close={noop} delivery={waiting} online />
+          </RuntimeContext>
+        ));
+        flush();
+      },
+      { scenario: "needs-file" },
+    );
+
+    // The row offers to open the sheet, and the sheet asks for the files
+    // while showing what already landed.
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose files" })).toBeInTheDocument();
+    expect(screen.getByText("20 MB already uploaded.")).toBeInTheDocument();
+    expect(artifact).toHaveNoDiagnostics();
+    assertBudget(artifact, { allow: [], maxReruns: 5, maxWastedRuns: 2 });
     await runtime.dispose();
   });
 });

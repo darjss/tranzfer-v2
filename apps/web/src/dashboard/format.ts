@@ -70,15 +70,16 @@ export const totalSize = (delivery: Delivery) =>
   delivery.transfers.reduce((total, transfer) => total + transfer.size, 0);
 
 // What one file shows. The server state wins; local progress only speaks
-// for a transfer this tab still owns. A "finalizing" transfer this tab lost
-// reads as interrupted: signing Complete doesn't prove the bytes landed, and
-// if they did the sweeper marks it complete within a minute.
+// for a transfer this tab still owns. needsFile is a transfer this tab can
+// continue once the file is picked again; Interrupted means this browser
+// holds no record at all, so only cancel and resend remains.
 type TransferStatus =
   | { readonly _tag: "Active"; readonly progress: TransferProgress }
   | { readonly _tag: "Cancelled" }
   | { readonly _tag: "Complete" }
   | { readonly _tag: "Failed"; readonly progress: TransferProgress }
-  | { readonly _tag: "Interrupted" };
+  | { readonly _tag: "Interrupted" }
+  | { readonly _tag: "NeedsFile"; readonly progress: TransferProgress };
 
 export const transferStatus = (transfer: Transfer, local: TransferProgress | undefined) =>
   Match.value({ progress: local, state: transfer.state }).pipe(
@@ -86,6 +87,10 @@ export const transferStatus = (transfer: Transfer, local: TransferProgress | und
     Match.when({ state: "complete" }, () => ({ _tag: "Complete" })),
     Match.when({ state: "cancelled" }, () => ({ _tag: "Cancelled" })),
     Match.when({ progress: { phase: "failed" } }, ({ progress }) => ({ _tag: "Failed", progress })),
+    Match.when({ progress: { phase: "needsFile" } }, ({ progress }) => ({
+      _tag: "NeedsFile",
+      progress,
+    })),
     Match.when({ progress: Match.defined }, ({ progress }) => ({ _tag: "Active", progress })),
     Match.orElse(() => ({ _tag: "Interrupted" })),
   );
@@ -95,6 +100,7 @@ const idle = {
   failed: false,
   inFlight: 0,
   interrupted: false,
+  needsFile: false,
   speed: 0,
   uploading: false,
 };
@@ -116,6 +122,11 @@ const addTransfer = (roll: Rollup, transfer: Transfer, local: TransferProgress |
     Complete: () => ({ ...roll, confirmed: roll.confirmed + transfer.size }),
     Failed: ({ progress }) => ({ ...withProgress(roll, progress), failed: true }),
     Interrupted: () => ({ ...roll, interrupted: true }),
+    NeedsFile: ({ progress }) => ({
+      ...roll,
+      confirmed: roll.confirmed + progress.confirmed,
+      needsFile: true,
+    }),
   });
 
 export const rollup = (
@@ -137,13 +148,14 @@ export type Kind =
   | "finishing"
   | "interrupted"
   | "moving"
+  | "needsFile"
   | "paused"
   | "ready"
   | "starting";
 
 // Settled server states win. Past that, a failure outranks everything local,
-// and an upload this tab lost reads as interrupted. Only a genuinely
-// in-flight local upload reads as paused when offline.
+// then a transfer waiting on its files, then one this browser can't resume
+// at all. Only a genuinely in-flight local upload reads as paused offline.
 export const kindOf = (status: Delivery["status"], roll: Rollup, online: boolean) =>
   Match.value({ ...roll, online, status }).pipe(
     Match.withReturnType<Kind>(),
@@ -151,6 +163,7 @@ export const kindOf = (status: Delivery["status"], roll: Rollup, online: boolean
     Match.when({ status: "expired" }, () => "expired"),
     Match.when({ status: "ready" }, () => "ready"),
     Match.when({ failed: true }, () => "failed"),
+    Match.when({ needsFile: true }, () => "needsFile"),
     Match.when({ interrupted: true }, () => "interrupted"),
     Match.when({ online: false, uploading: true }, () => "paused"),
     Match.when({ speed: (speed) => speed <= 0, uploading: true }, () => "starting"),
@@ -164,7 +177,7 @@ export const groupOf = (kind: Kind) =>
   Match.value(kind).pipe(
     Match.withReturnType<Group>(),
     Match.when("ready", () => "ready"),
-    Match.when("interrupted", () => "interrupted"),
+    Match.whenOr("interrupted", "needsFile", () => "interrupted"),
     Match.whenOr("cancelled", "expired", () => "ended"),
     Match.orElse(() => "moving"),
   );
@@ -180,10 +193,14 @@ export const kindWords: Record<Kind, { readonly label: string; readonly detail: 
   finishing: { detail: "Every byte is uploaded. Finishing up on our end.", label: "Finishing up" },
   interrupted: {
     detail:
-      "This browser lost the upload when the page closed. It can't resume it yet, so cancel it and send the files again.",
+      "This browser has no record of this upload, so it can't continue it. Cancel it and send the files again.",
     label: "Interrupted",
   },
   moving: { detail: "", label: "Uploading" },
+  needsFile: {
+    detail: "We need the original files to continue. Parts already uploaded stay uploaded.",
+    label: "Needs the files",
+  },
   paused: {
     detail: "Connection lost. We'll continue when you're back online.",
     label: "Paused, offline",
