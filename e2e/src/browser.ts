@@ -77,7 +77,10 @@ export class Browser extends Context.Service<
         const target = yield* Target;
         const ledger = yield* Ledger;
         const env = yield* Effect.context<Ledger>();
-        const runFork = Effect.runForkWith(env);
+        // record and settle are synchronous Effects: runSync at the edge keeps
+        // pending.set inside the request handler, so a requestfinished that
+        // fires before the microtask still finds its index.
+        const runSync = Effect.runSyncWith(env);
 
         const state = yield* Ref.make<Option.Option<Session>>(Option.none());
         const hooks = yield* Ref.make<
@@ -142,22 +145,15 @@ export class Browser extends Context.Service<
             if (classified === null) {
               return;
             }
-            runFork(
-              ledger
-                .record({
-                  at: Date.now(),
-                  session: sessionNo,
-                  ...classified,
-                  status: null,
-                })
-                .pipe(
-                  Effect.tap((index) =>
-                    Effect.sync(() => {
-                      pending.set(request, index);
-                    }),
-                  ),
-                ),
+            const index = runSync(
+              ledger.record({
+                at: Date.now(),
+                session: sessionNo,
+                ...classified,
+                status: null,
+              }),
             );
+            pending.set(request, index);
           });
           context.on("requestfinished", (request) => {
             const index = pending.get(request);
@@ -165,16 +161,23 @@ export class Browser extends Context.Service<
               return;
             }
             pending.delete(request);
-            runFork(
-              Effect.promise(async () => await request.response()).pipe(
-                Effect.andThen((response) => ledger.settle(index, response?.status() ?? 0)),
-                Effect.catchDefect(() => Effect.void),
-              ),
-            );
+            void request
+              .response()
+              .then((response) => {
+                runSync(ledger.settle(index, response?.status() ?? 0));
+              })
+              .catch(() => {
+                runSync(ledger.settle(index, null));
+              });
           });
           context.on("requestfailed", (request) => {
-            // No response ever arrived; the entry stays status null.
+            const index = pending.get(request);
+            if (index === undefined) {
+              return;
+            }
             pending.delete(request);
+            // No response ever arrived; the entry settles as status null.
+            runSync(ledger.settle(index, null));
           });
         };
 

@@ -143,7 +143,7 @@ export class Ledger extends Context.Service<
   {
     readonly all: Effect.Effect<readonly R2Request[]>;
     readonly record: (request: R2Request) => Effect.Effect<number>;
-    readonly settle: (index: number, status: number) => Effect.Effect<void>;
+    readonly settle: (index: number, status: number | null) => Effect.Effect<void>;
     readonly since: (at: number) => Effect.Effect<readonly R2Request[]>;
     /** Resolves when n distinct parts are acked; fails after 10 minutes without a new ack. */
     readonly waitForAcked: (count: number) => Effect.Effect<readonly R2Request[]>;
@@ -157,6 +157,16 @@ export class Ledger extends Context.Service<
         // One-shot wakeup swapped out on every mutation; waiters re-check.
         const signal = yield* Ref.make(yield* Deferred.make<boolean>());
         const logFile = path.join(dir, "ledger.jsonl");
+        // record and settle run synchronously at the playwright edge (a fast
+        // requestfinished must find its index already in `pending`), so the
+        // jsonl write rides a serialized promise chain instead of a yielded
+        // Effect.promise: lines land in event order without an async hop.
+        let writes = Promise.resolve();
+        yield* Effect.addFinalizer(() =>
+          Effect.promise(async () => {
+            await writes;
+          }),
+        );
 
         const notify = Effect.gen(function* notify() {
           yield* Deferred.succeed(yield* Ref.get(signal), true);
@@ -170,15 +180,23 @@ export class Ledger extends Context.Service<
             return (yield* Ref.get(entries)).length - 1;
           });
 
-        const settle = Effect.fn("Ledger.settle")(function* settle(index: number, status: number) {
+        const settle = Effect.fn("Ledger.settle")(function* settle(
+          index: number,
+          status: number | null,
+        ) {
           const entry = (yield* Ref.get(entries))[index];
           if (entry === undefined) {
             return;
           }
+          // A request that never got a response settles as status null: its
+          // bytes may or may not have landed, which is exactly what the
+          // summary rules encode.
           const settled = { ...entry, status };
           yield* Ref.update(entries, (all) => all.with(index, settled));
-          yield* Effect.promise(async () => {
-            await appendFile(logFile, `${JSON.stringify(settled)}\n`);
+          yield* Effect.sync(() => {
+            writes = writes.then(async () => {
+              await appendFile(logFile, `${JSON.stringify(settled)}\n`);
+            });
           });
           yield* notify;
         });
@@ -187,6 +205,9 @@ export class Ledger extends Context.Service<
           let last = -1;
           let deadline = Date.now() + STALL_LIMIT;
           for (;;) {
+            // Take the wakeup before reading: a notify landing between the
+            // read and the deferred lookup would otherwise be missed.
+            const wakeup = yield* Ref.get(signal);
             const all = yield* Ref.get(entries);
             const acked = ackedParts(all).size;
             if (acked >= count) {
@@ -202,7 +223,6 @@ export class Ledger extends Context.Service<
                 new Error(`stalled: no new part acknowledged for 10 minutes at ${acked}/${count}`),
               );
             }
-            const wakeup = yield* Ref.get(signal);
             yield* Deferred.await(wakeup).pipe(Effect.timeout(remaining), Effect.ignore);
           }
         });
