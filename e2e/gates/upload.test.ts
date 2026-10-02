@@ -176,16 +176,8 @@ scenario(
     // From the pick to the first part PUT is ListParts plus the per-part MD5
     // verification of every part R2 already holds.
     const recordVerify = (pickedAt: number) =>
-      Effect.map(ledger.since(pickedAt), (entries) => {
-        let firstPart: number | undefined;
-        for (const entry of entries) {
-          if (entry.kind === "part" && (firstPart === undefined || entry.at < firstPart)) {
-            firstPart = entry.at;
-          }
-        }
-        if (firstPart !== undefined) {
-          verifyDurations.push(firstPart - pickedAt);
-        }
+      Effect.map(ledger.waitForRequest(pickedAt, "part"), (request) => {
+        verifyDurations.push(request.at - pickedAt);
       });
 
     // c. Inject each fault at its fraction of acked parts.

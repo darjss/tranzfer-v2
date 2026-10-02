@@ -147,6 +147,8 @@ export class Ledger extends Context.Service<
     readonly since: (at: number) => Effect.Effect<readonly R2Request[]>;
     /** Resolves when n distinct parts are acked; fails after 10 minutes without a new ack. */
     readonly waitForAcked: (count: number) => Effect.Effect<readonly R2Request[]>;
+    /** Resolves with the first request of a kind recorded at or after `at`. */
+    readonly waitForRequest: (at: number, kind: R2Request["kind"]) => Effect.Effect<R2Request>;
   }
 >()("tranzfer/e2e/Ledger") {
   static readonly layer = (dir: string) =>
@@ -227,6 +229,29 @@ export class Ledger extends Context.Service<
           }
         });
 
+        const waitForRequest = Effect.fn("Ledger.waitForRequest")(function* waitForRequest(
+          at: number,
+          kind: R2Request["kind"],
+        ) {
+          const deadline = Date.now() + STALL_LIMIT;
+          for (;;) {
+            const wakeup = yield* Ref.get(signal);
+            const found = (yield* Ref.get(entries)).find(
+              (request) => request.at >= at && request.kind === kind,
+            );
+            if (found !== undefined) {
+              return found;
+            }
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) {
+              return yield* Effect.die(
+                new Error(`stalled: no ${kind} request seen for 10 minutes`),
+              );
+            }
+            yield* Deferred.await(wakeup).pipe(Effect.timeout(remaining), Effect.ignore);
+          }
+        });
+
         return Ledger.of({
           all: Ref.get(entries),
           record,
@@ -234,6 +259,7 @@ export class Ledger extends Context.Service<
           since: (at: number) =>
             Effect.map(Ref.get(entries), (all) => all.filter((request) => request.at >= at)),
           waitForAcked,
+          waitForRequest,
         });
       }),
     );
