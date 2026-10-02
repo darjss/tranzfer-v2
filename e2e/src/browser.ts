@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 
 import type { BrowserContext, Page, Browser as PlaywrightBrowser, Request } from "playwright";
@@ -204,6 +204,11 @@ export class Browser extends Context.Service<
         const launch = Effect.fn("Browser.launch")(function* launch() {
           yield* kill();
           sessionNo += 1;
+          // A crashed session leaves DevToolsActivePort with a dead port; the
+          // file must go before spawn or the next launch connects to a corpse.
+          yield* Effect.promise(async () => {
+            await rm(path.join(dir, "profile", "DevToolsActivePort"), { force: true });
+          });
           const child = yield* spawnChromium;
           const port = yield* debugPort;
           const browser = yield* Effect.promise(
