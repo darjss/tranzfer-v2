@@ -14,6 +14,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
+import * as Scope from "effect/Scope";
 import * as Data from "effect/Data";
 
 import { classify, Ledger } from "./ledger";
@@ -77,6 +78,7 @@ export class Browser extends Context.Service<
         const target = yield* Target;
         const ledger = yield* Ledger;
         const env = yield* Effect.context<Ledger>();
+        const scope = yield* Scope.Scope;
         // record and settle are synchronous Effects: runSync at the edge keeps
         // pending.set inside the request handler, so a requestfinished that
         // fires before the microtask still finds its index.
@@ -210,6 +212,11 @@ export class Browser extends Context.Service<
             await rm(path.join(dir, "profile", "DevToolsActivePort"), { force: true });
           });
           const child = yield* spawnChromium;
+          // Until the child lands in `state`, a failed connect or login would
+          // leak the whole process group; killGroup ignores a dead pid.
+          yield* Effect.addFinalizer(() => killGroup(child, "SIGKILL")).pipe(
+            Effect.provideService(Scope.Scope, scope),
+          );
           const port = yield* debugPort;
           const browser = yield* Effect.promise(
             async () => await chromium.connectOverCDP(`http://127.0.0.1:${port}`),
