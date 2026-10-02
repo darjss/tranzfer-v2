@@ -12,6 +12,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import type * as Scope from "effect/Scope";
+import type { Page } from "playwright";
 
 import { Browser } from "./browser";
 import { ackedParts, Ledger } from "./ledger";
@@ -95,7 +96,12 @@ export const scenario = (
           const recorded = yield* Ref.make<Record<string, JsonValue>>({});
           let shot = 0;
           const snap = Effect.fn("Run.screenshot")(function* snap(label: string) {
-            const page = yield* Effect.option(browser.page);
+            const page = yield* browser.page.pipe(
+              Effect.option,
+              // option() only turns typed errors into None; a dead browser is
+              // a defect, so it needs the cause-level catch.
+              Effect.catchCause(() => Effect.succeed(Option.none<Page>())),
+            );
             if (Option.isSome(page)) {
               shot += 1;
               yield* Effect.promise(
@@ -130,8 +136,10 @@ export const scenario = (
           const all = Context.merge(services, Context.make(Run, Run.of(service)));
           const exit = yield* Effect.exit(Effect.provide(body, all));
 
-          const chromium = yield* Effect.option(
-            browser.version.pipe(Effect.catch(() => Effect.succeed("closed"))),
+          // catchCause, not option: version dies with a defect when no
+          // browser ever launched, and result.json must still be written.
+          const chromium = yield* browser.version.pipe(
+            Effect.catchCause(() => Effect.succeed("unavailable")),
           );
           const target = Context.get(services, Target);
           const failed = Exit.isFailure(exit);
@@ -141,7 +149,7 @@ export const scenario = (
           const result = {
             environment: {
               baseUrl: target.baseUrl,
-              chromium: Option.getOrElse(chromium, () => "unavailable"),
+              chromium,
               cpu: cpus()[0]?.model ?? "unknown",
               ramGb: Math.round(totalmem() / 1024 ** 3),
               revision: process.env.GIT_COMMIT ?? "unknown",
