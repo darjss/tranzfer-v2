@@ -11,5 +11,5 @@
     "verbatimModuleSyntax": true,
     "types": ["node"]
   },
-  "include": ["src", "scenarios", "vitest.config.ts"]
+  "include": ["src", "scenarios", "gates", "vitest.config.ts", "vitest.gates.config.ts"]
 }

@@ -12,6 +12,7 @@
     "start": "vp run --filter @tranzfer/web start",
     "test": "vp run --filter @tranzfer/api --filter @tranzfer/web test",
     "test:e2e": "vp run --filter @tranzfer/e2e test",
+    "test:gate": "vp run --filter @tranzfer/e2e gate",
     "lint": "vp lint",
     "fmt": "vp fmt",
     "check": "vp check",
