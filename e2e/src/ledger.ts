@@ -1,4 +1,13 @@
+import { appendFile } from "node:fs/promises";
+import path from "node:path";
+
 import { partCount, partSize } from "@tranzfer/contracts";
+import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 
 /**
  * The parts ledger. Part bytes go from the browser straight to R2, so the API
@@ -120,3 +129,92 @@ export const summarize = (requests: readonly R2Request[], fileSize: number) => {
 };
 
 export type LedgerSummary = ReturnType<typeof summarize>;
+
+const STALL_LIMIT = Duration.toMillis("10 minutes");
+
+/**
+ * Live ledger fed by browser network events. Entries arrive pending
+ * (status null) and settle when the response finishes; a crash or close
+ * leaves them pending, which is exactly the ambiguity the summary rules
+ * encode. Every settled entry is also appended to <run>/ledger.jsonl.
+ */
+export class Ledger extends Context.Service<
+  Ledger,
+  {
+    readonly all: Effect.Effect<readonly R2Request[]>;
+    readonly record: (request: R2Request) => Effect.Effect<number>;
+    readonly settle: (index: number, status: number) => Effect.Effect<void>;
+    readonly since: (at: number) => Effect.Effect<readonly R2Request[]>;
+    /** Resolves when n distinct parts are acked; fails after 10 minutes without a new ack. */
+    readonly waitForAcked: (count: number) => Effect.Effect<readonly R2Request[]>;
+  }
+>()("tranzfer/e2e/Ledger") {
+  static readonly layer = (dir: string) =>
+    Layer.effect(
+      Ledger,
+      Effect.gen(function* make() {
+        const entries = yield* Ref.make<readonly R2Request[]>([]);
+        // One-shot wakeup swapped out on every mutation; waiters re-check.
+        const signal = yield* Ref.make(yield* Deferred.make<boolean>());
+        const logFile = path.join(dir, "ledger.jsonl");
+
+        const notify = Effect.gen(function* notify() {
+          yield* Deferred.succeed(yield* Ref.get(signal), true);
+          yield* Ref.set(signal, yield* Deferred.make<boolean>());
+        });
+
+        const record = (request: R2Request) =>
+          Effect.gen(function* recordEntry() {
+            yield* Ref.update(entries, (all) => [...all, request]);
+            yield* notify;
+            return (yield* Ref.get(entries)).length - 1;
+          });
+
+        const settle = Effect.fn("Ledger.settle")(function* settle(index: number, status: number) {
+          const entry = (yield* Ref.get(entries))[index];
+          if (entry === undefined) {
+            return;
+          }
+          const settled = { ...entry, status };
+          yield* Ref.update(entries, (all) => all.with(index, settled));
+          yield* Effect.promise(async () => {
+            await appendFile(logFile, `${JSON.stringify(settled)}\n`);
+          });
+          yield* notify;
+        });
+
+        const waitForAcked = Effect.fn("Ledger.waitForAcked")(function* waitFor(count: number) {
+          let last = -1;
+          let deadline = Date.now() + STALL_LIMIT;
+          for (;;) {
+            const all = yield* Ref.get(entries);
+            const acked = ackedParts(all).size;
+            if (acked >= count) {
+              return all;
+            }
+            if (acked > last) {
+              last = acked;
+              deadline = Date.now() + STALL_LIMIT;
+            }
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) {
+              return yield* Effect.die(
+                new Error(`stalled: no new part acknowledged for 10 minutes at ${acked}/${count}`),
+              );
+            }
+            const wakeup = yield* Ref.get(signal);
+            yield* Deferred.await(wakeup).pipe(Effect.timeout(remaining), Effect.ignore);
+          }
+        });
+
+        return Ledger.of({
+          all: Ref.get(entries),
+          record,
+          settle,
+          since: (at: number) =>
+            Effect.map(Ref.get(entries), (all) => all.filter((request) => request.at >= at)),
+          waitForAcked,
+        });
+      }),
+    );
+}
