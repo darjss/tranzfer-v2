@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { cpus, totalmem } from "node:os";
 import path from "node:path";
 
-import { layer } from "@effect/vitest";
+import { it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -78,15 +78,18 @@ export const scenario = (
     browserLayer,
     NetControl.layer.pipe(Layer.provide(browserLayer)),
   );
-  layer(testLayer)("gate", (it) => {
-    it.effect(
-      name,
-      () =>
+  // it.effect runs on a test clock that never ticks; gates need the real one.
+  it.live(
+    name,
+    () =>
+      Effect.scoped(
         Effect.gen(function* run() {
+          // Hand-built so the run directory is known before the layer mounts.
+          const services = yield* Layer.build(testLayer);
           yield* Effect.promise(async () => await mkdir(dir, { recursive: true }));
 
-          const browser = yield* Browser;
-          const ledger = yield* Ledger;
+          const browser = Context.get(services, Browser);
+          const ledger = Context.get(services, Ledger);
           const steps = yield* Ref.make<readonly Step[]>([]);
           const interventions = yield* Ref.make<readonly string[]>([]);
           const recorded = yield* Ref.make<Record<string, JsonValue>>({});
@@ -122,12 +125,15 @@ export const scenario = (
             timeline: Ref.get(steps),
           };
 
-          const exit = yield* Effect.exit(body.pipe(Effect.provideService(Run, Run.of(service))));
+          // Merge Run into the built context so its provision is structural,
+          // not a second provideService.
+          const all = Context.merge(services, Context.make(Run, Run.of(service)));
+          const exit = yield* Effect.exit(Effect.provide(body, all));
 
           const chromium = yield* Effect.option(
             browser.version.pipe(Effect.catch(() => Effect.succeed("closed"))),
           );
-          const target = yield* Target;
+          const target = Context.get(services, Target);
           const failed = Exit.isFailure(exit);
           if (failed) {
             yield* snap("failure");
@@ -155,7 +161,7 @@ export const scenario = (
           }
           return yield* Effect.void;
         }),
-      Duration.toMillis(options.timeout),
-    );
-  });
+      ),
+    Duration.toMillis(options.timeout),
+  );
 };
