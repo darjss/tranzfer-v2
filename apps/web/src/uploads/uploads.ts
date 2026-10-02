@@ -5,6 +5,7 @@ import type { Body, Meta } from "@uppy/core/utils";
 import { DeliveryId, partSize, RelativePath, TransferId } from "@tranzfer/contracts";
 import type { Delivery, RetentionDays, Transfer, UploadRequest } from "@tranzfer/contracts";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
@@ -126,6 +127,40 @@ export const retryWhileNotUploaded = <A, E extends { readonly _tag: string }, R>
     }),
   );
 
+// Losing the network is a pause, not an error (law 7). Offline time waits on
+// the `online` event and burns no attempts; the 40-try cap counts failures,
+// not elapsed time, so a sleep/wake clock jump cannot end it early.
+export const untilOnline: Effect.Effect<void> = Effect.suspend(() =>
+  navigator.onLine
+    ? Effect.void
+    : Effect.callback((resume) => {
+        const done = () => {
+          resume(Effect.void);
+        };
+        window.addEventListener("online", done, { once: true });
+        return Effect.sync(() => {
+          window.removeEventListener("online", done);
+        });
+      }),
+);
+
+// Transport failures retry; typed refusals (UploadClosed, InvalidUpload,
+// Unauthorized) are the server's answer and stand.
+export const retryTransport = <A, E extends { readonly _tag: string }, R>(
+  effect: Effect.Effect<A, E, R>,
+) =>
+  untilOnline.pipe(Effect.andThen(effect)).pipe(
+    Effect.retry({
+      schedule: Schedule.exponential("1 second").pipe(
+        Schedule.modifyDelay(({ duration }) =>
+          Effect.succeed(Duration.min(duration, Duration.seconds(30))),
+        ),
+      ),
+      times: 40,
+      while: (error) => error._tag === "RpcClientError",
+    }),
+  );
+
 const basename = (path: string) => path.split("/").pop() ?? path;
 
 /** One part R2 lists for an open upload. Its ETag is the part's MD5 hex. */
@@ -219,7 +254,7 @@ const make = Effect.gen(function* makeUploads() {
       uploadIdStored.set(transferId, request.uploadId);
       yield* recordUploadId(transferId, request.uploadId);
     }
-    const signed = yield* api.SignUpload({ key: request.key, request: upload });
+    const signed = yield* retryTransport(api.SignUpload({ key: request.key, request: upload }));
     if (upload._tag === "Complete" && transferId !== undefined) {
       completeSigned.add(transferId);
     }
@@ -238,13 +273,15 @@ const make = Effect.gen(function* makeUploads() {
     const parts: ListedPart[] = [];
     let marker: number | undefined;
     for (;;) {
-      const signed = yield* api.SignUpload({
-        key: objectKey,
-        request:
-          marker === undefined
-            ? { _tag: "List", uploadId }
-            : { _tag: "List", partNumberMarker: marker, uploadId },
-      });
+      const signed = yield* retryTransport(
+        api.SignUpload({
+          key: objectKey,
+          request:
+            marker === undefined
+              ? { _tag: "List", uploadId }
+              : { _tag: "List", partNumberMarker: marker, uploadId },
+        }),
+      );
       const response = yield* Effect.tryPromise(
         async () => await fetch(signed.url, { headers: signed.headers }),
       );
@@ -292,7 +329,7 @@ const make = Effect.gen(function* makeUploads() {
     fileId: string,
     transferId: TransferId,
   ) {
-    return yield* retryWhileNotUploaded(api.FinalizeTransfer({ transferId })).pipe(
+    return yield* retryWhileNotUploaded(retryTransport(api.FinalizeTransfer({ transferId }))).pipe(
       Effect.matchEffect({
         onFailure: (error) =>
           Effect.sync(() => {

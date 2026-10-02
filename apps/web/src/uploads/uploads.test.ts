@@ -6,10 +6,13 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { md5 } from "hash-wasm";
 
+import { RpcClientDefect, RpcClientError } from "effect/unstable/rpc/RpcClientError";
+
 import { fingerprint } from "./recovery";
 import {
   chosenFiles,
   deliveryTitle,
+  retryTransport,
   retryWhileNotUploaded,
   toUploadRequest,
   verifyParts,
@@ -63,6 +66,67 @@ describe("finalize", () => {
       const error = yield* Effect.flip(retryWhileNotUploaded(finalize));
       expect(error._tag).toBe("InvalidUpload");
       expect(calls()).toBe(1);
+    }),
+  );
+});
+
+const transportError = () =>
+  new RpcClientError({
+    reason: new RpcClientDefect({ cause: new Error("network down"), message: "network down" }),
+  });
+
+describe("transport", () => {
+  it.effect("transport_failures_retry_with_backoff_until_signing_lands", () =>
+    Effect.gen(function* landsAfterBackoff() {
+      let attempts = 0;
+      const call = Effect.suspend(() => {
+        attempts += 1;
+        return attempts <= 2 ? Effect.fail(transportError()) : Effect.succeed("signed");
+      });
+      const fiber = yield* Effect.forkChild(retryTransport(call));
+      yield* TestClock.adjust("1 second");
+      expect(attempts).toBe(2);
+      yield* TestClock.adjust("2 seconds");
+      expect(yield* Fiber.join(fiber)).toBe("signed");
+      expect(attempts).toBe(3);
+    }),
+  );
+
+  it.effect("typed_refusals_never_retry", () =>
+    Effect.gen(function* noRetry() {
+      let attempts = 0;
+      const call = Effect.suspend(() => {
+        attempts += 1;
+        return Effect.fail(new InvalidUpload());
+      });
+      const error = yield* Effect.flip(retryTransport(call));
+      expect(error._tag).toBe("InvalidUpload");
+      expect(attempts).toBe(1);
+    }),
+  );
+
+  it.effect("offline_signing_waits_for_online_before_trying", () =>
+    Effect.gen(function* waitsForOnline() {
+      const onLine = { value: false };
+      Object.defineProperty(navigator, "onLine", { configurable: true, get: () => onLine.value });
+      try {
+        let attempts = 0;
+        const call = Effect.suspend(() => {
+          attempts += 1;
+          return Effect.succeed("signed");
+        });
+        const fiber = yield* Effect.forkChild(retryTransport(call));
+        yield* TestClock.adjust("1 hour");
+        expect(attempts).toBe(0);
+        onLine.value = true;
+        window.dispatchEvent(new Event("online"));
+        expect(yield* Fiber.join(fiber)).toBe("signed");
+        expect(attempts).toBe(1);
+      } finally {
+        // The override lives on the navigator instance; removing it exposes
+        // Navigator.prototype's real onLine again.
+        Reflect.deleteProperty(navigator, "onLine");
+      }
     }),
   );
 });
