@@ -12,6 +12,7 @@ import { fingerprint } from "./recovery";
 import {
   chosenFiles,
   deliveryTitle,
+  isTransientUploadError,
   retryTransport,
   retryWhileNotUploaded,
   toUploadRequest,
@@ -129,6 +130,28 @@ describe("transport", () => {
       }
     }),
   );
+});
+
+const s3ServiceError = (status: number) =>
+  Object.assign(new Error("x"), { name: "S3ServiceError", status });
+
+describe("isTransientUploadError", () => {
+  it("transient_upload_errors_are_network_expiry_throttling_and_5xx", () => {
+    expect(isTransientUploadError(Object.assign(new Error("x"), { name: "S3NetworkError" }))).toBe(
+      true,
+    );
+    for (const status of [403, 408, 429, 500, 503]) {
+      expect(isTransientUploadError(s3ServiceError(status))).toBe(true);
+    }
+  });
+
+  it("remote_gone_and_refusals_stay_final", () => {
+    expect(isTransientUploadError(s3ServiceError(404))).toBe(false);
+    expect(isTransientUploadError(s3ServiceError(400))).toBe(false);
+    expect(isTransientUploadError(new Error("plain"))).toBe(false);
+    // @ts-expect-error runtime garbage reaches the guard untyped.
+    expect(isTransientUploadError("network down")).toBe(false);
+  });
 });
 
 describe("signing", () => {
