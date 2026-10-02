@@ -53,16 +53,29 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       expect(stranger._tag).toBe("DeliveryNotFound");
 
       // Signing Complete moves the transfer to finalizing: retries of the last
-      // steps still sign, a new upload or new parts do not.
+      // steps still sign, and parts on the existing upload id sign too, so a
+      // lost Complete with missing parts can finish. A new upload cannot.
       yield* transfers.sign("ann", smallKey, { _tag: "Complete", uploadId: "u" });
       yield* transfers.sign("ann", smallKey, { _tag: "Complete", uploadId: "u" });
       yield* transfers.sign("ann", smallKey, { _tag: "List", uploadId: "u" });
+      // ListParts pagination signs again with the page marker.
+      yield* transfers.sign("ann", smallKey, {
+        _tag: "List",
+        partNumberMarker: 1000,
+        uploadId: "u",
+      });
       const reopen = yield* Effect.flip(transfers.sign("ann", smallKey, { _tag: "Create" }));
       expect(reopen._tag).toBe("UploadClosed");
-      const morePart = yield* Effect.flip(
-        transfers.sign("ann", smallKey, { _tag: "Part", partNumber: 1, uploadId: "u" }),
+      const morePart = yield* transfers.sign("ann", smallKey, {
+        _tag: "Part",
+        partNumber: 1,
+        uploadId: "u",
+      });
+      expect(morePart.url).toBe(`memory://Part/${smallKey}`);
+      const tooMany = yield* Effect.flip(
+        transfers.sign("ann", smallKey, { _tag: "Part", partNumber: 2, uploadId: "u" }),
       );
-      expect(morePart._tag).toBe("UploadClosed");
+      expect(tooMany._tag).toBe("InvalidUpload");
     }),
   );
 

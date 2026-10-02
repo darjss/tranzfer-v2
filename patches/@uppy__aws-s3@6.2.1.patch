@@ -1,0 +1,89 @@
+diff --git a/lib/s3-client/S3mini.js b/lib/s3-client/S3mini.js
+index 16be007eae9cb6353d154d83faf84b7a5114cda2..a3742f097da5c7986c060355b9f36c1be9269bf5 100644
+--- a/lib/s3-client/S3mini.js
++++ b/lib/s3-client/S3mini.js
+@@ -270,34 +270,50 @@ class S3mini extends S3Client {
+             throw err;
+         }
+     }
+-    /** Lists uploaded parts for a multipart upload. */
++    /** Lists uploaded parts for a multipart upload, following pagination. */
+     async listParts({ uploadId, key, signal, }) {
+         this._checkKey(key);
+         if (!uploadId) {
+             throw new TypeError(C.ERROR_UPLOAD_ID_REQUIRED);
+         }
+-        const { xhr } = await this.request({
+-            request: { method: 'GET', key, uploadId },
+-            signal,
+-        });
+-        const parsed = U.parseXml(xhr.responseText);
+-        const result = (parsed.listPartsResult ||
+-            parsed.ListPartsResult ||
+-            parsed);
+-        if (result && typeof result === 'object') {
+-            const parts = result.Part || result.part || [];
+-            const partsArray = Array.isArray(parts) ? parts : [parts];
+-            return partsArray
+-                .filter((p) => p != null &&
+-                typeof p === 'object' &&
+-                'PartNumber' in p &&
+-                'ETag' in p)
+-                .map((p) => ({
+-                partNumber: parseInt(String(p.PartNumber), 10),
+-                etag: U.sanitizeXmlETag(String(p.ETag)),
+-            }));
++        const parts = [];
++        let partNumberMarker;
++        for (;;) {
++            const request = { method: 'GET', key, uploadId };
++            if (partNumberMarker !== undefined) {
++                request.partNumberMarker = partNumberMarker;
++            }
++            const { xhr } = await this.request({ request, signal });
++            const parsed = U.parseXml(xhr.responseText);
++            const result = (parsed.listPartsResult ||
++                parsed.ListPartsResult ||
++                parsed);
++            if (!result || typeof result !== 'object') {
++                break;
++            }
++            const listed = result.Part || result.part || [];
++            const partsArray = Array.isArray(listed) ? listed : [listed];
++            for (const p of partsArray) {
++                if (p != null &&
++                    typeof p === 'object' &&
++                    'PartNumber' in p &&
++                    'ETag' in p) {
++                    parts.push({
++                        partNumber: parseInt(String(p.PartNumber), 10),
++                        etag: U.sanitizeXmlETag(String(p.ETag)),
++                    });
++                }
++            }
++            const truncated = result.IsTruncated ?? result.isTruncated;
++            const nextMarker = result.NextPartNumberMarker ?? result.nextPartNumberMarker;
++            if (String(truncated) !== 'true' ||
++                nextMarker === undefined ||
++                nextMarker === '') {
++                break;
++            }
++            partNumberMarker = Number(nextMarker);
+         }
+-        return [];
++        return parts;
+     }
+     /** Completes a multipart upload by combining all uploaded parts. */
+     async completeMultipartUpload({ key, uploadId, parts, signal, }) {
+diff --git a/lib/s3-client/types.d.ts b/lib/s3-client/types.d.ts
+index 1fecee872c7824a70914a8762bcd71d4c9e0b3c2..d30ac6e9332ebdf949aacb60cd1ea018cf1b8b97 100644
+--- a/lib/s3-client/types.d.ts
++++ b/lib/s3-client/types.d.ts
+@@ -22,6 +22,7 @@ export interface DeleteMultipartUploadRequest extends PresignableRequestBase {
+ export interface ListPartsRequest extends PresignableRequestBase {
+     method: 'GET';
+     uploadId: string;
++    partNumberMarker?: number;
+ }
+ export interface UploadPartRequest extends PresignableRequestBase {
+     method: 'PUT';

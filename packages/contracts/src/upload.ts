@@ -22,7 +22,13 @@ export const UploadRequest = Schema.Union([
     partNumber: Schema.Int.check(Schema.isBetween({ maximum: MAX_PARTS, minimum: 1 })),
     uploadId: Schema.String,
   }),
-  Schema.TaggedStruct("List", { uploadId: Schema.String }),
+  Schema.TaggedStruct("List", {
+    // ListParts pages at 1,000 parts; the marker continues to the next page.
+    partNumberMarker: Schema.optional(
+      Schema.Int.check(Schema.isBetween({ maximum: MAX_PARTS, minimum: 0 })),
+    ),
+    uploadId: Schema.String,
+  }),
   Schema.TaggedStruct("Complete", { uploadId: Schema.String }),
 ]);
 export type UploadRequest = typeof UploadRequest.Type;
