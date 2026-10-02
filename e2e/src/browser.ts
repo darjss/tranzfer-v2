@@ -90,6 +90,8 @@ export class Browser extends Context.Service<
             chromium.executablePath(),
             [
               "--headless=new",
+              // Gates run in containers without user namespaces.
+              "--no-sandbox",
               `--user-data-dir=${path.join(dir, "profile")}`,
               "--remote-debugging-port=0",
               "--no-first-run",
