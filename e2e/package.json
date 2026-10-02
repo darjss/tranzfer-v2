@@ -6,6 +6,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "gate": "vitest run --config vitest.gates.config.ts",
     "test": "vitest run"
   },
   "dependencies": {
