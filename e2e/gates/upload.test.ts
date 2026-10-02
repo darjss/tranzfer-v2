@@ -44,6 +44,26 @@ const waitVisible = (
     await locator.waitFor({ state: "visible", timeout });
   });
 
+// playwright's setFiles refuses >50 MB over CDP because a remote browser can't
+// receive buffers. DOM.setFileInputFiles takes a path instead, and the browser
+// reads the FUSE file itself — the same code path setFiles uses when local.
+const setNativeFiles = async (page: Page, selector: string, file: string) => {
+  const session = await page.context().newCDPSession(page);
+  try {
+    const { root } = await session.send("DOM.getDocument");
+    const { nodeId } = await session.send("DOM.querySelector", {
+      nodeId: root.nodeId,
+      selector,
+    });
+    if (nodeId === 0) {
+      throw new Error(`no input matches ${selector}`);
+    }
+    await session.send("DOM.setFileInputFiles", { files: [file], nodeId });
+  } finally {
+    await session.detach();
+  }
+};
+
 /**
  * After a relaunch the row offers "Continue" and the sheet's Continue block
  * offers "Choose files". The pick happens through a real file chooser, which
@@ -62,11 +82,11 @@ const pickFileThroughUi = Effect.fn("Gate.pickFileThroughUi")(function* pick(
   const chooser = page.waitForEvent("filechooser");
   yield* Effect.promise(async () => {
     await dialog.getByRole("button", { name: "Choose files" }).click();
+    await chooser;
   });
   const pickedAt = Date.now();
   yield* Effect.promise(async () => {
-    const fileChooser = await chooser;
-    await fileChooser.setFiles(file);
+    await setNativeFiles(page, 'dialog input[type="file"]:not([webkitdirectory])', file);
   });
   return pickedAt;
 });
@@ -113,8 +133,8 @@ scenario(
     yield* Effect.promise(async () => {
       const chooser = page.waitForEvent("filechooser");
       await page.getByRole("button", { name: "Choose files" }).first().click();
-      const fileChooser = await chooser;
-      await fileChooser.setFiles(realPath);
+      await chooser;
+      await setNativeFiles(page, 'input[type="file"][multiple]', realPath);
     });
     yield* run.step("sent");
 
