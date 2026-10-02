@@ -163,21 +163,23 @@ export const retryTransport = <A, E extends { readonly _tag: string }, R>(
     }),
   );
 
-// Uppy's S3 errors aren't exported, so match on name (S3Error sets name to
-// the class name). Network loss, an expired signature (403, law 6), timeouts,
-// throttling and 5xx come back on their own; 404 is the multipart upload
-// gone, which must never restart silently.
-const s3Error = Schema.Struct({ name: Schema.String, status: Schema.optional(Schema.Number) });
+// Uppy's S3 errors aren't exported, and their names don't survive
+// minification (S3Error sets name from new.target), so match on fields:
+// S3NetworkError carries code "NETWORK", S3ServiceError a numeric status.
+// Network loss, an expired signature (403, law 6), timeouts, throttling and
+// 5xx come back on their own; 404 is the multipart upload gone, which must
+// never restart silently.
+const s3Error = Schema.Struct({
+  code: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.Number),
+});
 
 export const isTransientUploadError = (error: Error) => {
   if (!Schema.is(s3Error)(error)) {
     return false;
   }
-  if (error.name === "S3NetworkError") {
-    return true;
-  }
-  if (error.name !== "S3ServiceError" || error.status === undefined) {
-    return false;
+  if (error.status === undefined) {
+    return error.code === "NETWORK";
   }
   return (
     error.status === 403 || error.status === 408 || error.status === 429 || error.status >= 500

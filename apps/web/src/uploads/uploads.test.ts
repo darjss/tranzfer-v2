@@ -132,14 +132,15 @@ describe("transport", () => {
   );
 });
 
+// Minified names, as the deployed bundle renames Uppy's error classes.
 const s3ServiceError = (status: number) =>
-  Object.assign(new Error("x"), { name: "S3ServiceError", status });
+  Object.assign(new Error("x"), { code: "AccessDenied", name: "OV", status });
 
 describe("isTransientUploadError", () => {
   it("transient_upload_errors_are_network_expiry_throttling_and_5xx", () => {
-    expect(isTransientUploadError(Object.assign(new Error("x"), { name: "S3NetworkError" }))).toBe(
-      true,
-    );
+    expect(
+      isTransientUploadError(Object.assign(new Error("x"), { code: "NETWORK", name: "DV" })),
+    ).toBe(true);
     for (const status of [403, 408, 429, 500, 503]) {
       expect(isTransientUploadError(s3ServiceError(status))).toBe(true);
     }
