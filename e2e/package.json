@@ -15,6 +15,7 @@
   "devDependencies": {
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
+    "playwright": "1.63.0",
     "typescript": "catalog:",
     "vitest": "5.0.1"
   }
