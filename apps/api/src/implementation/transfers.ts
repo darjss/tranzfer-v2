@@ -120,9 +120,9 @@ export class Transfers extends Context.Service<
       /**
        * Trusts the object only after closing its key. Nothing is sealed until
        * an object exists, so a paused or still-running upload is never aborted.
-       * Then `finalizing` stops new uploads and parts, aborting every open
-       * multipart upload kills URLs signed earlier, and the second HEAD reads
-       * the object that can no longer change.
+       * Then `finalizing` stops new uploads, aborting every open multipart
+       * upload kills URLs signed earlier, parts included, and the second HEAD
+       * reads the object that can no longer change.
        */
       const settle = Effect.fn("Transfers.settle")(function* settle(transfer: Transfer) {
         yield* verify(transfer, yield* storage.head(transfer.objectKey));
