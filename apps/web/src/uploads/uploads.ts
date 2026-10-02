@@ -457,14 +457,16 @@ const make = Effect.gen(function* makeUploads() {
           runFork(
             untilOnline.pipe(
               Effect.andThen(Effect.sleep(delay)),
-              // A cancel removes the file and a manual Retry clears its error;
-              // either means this retry must not fire.
+              // A cancel removes the file and a manual Retry sets its error to
+              // null; either means this retry must not fire.
               Effect.andThen(
-                Effect.sync(() => {
+                Effect.suspend(() => {
                   const current = uppy.getFile(file.id);
-                  if (current !== undefined && current.error !== undefined) {
-                    runFork(start(uppy, file.id, transferId));
-                  }
+                  return current === undefined ||
+                    current.error === null ||
+                    current.error === undefined
+                    ? Effect.void
+                    : start(uppy, file.id, transferId);
                 }),
               ),
             ),
