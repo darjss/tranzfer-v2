@@ -278,7 +278,11 @@ scenario(
     // e. The UI says Ready and the API agrees the transfer is complete.
     const currentPage = yield* browser.page;
     yield* Effect.promise(async () => {
-      await deliveryRow(currentPage).getByRole("button", { exact: true, name }).click();
+      // A fault pick can leave the delivery's sheet open; the row title click
+      // then hits the dialog overlay instead. Only open it when closed.
+      if (!(await currentPage.locator("dialog").isVisible())) {
+        await deliveryRow(currentPage).getByRole("button", { exact: true, name }).click();
+      }
     });
     yield* waitVisible(currentPage.locator("dialog").getByText("Ready", { exact: true }), 600_000);
     const finished = yield* api.Deliveries().pipe(
