@@ -75,11 +75,14 @@ const pickFileThroughUi = Effect.fn("Gate.pickFileThroughUi")(function* pick(
   row: (page: Page) => Locator,
   file: string,
 ) {
-  yield* waitVisible(row(page).getByRole("button", { name: "Continue" }));
-  yield* Effect.promise(async () => {
-    await row(page).getByRole("button", { name: "Continue" }).click();
-  });
   const dialog = page.locator("dialog");
+  // The sheet can already be open: the app restores it across reloads, and a
+  // row click then hits the dialog overlay. Only open it when closed.
+  yield* Effect.promise(async () => {
+    if (!(await dialog.isVisible())) {
+      await row(page).getByRole("button", { name: "Continue" }).click();
+    }
+  });
   yield* waitVisible(dialog.getByRole("button", { name: "Choose files" }));
   const chooser = page.waitForEvent("filechooser");
   yield* Effect.promise(async () => {
