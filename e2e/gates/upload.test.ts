@@ -2,13 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { expect } from "@effect/vitest";
+import type { DeliveryId } from "@tranzfer/contracts";
 import { partCount, partSize } from "@tranzfer/contracts";
 import * as Data from "effect/Data";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
-import type { Page } from "playwright";
+import type { Locator, Page } from "playwright";
 
 import { Browser } from "../src/browser";
 import { ackedParts, Ledger, summarize } from "../src/ledger";
@@ -71,11 +72,12 @@ const setNativeFiles = async (page: Page, selector: string, file: string) => {
  */
 const pickFileThroughUi = Effect.fn("Gate.pickFileThroughUi")(function* pick(
   page: Page,
+  row: (page: Page) => Locator,
   file: string,
 ) {
-  yield* waitVisible(page.getByRole("button", { name: "Continue" }).first());
+  yield* waitVisible(row(page).getByRole("button", { name: "Continue" }));
   yield* Effect.promise(async () => {
-    await page.getByRole("button", { name: "Continue" }).first().click();
+    await row(page).getByRole("button", { name: "Continue" }).click();
   });
   const dialog = page.locator("dialog");
   yield* waitVisible(dialog.getByRole("button", { name: "Choose files" }));
@@ -90,6 +92,10 @@ const pickFileThroughUi = Effect.fn("Gate.pickFileThroughUi")(function* pick(
   });
   return pickedAt;
 });
+
+// Set by the gate body once CreateDelivery lands; the ensuring sibling reads
+// it, and a Ref can't be shared across the two generators without one.
+let sentDelivery: DeliveryId | undefined;
 
 scenario(
   `Gate · ${gateName} survives its faults and delivers one verified file`,
@@ -111,7 +117,14 @@ scenario(
     // a. The file exists only as a FUSE computation; hashing it here is the
     // expected digest the download must match byte for byte.
     const seed = randomUUID();
-    const name = `gate-${gateName}.bin`;
+    // The run id makes the delivery title unique, so row locators can never
+    // hit an older run's delivery on a shared staging account.
+    const runId = randomUUID().slice(0, 8);
+    const name = `gate-${gateName}-${runId}.bin`;
+    // Row lookups are scoped to this delivery's title; staging carries other
+    // runs' deliveries for the same user.
+    const deliveryRow = (page: Page) =>
+      page.locator("li").filter({ has: page.getByRole("button", { exact: true, name }) });
     const mtimeMs = Date.now();
     const realPath = yield* mountSynthFile({
       dir: path.join(run.dir, "real"),
@@ -148,6 +161,7 @@ scenario(
       }),
       Effect.retry({ schedule: Schedule.spaced("2 seconds"), times: 15 }),
     );
+    sentDelivery = delivery.id;
     yield* run.record("deliveryId", delivery.id);
 
     const ackedNow = Effect.map(ledger.all, (all) => ackedParts(all).size);
@@ -197,7 +211,7 @@ scenario(
             await tab.close();
           });
           page = yield* browser.open("/deliveries");
-          const pickedAt = yield* pickFileThroughUi(page, realPath);
+          const pickedAt = yield* pickFileThroughUi(page, deliveryRow, realPath);
           yield* recordVerify(pickedAt);
           yield* run.manual("pick file after closeTab");
           break;
@@ -212,7 +226,7 @@ scenario(
             yield* browser.launch;
           }
           page = yield* browser.page;
-          const pickedAt = yield* pickFileThroughUi(page, realPath);
+          const pickedAt = yield* pickFileThroughUi(page, deliveryRow, realPath);
           yield* recordVerify(pickedAt);
           yield* run.manual(`pick file after ${fault.kind}`);
           break;
@@ -221,7 +235,7 @@ scenario(
           const before = page;
           yield* Effect.promise(async () => await before.reload());
           const current = yield* browser.page;
-          yield* waitVisible(current.getByRole("button", { name: "Continue" }));
+          yield* waitVisible(deliveryRow(current).getByRole("button", { name: "Continue" }));
           // The flip lands inside part 2 at partSize + partSize/2 + 4096:
           // between the fingerprint's sampled spots, so only the per-part
           // MD5 check against R2's ETags can catch it.
@@ -234,7 +248,7 @@ scenario(
             seed,
             size,
           });
-          const impostorAt = yield* pickFileThroughUi(current, impostorPath);
+          const impostorAt = yield* pickFileThroughUi(current, deliveryRow, impostorPath);
           yield* run.manual("pick changed file");
           yield* waitVisible(
             current.locator("dialog [role='alert']").filter({ hasText: "has changed" }),
@@ -244,7 +258,7 @@ scenario(
           expect(
             sincePick.filter((entry) => entry.kind === "part" || entry.kind === "create"),
           ).toEqual([]);
-          const realPickAt = yield* pickFileThroughUi(current, realPath);
+          const realPickAt = yield* pickFileThroughUi(current, deliveryRow, realPath);
           yield* recordVerify(realPickAt);
           yield* run.manual("pick file after impostor");
           yield* waitProgress;
@@ -263,7 +277,10 @@ scenario(
 
     // e. The UI says Ready and the API agrees the transfer is complete.
     const currentPage = yield* browser.page;
-    yield* waitVisible(currentPage.getByText("Ready", { exact: true }).first(), 600_000);
+    yield* Effect.promise(async () => {
+      await deliveryRow(currentPage).getByRole("button", { exact: true, name }).click();
+    });
+    yield* waitVisible(currentPage.locator("dialog").getByText("Ready", { exact: true }), 600_000);
     const finished = yield* api.Deliveries().pipe(
       Effect.flatMap((list) => {
         const found = list.find((d) => d.id === delivery.id);
@@ -340,12 +357,12 @@ scenario(
         // mounts still come down.
         if (process.env.GATE_KEEP !== "1") {
           const { api } = yield* Target;
-          const list = yield* api.Deliveries().pipe(Effect.orElseSucceed(() => []));
-          const name = `gate-${gateName}.bin`;
-          yield* Effect.forEach(
-            list.filter((d) => d.status === "open" && d.transfers.some((t) => t.path === name)),
-            (d) => api.CancelDelivery({ deliveryId: d.id }).pipe(Effect.ignore),
-          );
+          // Cancel the exact delivery this run created, whatever its status:
+          // the API's cancel removes objects of ready deliveries too, so a
+          // passed gate leaves nothing in R2.
+          if (sentDelivery !== undefined) {
+            yield* api.CancelDelivery({ deliveryId: sentDelivery }).pipe(Effect.ignore);
+          }
         }
         yield* (yield* Browser).close.pipe(Effect.ignore);
       }),
