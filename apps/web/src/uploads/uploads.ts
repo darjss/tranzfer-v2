@@ -170,7 +170,8 @@ export const retryTransport = <A, E extends { readonly _tag: string }, R>(
 // 5xx come back on their own; 404 is the multipart upload gone, which must
 // never restart silently.
 const s3Error = Schema.Struct({
-  code: Schema.optional(Schema.String),
+  // A service error copies x-amz-error-code here, which can be null.
+  code: Schema.optional(Schema.Unknown),
   status: Schema.optional(Schema.Number),
 });
 

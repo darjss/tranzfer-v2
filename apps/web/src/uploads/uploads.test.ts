@@ -134,7 +134,7 @@ describe("transport", () => {
 
 // Minified names, as the deployed bundle renames Uppy's error classes.
 const s3ServiceError = (status: number) =>
-  Object.assign(new Error("x"), { code: "AccessDenied", name: "OV", status });
+  Object.assign(new Error("x"), { code: null, name: "OV", status });
 
 describe("isTransientUploadError", () => {
   it("transient_upload_errors_are_network_expiry_throttling_and_5xx", () => {
