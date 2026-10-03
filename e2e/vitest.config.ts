@@ -5,7 +5,7 @@ export default defineConfig({
     // Staging is one shared deployment; files and layer setup run serially.
     fileParallelism: false,
     hookTimeout: 60_000,
-    include: ["scenarios/**/*.test.ts"],
+    include: ["scenarios/**/*.test.ts", "src/**/*.test.ts"],
     testTimeout: 300_000,
   },
 });

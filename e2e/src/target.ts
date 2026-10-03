@@ -30,6 +30,8 @@ export class Target extends Context.Service<
     readonly anon: Client;
     readonly api: Client;
     readonly baseUrl: string;
+    /** Never log this; a signed-in browser session is a credential. */
+    readonly loginKey: string;
   }
 >()("tranzfer/e2e/Target") {
   static readonly layer = Layer.effect(
@@ -43,7 +45,7 @@ export class Target extends Context.Service<
       const cookie = yield* Effect.promise(async () => await stagingLogin(baseUrl, key));
       const api = yield* apiClient(baseUrl, cookie);
       const anon = yield* apiClient(baseUrl);
-      return Target.of({ anon, api, baseUrl });
+      return Target.of({ anon, api, baseUrl, loginKey: key });
     }),
   ).pipe(Layer.provide([RpcSerialization.layerJson, FetchHttpClient.layer]));
 }
