@@ -235,6 +235,7 @@ How the browser recovers today:
 - A passing fingerprint is not proof enough: it samples 16 spots, so an edit between samples could slip through and Uppy would keep the stale parts. Before a matched file is claimed, the browser lists the remote parts itself and checks each one's size and MD5 against the picked file (a part's R2 ETag is its MD5 hex). A mismatch is refused as `changed`; a `NoSuchUpload`/404 is refused as `gone`, because starting a fresh upload id would split the stored bytes across two uploads.
 - ListParts pages at 1,000 parts. The bundled Uppy reads page one only, so a pnpm patch makes `S3mini.listParts` follow `NextPartNumberMarker` and the `List` signature carries `part-number-marker` through to R2.
 - A signed `Complete` whose response is lost reconciles instead of restarting: the upload error runs FinalizeTransfer, and a retry after such an error finalizes first and resumes transport only on `NotUploaded`.
+- Signing and finalize calls wait for `online` while the browser is offline and retry transport failures with capped backoff; typed refusals stand, and after the retries run out the manual Retry stays the honest fallback. When an R2 request itself fails from network loss, an expired signature, throttling or a 5xx, the file restarts through Uppy's resume once the browser is online, on the same capped backoff; a 404 means the remote upload is gone and fails honestly.
 - IndexedDB is bookkeeping, never a gate. A failed read or write logs a warning and the upload continues; it just won't survive a refresh.
 
 ## Downloads

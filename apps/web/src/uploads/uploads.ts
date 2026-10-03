@@ -5,6 +5,7 @@ import type { Body, Meta } from "@uppy/core/utils";
 import { DeliveryId, partSize, RelativePath, TransferId } from "@tranzfer/contracts";
 import type { Delivery, RetentionDays, Transfer, UploadRequest } from "@tranzfer/contracts";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
@@ -126,6 +127,66 @@ export const retryWhileNotUploaded = <A, E extends { readonly _tag: string }, R>
     }),
   );
 
+// The 40-try cap counts failures, not elapsed time, so a sleep/wake clock
+// jump cannot end it early; each backoff delay is capped at 30 seconds.
+const RETRY_CAP = Duration.seconds(30);
+const MAX_TRANSPORT_RETRIES = 40;
+
+// Losing the network is a pause, not an error (law 7). Offline time waits on
+// the `online` event and burns no attempts.
+export const untilOnline: Effect.Effect<void> = Effect.suspend(() =>
+  navigator.onLine
+    ? Effect.void
+    : Effect.callback((resume) => {
+        const done = () => {
+          resume(Effect.void);
+        };
+        window.addEventListener("online", done, { once: true });
+        return Effect.sync(() => {
+          window.removeEventListener("online", done);
+        });
+      }),
+);
+
+// Transport failures retry; typed refusals (UploadClosed, InvalidUpload,
+// Unauthorized) are the server's answer and stand.
+export const retryTransport = <A, E extends { readonly _tag: string }, R>(
+  effect: Effect.Effect<A, E, R>,
+) =>
+  untilOnline.pipe(Effect.andThen(effect)).pipe(
+    Effect.retry({
+      schedule: Schedule.exponential("1 second").pipe(
+        Schedule.modifyDelay(({ duration }) => Effect.succeed(Duration.min(duration, RETRY_CAP))),
+      ),
+      times: MAX_TRANSPORT_RETRIES,
+      while: (error) => error._tag === "RpcClientError",
+    }),
+  );
+
+// Uppy's S3 errors aren't exported, and their names don't survive
+// minification (S3Error sets name from new.target), so match on fields:
+// S3NetworkError carries code "NETWORK", S3ServiceError a numeric status.
+// Network loss, an expired signature (403, law 6), timeouts, throttling and
+// 5xx come back on their own; 404 is the multipart upload gone, which must
+// never restart silently.
+const s3Error = Schema.Struct({
+  // A service error copies x-amz-error-code here, which can be null.
+  code: Schema.optional(Schema.Unknown),
+  status: Schema.optional(Schema.Number),
+});
+
+export const isTransientUploadError = (error: Error) => {
+  if (!Schema.is(s3Error)(error)) {
+    return false;
+  }
+  if (error.status === undefined) {
+    return error.code === "NETWORK";
+  }
+  return (
+    error.status === 403 || error.status === 408 || error.status === 429 || error.status >= 500
+  );
+};
+
 const basename = (path: string) => path.split("/").pop() ?? path;
 
 /** One part R2 lists for an open upload. Its ETag is the part's MD5 hex. */
@@ -192,6 +253,9 @@ const make = Effect.gen(function* makeUploads() {
   // Complete signed means the bytes may already be a finished object; an
   // error after this point reconciles instead of restarting transport.
   const completeSigned = new Set<TransferId>();
+  // transferId -> transport retries spent; any acknowledged part resets the
+  // budget because progress proves transport works.
+  const autoRetries = new Map<TransferId, number>();
 
   const sampleSpeed = (transferId: string, bytesUploaded: number) => {
     const now = Date.now();
@@ -219,7 +283,7 @@ const make = Effect.gen(function* makeUploads() {
       uploadIdStored.set(transferId, request.uploadId);
       yield* recordUploadId(transferId, request.uploadId);
     }
-    const signed = yield* api.SignUpload({ key: request.key, request: upload });
+    const signed = yield* retryTransport(api.SignUpload({ key: request.key, request: upload }));
     if (upload._tag === "Complete" && transferId !== undefined) {
       completeSigned.add(transferId);
     }
@@ -238,13 +302,15 @@ const make = Effect.gen(function* makeUploads() {
     const parts: ListedPart[] = [];
     let marker: number | undefined;
     for (;;) {
-      const signed = yield* api.SignUpload({
-        key: objectKey,
-        request:
-          marker === undefined
-            ? { _tag: "List", uploadId }
-            : { _tag: "List", partNumberMarker: marker, uploadId },
-      });
+      const signed = yield* retryTransport(
+        api.SignUpload({
+          key: objectKey,
+          request:
+            marker === undefined
+              ? { _tag: "List", uploadId }
+              : { _tag: "List", partNumberMarker: marker, uploadId },
+        }),
+      );
       const response = yield* Effect.tryPromise(
         async () => await fetch(signed.url, { headers: signed.headers }),
       );
@@ -281,6 +347,7 @@ const make = Effect.gen(function* makeUploads() {
     Effect.gen(function* settle() {
       patchTransfer(transferId, { bytesPerSecond: 0, phase: "done" });
       completeSigned.delete(transferId);
+      autoRetries.delete(transferId);
       uppy.removeFile(fileId);
       yield* forget([transferId]);
     });
@@ -292,7 +359,7 @@ const make = Effect.gen(function* makeUploads() {
     fileId: string,
     transferId: TransferId,
   ) {
-    return yield* retryWhileNotUploaded(api.FinalizeTransfer({ transferId })).pipe(
+    return yield* retryWhileNotUploaded(retryTransport(api.FinalizeTransfer({ transferId }))).pipe(
       Effect.matchEffect({
         onFailure: (error) =>
           Effect.sync(() => {
@@ -328,6 +395,7 @@ const make = Effect.gen(function* makeUploads() {
         // file's parts sequentially and resumes by skipping parts the server
         // lists, so a completed part N implies parts 1..N-1 are also done.
         const confirmed = Math.min(partSize(size) * part.PartNumber, size);
+        autoRetries.delete(file.meta.transferId);
         patchTransfer(file.meta.transferId, { confirmed, phase: "uploading" });
         runFork(recordConfirmed(file.meta.transferId, confirmed));
       });
@@ -377,6 +445,35 @@ const make = Effect.gen(function* makeUploads() {
         if (completeSigned.has(transferId)) {
           patchTransfer(transferId, { bytesPerSecond: 0, inFlight: 0, phase: "finalizing" });
           runFork(finish(uppy, file.id, transferId));
+          return;
+        }
+        const attempts = autoRetries.get(transferId) ?? 0;
+        if (isTransientUploadError(error) && attempts < MAX_TRANSPORT_RETRIES) {
+          autoRetries.set(transferId, attempts + 1);
+          // Keep phase uploading: the board already shows the paused copy
+          // while offline ("Connection lost…"). retryUpload resumes the same
+          // multipart upload because Uppy keeps s3Multipart on error, so
+          // ListParts skips stored parts (law 5). A 404 there surfaces as
+          // non-transient and fails honestly on the next upload-error.
+          patchTransfer(transferId, { bytesPerSecond: 0, inFlight: 0, phase: "uploading" });
+          const delay = Duration.min(Duration.seconds(2 ** attempts), RETRY_CAP);
+          runFork(
+            untilOnline.pipe(
+              Effect.andThen(Effect.sleep(delay)),
+              // A cancel removes the file and a manual Retry sets its error to
+              // null; either means this retry must not fire.
+              Effect.andThen(
+                Effect.suspend(() => {
+                  const current = uppy.getFile(file.id);
+                  return current === undefined ||
+                    current.error === null ||
+                    current.error === undefined
+                    ? Effect.void
+                    : start(uppy, file.id, transferId);
+                }),
+              ),
+            ),
+          );
           return;
         }
         patchTransfer(transferId, {
@@ -486,6 +583,7 @@ const make = Effect.gen(function* makeUploads() {
           for (const transfer of delivery.transfers) {
             keys.delete(transfer.objectKey);
             completeSigned.delete(transfer.id);
+            autoRetries.delete(transfer.id);
             patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
           }
           yield* forget(delivery.transfers.map((transfer) => transfer.id));
@@ -556,6 +654,7 @@ const make = Effect.gen(function* makeUploads() {
     for (const transfer of cancelled.transfers) {
       keys.delete(transfer.objectKey);
       completeSigned.delete(transfer.id);
+      autoRetries.delete(transfer.id);
       patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
     }
     yield* forget(cancelled.transfers.map((transfer) => transfer.id));

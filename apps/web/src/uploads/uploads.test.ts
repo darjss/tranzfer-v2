@@ -6,10 +6,14 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { md5 } from "hash-wasm";
 
+import { RpcClientDefect, RpcClientError } from "effect/unstable/rpc/RpcClientError";
+
 import { fingerprint } from "./recovery";
 import {
   chosenFiles,
   deliveryTitle,
+  isTransientUploadError,
+  retryTransport,
   retryWhileNotUploaded,
   toUploadRequest,
   verifyParts,
@@ -65,6 +69,90 @@ describe("finalize", () => {
       expect(calls()).toBe(1);
     }),
   );
+});
+
+const transportError = () =>
+  new RpcClientError({
+    reason: new RpcClientDefect({ cause: new Error("network down"), message: "network down" }),
+  });
+
+describe("transport", () => {
+  it.effect("transport_failures_retry_with_backoff_until_signing_lands", () =>
+    Effect.gen(function* landsAfterBackoff() {
+      let attempts = 0;
+      const call = Effect.suspend(() => {
+        attempts += 1;
+        return attempts <= 2 ? Effect.fail(transportError()) : Effect.succeed("signed");
+      });
+      const fiber = yield* Effect.forkChild(retryTransport(call));
+      yield* TestClock.adjust("1 second");
+      expect(attempts).toBe(2);
+      yield* TestClock.adjust("2 seconds");
+      expect(yield* Fiber.join(fiber)).toBe("signed");
+      expect(attempts).toBe(3);
+    }),
+  );
+
+  it.effect("typed_refusals_never_retry", () =>
+    Effect.gen(function* noRetry() {
+      let attempts = 0;
+      const call = Effect.suspend(() => {
+        attempts += 1;
+        return Effect.fail(new InvalidUpload());
+      });
+      const error = yield* Effect.flip(retryTransport(call));
+      expect(error._tag).toBe("InvalidUpload");
+      expect(attempts).toBe(1);
+    }),
+  );
+
+  it.effect("offline_signing_waits_for_online_before_trying", () =>
+    Effect.gen(function* waitsForOnline() {
+      const onLine = { value: false };
+      Object.defineProperty(navigator, "onLine", { configurable: true, get: () => onLine.value });
+      try {
+        let attempts = 0;
+        const call = Effect.suspend(() => {
+          attempts += 1;
+          return Effect.succeed("signed");
+        });
+        const fiber = yield* Effect.forkChild(retryTransport(call));
+        yield* TestClock.adjust("1 hour");
+        expect(attempts).toBe(0);
+        onLine.value = true;
+        window.dispatchEvent(new Event("online"));
+        expect(yield* Fiber.join(fiber)).toBe("signed");
+        expect(attempts).toBe(1);
+      } finally {
+        // The override lives on the navigator instance; removing it exposes
+        // Navigator.prototype's real onLine again.
+        Reflect.deleteProperty(navigator, "onLine");
+      }
+    }),
+  );
+});
+
+// Minified names, as the deployed bundle renames Uppy's error classes.
+const s3ServiceError = (status: number) =>
+  Object.assign(new Error("x"), { code: null, name: "OV", status });
+
+describe("isTransientUploadError", () => {
+  it("transient_upload_errors_are_network_expiry_throttling_and_5xx", () => {
+    expect(
+      isTransientUploadError(Object.assign(new Error("x"), { code: "NETWORK", name: "DV" })),
+    ).toBe(true);
+    for (const status of [403, 408, 429, 500, 503]) {
+      expect(isTransientUploadError(s3ServiceError(status))).toBe(true);
+    }
+  });
+
+  it("remote_gone_and_refusals_stay_final", () => {
+    expect(isTransientUploadError(s3ServiceError(404))).toBe(false);
+    expect(isTransientUploadError(s3ServiceError(400))).toBe(false);
+    expect(isTransientUploadError(new Error("plain"))).toBe(false);
+    // @ts-expect-error runtime garbage reaches the guard untyped.
+    expect(isTransientUploadError("network down")).toBe(false);
+  });
 });
 
 describe("signing", () => {
