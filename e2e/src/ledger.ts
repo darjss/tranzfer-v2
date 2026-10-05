@@ -16,9 +16,8 @@ import * as Ref from "effect/Ref";
  * the browser saw R2 answer 200. Anything that intercepts R2 traffic through
  * Playwright's route() delays or drops these events; NetControl's traps use
  * narrow CDP Fetch patterns for that reason. A request with no response
- * (aborted, offline,
- * the browser killed mid-flight) has status null: its bytes may or may not
- * have landed, and resending it is never counted as avoidable.
+ * (aborted, offline, the browser killed mid-flight) has status null: its bytes
+ * may or may not have landed, and resending it is never counted as avoidable.
  */
 export type R2Kind = "abort" | "complete" | "create" | "list" | "part";
 
