@@ -13,9 +13,10 @@ import * as Ref from "effect/Ref";
  * The parts ledger. Part bytes go from the browser straight to R2, so the API
  * never sees them; this is the only place a run can prove what crossed the
  * wire. Entries come from the browser's own network events, so "acked" means
- * the browser saw R2 answer 200. Requests a fault trap fulfills or aborts may
- * be missing or misreported in those events, so the trap's own record (the
- * Deferred NetControl returns) is the source of truth for them. A request with no response (aborted, offline,
+ * the browser saw R2 answer 200. Anything that intercepts R2 traffic through
+ * Playwright's route() delays or drops these events; NetControl's traps use
+ * narrow CDP Fetch patterns for that reason. A request with no response
+ * (aborted, offline,
  * the browser killed mid-flight) has status null: its bytes may or may not
  * have landed, and resending it is never counted as avoidable.
  */

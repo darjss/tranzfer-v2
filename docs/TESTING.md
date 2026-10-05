@@ -97,13 +97,13 @@ The gate must end with one upload id, one acknowledged create, zero avoidable re
 
 ## Services
 
-| Service      | Gives a scenario                                                                                                                                                       |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Target`     | Base URL, `loginKey`, and `api`/`anon` typed RPC clients (signed-in and anonymous)                                                                                     |
-| `Browser`    | Chromium spawned detached on a persistent profile, so IndexedDB survives `crash()` and relaunch. `freeze()` SIGSTOPs the whole group                                   |
-| `NetControl` | `offline`, one-shot part failure, and the lost-Complete trap, re-applied to the context after every relaunch. Each trap returns a Deferred that records its own firing |
-| `Ledger`     | The parts ledger: every R2 request recorded pending, settled on response, stalled-out after 10 minutes without a new acknowledged part                                 |
-| `Run`        | The run directory, named steps with screenshots, manual-intervention reasons, and `record()` into `result.json`                                                        |
+| Service      | Gives a scenario                                                                                                                                                                                                                                                                    |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Target`     | Base URL, `loginKey`, and `api`/`anon` typed RPC clients (signed-in and anonymous)                                                                                                                                                                                                  |
+| `Browser`    | Chromium spawned detached on a persistent profile, so IndexedDB survives `crash()` and relaunch. `freeze()` SIGSTOPs the whole group                                                                                                                                                |
+| `NetControl` | `offline`, one-shot part failure, and the lost-Complete trap, each through its own CDP Fetch pattern (never `route()`, which stalls part uploads and the ledger's events). Each trap returns a Deferred that records its own firing; a planned trap that never fires fails the gate |
+| `Ledger`     | The parts ledger: every R2 request recorded pending, settled on response, stalled-out after 10 minutes without a new acknowledged part                                                                                                                                              |
+| `Run`        | The run directory, named steps with screenshots, manual-intervention reasons, and `record()` into `result.json`                                                                                                                                                                     |
 
 The parts ledger is the most important thing in the harness. Part bytes go straight from the browser to R2, so the API never sees them. The browser's own network events record every request to the R2 host; "acked" means the browser saw the 200. That's how a gate proves part 842 went over the wire exactly once, and why a resent part an ack was never seen for doesn't count as avoidable. It turns "avoidable bytes resent" from a metric into an assertion.
 
