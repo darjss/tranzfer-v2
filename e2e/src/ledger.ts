@@ -118,8 +118,12 @@ export const summarize = (requests: readonly R2Request[], fileSize: number) => {
       avoidable,
       count,
       failed: failed.map((part) => ({ partNumber: part.partNumber, status: part.status })),
+      // Never acked and never sent unanswered. A part whose response was lost
+      // may be on R2 anyway; ListParts on resume decides, and the download
+      // hash proves the bytes.
       missing: Array.from({ length: count }, (_, index) => index + 1).filter(
-        (partNumber) => !acks.has(partNumber),
+        (partNumber) =>
+          !acks.has(partNumber) && !unanswered.some((part) => part.partNumber === partNumber),
       ),
       sent: parts.length,
       size,
