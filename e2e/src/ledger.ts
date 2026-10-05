@@ -13,9 +13,11 @@ import * as Ref from "effect/Ref";
  * The parts ledger. Part bytes go from the browser straight to R2, so the API
  * never sees them; this is the only place a run can prove what crossed the
  * wire. Entries come from the browser's own network events, so "acked" means
- * the browser saw R2 answer 200. A request with no response (aborted, offline,
- * the browser killed mid-flight) has status null: its bytes may or may not
- * have landed, and resending it is never counted as avoidable.
+ * the browser saw R2 answer 200. Anything that intercepts R2 traffic through
+ * Playwright's route() delays or drops these events; NetControl's traps use
+ * narrow CDP Fetch patterns for that reason. A request with no response
+ * (aborted, offline, the browser killed mid-flight) has status null: its bytes
+ * may or may not have landed, and resending it is never counted as avoidable.
  */
 export type R2Kind = "abort" | "complete" | "create" | "list" | "part";
 
@@ -147,6 +149,8 @@ export class Ledger extends Context.Service<
     readonly since: (at: number) => Effect.Effect<readonly R2Request[]>;
     /** Resolves when n distinct parts are acked; fails after 10 minutes without a new ack. */
     readonly waitForAcked: (count: number) => Effect.Effect<readonly R2Request[]>;
+    /** Resolves with the first 200 for a part sent at or after `since`; fails after 10 minutes. */
+    readonly waitForPartAcked: (partNumber: number, since: number) => Effect.Effect<R2Request>;
     /** Resolves with the first request of a kind recorded at or after `at`. */
     readonly waitForRequest: (at: number, kind: R2Request["kind"]) => Effect.Effect<R2Request>;
   }
@@ -252,6 +256,33 @@ export class Ledger extends Context.Service<
           }
         });
 
+        const waitForPartAcked = Effect.fn("Ledger.waitForPartAcked")(function* waitForPart(
+          partNumber: number,
+          since: number,
+        ) {
+          const deadline = Date.now() + STALL_LIMIT;
+          for (;;) {
+            const wakeup = yield* Ref.get(signal);
+            const found = (yield* Ref.get(entries)).find(
+              (request) =>
+                request.at >= since &&
+                request.kind === "part" &&
+                request.partNumber === partNumber &&
+                isAcked(request),
+            );
+            if (found !== undefined) {
+              return found;
+            }
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) {
+              return yield* Effect.die(
+                new Error(`stalled: part ${partNumber} not acknowledged for 10 minutes`),
+              );
+            }
+            yield* Deferred.await(wakeup).pipe(Effect.timeout(remaining), Effect.ignore);
+          }
+        });
+
         return Ledger.of({
           all: Ref.get(entries),
           record,
@@ -259,6 +290,7 @@ export class Ledger extends Context.Service<
           since: (at: number) =>
             Effect.map(Ref.get(entries), (all) => all.filter((request) => request.at >= at)),
           waitForAcked,
+          waitForPartAcked,
           waitForRequest,
         });
       }),

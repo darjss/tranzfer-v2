@@ -34,6 +34,15 @@ const MIB = 1024 * 1024;
 
 // Retry signals for the polling flatMaps below; tagged so the error channel stays typed.
 class Pending extends Data.TaggedError("Pending")<{ readonly message: string }> {}
+const TRAP_LIMIT = Duration.toMillis("10 minutes");
+
+// A planned trap that never fires fails the gate instead of hanging the run.
+const awaitFired = <A>(fired: Deferred.Deferred<A>, trap: string) =>
+  Deferred.await(fired).pipe(
+    Effect.timeout(TRAP_LIMIT),
+    Effect.catchTag("TimeoutError", () => Effect.die(new Error(`${trap} fault never fired`))),
+  );
+
 const mibPerSecond = (bytes: number, seconds: number) =>
   `${(bytes / seconds / MIB).toFixed(1)} MB/s`;
 
@@ -191,8 +200,10 @@ scenario(
           break;
         }
         case "failPart": {
-          yield* net.failPartOnce;
-          yield* waitProgress;
+          const fired = yield* awaitFired(yield* net.failPartOnce, "failPart");
+          yield* run.record("failPartFired", fired);
+          // The injected 503 is the browser's to recover from, unaided.
+          yield* ledger.waitForPartAcked(fired.partNumber, fired.at);
           break;
         }
         case "sleep": {
@@ -295,7 +306,7 @@ scenario(
     );
     const readyAt = Date.now();
     yield* run.step("ready");
-    yield* run.record("lostCompleteR2Status", yield* Deferred.await(lostStatus));
+    yield* run.record("lostCompleteR2Status", yield* awaitFired(lostStatus, "lost-Complete"));
 
     // f. The anonymous download verifies byte for byte.
     const token = finished.link.slice("/d/".length);
