@@ -313,24 +313,49 @@ scenario(
     const shared = yield* anon.OpenLink({ token });
     expect(shared.files).toHaveLength(1);
     const downloadStarted = performance.now();
-    const download = yield* Effect.promise(async () => {
-      const [file] = shared.files;
-      if (file === undefined) {
-        throw new Error("link lists no files");
+    // A 100 GiB GET outlives some connections (R2 closed one at 18.7 GB), so
+    // a drop resumes with Range from the last byte received, through a fresh
+    // link URL in case the old one expired. Like a browser's resume, it gives
+    // up only after several drops in a row with no progress.
+    const hash = createHash("sha256");
+    // Reads from `from` to the end into the hash; reports bytes read even when
+    // the connection drops partway.
+    const readFrom = (url: string, from: number) =>
+      Effect.promise(async () => {
+        let read = 0;
+        try {
+          const response = await fetch(
+            url,
+            from === 0 ? {} : { headers: { range: `bytes=${from}-` } },
+          );
+          if (response.status === (from === 0 ? 200 : 206) && response.body !== null) {
+            const stream: AsyncIterable<Uint8Array> = response.body;
+            for await (const chunk of stream) {
+              read += chunk.length;
+              hash.update(chunk);
+            }
+          }
+        } catch {
+          // A dropped connection; the caller resumes from what arrived.
+        }
+        return read;
+      });
+    let bytes = 0;
+    const drops: number[] = [];
+    let stuck = 0;
+    while (bytes < size && stuck < 5) {
+      const [file] = (yield* anon.OpenLink({ token })).files;
+      expect(file).toBeDefined();
+      const read = yield* readFrom(file?.url ?? "", bytes);
+      bytes += read;
+      if (bytes < size) {
+        drops.push(bytes);
+        stuck = read === 0 ? stuck + 1 : 0;
+        yield* Effect.sleep("2 seconds");
       }
-      const response = await fetch(file.url);
-      if (!response.ok || response.body === null) {
-        throw new Error(`download failed: ${response.status}`);
-      }
-      const hash = createHash("sha256");
-      let bytes = 0;
-      const stream: AsyncIterable<Uint8Array> = response.body;
-      for await (const chunk of stream) {
-        bytes += chunk.length;
-        hash.update(chunk);
-      }
-      return { bytes, sha256: hash.digest("hex") };
-    });
+    }
+    yield* run.record("downloadDrops", drops);
+    const download = { bytes, sha256: hash.digest("hex") };
     const downloadSeconds = (performance.now() - downloadStarted) / 1000;
     expect(download.bytes).toBe(size);
     expect(download.sha256).toBe(hashed.sha256);
