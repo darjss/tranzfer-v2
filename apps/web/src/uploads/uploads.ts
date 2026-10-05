@@ -41,6 +41,20 @@ interface TransferMeta extends Meta {
 }
 
 const SPEED_EMA = 0.25;
+// R2's S3 endpoint is HTTP/1.1, so Chromium opens at most 6 connections to
+// it; one part stream tops out near 20 MB/s. Four parts at once is rclone's
+// default and leaves room for a second file.
+const PART_CONCURRENCY = 4;
+
+/** Bytes of the given parts; only the last part is short. */
+const partBytes = (parts: ReadonlySet<number>, size: number) => {
+  const each = partSize(size);
+  let total = 0;
+  for (const partNumber of parts) {
+    total += Math.max(Math.min(each, size - (partNumber - 1) * each), 0);
+  }
+  return total;
+};
 const SKIPPED = /^\.DS_Store$|^Thumbs\.db$/u;
 const isSkipped = (path: string) =>
   path.split("/").some((segment) => SKIPPED.test(segment) || segment.startsWith("._"));
@@ -256,6 +270,9 @@ const make = Effect.gen(function* makeUploads() {
   // transferId -> transport retries spent; any acknowledged part resets the
   // budget because progress proves transport works.
   const autoRetries = new Map<TransferId, number>();
+  // transferId -> part numbers R2 holds. Parts finish out of order, so
+  // confirmed bytes come from this set, seeded from ListParts on resume.
+  const doneParts = new Map<TransferId, Set<number>>();
 
   const sampleSpeed = (transferId: string, bytesUploaded: number) => {
     const now = Date.now();
@@ -348,6 +365,7 @@ const make = Effect.gen(function* makeUploads() {
       patchTransfer(transferId, { bytesPerSecond: 0, phase: "done" });
       completeSigned.delete(transferId);
       autoRetries.delete(transferId);
+      doneParts.delete(transferId);
       uppy.removeFile(fileId);
       yield* forget([transferId]);
     });
@@ -383,6 +401,7 @@ const make = Effect.gen(function* makeUploads() {
         allowedMetaFields: [],
         generateObjectKey: (file) => file.meta.objectKey,
         getChunkSize: ({ size }) => partSize(size),
+        partConcurrency: PART_CONCURRENCY,
         // Every file is multipart so finalize can seal its key (see
         // RELIABILITY.md). Uppy still sends an empty file as a single PUT.
         shouldUseMultipart: () => true,
@@ -390,11 +409,9 @@ const make = Effect.gen(function* makeUploads() {
       });
 
       uppy.on("s3-multipart:part-uploaded", (file, part) => {
-        const size = file.size ?? 0;
-        // PartNumber × partSize is exact here because Uppy 6 uploads one
-        // file's parts sequentially and resumes by skipping parts the server
-        // lists, so a completed part N implies parts 1..N-1 are also done.
-        const confirmed = Math.min(partSize(size) * part.PartNumber, size);
+        const done = doneParts.get(file.meta.transferId) ?? new Set<number>();
+        doneParts.set(file.meta.transferId, done.add(part.PartNumber));
+        const confirmed = partBytes(done, file.size ?? 0);
         autoRetries.delete(file.meta.transferId);
         patchTransfer(file.meta.transferId, { confirmed, phase: "uploading" });
         runFork(recordConfirmed(file.meta.transferId, confirmed));
@@ -757,13 +774,16 @@ const make = Effect.gen(function* makeUploads() {
             Number(recordOf.get(a.id)?.path === picked),
         );
       let first: "changed" | "gone" | "policy" | "unreadable" | undefined;
-      let matched: { record: RecoveryRecord; transfer: Transfer } | undefined;
+      let matched:
+        | { listed: readonly ListedPart[]; record: RecoveryRecord; transfer: Transfer }
+        | undefined;
       for (const candidate of matching) {
         const record = recordOf.get(candidate.id);
         if (record === undefined) {
           continue;
         }
         let problem: "changed" | "gone" | "policy" | "unreadable" | undefined;
+        let listed: readonly ListedPart[] = [];
         if (record.size !== file.size || record.lastModified !== file.lastModified) {
           problem = "changed";
         } else if (record.partSize === partSize(file.size)) {
@@ -781,6 +801,7 @@ const make = Effect.gen(function* makeUploads() {
         // no uploadId has nothing remote to verify.
         if (problem === undefined && record.uploadId !== undefined) {
           const remote = yield* listRemoteParts(candidate.objectKey, record.uploadId);
+          listed = remote === "gone" ? [] : remote;
           problem =
             remote === "gone"
               ? "gone"
@@ -790,7 +811,7 @@ const make = Effect.gen(function* makeUploads() {
                 );
         }
         if (problem === undefined) {
-          matched = { record, transfer: candidate };
+          matched = { listed, record, transfer: candidate };
           break;
         }
         first ??= problem;
@@ -803,8 +824,10 @@ const make = Effect.gen(function* makeUploads() {
         }
         continue;
       }
-      const { record, transfer } = matched;
+      const { listed, record, transfer } = matched;
       claimed.add(transfer.id);
+      const done = new Set(listed.map((part) => part.partNumber));
+      doneParts.set(transfer.id, done);
       keys.set(transfer.objectKey, transfer.id);
       const fileId = uppy.addFile({
         data: file,
@@ -822,7 +845,11 @@ const make = Effect.gen(function* makeUploads() {
           s3Multipart: { key: transfer.objectKey, uploadId: record.uploadId },
         });
       }
-      patchTransfer(transfer.id, { error: undefined, phase: "queued" });
+      patchTransfer(transfer.id, {
+        confirmed: partBytes(done, transfer.size),
+        error: undefined,
+        phase: "queued",
+      });
       runFork(start(uppy, fileId, transfer.id));
     }
     return problems;
