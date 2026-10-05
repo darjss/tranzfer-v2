@@ -24,8 +24,15 @@ export class NetControl extends Context.Service<
   {
     /** Cut all networking for the duration, then restore it. */
     readonly offline: (duration: Duration.Input) => Effect.Effect<void, Error>;
-    /** The next R2 part PUT gets a synthetic 503; everything else passes through. */
-    readonly failPartOnce: Effect.Effect<void, Error>;
+    /**
+     * Arms the part-failure trap: the next R2 part PUT gets a synthetic 503
+     * and everything else passes through. The returned Deferred resolves with
+     * the failed part number once it fires.
+     */
+    readonly failPartOnce: Effect.Effect<
+      Deferred.Deferred<{ partNumber: number; at: number }>,
+      Error
+    >;
     /**
      * Arms the lost-response trap: the first R2 Complete POST is really sent
      * to R2, then the response is aborted with a reset. The returned Deferred
@@ -44,21 +51,25 @@ export class NetControl extends Context.Service<
       const run = Effect.runSyncWith(env);
 
       interface Armed {
-        readonly failPart: boolean;
+        readonly failPart: Deferred.Deferred<{ partNumber: number; at: number }> | undefined;
         readonly complete: Deferred.Deferred<number> | undefined;
       }
-      const armed = yield* Ref.make<Armed>({ complete: undefined, failPart: false });
+      const armed = yield* Ref.make<Armed>({ complete: undefined, failPart: undefined });
 
       const install = Effect.fn("NetControl.install")(function* install(context: BrowserContext) {
         const { complete, failPart } = yield* Ref.get(armed);
-        if (failPart) {
+        if (failPart !== undefined) {
+          const reply = failPart;
           const handler = async (route: Route) => {
-            if (kindOf(route) !== "part") {
+            const request = route.request();
+            const part = classify(request.method(), request.url());
+            if (part?.kind !== "part" || part.partNumber === null) {
               await route.fallback();
               return;
             }
-            run(Ref.update(armed, (a) => ({ ...a, failPart: false })));
+            run(Ref.update(armed, (a) => ({ ...a, failPart: undefined })));
             await context.unroute(isR2, handler);
+            run(Deferred.succeed(reply, { at: Date.now(), partNumber: part.partNumber }));
             await route.fulfill({ status: 503 });
           };
           yield* Effect.promise(async () => await context.route(isR2, handler));
@@ -96,8 +107,10 @@ export class NetControl extends Context.Service<
       });
 
       const failPartOnce = Effect.fn("NetControl.failPartOnce")(function* failPart() {
-        yield* Ref.update(armed, (a) => ({ ...a, failPart: true }));
+        const fired = yield* Deferred.make<{ partNumber: number; at: number }>();
+        yield* Ref.update(armed, (a) => ({ ...a, failPart: fired }));
         yield* install(yield* browser.context);
+        return fired;
       });
 
       const loseCompleteResponse = Effect.fn("NetControl.loseCompleteResponse")(
