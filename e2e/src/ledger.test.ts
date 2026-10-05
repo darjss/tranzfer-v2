@@ -111,6 +111,12 @@ describe("summarize", () => {
     expect(summary.parts.missing).toEqual([3]);
   });
 
+  it("a part whose only response was lost is not missing", () => {
+    const summary = summarize([part(1), part(2, null), part(3)], fileSize);
+    expect(summary.parts.missing).toEqual([]);
+    expect(summary.parts.unanswered).toEqual([2]);
+  });
+
   it("requests naming two upload ids means a second upload started", () => {
     const summary = summarize(
       [request({ kind: "create", uploadId: "u1" }), request({ kind: "create", uploadId: "u2" })],

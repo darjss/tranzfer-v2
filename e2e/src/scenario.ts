@@ -77,7 +77,7 @@ export const scenario = (
     Target.layer,
     ledgerLayer,
     browserLayer,
-    NetControl.layer.pipe(Layer.provide(browserLayer)),
+    NetControl.layer.pipe(Layer.provide([browserLayer, Target.layer])),
   );
   // it.effect runs on a test clock that never ticks; gates need the real one.
   it.live(

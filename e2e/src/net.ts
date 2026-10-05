@@ -9,29 +9,37 @@ import * as Ref from "effect/Ref";
 
 import { Browser } from "./browser";
 import { classify } from "./ledger";
+import { Target } from "./target";
 
 interface Paused {
   readonly requestId: string;
   readonly request: {
     readonly headers: Readonly<Record<string, string>>;
     readonly method: string;
+    readonly postData?: string;
     readonly url: string;
   };
+  readonly responseHeaders?: readonly { readonly name: string; readonly value: string }[];
   readonly responseStatusCode?: number;
 }
 
+const R2 = "https://*.r2.cloudflarestorage.com/";
+
 /**
- * Pauses R2 requests matching `pattern` on the page through its own
- * CDP session. Playwright's route() would intercept every request, 64 MiB part
- * bodies included: parts slowed from ~3.5 s to ~12 s and the browser's network
- * events, which feed the ledger, arrived late or not at all. A narrow Fetch
- * pattern pauses only what a trap needs. `claim` decides synchronously, so of
- * two parts paused together only one fires: it returns the trap's action, or
- * null to let the request through. Interception stops once one fires.
+ * Pauses responses whose URL matches `urlPattern` on the page, through its own
+ * CDP session. Never pause part uploads to fake their failure: Playwright's
+ * route() pauses every request with its body (parts went from ~3.5 s to ~12 s
+ * and the ledger's browser events arrived late or not at all); a request-stage
+ * Fetch pattern held each 64 MiB part ~17 s and stranded the fetcher's retry;
+ * replacing a part's response hung every part in flight. Responses still
+ * flow normally here; only the matching ones wait on `claim`, which decides
+ * synchronously so of two paused together only one fires. It returns the
+ * trap's action, or null to let the response through. The session stays on
+ * after firing and passes everything through.
  */
 const intercept = async (
   page: Page,
-  pattern: { readonly urlPattern: string; readonly requestStage: "Request" | "Response" },
+  urlPattern: string,
   claim: (paused: Paused, session: CDPSession) => (() => Promise<void>) | null,
 ) => {
   const session = await page.context().newCDPSession(page);
@@ -45,16 +53,14 @@ const intercept = async (
         return;
       }
       await fire();
-      await session.send("Fetch.disable");
-      await session.detach();
     })().catch(() => {
-      // The page navigated or closed under the paused request.
+      // Usually the page navigated or closed under the paused request; a
+      // swallowed failure here once left parts hanging, so say it.
+      process.stderr.write(`NetControl: a paused request was not released\n`);
     });
   });
   await session.send("Fetch.enable", {
-    patterns: [
-      { ...pattern, urlPattern: `https://*.r2.cloudflarestorage.com/${pattern.urlPattern}` },
-    ],
+    patterns: [{ requestStage: "Response", urlPattern }],
   });
 };
 
@@ -69,9 +75,11 @@ export class NetControl extends Context.Service<
     /** Cut all networking for the duration, then restore it. */
     readonly offline: (duration: Duration.Input) => Effect.Effect<void, Error>;
     /**
-     * Arms the part-failure trap: the next R2 part PUT gets a synthetic 503
-     * and everything else passes through. The returned Deferred resolves with
-     * the failed part number once it fires.
+     * Arms the part-failure trap: the next part signature the API hands the
+     * page comes back with one character of X-Amz-Signature changed, so R2
+     * itself rejects that part (403) and the browser sees a real failure.
+     * Part bytes are never intercepted. The returned Deferred resolves with
+     * the part number once it fires.
      */
     readonly failPartOnce: Effect.Effect<
       Deferred.Deferred<{ partNumber: number; at: number }>,
@@ -89,6 +97,7 @@ export class NetControl extends Context.Service<
     NetControl,
     Effect.gen(function* make() {
       const browser = yield* Browser;
+      const target = yield* Target;
       // CDP event handlers are callbacks; Ref and Deferred ops are
       // synchronous Effects, so one context serves them at the edge.
       const env = yield* Effect.context();
@@ -105,54 +114,59 @@ export class NetControl extends Context.Service<
         if (failPart !== undefined) {
           const reply = failPart;
           yield* Effect.promise(async () => {
-            await intercept(
-              page,
-              { requestStage: "Request", urlPattern: "*partNumber=*" },
-              (paused, session) => {
-                const part = classify(paused.request.method, paused.request.url);
-                if (part?.kind !== "part" || part.partNumber === null) {
-                  return null;
-                }
-                run(Ref.update(armed, (a) => ({ ...a, failPart: undefined })));
-                run(Deferred.succeed(reply, { at: Date.now(), partNumber: part.partNumber }));
-                // R2 would send CORS headers on its own 503; without them the
-                // page reads a network error instead of the status.
-                const origin =
-                  paused.request.headers.Origin ?? paused.request.headers.origin ?? "*";
-                return async () => {
-                  await session.send("Fetch.fulfillRequest", {
-                    requestId: paused.requestId,
-                    responseCode: 503,
-                    responseHeaders: [{ name: "Access-Control-Allow-Origin", value: origin }],
-                  });
-                };
-              },
-            );
+            await intercept(page, `${target.baseUrl}/rpc*`, (paused, session) => {
+              const body = paused.request.postData ?? "";
+              const part = /"SignUpload".*"partNumber":(?<n>\d+)/su.exec(body)?.groups?.n;
+              if (part === undefined || paused.responseStatusCode !== 200) {
+                return null;
+              }
+              run(Ref.update(armed, (a) => ({ ...a, failPart: undefined })));
+              run(Deferred.succeed(reply, { at: Date.now(), partNumber: Number(part) }));
+              return async () => {
+                const original = await session.send("Fetch.getResponseBody", {
+                  requestId: paused.requestId,
+                });
+                const text = original.base64Encoded
+                  ? Buffer.from(original.body, "base64").toString("utf-8")
+                  : original.body;
+                const forged = text.replace(
+                  /X-Amz-Signature=(?<first>[0-9a-f])/u,
+                  (_match, first: string) => `X-Amz-Signature=${first === "0" ? "1" : "0"}`,
+                );
+                await session.send("Fetch.fulfillRequest", {
+                  body: Buffer.from(forged, "utf-8").toString("base64"),
+                  requestId: paused.requestId,
+                  responseCode: 200,
+                  // CDP hands back the decoded body, so drop the encoding and
+                  // length that described the original bytes.
+                  responseHeaders: (paused.responseHeaders ?? []).filter(
+                    ({ name }) => !/^content-(?:encoding|length)$/iu.test(name),
+                  ),
+                });
+              };
+            });
           });
         }
         if (complete !== undefined) {
           const reply = complete;
           yield* Effect.promise(async () => {
-            await intercept(
-              page,
-              // Response stage: requests, part bodies included, go out as
-              // usual; only their response headers wait here.
-              { requestStage: "Response", urlPattern: "*uploadId=*" },
-              (paused, session) => {
-                if (classify(paused.request.method, paused.request.url)?.kind !== "complete") {
-                  return null;
-                }
-                run(Ref.update(armed, (a) => ({ ...a, complete: undefined })));
-                // R2 really completed the upload; only the response is lost.
-                run(Deferred.succeed(reply, paused.responseStatusCode ?? 0));
-                return async () => {
-                  await session.send("Fetch.failRequest", {
-                    errorReason: "ConnectionReset",
-                    requestId: paused.requestId,
-                  });
-                };
-              },
-            );
+            // Parts sign as ?partNumber=…&uploadId=…, so a query that starts with
+            // uploadId is a Complete or a first-page List and never a part body.
+            // CDP patterns treat ? as a wildcard; the backslash makes it literal.
+            await intercept(page, `${R2}*\\?uploadId=*`, (paused, session) => {
+              if (classify(paused.request.method, paused.request.url)?.kind !== "complete") {
+                return null;
+              }
+              run(Ref.update(armed, (a) => ({ ...a, complete: undefined })));
+              // R2 really completed the upload; only the response is lost.
+              run(Deferred.succeed(reply, paused.responseStatusCode ?? 0));
+              return async () => {
+                await session.send("Fetch.failRequest", {
+                  errorReason: "ConnectionReset",
+                  requestId: paused.requestId,
+                });
+              };
+            });
           });
         }
       });
