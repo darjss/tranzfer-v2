@@ -44,7 +44,7 @@ const awaitFired = <A>(fired: Deferred.Deferred<A>, trap: string) =>
   );
 
 const mibPerSecond = (bytes: number, seconds: number) =>
-  `${(bytes / seconds / MIB).toFixed(1)} MB/s`;
+  `${(bytes / seconds / MIB).toFixed(1)} MiB/s`;
 
 const waitVisible = (
   locator: { waitFor: (options?: { state: "visible"; timeout: number }) => Promise<void> },

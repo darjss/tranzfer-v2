@@ -1,0 +1,97 @@
+{
+  "environment": {
+    "baseUrl": "https://staging.tranzfer.app",
+    "chromium": "unavailable",
+    "cpu": "AMD EPYC 9J14 96-Core Processor",
+    "ramGb": 31,
+    "revision": "unknown"
+  },
+  "error": null,
+  "manual": ["pick file after reload"],
+  "name": "Gate · internal survives its faults and delivers one verified file",
+  "passed": true,
+  "recorded": {
+    "gate": "internal",
+    "size": 10737418240,
+    "sourceSha256": "cdbb991d80ef7132e80f4f13cbf7f947f905d4d0ea818ba05ce21fd9a1b2cf13",
+    "sourceHashSeconds": 16.008581573,
+    "sourceHashThroughput": "639.7 MB/s",
+    "deliveryId": "f99a5d57-ea46-4a62-88e0-2154fe4fc448",
+    "failPartFired": {
+      "at": 1791196194649,
+      "partNumber": 61
+    },
+    "lostCompleteR2Status": 200,
+    "downloadSeconds": 154.61856495199999,
+    "downloadThroughput": "66.2 MB/s",
+    "summary": {
+      "bytes": {
+        "acked": 10603200512,
+        "avoidable": 0,
+        "file": 10737418240,
+        "unacknowledged": 805306368
+      },
+      "completes": {
+        "acked": 0,
+        "sent": 2
+      },
+      "creates": {
+        "acked": 1,
+        "sent": 1
+      },
+      "parts": {
+        "acked": 158,
+        "avoidable": [],
+        "count": 160,
+        "failed": [],
+        "missing": [],
+        "sent": 170,
+        "size": 67108864,
+        "unanswered": [35, 36, 59, 60, 61, 61, 61, 61, 62, 81, 82, 84]
+      },
+      "uploadIds": [
+        "ACuBUqvzOlIxPBpzhbDBoiAFhseDWIKsgZduTsvhWCTPIUOFECwulaU-_sbaK_6c3D3QTmC6itR92HN2CVb_w7-Prq1KV7PlnaJXuYQlC4xKFtqlIOV8zefJMC8oh7LLNLDPsB9jPzpVHTImBzUP47QBgcr7dvOEEAR--CWUhILqbLMN5-qnGQHxICGcZp8suN6Ts2QWqft5VdyRFph2RK_A37lQ-f-81Zw_d_Brflxayws-AMpiJx-j8wNf091IEN4uEjloLOMLqm2-eejQs1qnyNbogToqfs1yyQgThVIqMWcm9SYL7QVCIkk66YGDW97l28asjRdsYtjBclyiMm4"
+      ]
+    },
+    "verifyDurationsMs": [17279],
+    "uploadSeconds": 237.392,
+    "uploadThroughput": "43.1 MB/s"
+  },
+  "timeline": [
+    {
+      "at": 1791196055980,
+      "name": "sent",
+      "partsAcked": 0
+    },
+    {
+      "at": 1791196083357,
+      "name": "fault-offline",
+      "partsAcked": 32
+    },
+    {
+      "at": 1791196194481,
+      "name": "fault-failPart",
+      "partsAcked": 56
+    },
+    {
+      "at": 1791196217094,
+      "name": "fault-reload",
+      "partsAcked": 80
+    },
+    {
+      "at": 1791196284397,
+      "name": "lost-complete-armed",
+      "partsAcked": 150
+    },
+    {
+      "at": 1791196292501,
+      "name": "ready",
+      "partsAcked": 158
+    },
+    {
+      "at": 1791196447225,
+      "name": "verified",
+      "partsAcked": 158
+    }
+  ]
+}

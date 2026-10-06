@@ -1,0 +1,128 @@
+{
+  "environment": {
+    "baseUrl": "https://staging.tranzfer.app",
+    "chromium": "unavailable",
+    "cpu": "AMD EPYC 9J14 96-Core Processor",
+    "ramGb": 31,
+    "revision": "unknown"
+  },
+  "error": null,
+  "manual": [
+    "pick file after reload",
+    "pick file after closeTab",
+    "pick file after crash",
+    "pick changed file",
+    "pick file after impostor"
+  ],
+  "name": "Gate · beta survives its faults and delivers one verified file",
+  "passed": true,
+  "recorded": {
+    "gate": "beta",
+    "size": 107374182400,
+    "sourceSha256": "71dc6dcfae4687fc112466720a5e09a3205a9e54b858afc8eb480d6d93c52c04",
+    "sourceHashSeconds": 157.84028541100002,
+    "sourceHashThroughput": "648.8 MB/s",
+    "deliveryId": "42473915-4691-469c-9eaf-2393dc2fb9fe",
+    "failPartFired": {
+      "at": 1791201062028,
+      "partNumber": 325
+    },
+    "lostCompleteR2Status": 200,
+    "downloadDrops": [39212089344, 77414531072],
+    "downloadSeconds": 1716.5380792620006,
+    "downloadThroughput": "59.7 MB/s",
+    "summary": {
+      "bytes": {
+        "acked": 107239964672,
+        "avoidable": 0,
+        "file": 107374182400,
+        "unacknowledged": 2617245696
+      },
+      "completes": {
+        "acked": 0,
+        "sent": 2
+      },
+      "creates": {
+        "acked": 1,
+        "sent": 1
+      },
+      "parts": {
+        "acked": 1598,
+        "avoidable": [],
+        "count": 1600,
+        "failed": [],
+        "missing": [],
+        "sent": 1637,
+        "size": 67108864,
+        "unanswered": [
+          161, 162, 163, 164, 320, 324, 325, 326, 325, 325, 325, 399, 402, 403, 641, 642, 643, 801,
+          802, 803, 804, 802, 803, 801, 804, 801, 803, 802, 804, 802, 803, 804, 801, 962, 961, 963,
+          1121, 1123, 1124
+        ]
+      },
+      "uploadIds": [
+        "AJuaC7Mlt5NYD35B-kWzc9xRJaQ1lg8E9Yx59ez2FHnYhQRcUAEmTRgRXJ-MIDREKt_-0QHLcWtKWiiGotmo-tLNDbpAitzSULBpc0zr2V5mzkR1k3Gt9TeqJim_faT8HpQa3DTbZy411Ru75-WBLJJmgUex4ju07-Jjxwo6A16yePzUWaYrEHvrAsZQ4IymlHuSIKT4BhaorUJ-Rr6-wt-uB7Y8x2r7Ik5jyHxc-Wyw9lBQQOrG7zz0-inbgMU1DZP3Gv_jSXd2jyINblalzoyRyyk4xoV5MLiER6WcTLCxeo4YNaf_6PDZ07-aptYZQqN6r4vYhFnyMiz8Rs_0lwQ"
+      ]
+    },
+    "verifyDurationsMs": [82193, 131393, 195862, 227891],
+    "uploadSeconds": 3350.931,
+    "uploadThroughput": "30.6 MB/s"
+  },
+  "timeline": [
+    {
+      "at": 1791200700910,
+      "name": "sent",
+      "partsAcked": 0
+    },
+    {
+      "at": 1791200839272,
+      "name": "fault-offline",
+      "partsAcked": 160
+    },
+    {
+      "at": 1791201060626,
+      "name": "fault-failPart",
+      "partsAcked": 320
+    },
+    {
+      "at": 1791201128702,
+      "name": "fault-reload",
+      "partsAcked": 400
+    },
+    {
+      "at": 1791201414905,
+      "name": "fault-closeTab",
+      "partsAcked": 640
+    },
+    {
+      "at": 1791201701886,
+      "name": "fault-sleep",
+      "partsAcked": 800
+    },
+    {
+      "at": 1791203073967,
+      "name": "fault-crash",
+      "partsAcked": 960
+    },
+    {
+      "at": 1791203415246,
+      "name": "fault-impostor",
+      "partsAcked": 1120
+    },
+    {
+      "at": 1791204030118,
+      "name": "lost-complete-armed",
+      "partsAcked": 1590
+    },
+    {
+      "at": 1791204050976,
+      "name": "ready",
+      "partsAcked": 1598
+    },
+    {
+      "at": 1791205767669,
+      "name": "verified",
+      "partsAcked": 1598
+    }
+  ]
+}
