@@ -76,9 +76,11 @@ const polarWebhookProvider = () =>
     Effect.succeed({
       delete: ({ output }) =>
         withPolar(
-          Polar.webhooksDeleteWebhookEndpoint({ id: output.id }).pipe(
-            Effect.catchTag("NotFound", () => Effect.void),
-          ),
+          Effect.gen(function* deleteWebhook() {
+            yield* Polar.webhooksDeleteWebhookEndpoint({ id: output.id }).pipe(
+              Effect.catchTag("NotFound", () => Effect.void),
+            );
+          }),
         ),
       reconcile: ({ news }) =>
         withPolar(

@@ -135,18 +135,17 @@ export default ApiWorker.make(
           Effect.gen(function* polarWebhook() {
             const request = yield* HttpServerRequest.HttpServerRequest;
             const body = yield* request.text;
-            yield* (yield* Billing).webhook(request.headers, body);
-            return HttpServerResponse.empty({ status: 204 });
-          }).pipe(
-            Effect.catchTags({
-              // Polar retries a 5xx; a rejected delivery is not worth retrying.
-              BillingUnavailable: () => Effect.succeed(HttpServerResponse.empty({ status: 503 })),
-              InvalidWebhook: (error) =>
-                Effect.logWarning("polar webhook rejected", error.reason).pipe(
-                  Effect.as(HttpServerResponse.empty({ status: 401 })),
-                ),
-            }),
-          ),
+            const status = yield* (yield* Billing).webhook(request.headers, body).pipe(
+              Effect.as(204),
+              Effect.catchTags({
+                // Polar retries a 5xx; a rejected delivery is not worth retrying.
+                BillingUnavailable: () => Effect.succeed(503),
+                InvalidWebhook: (error) =>
+                  Effect.logWarning("polar webhook rejected", error.reason).pipe(Effect.as(401)),
+              }),
+            );
+            return HttpServerResponse.empty({ status });
+          }),
         ),
       ),
       HttpRouter.add("GET", "/health", perInvocation(health)),

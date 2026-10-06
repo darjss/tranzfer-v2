@@ -123,14 +123,14 @@ export class Billing extends Context.Service<
       Effect.gen(function* makeBilling() {
         const { db } = yield* Database;
         const deliveries = yield* Deliveries;
-        const client = polarClient(options.access);
+        const polarContext = yield* Effect.context<Polar.PolarOpContext>();
 
         // Polar answers with its own error classes; callers get one typed failure.
         const viaPolar = <A, E extends { readonly _tag: string }>(
           effect: Effect.Effect<A, E, Polar.PolarOpContext>,
         ) =>
           effect.pipe(
-            Effect.provide(client),
+            Effect.provideContext(polarContext),
             Effect.tapError((error) => Effect.logError("polar request failed", error._tag)),
             Effect.mapError(() => new BillingUnavailable()),
           );
@@ -253,5 +253,5 @@ export class Billing extends Context.Service<
           }),
         });
       }),
-    );
+    ).pipe(Layer.provide(polarClient(options.access)));
 }
