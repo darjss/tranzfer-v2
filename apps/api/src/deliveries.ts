@@ -1,7 +1,14 @@
-import { Delivery, DeliveryConflict, DeliveryNotFound } from "@tranzfer/contracts";
+import {
+  Delivery,
+  DeliveryConflict,
+  DeliveryNotFound,
+  OverPlanLimit,
+  plans,
+  RetentionNotInPlan,
+} from "@tranzfer/contracts";
 import type { DeliveryId, NewDelivery } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, or, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -62,7 +69,9 @@ export class Deliveries extends Context.Service<
     readonly create: (
       senderId: string,
       input: NewDelivery,
-    ) => Effect.Effect<Delivery, DeliveryConflict>;
+    ) => Effect.Effect<Delivery, DeliveryConflict | OverPlanLimit | RetentionNotInPlan>;
+    /** Bytes of the sender's deliveries that are open, or ready and not yet expired. */
+    readonly activeBytes: (senderId: string) => Effect.Effect<number>;
     readonly list: (senderId: string) => Effect.Effect<readonly Delivery[]>;
     /** Stops signing, kills the link, aborts uploads and removes the objects; the sweeper confirms later. */
     readonly cancel: (
@@ -139,7 +148,31 @@ export class Deliveries extends Context.Service<
         return yield* toView(row);
       }, dieOnDatabaseError);
 
+      const activeBytes = Effect.fn("Deliveries.activeBytes")(function* activeBytes(
+        senderId: string,
+      ) {
+        const now = yield* Clock.currentTimeMillis;
+        const [row] = yield* db
+          .select({ total: sql<number>`coalesce(sum(${schema.transfer.size}), 0)` })
+          .from(schema.transfer)
+          .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
+          .where(
+            and(
+              eq(schema.delivery.senderId, senderId),
+              or(
+                eq(schema.delivery.status, "open"),
+                and(
+                  eq(schema.delivery.status, "ready"),
+                  gt(schema.delivery.expiresAt, new Date(now)),
+                ),
+              ),
+            ),
+          );
+        return row?.total ?? 0;
+      }, dieOnDatabaseError);
+
       return Deliveries.of({
+        activeBytes,
         cancel: Effect.fn("Deliveries.cancel")(function* cancel(
           senderId: string,
           deliveryId: DeliveryId,
@@ -175,6 +208,31 @@ export class Deliveries extends Context.Service<
             return sameDelivery(senderId, input, existing)
               ? yield* toView(existing)
               : yield* new DeliveryConflict();
+          }
+
+          // Refused before any bytes upload. Two creates racing past the limit
+          // both land; the next create sees both, so the overshoot stays bounded.
+          const subscription = yield* db.query.subscription.findFirst({
+            columns: { plan: true },
+            where: { userId: senderId },
+          });
+          const plan = subscription?.plan ?? "free";
+          if (input.retentionDays > plans[plan].maxRetentionDays) {
+            return yield* new RetentionNotInPlan({
+              maxRetentionDays: plans[plan].maxRetentionDays,
+              plan,
+              requestedDays: input.retentionDays,
+            });
+          }
+          const requestedBytes = input.files.reduce((total, file) => total + file.size, 0);
+          const usedBytes = yield* activeBytes(senderId);
+          if (usedBytes + requestedBytes > plans[plan].activeBytes) {
+            return yield* new OverPlanLimit({
+              limitBytes: plans[plan].activeBytes,
+              plan,
+              requestedBytes,
+              usedBytes,
+            });
           }
 
           const linkId = yield* newLinkId;

@@ -1,8 +1,13 @@
-import { For, createSignal, onSettled } from "solid-js";
+import { PlanId, plans } from "@tranzfer/contracts";
+import type { PaidPlanId } from "@tranzfer/contracts";
+import { For, Show, createSignal, onSettled, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
 import Brand from "./Brand";
 import Uploader from "./Uploader";
 import { ArrowIcon, Asterisk, Blob, Hand, Ink, Ring, Still, inkStrokes } from "./notebook";
+import { RuntimeContext } from "../api/solid-effect";
+import { goToCheckout } from "../dashboard/billing";
+import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
 import "./landing.css";
 import coastRoad from "./assets/coast-road.webp";
@@ -149,6 +154,20 @@ export default function Landing() {
   const [prev, setPrev] = createSignal(-1, { name: "hero-word-prev" });
   const [mounted, setMounted] = createSignal(false, { name: "mounted" });
   const [pos, setPos] = createSignal<{ x: number; y: number }>();
+  const [pricingProblem, setPricingProblem] = createSignal<string>();
+  const runtime = useContext(RuntimeContext);
+
+  // The checkout call needs a session. A signed-out visitor signs in first and
+  // the dashboard carries on to checkout for this plan.
+  const choose = async (plan: PaidPlanId) => {
+    setPricingProblem(undefined);
+    const problem = await goToCheckout(runtime, plan);
+    if (problem?.tag === "Unauthorized") {
+      location.assign(`/sign-in?plan=${plan}`);
+    } else if (problem !== undefined) {
+      setPricingProblem(problem.message);
+    }
+  };
 
   let root: HTMLDivElement | undefined;
   const tilt = () => {
@@ -240,6 +259,11 @@ export default function Landing() {
             <li class={css({ display: { base: "none", md: "block" } })}>
               <a class={css({ _hover: { color: "ink" } })} href="#how">
                 Planned workflow
+              </a>
+            </li>
+            <li class={css({ display: { base: "none", md: "block" } })}>
+              <a class={css({ _hover: { color: "ink" } })} href="#pricing">
+                Pricing
               </a>
             </li>
             <li>
@@ -672,6 +696,115 @@ export default function Landing() {
               )}
             </For>
           </div>
+        </section>
+
+        <section id="pricing" class={css({ pos: "relative", py: { base: "20", lg: "30" } })}>
+          <div class={head}>
+            <p class={mono}>Pricing</p>
+            <h2 class={cx("rv", h2)}>
+              Pay for the work. <i>Not per gigabyte.</i>
+            </h2>
+            <p class={css({ color: "mut", fontSize: "17", mt: "4" })}>
+              Every plan includes large uploads, resume, folders and links. Paid plans add active
+              transfer space and longer links. Space frees up when a delivery expires or is
+              cancelled.
+            </p>
+          </div>
+          <div
+            class={css({
+              alignItems: "end",
+              display: "grid",
+              gap: "4.5",
+              gridTemplateColumns: {
+                base: "1fr",
+                lg: "repeat(4,minmax(0,1fr))",
+                md: "repeat(2,minmax(0,1fr))",
+              },
+            })}
+          >
+            <For each={PlanId.literals}>
+              {(id, i) => (
+                <div
+                  class={cx(
+                    "rv",
+                    css({
+                      borderRadius: "card",
+                      display: "flex",
+                      flexDir: "column",
+                      gap: "4.5",
+                      p: "8",
+                    }),
+                    id === "pro"
+                      ? css({ bg: "ink", color: "paper", pb: "10", shadow: "paper" })
+                      : css({ bg: "panel", shadow: "ring" }),
+                  )}
+                  style={`--d:${i() * 70}ms`}
+                >
+                  <h3 class={css({ color: "mut", fontSize: "13", fontWeight: "medium" })}>
+                    {plans[id].name}
+                  </h3>
+                  <div
+                    class={css({
+                      fontFamily: "mono",
+                      fontSize: "[44px]",
+                      fontWeight: "medium",
+                      letterSpacing: "[-0.04em]",
+                      lineHeight: "none",
+                    })}
+                  >
+                    ${plans[id].monthlyUsd}
+                    <Show when={id !== "free"}>
+                      <small class={css({ color: "mut", fontSize: "15", letterSpacing: "normal" })}>
+                        /mo
+                      </small>
+                    </Show>
+                  </div>
+                  <ul
+                    class={css({
+                      color: id === "pro" ? "[#c9c6bc]" : "mut",
+                      display: "grid",
+                      flex: "1",
+                      fontSize: "15",
+                      gap: "2",
+                      listStyle: "none",
+                      p: "0",
+                    })}
+                  >
+                    <li>{bytes(plans[id].activeBytes)} active transfer space</li>
+                    <li>Links live up to {plans[id].maxRetentionDays} days</li>
+                  </ul>
+                  <Show
+                    when={id !== "free"}
+                    fallback={
+                      <a class={button({ variant: "outline" })} href="/sign-in">
+                        Start free
+                      </a>
+                    }
+                  >
+                    <button
+                      class={button({ variant: id === "pro" ? "fill" : "outline" })}
+                      onClick={() => {
+                        // Free is the only plan without a checkout.
+                        if (id !== "free") {
+                          void choose(id);
+                        }
+                      }}
+                      type="button"
+                    >
+                      Choose {plans[id].name}
+                    </button>
+                  </Show>
+                </div>
+              )}
+            </For>
+          </div>
+          <Show when={pricingProblem()}>
+            {(problem) => (
+              <p class={css({ color: "rust", mt: "4", textStyle: "sm" })} role="alert">
+                {problem()}
+              </p>
+            )}
+          </Show>
         </section>
 
         <section

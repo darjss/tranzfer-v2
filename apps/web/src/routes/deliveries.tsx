@@ -1,15 +1,27 @@
 import { Meta, Title } from "@solidjs/meta";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import { clientOnly } from "@solidjs/web";
-import { defaultRetentionDays } from "@tranzfer/contracts";
+import { defaultRetentionDays, PaidPlanId } from "@tranzfer/contracts";
 import type { RetentionDays } from "@tranzfer/contracts";
-import { createMemo, createSignal, Errored, Loading, onSettled, Show, useContext } from "solid-js";
+import * as Schema from "effect/Schema";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  Errored,
+  Loading,
+  onSettled,
+  refresh,
+  Show,
+  useContext,
+} from "solid-js";
 import { css, cx } from "styled-system/css";
 
 import { ApiClient } from "../api/client";
 import { appError } from "../api/errors";
 import { runEffect, RuntimeContext } from "../api/solid-effect";
 import { Board } from "../dashboard/Board";
+import { goToCheckout, goToPortal } from "../dashboard/billing";
 import { createDeliveries } from "../dashboard/deliveries";
 import { DeliverySheet } from "../dashboard/DeliverySheet";
 import { SendCard } from "../dashboard/SendCard";
@@ -71,13 +83,17 @@ const Empty = (props: { firstRun: boolean }) => (
 
 const DeliveriesPage = () => {
   const runtime = useContext(RuntimeContext);
-  const [searchParams, setSearchParams] = useSearchParams<{ d?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams<{
+    checkout?: string;
+    d?: string;
+    plan?: string;
+  }>();
   const select = (id?: string) => {
     setSearchParams({ d: id });
   };
 
   const me = createMemo(() => runEffect(ApiClient.use((api) => api.Me())));
-  const { cancel, deliveries, send, sending } = createDeliveries(runtime);
+  const { billing, cancel, deliveries, send, sending } = createDeliveries(runtime);
   const selected = () => {
     const id = searchParams.d;
     return id === undefined ? undefined : deliveries.find((delivery) => delivery.id === id);
@@ -110,6 +126,50 @@ const DeliveriesPage = () => {
       setProblems([`${failure} Nothing was uploaded.`]);
     }
   };
+
+  const upgrade = async (plan: PaidPlanId) => {
+    const problem = await goToCheckout(runtime, plan);
+    if (problem !== undefined) {
+      setProblems([problem.message]);
+    }
+  };
+  const manage = async () => {
+    const problem = await goToPortal(runtime);
+    if (problem !== undefined) {
+      setProblems([problem.message]);
+    }
+  };
+
+  // Signing in from a pricing button lands here with the plan to buy.
+  onSettled(() => {
+    const plan = Schema.decodeUnknownOption(PaidPlanId)(searchParams.plan);
+    if (plan._tag === "Some") {
+      setSearchParams({ plan: undefined });
+      void upgrade(plan.value);
+    }
+  });
+
+  // The webhook can land a moment after the checkout redirect, so read the
+  // plan again until it changes or a few tries pass.
+  createEffect(
+    () => searchParams.checkout === "success" && billing().plan === "free",
+    (waiting) => {
+      let tries = 0;
+      const timer = waiting
+        ? setInterval(() => {
+            tries += 1;
+            if (tries > 15) {
+              clearInterval(timer);
+              return;
+            }
+            void refresh(billing);
+          }, 2000)
+        : undefined;
+      return () => {
+        clearInterval(timer);
+      };
+    },
+  );
 
   const sendDropped = async (dropped: DataTransfer) => {
     await pick(await getDroppedFiles(dropped));
@@ -198,9 +258,16 @@ const DeliveriesPage = () => {
             })}
           >
             <TopBar
+              billing={billing()}
+              manage={() => {
+                void manage();
+              }}
               principal={me()}
               send={() => {
                 filesInput?.click();
+              }}
+              upgrade={(plan) => {
+                void upgrade(plan);
               }}
             />
             <Show when={!online()}>
@@ -272,6 +339,7 @@ const DeliveriesPage = () => {
                   </span>
                 </h1>
                 <SendCard
+                  billing={billing()}
                   dragging={dragging()}
                   pickFiles={() => {
                     filesInput?.click();
@@ -284,6 +352,9 @@ const DeliveriesPage = () => {
                   sending={sending()}
                   setRetention={(days) => {
                     setRetention(days);
+                  }}
+                  upgrade={(plan) => {
+                    void upgrade(plan);
                   }}
                 />
               </div>

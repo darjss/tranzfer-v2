@@ -1,4 +1,5 @@
-import { RetentionDays } from "@tranzfer/contracts";
+import { plans, RetentionDays } from "@tranzfer/contracts";
+import type { BillingSummary, PaidPlanId } from "@tranzfer/contracts";
 import { For, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 
@@ -7,6 +8,8 @@ import PhUploadSimpleBold from "~icons/ph/upload-simple-bold";
 
 import { inkStrokes } from "../landing/notebook";
 import { Button } from "../ui/Button";
+import { upgradeFrom } from "./billing";
+import { bytes } from "./format";
 
 const ghost = css({
   bg: "panel",
@@ -22,6 +25,7 @@ const ghost = css({
  * lights up while files hover and offers real buttons for keyboards.
  */
 export function SendCard(props: {
+  billing: BillingSummary;
   dragging: boolean;
   pickFiles: () => void;
   pickFolder: () => void;
@@ -29,6 +33,7 @@ export function SendCard(props: {
   retention: RetentionDays;
   sending: boolean;
   setRetention: (days: RetentionDays) => void;
+  upgrade: (plan: PaidPlanId) => void;
 }) {
   return (
     <section
@@ -143,7 +148,11 @@ export function SendCard(props: {
               })}
             >
               <legend class={css({ srOnly: true })}>Keep files for</legend>
-              <For each={RetentionDays.literals}>
+              <For
+                each={RetentionDays.literals.filter(
+                  (days) => days <= props.billing.maxRetentionDays,
+                )}
+              >
                 {(days) => (
                   <label
                     class={cx(
@@ -308,6 +317,26 @@ export function SendCard(props: {
                 fallback={`link lives ${props.retention} ${props.retention === 1 ? "day" : "days"} after the upload finishes`}
               >
                 setting the delivery up…
+              </Show>
+            </p>
+            <p>
+              {bytes(props.billing.usedBytes)} of {bytes(props.billing.limitBytes)} in use on{" "}
+              {plans[props.billing.plan].name}
+              <Show when={upgradeFrom[props.billing.plan]}>
+                {(target) => (
+                  <>
+                    {" · "}
+                    <button
+                      class={css({ _hover: { color: "ink" }, textDecoration: "underline" })}
+                      onClick={() => {
+                        props.upgrade(target());
+                      }}
+                      type="button"
+                    >
+                      Upgrade to {plans[target()].name}
+                    </button>
+                  </>
+                )}
               </Show>
             </p>
           </footer>

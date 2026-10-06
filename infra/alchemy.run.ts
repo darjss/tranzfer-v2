@@ -4,11 +4,13 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Stage } from "alchemy/Stage";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 
 import ApiWorkerLive from "../apps/api/src/index";
 import { ApiWorker } from "../apps/api/src/worker";
 import { isPreviewStage } from "../apps/api/src/infrastructure/stage";
+import { polarProviders } from "./polar-provider";
 
 const envFile = new URL("../.env", import.meta.url);
 if (existsSync(envFile)) {
@@ -20,7 +22,7 @@ const webRoot = new URL("../apps/web", import.meta.url).pathname;
 export default Alchemy.Stack(
   "tranzfer",
   {
-    providers: Cloudflare.providers(),
+    providers: Layer.mergeAll(Cloudflare.providers(), polarProviders()),
     state: Cloudflare.state(),
   },
   Effect.gen(function* provision() {

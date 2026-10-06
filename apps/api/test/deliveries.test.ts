@@ -2,12 +2,38 @@ import { expect, layer } from "@effect/vitest";
 import { Database, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
+import { Base64 } from "effect/encoding";
+import * as Redacted from "effect/Redacted";
 import * as TestClock from "effect/testing/TestClock";
 
+import { verifyWebhook } from "../src/billing";
 import { Deliveries } from "../src/deliveries";
 import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } from "./support";
 
 const storage = makeMemoryStorage();
+const GB = 1_000_000_000;
+
+const subscribe = (userId: string, plan: "pro" | "starter") =>
+  Effect.flatMap(Effect.service(Database), ({ db }) =>
+    db.insert(schema.subscription).values({ plan, status: "active", userId }),
+  ).pipe(Effect.orDie);
+
+const signed = (secret: string, id: string, timestamp: number, body: string) =>
+  Effect.promise(async () => {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { hash: "SHA-256", name: "HMAC" },
+      false,
+      ["sign"],
+    );
+    const mac = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(`${id}.${timestamp}.${body}`),
+    );
+    return `v1,${Base64.encode(new Uint8Array(mac))}`;
+  });
 
 layer(domainLayer(storage.layer))("Deliveries", (it) => {
   it.effect("creates a delivery with one transfer per file and a link", () =>
@@ -154,6 +180,122 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       ]);
       expect((yield* deliveries.view(recent.id)).status).toBe("cancelled");
       expect(storage.purged).toContain(`d/${created.id}/`);
+    }),
+  );
+  it.effect("refuses a delivery past the plan's active space before anything is stored", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("iris");
+      const deliveries = yield* Deliveries;
+      yield* deliveries.create("iris", newDelivery([newFile("a.bin", 15 * GB)]));
+      const refused = yield* Effect.flip(
+        deliveries.create("iris", newDelivery([newFile("b.bin", 6 * GB)])),
+      );
+      expect(refused).toMatchObject({
+        _tag: "OverPlanLimit",
+        limitBytes: 20 * GB,
+        plan: "free",
+        requestedBytes: 6 * GB,
+        usedBytes: 15 * GB,
+      });
+      expect(yield* deliveries.list("iris")).toHaveLength(1);
+      // Exactly the remaining space still fits.
+      yield* deliveries.create("iris", newDelivery([newFile("c.bin", 5 * GB)]));
+    }),
+  );
+
+  it.effect(
+    "counts open and unexpired ready deliveries, and frees cancelled and expired ones",
+    () =>
+      Effect.gen(function* scenario() {
+        yield* TestClock.setTime(Date.now());
+        yield* addUser("jack");
+        const deliveries = yield* Deliveries;
+        const { db } = yield* Database;
+        const open = yield* deliveries.create("jack", newDelivery([newFile("o.bin", 4 * GB)]));
+        const ready = yield* deliveries.create("jack", newDelivery([newFile("r.bin", 3 * GB)]));
+        const doomed = yield* deliveries.create("jack", newDelivery([newFile("d.bin", 2 * GB)]));
+        yield* db
+          .update(schema.delivery)
+          .set({ expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), status: "ready" })
+          .where(eq(schema.delivery.id, ready.id));
+        expect(yield* deliveries.activeBytes("jack")).toBe(9 * GB);
+
+        yield* deliveries.cancel("jack", doomed.id);
+        expect(yield* deliveries.activeBytes("jack")).toBe(7 * GB);
+
+        yield* TestClock.adjust("4 days");
+        expect(yield* deliveries.activeBytes("jack")).toBe(4 * GB);
+        expect((yield* deliveries.view(open.id)).status).toBe("open");
+        // Another sender's deliveries never count.
+        yield* addUser("kate");
+        expect(yield* deliveries.activeBytes("kate")).toBe(0);
+      }),
+  );
+
+  it.effect("holds link lifetime to the plan, and a subscription raises both limits", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("lena");
+      const deliveries = yield* Deliveries;
+      const tooLong = yield* Effect.flip(
+        deliveries.create("lena", newDelivery([newFile("w.bin", 25 * GB)], "Week", 7)),
+      );
+      expect(tooLong).toMatchObject({
+        _tag: "RetentionNotInPlan",
+        maxRetentionDays: 3,
+        plan: "free",
+        requestedDays: 7,
+      });
+
+      yield* subscribe("lena", "starter");
+      const created = yield* deliveries.create(
+        "lena",
+        newDelivery([newFile("w2.bin", 25 * GB)], "Week", 7),
+      );
+      expect(created.retentionDays).toBe(7);
+      const tooLongForStarter = yield* Effect.flip(
+        deliveries.create("lena", newDelivery([newFile("f.bin", 1)], "Fortnight", 14)),
+      );
+      expect(tooLongForStarter).toMatchObject({ _tag: "RetentionNotInPlan", plan: "starter" });
+    }),
+  );
+
+  it.effect("accepts only a Polar delivery that is signed, fresh and intact", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(1_800_000_000_000);
+      const secret = "polar_whs_test_secret";
+      const body = '{"type":"subscription.updated"}';
+      const timestamp = 1_800_000_000;
+      const good = yield* signed(secret, "evt_1", timestamp, body);
+      const headers = {
+        "webhook-id": "evt_1",
+        "webhook-signature": good,
+        "webhook-timestamp": String(timestamp),
+      };
+      const check = (overrides: Partial<typeof headers>, payload = body, key = secret) =>
+        Effect.flip(verifyWebhook(Redacted.make(key), { ...headers, ...overrides }, payload));
+
+      yield* verifyWebhook(Redacted.make(secret), headers, body);
+      // A rotating secret sends several signatures; one match is enough.
+      yield* verifyWebhook(
+        Redacted.make(secret),
+        { ...headers, "webhook-signature": `v1,AAAA ${good}` },
+        body,
+      );
+
+      expect(yield* check({}, '{"type":"subscription.canceled"}')).toMatchObject({
+        reason: "signature",
+      });
+      expect(yield* check({}, body, "another_secret")).toMatchObject({ reason: "signature" });
+      expect(yield* check({ "webhook-id": "evt_2" })).toMatchObject({ reason: "signature" });
+      expect(yield* check({ "webhook-signature": "v2,abc" })).toMatchObject({
+        reason: "signature",
+      });
+      expect(yield* check({ "webhook-signature": undefined })).toMatchObject({ reason: "headers" });
+      expect(yield* check({ "webhook-timestamp": "soon" })).toMatchObject({ reason: "timestamp" });
+
+      // The same signed delivery replayed past the five-minute window.
+      yield* TestClock.adjust("6 minutes");
+      expect(yield* check({})).toMatchObject({ reason: "timestamp" });
     }),
   );
 });

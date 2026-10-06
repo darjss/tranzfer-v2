@@ -1,4 +1,10 @@
-import type { DeliveryId, RetentionDays, TransferId } from "@tranzfer/contracts";
+import type {
+  DeliveryId,
+  PlanId,
+  RetentionDays,
+  SubscriptionStatus,
+  TransferId,
+} from "@tranzfer/contracts";
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
@@ -160,3 +166,21 @@ export const link = sqliteTable(
   },
   (table) => [index("link_deliveryId_idx").on(table.deliveryId)],
 );
+
+// No row means the Free plan. Webhooks rebuild a row from Polar's customer
+// state, so it is a cache of Polar and never the source of truth.
+export const subscription = sqliteTable("subscription", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  plan: text("plan").$type<PlanId>().notNull(),
+  status: text("status").$type<SubscriptionStatus>().notNull(),
+  polarCustomerId: text("polar_customer_id"),
+  polarSubscriptionId: text("polar_subscription_id"),
+  currentPeriodEnd: integer("current_period_end", { mode: "timestamp_ms" }),
+  cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }).default(false).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .$onUpdate(() => new Date())
+    .notNull(),
+});

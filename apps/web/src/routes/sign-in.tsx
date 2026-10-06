@@ -1,4 +1,7 @@
 import { Meta, Title } from "@solidjs/meta";
+import { PaidPlanId } from "@tranzfer/contracts";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { createSignal, onSettled, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 
@@ -28,6 +31,15 @@ const GoogleG = (props: { class?: string }) => (
   </svg>
 );
 
+// A pricing button sends signed-out visitors here with the plan to buy; the
+// dashboard carries on to checkout once they are in.
+const destination = () => {
+  const plan = Schema.decodeUnknownOption(PaidPlanId)(
+    new URLSearchParams(location.search).get("plan"),
+  );
+  return Option.isSome(plan) ? `/deliveries?plan=${plan.value}` : "/deliveries";
+};
+
 const scopes = "We use your name, email and photo from Google. Nothing else.";
 
 export default function SignIn() {
@@ -51,7 +63,7 @@ export default function SignIn() {
     setFailed(false);
     try {
       const result = await authClient.signIn.social({
-        callbackURL: "/deliveries",
+        callbackURL: destination(),
         provider: "google",
       });
       setFailed(result.error !== null);
@@ -75,7 +87,7 @@ export default function SignIn() {
         method: "POST",
       });
       if (response.ok) {
-        location.assign("/deliveries");
+        location.assign(destination());
         return;
       }
       setKeyFailed(true);

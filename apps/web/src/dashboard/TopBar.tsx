@@ -1,4 +1,6 @@
-import type { Principal } from "@tranzfer/contracts";
+import { plans } from "@tranzfer/contracts";
+import type { BillingSummary, PaidPlanId, Principal } from "@tranzfer/contracts";
+import { Show } from "solid-js";
 import { css } from "styled-system/css";
 
 import PhSignOutBold from "~icons/ph/sign-out-bold";
@@ -7,6 +9,8 @@ import PhUploadSimpleBold from "~icons/ph/upload-simple-bold";
 import { authClient } from "../api/auth-client";
 import Brand from "../landing/Brand";
 import { Button } from "../ui/Button";
+import { upgradeFrom } from "./billing";
+import { bytes, untilDate } from "./format";
 import { Avatar } from "./parts";
 
 const signOut = async () => {
@@ -14,7 +18,27 @@ const signOut = async () => {
   window.location.assign("/");
 };
 
-export function TopBar(props: { principal: Principal; send: () => void }) {
+const menuItem = css({
+  _hover: { bg: "ink/6" },
+  alignItems: "center",
+  borderRadius: "xl",
+  display: "flex",
+  fontWeight: "medium",
+  gap: "2.5",
+  px: "3",
+  py: "2.5",
+  textAlign: "left",
+  textStyle: "sm",
+  w: "full",
+});
+
+export function TopBar(props: {
+  billing: BillingSummary;
+  manage: () => void;
+  principal: Principal;
+  send: () => void;
+  upgrade: (plan: PaidPlanId) => void;
+}) {
   return (
     <nav
       aria-label="Account"
@@ -92,20 +116,45 @@ export function TopBar(props: { principal: Principal; send: () => void }) {
               {props.principal.email}
             </p>
           </div>
+          <div class={css({ borderColor: "line", borderTopWidth: "1px", px: "3", py: "2.5" })}>
+            <p class={css({ fontWeight: "medium", textStyle: "sm" })}>
+              {plans[props.billing.plan].name} · {bytes(props.billing.usedBytes)} of{" "}
+              {bytes(props.billing.limitBytes)}
+            </p>
+            <Show when={props.billing.periodEnd}>
+              {(end) => (
+                <p class={css({ color: "mut", fontSize: "13" })}>
+                  {props.billing.cancelsAtPeriodEnd ? "Ends" : "Renews"} {untilDate(end())}
+                </p>
+              )}
+            </Show>
+          </div>
+          <Show when={upgradeFrom[props.billing.plan]}>
+            {(target) => (
+              <button
+                class={menuItem}
+                onClick={() => {
+                  props.upgrade(target());
+                }}
+                type="button"
+              >
+                Upgrade to {plans[target()].name} · ${plans[target()].monthlyUsd}/mo
+              </button>
+            )}
+          </Show>
+          <Show when={props.billing.plan !== "free"}>
+            <button
+              class={menuItem}
+              onClick={() => {
+                props.manage();
+              }}
+              type="button"
+            >
+              Manage billing
+            </button>
+          </Show>
           <button
-            class={css({
-              _hover: { bg: "ink/6" },
-              alignItems: "center",
-              borderRadius: "xl",
-              display: "flex",
-              fontWeight: "medium",
-              gap: "2.5",
-              px: "3",
-              py: "2.5",
-              textAlign: "left",
-              textStyle: "sm",
-              w: "full",
-            })}
+            class={menuItem}
             onClick={() => {
               void signOut();
             }}
