@@ -1,9 +1,11 @@
 import { existsSync } from "node:fs";
 
 import * as Alchemy from "alchemy";
+import * as Axiom from "alchemy/Axiom";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Stage } from "alchemy/Stage";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 
 import ApiWorkerLive from "../apps/api/src/index";
@@ -20,7 +22,7 @@ const webRoot = new URL("../apps/web", import.meta.url).pathname;
 export default Alchemy.Stack(
   "tranzfer",
   {
-    providers: Cloudflare.providers(),
+    providers: Layer.mergeAll(Cloudflare.providers(), Axiom.providers()),
     state: Cloudflare.state(),
   },
   Effect.gen(function* provision() {

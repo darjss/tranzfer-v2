@@ -19,6 +19,7 @@ import { Transfers } from "./transfers";
 import { Auth, makeAuth } from "./infrastructure/auth";
 import { filesStorage } from "./infrastructure/r2";
 import { deployStage } from "./infrastructure/stage";
+import { relayConfig, relayTraces, telemetry } from "./infrastructure/telemetry";
 import { App } from "./resources";
 import { ApiWorker } from "./worker";
 
@@ -85,6 +86,7 @@ export default ApiWorker.make(
         ),
       ),
       HttpRouter.add("GET", "/health", perInvocation(health)),
+      HttpRouter.add("POST", "/api/telemetry/traces", relayTraces(yield* relayConfig)),
     );
     const handle_ = yield* routes.pipe(
       Layer.provide(HttpServer.layerServices),
@@ -98,6 +100,7 @@ export default ApiWorker.make(
         Cloudflare.D1.QueryDatabaseBinding,
         Cloudflare.R2.ReadBucketBinding,
         Cloudflare.Workers.CronEventSourceLive,
+        telemetry,
       ),
     ),
   ),

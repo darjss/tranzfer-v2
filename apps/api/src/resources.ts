@@ -1,4 +1,5 @@
 import * as Alchemy from "alchemy";
+import * as Axiom from "alchemy/Axiom";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Output from "alchemy/Output";
 import { Stage } from "alchemy/Stage";
@@ -63,3 +64,33 @@ export const Files = Cloudflare.R2.Bucket("Files", {
     },
   ],
 }).pipe(Alchemy.remote());
+
+// Axiom names are org-wide, so each stage gets its own datasets and token.
+const axiomName = (kind: string) =>
+  Output.fromEffect(Effect.map(Stage, (stage) => `tranzfer-${stage}-${kind}`));
+
+export const Traces = Axiom.Dataset("Traces", {
+  kind: "otel:traces:v1",
+  name: axiomName("traces"),
+});
+
+export const Logs = Axiom.Dataset("Logs", {
+  kind: "otel:logs:v1",
+  name: axiomName("logs"),
+});
+
+// Ingest only: the token reaches the Worker as a secret, and the browser
+// relay forwards spans with it, so it must not be able to read anything back.
+export const Ingest = Effect.gen(function* ingest() {
+  const traces = yield* Traces;
+  const logs = yield* Logs;
+  return yield* Axiom.ApiToken("Ingest", {
+    datasetCapabilities: Output.all(traces.name, logs.name).pipe(
+      Output.map(([tracesName, logsName]) => ({
+        [logsName]: { ingest: ["create"] },
+        [tracesName]: { ingest: ["create"] },
+      })),
+    ),
+    name: axiomName("ingest"),
+  });
+});
