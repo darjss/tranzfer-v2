@@ -216,7 +216,7 @@ Expiry and confirmed abandonment can trigger cleanup too, but maintenance respec
 How the API does it today:
 
 - Every non-empty file uploads as multipart. A multipart upload id stops accepting writes once it is completed or aborted, so no earlier URL can replace the object. An empty file has no part to send; it is one `PUT` signed with `If-None-Match: *`, which can create the object but never replace it. This is how a finalized file stays the file that was verified.
-- Signing `Complete` moves the transfer to `finalizing`. From then on only `Complete` and `List` sign; no new upload, no new parts.
+- Signing `Complete` moves the transfer to `finalizing`. From then on `Complete`, `List` and `Part` on the existing upload id still sign, since a lost `Complete` can hide missing parts and `NotUploaded` sends transport back to fill them, but no `Create`, since no new upload id may start.
 - Finalize seals the key before trusting it, but only once an object exists, so a paused upload is never aborted. It aborts every other open multipart upload on the key, then reads the object again and records that ETag. A second upload a sender prepared earlier dies with `NoSuchUpload`. The sweeper finishes `finalizing` transfers the same way when the browser left.
 - Finalize claims the transfer with a conditional update, then flips the delivery to `ready` only when no transfer is left incomplete. The flip is one idempotent statement that every finalize and every sweep runs, so a finalize that died between the two writes heals on the next sweep. Concurrent finalizes, the sweeper and a racing cancel all converge.
 - Transfers stuck in `finalizing` are rechecked oldest-first; a miss bumps `updated_at`, so misses rotate instead of starving newer rows.
@@ -224,6 +224,19 @@ How the API does it today:
 - A delivery still `open` 7 days after creation can never finish (R2 aborts incomplete multipart uploads after 7 days). The sweeper ends it like a cancel, and the purge above cleans up.
 - An empty file's guarded `Put` can be signed again while the transfer is `finalizing`, so a lost response does not strand it; `If-None-Match` still stops a second write.
 - Opening a link signs download URLs without re-checking each object: the seal above is what makes that safe.
+
+How the browser recovers today:
+
+- Before `CreateDelivery` is called, one IndexedDB record per transfer holds the delivery and transfer ids, path, size, lastModified, the part size chosen for it and the file fingerprint. The call then replays the exact same payload on transport failure, so a lost response never creates a second delivery.
+- The multipart upload id joins the record as soon as the first signed request carries it, before that request's URL can be lost with the tab. Confirmed bytes update the record on every `part-uploaded`.
+- The fingerprint is version 1: SHA-256 of the whole file at 1 MiB and under; larger files hash 16 samples of 64 KiB spread from first byte to last. It is sampled, not whole-file integrity, and it is only used to refuse a reselected file that changed.
+- On refresh, every deliveries read restores: a transfer the server calls `complete` or `cancelled` drops its record; `finalizing` gets a FinalizeTransfer retry loop; `uploading` becomes `needsFile`, which waits for the user to pick the file again. A record whose transfer is not listed and is older than 7 days is forgotten; the list only holds the newest 50 deliveries.
+- Reselection matches a picked file by the basename of the recorded path, then checks size, mtime, the current part-size policy and the fingerprint. Anything else is refused with a reason. A matched file goes into Uppy with the stored upload id, so ListParts marks what R2 already holds and only the missing parts are sent.
+- A passing fingerprint is not proof enough: it samples 16 spots, so an edit between samples could slip through and Uppy would keep the stale parts. Before a matched file is claimed, the browser lists the remote parts itself and checks each one's size and MD5 against the picked file (a part's R2 ETag is its MD5 hex). A mismatch is refused as `changed`; a `NoSuchUpload`/404 is refused as `gone`, because starting a fresh upload id would split the stored bytes across two uploads.
+- ListParts pages at 1,000 parts. The bundled Uppy reads page one only, so a pnpm patch makes `S3mini.listParts` follow `NextPartNumberMarker` and the `List` signature carries `part-number-marker` through to R2.
+- A signed `Complete` whose response is lost reconciles instead of restarting: the upload error runs FinalizeTransfer, and a retry after such an error finalizes first and resumes transport only on `NotUploaded`.
+- Signing and finalize calls wait for `online` while the browser is offline and retry transport failures with capped backoff; typed refusals stand, and after the retries run out the manual Retry stays the honest fallback. When an R2 request itself fails from network loss, an expired signature, throttling or a 5xx, the file restarts through Uppy's resume once the browser is online, on the same capped backoff; a 404 means the remote upload is gone and fails honestly.
+- IndexedDB is bookkeeping, never a gate. A failed read or write logs a warning and the upload continues; it just won't survive a refresh.
 
 ## Downloads
 

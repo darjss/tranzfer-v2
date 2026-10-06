@@ -49,3 +49,5 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: false
   workerd: true
+patchedDependencies:
+  "@uppy/aws-s3@6.2.1": patches/@uppy__aws-s3@6.2.1.patch

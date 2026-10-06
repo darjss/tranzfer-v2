@@ -15,8 +15,8 @@ Each layer answers one question. Don't ask a layer a question it can't answer.
 | Types and lint | `vp check`                             | Is this code possible, and does it respect the boundaries?                     |
 | Service tests  | `@effect/vitest` through `vp run test` | Do the API services keep their rules on a real local D1, with storage faked?   |
 | Staging checks | `vp run test:e2e` (vitest in `e2e/`)   | Does a deployed staging or PR preview build honor the API contract end to end? |
-| Scenarios      | Playwright inside `e2e/` (planned)     | Does a real user journey survive real failure against the running stack?       |
-| Release gates  | People, real files, real networks      | Does 10, 100 or 350 GB actually make it? The table in RELIABILITY.md decides   |
+| Scenarios      | Playwright inside `e2e/`               | Does a real user journey survive real failure against the running stack?       |
+| Release gates  | `vp run test:gate` torture runs        | Does 10, 100 or 350 GB actually make it? The table in RELIABILITY.md decides   |
 
 ## Pure tests
 
@@ -52,19 +52,16 @@ The key must match `TEST_LOGIN_KEY` in the `.env` that `alchemy dev` loaded. A w
 
 ## Scenarios
 
-Planned, not built. `e2e/` today holds only the fetch-based staging checks; the `Browser`, `NetControl` and `Storage` services below, the parts ledger and `scenario()` don't exist yet. Build them with the resume milestone, which is the first thing that needs them.
-
-A scenario is one user-meaningful journey, run black box against the local stack at `https://tranzfer.localhost`. It uses the real Workers and your dev stage's real D1 and R2.
+A scenario is one user-meaningful journey, run black box against a live target (staging by default, or a PR preview). It uses the real Workers, real D1 and real R2. `e2e/scenarios/delivery.test.ts` covers the fetch-level checks; `e2e/gates/upload.test.ts` is the release-gate torture run driven through the dashboard UI.
 
 ```ts
 scenario(
-  "Recovery · a refresh mid-upload resumes without resending confirmed parts",
-  { timeout: 180_000 },
+  "Gate · internal survives its faults and delivers one verified file",
+  { timeout: Duration.toMillis("8 hours") },
   Effect.gen(function* () {
     const target = yield* Target;
     const browser = yield* Browser;
     const net = yield* NetControl;
-    const storage = yield* Storage;
     // ...
   }),
 );
@@ -72,29 +69,43 @@ scenario(
 
 These rules don't bend:
 
-- `scenario()` is the only way to write one. Its body is an Effect, and the services it yields are its declaration of what it needs. There's no separate capability list.
-- Every scenario gets a fresh identity from `target.newIdentity()`. Isolation comes from new users, never from resetting shared state.
-- Assert only through the typed RPC client, the browser, or storage the app really uses. Never import app internals. Never poke D1 to make a test pass.
+- `scenario()` (`e2e/src/scenario.ts`) is the only way to write one. Its body is an Effect, and the services it yields are its declaration of what it needs.
+- Sign in through `Target`'s `loginKey` and `POST /api/auth/staging-login`; never log the key or cookies.
+- Assert only through the typed RPC client, the browser, or the ledger. Never import app internals. Never poke D1 to make a test pass.
+- Drive the UI like a user: role and text locators, real file choosers. No implementation details.
 - Clean up with `Effect.ensuring`, so a failure halfway through doesn't leak uploads. Where possible, clean up through the product's own cancel and delete paths.
-- No sleeps. Wait for a network event, a navigation or a visible state.
+- No sleeps. Wait for a network event, a navigation or a visible state. The one exception is a fault's own duration, which is the thing under test.
 - Assert values, not booleans. `expect(partCount(842)).toBe(1)` explains the failure. `expect(ok).toBe(true)` explains nothing.
-- Names read as product guarantees: "Recovery · a lost finalize response still converges to complete".
+- Names read as product guarantees.
 - A failing assertion means the product or the scenario is wrong. Fix one of them. Never weaken, skip or retry-loop an assertion into green. A flaky scenario is a bug.
 
-Each run writes `e2e/runs/<slug>/` with `result.json`, a Playwright trace, video and `failure.png`. Git ignores it. When you hand off work that changes user-visible behavior, include the run directory and what to look at.
+Each run writes `e2e/runs/<slug>-<timestamp>/` with `result.json` (timeline, recorded measurements, manual interventions, environment), `ledger.jsonl`, numbered step screenshots and `failure.png` on failure. Git ignores it. No Playwright trace or video: gates run for hours and the archives would bloat.
+
+### Release gates
+
+`e2e/gates/gates.ts` holds the fault plans — `internal`, `beta`, `promise` — matching the table in RELIABILITY.md, with `at` as the fraction of parts acked when the fault lands. Every gate also loses the Complete response: the trap lets the request reach R2, aborts the response, then checks the product converges without a second multipart upload. The `beta` sleep outlasts the 15-minute upload-URL TTL, which is the authorization-expiry row.
+
+```text
+GATE=internal TEST_LOGIN_KEY=<key from .env> vp run test:gate
+```
+
+Requirements: `uv`, FUSE3 and `/dev/fuse`, and Chromium via `playwright` (installed as an e2e devDependency). `GATE_SIZE` overrides the size for rehearsals — bytes or `NGiB` — and `result.json` records `sizeOverridden: true`, so a rehearsal can't pass for a gate. `GATE_KEEP=1` leaves the delivery for inspection; browser and mounts still come down.
+
+The uploaded file is a FUSE computation (`e2e/tools/synthfile.py` run through `uv run --script`): AES-256-CTR keystream over zeros, keyed by a random seed, so every byte is generated on read and nothing needs disk. `--flip` XORs one byte, producing a file with identical name, size and mtime but different content — the impostor check. `e2e/src/synthfile.ts` mounts it scoped and hashes it streamed.
+
+The gate must end with one upload id, one acknowledged create, zero avoidable resends, zero missing parts, and a downloaded SHA-256 equal to the source hash read through the mount.
 
 ## Services
 
-| Service                     | Gives a scenario                                                                                                       |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `Target`                    | Base URL and `newIdentity()`                                                                                           |
-| `Api`                       | The typed Effect RPC client from `packages/contracts`, signed in as an identity                                        |
-| `Browser`                   | Playwright sessions with trace, video and step screenshots                                                             |
-| `Browser.persistentSession` | A persistent profile, so IndexedDB survives closing and relaunching the browser. This is how levels 3 and 4 get tested |
-| `NetControl`                | Offline and online, plus failing, delaying or erroring chosen signing and part requests                                |
-| `Storage`                   | `ListParts` and `HeadObject` against the bucket the app signs for, plus the parts ledger                               |
+| Service      | Gives a scenario                                                                                                                                                                                                                                                                    |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Target`     | Base URL, `loginKey`, and `api`/`anon` typed RPC clients (signed-in and anonymous)                                                                                                                                                                                                  |
+| `Browser`    | Chromium spawned detached on a persistent profile, so IndexedDB survives `crash()` and relaunch. `freeze()` SIGSTOPs the whole group                                                                                                                                                |
+| `NetControl` | `offline`, one-shot part failure, and the lost-Complete trap, each through its own CDP Fetch pattern (never `route()`, which stalls part uploads and the ledger's events). Each trap returns a Deferred that records its own firing; a planned trap that never fires fails the gate |
+| `Ledger`     | The parts ledger: every R2 request recorded pending, settled on response, stalled-out after 10 minutes without a new acknowledged part                                                                                                                                              |
+| `Run`        | The run directory, named steps with screenshots, manual-intervention reasons, and `record()` into `result.json`                                                                                                                                                                     |
 
-The parts ledger is the most important thing in the harness. Part bytes go straight from the browser to R2, so the API never sees them. The browser surface records every page request to the R2 host as `partNumber -> count`. That's how a scenario proves part 842 went over the wire exactly once. It turns "avoidable bytes resent" from a metric into an assertion.
+The parts ledger is the most important thing in the harness. Part bytes go straight from the browser to R2, so the API never sees them. The browser's own network events record every request to the R2 host; "acked" means the browser saw the 200. That's how a gate proves part 842 went over the wire exactly once, and why a resent part an ack was never seen for doesn't count as avoidable. It turns "avoidable bytes resent" from a metric into an assertion.
 
 ## Identity
 

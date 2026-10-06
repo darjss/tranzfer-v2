@@ -38,7 +38,16 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
   // and a cancelled one moves to Ended the moment it happens, then the
   // re-read reconciles.
   const [deliveries, setDeliveries] = createOptimisticStore<Delivery[]>(
-    () => runEffect(ApiClient.use((api) => api.Deliveries().pipe(Effect.map((list) => [...list])))),
+    () =>
+      runEffect(
+        ApiClient.use((api) =>
+          api.Deliveries().pipe(
+            // Every read rebuilds what this tab can still recover.
+            Effect.tap((list) => Uploads.use((uploads) => uploads.restore(list))),
+            Effect.map((list) => [...list]),
+          ),
+        ),
+      ),
     [],
     { key: "id" },
   );
@@ -49,6 +58,24 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
       if (before !== undefined && done > before) {
         void refresh(deliveries);
       }
+    },
+  );
+  // A server-side finalizing transfer settles on its own (this tab's lost
+  // Complete, or the sweeper); poll until none are left so it lands as done.
+  createEffect(
+    () =>
+      deliveries.some((delivery) =>
+        delivery.transfers.some((transfer) => transfer.state === "finalizing"),
+      ),
+    (stuck) => {
+      const timer = stuck
+        ? setInterval(() => {
+            void refresh(deliveries);
+          }, 10_000)
+        : undefined;
+      return () => {
+        clearInterval(timer);
+      };
     },
   );
   const [sending, setSending] = createOptimistic(false);

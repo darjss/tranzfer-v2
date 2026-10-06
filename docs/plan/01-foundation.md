@@ -2,9 +2,12 @@
 
 Finish the transfer flow. Read [RELIABILITY.md](../RELIABILITY.md) before transfer code. Optional tooling and UI follow-up in [02-pre-upload-readiness.md](02-pre-upload-readiness.md) does not block this milestone.
 
-- Restore a transfer after refresh. Persist its identity (transfer id, multipart upload id, part size, file fingerprint) in IndexedDB before relying on it. On return, recover file access or ask for reselection, verify the fingerprint, reconcile remote parts with a `List` signature and continue from the first missing part.
-- Keep the exact `CreateDelivery` payload until the response arrives, so a retry after a lost response replays the same ids instead of creating a second delivery.
-- Reconcile a lost `Complete` response before retrying transport: ask the server for the transfer state first, and refresh the dashboard until it settles.
-- Pass the 10 GB internal gate, then the 100 GB and 350 GB gates. Record correctness, avoidable bytes resent and manual intervention in the PR or issue.
+Remaining work:
 
-Build only the UI controls this flow needs. Run existing tests and direct runtime checks. New test files still require explicit approval.
+- Pass the 350 GB promise gate (`GATE=promise vp run test:gate`). The 10 GB internal and 100 GB beta gates passed on staging; evidence is in #75. Record correctness, avoidable bytes resent and manual intervention the same way.
+- Before that run, speed up re-pick verification. `verifyParts` hashes the held parts one at a time, and the time grows with progress (82 s at 10% to 228 s at 70% of 100 GiB). At 85% of 350 GiB that is about 10 minutes of a stuck-looking screen.
+- Restore persistent `FileSystemFileHandle`s where Chromium supports them, so a refresh needs no reselection.
+- Cross-tab ownership (e.g. Web Locks), so a second tab doesn't offer to resume an upload another tab is running.
+- Upstream the Uppy `ListParts` pagination fix and drop the patch.
+
+Run existing tests and direct runtime checks. New test files still require explicit approval.

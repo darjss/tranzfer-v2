@@ -211,6 +211,9 @@ overrides:
   oxlint-tsgolint: 7.0.2001
   '@better-auth/drizzle-adapter>drizzle-orm': 1.0.0-rc.5-ab785fc
 
+patchedDependencies:
+  '@uppy/aws-s3@6.2.1': ffba143aa3ff46fe8ce640adadc5ecb12ec1939ada6ad9bde14d99f88c4db4a9
+
 importers:
 
   .:
@@ -311,7 +314,7 @@ importers:
         version: link:../../packages/contracts
       '@uppy/aws-s3':
         specifier: 6.2.1
-        version: 6.2.1(@uppy/core@6.1.0)
+        version: 6.2.1(patch_hash=ffba143aa3ff46fe8ce640adadc5ecb12ec1939ada6ad9bde14d99f88c4db4a9)(@uppy/core@6.1.0)
       '@uppy/core':
         specifier: 6.1.0
         version: 6.1.0
@@ -324,6 +327,12 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.115
+      hash-wasm:
+        specifier: 4.12.0
+        version: 4.12.0
+      idb-keyval:
+        specifier: ^6.3.0
+        version: 6.3.0
       solid-js:
         specifier: 'catalog:'
         version: 2.0.0-rc.8
@@ -410,6 +419,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.4.1
+      playwright:
+        specifier: 1.63.0
+        version: 1.63.0
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -4376,6 +4388,9 @@ packages:
     resolution: {integrity: sha512-NqADB8VjPFLM2V0VvHUewwwsw0ZWBaIdgo+ieHtK3hasLz4qeCRjYcqfB6AQrBggRKppKF8L52/VqdVsO47Dlw==}
     engines: {node: '>= 0.4'}
 
+  hash-wasm@4.12.0:
+    resolution: {integrity: sha512-+/2B2rYLb48I/evdOIhP+K/DD2ca2fgBjp6O+GBEnCDk2e4rpeXIK8GvIyRPjTezgmWn9gmKwkQjjx6BtqDHVQ==}
+
   hasown@2.0.4:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
@@ -4413,6 +4428,9 @@ packages:
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
     engines: {node: '>=0.10.0'}
+
+  idb-keyval@6.3.0:
+    resolution: {integrity: sha512-um+2dgAWmYsu615EXpWVwSmapJhON0G43t3Ka/EVaohzPQXSMqKEqeDK/oIW3Ow+BXaF2PvSc+oBTFp793A5Ow==}
 
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
@@ -5032,6 +5050,16 @@ packages:
 
   pkg-types@2.3.3:
     resolution: {integrity: sha512-j/lCFdcppV0JxWpCEITdbDltBxPP6cHT+yNJ6Go2OgoSA9518X847X9z0p6LtA4Nc16+eQzCZjRrWanTGvHJ5w==}
+
+  playwright-core@1.63.0:
+    resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.63.0:
+    resolution: {integrity: sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   pluralize@8.0.0:
     resolution: {integrity: sha512-Nc3IT5yHzflTfbjgqWcCPpo7DaKy4FnpB0l/zCAW0Tc7jxAiuqSxHasntB3D7887LSrA93kDJ9IXovxJYxyLCA==}
@@ -8221,7 +8249,7 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@uppy/aws-s3@6.2.1(@uppy/core@6.1.0)':
+  '@uppy/aws-s3@6.2.1(patch_hash=ffba143aa3ff46fe8ce640adadc5ecb12ec1939ada6ad9bde14d99f88c4db4a9)(@uppy/core@6.1.0)':
     dependencies:
       '@uppy/core': 6.1.0
 
@@ -9225,6 +9253,8 @@ snapshots:
     dependencies:
       has-symbols: 1.1.0
 
+  hash-wasm@4.12.0: {}
+
   hasown@2.0.4:
     dependencies:
       function-bind: 1.1.2
@@ -9260,6 +9290,8 @@ snapshots:
   iconv-lite@0.6.3:
     dependencies:
       safer-buffer: 2.1.2
+
+  idb-keyval@6.3.0: {}
 
   ignore@5.3.2: {}
 
@@ -9848,6 +9880,12 @@ snapshots:
       confbox: 0.3.1
       exsolve: 1.1.1
       pathe: 2.0.3
+
+  playwright-core@1.63.0: {}
+
+  playwright@1.63.0:
+    dependencies:
+      playwright-core: 1.63.0
 
   pluralize@8.0.0: {}
 
