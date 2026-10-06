@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import * as Tracer from "effect/Tracer";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
@@ -142,13 +143,24 @@ export const relayTraces = ({ client, origin, target }: Effect.Success<typeof re
     if (!request.headers["content-type"]?.startsWith("application/json")) {
       return status(415);
     }
-    // Browsers send a length for string bodies; refusing a missing one keeps
-    // an unbounded stream from ever being read.
-    const length = Number(request.headers["content-length"]);
-    if (!Number.isInteger(length) || length > MAX_BODY_BYTES) {
+    // Stops reading one chunk past the cap, so an oversized body is never
+    // buffered whole and no header has to be trusted.
+    const chunks = yield* request.stream.pipe(
+      Stream.mapAccum(
+        () => 0,
+        (total, chunk) => [total + chunk.byteLength, [{ chunk, total: total + chunk.byteLength }]],
+      ),
+      Stream.takeUntil(({ total }) => total > MAX_BODY_BYTES),
+      Stream.runCollect,
+    );
+    if ((chunks.at(-1)?.total ?? 0) > MAX_BODY_BYTES) {
       return status(413);
     }
-    const body = yield* request.text.pipe(Effect.flatMap(Schema.decodeUnknownEffect(BrowserSpans)));
+    const decoder = new TextDecoder();
+    const body = yield* Schema.decodeUnknownEffect(BrowserSpans)(
+      chunks.map(({ chunk }) => decoder.decode(chunk, { stream: true })).join("") +
+        decoder.decode(),
+    );
     yield* client.pipe(HttpClient.filterStatusOk).execute(
       HttpClientRequest.post(yield* target.url).pipe(
         HttpClientRequest.setHeaders({
