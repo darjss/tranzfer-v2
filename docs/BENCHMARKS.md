@@ -29,7 +29,7 @@ Each evidence folder holds:
 
 - End to end runs from Send to Ready and includes every fault, freeze and re-pick.
 - Best 60 s is the most part acknowledgements in any 60-second window of the ledger, times 64 MiB.
-- Download is one ranged GET of the whole object, which the runner resumes with `Range` if R2 drops the connection (#74).
+- Download is one GET of the whole object. If R2 drops the connection, the runner resumes with `Range` (#74).
 - Avoidable bytes are bytes of any part R2 acknowledged twice.
 
 The 2026-10-03 run doesn't count as gate evidence. Its failPart trap never fired, and #71 and #73 rebuilt fault injection after that. It stays here because it's the last run with Uppy's default of one part at a time. Four parts at once (#72) took the same fault plan from 14.8 to 43.1 MiB/s. Chromium allows 6 connections per origin, and R2's S3 endpoint speaks HTTP/1.1 only, so each part in flight needs its own connection.
