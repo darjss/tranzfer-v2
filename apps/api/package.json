@@ -8,13 +8,13 @@
     "test": "vp test"
   },
   "dependencies": {
-    "@alchemy.run/better-auth": "2.0.0-beta.79",
-    "@distilled.cloud/aws": "1.0.0-rc.12",
-    "@polar-sh/sdk": "0.49.0",
+    "@alchemy.run/better-auth": "2.0.0-beta.81",
+    "@distilled.cloud/aws": "1.0.0-rc.13",
+    "@polar-sh/sdk": "1.0.2",
     "@tranzfer/contracts": "workspace:*",
     "@tranzfer/db": "workspace:*",
-    "alchemy": "2.0.0-beta.79",
-    "better-auth": "1.7.4",
+    "alchemy": "2.0.0-beta.81",
+    "better-auth": "1.7.7",
     "drizzle-orm": "catalog:",
     "effect": "catalog:"
   },
@@ -23,6 +23,6 @@
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vitest": "5.0.1"
+    "vitest": "catalog:"
   }
 }

@@ -8,13 +8,13 @@ import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 import { Storage, StorageError, UPLOAD_URL_TTL } from "../storage";
 import { Files } from "../resources";
@@ -226,7 +226,7 @@ export const r2Storage = (options: R2Options) =>
           return {
             accessKeyId: Redacted.make(tokenId),
             region,
-            secretAccessKey: Redacted.make(Encoding.encodeHex(new Uint8Array(digest))),
+            secretAccessKey: Redacted.make(Hex.encode(new Uint8Array(digest))),
             sessionToken: undefined,
           };
         }),

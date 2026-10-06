@@ -10,8 +10,8 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
 import * as Struct from "effect/Struct";
-import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
-import * as RpcTest from "effect/unstable/rpc/RpcTest";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as RpcTest from "effect/rpc/RpcTest";
 import { flush, Loading } from "solid-js";
 
 import { ApiClient } from "../api/client";
@@ -100,7 +100,14 @@ const makeWorld = (server: Delivery[], gate?: Deferred.Deferred<boolean>) => {
           if (row === undefined) {
             return yield* Effect.die(new Error("unknown delivery"));
           }
-          const cancelled = Struct.evolve(row, { status: () => "cancelled" as const });
+          // Like the real cancel, the transfers end with the delivery.
+          const cancelled = Struct.evolve(row, {
+            status: () => "cancelled" as const,
+            transfers: (rows) =>
+              rows.map((transfer) =>
+                Struct.evolve(transfer, { state: () => "cancelled" as const }),
+              ),
+          });
           server[index] = cancelled;
           return cancelled;
         }),

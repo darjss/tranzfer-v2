@@ -22,14 +22,14 @@
     "prepare": "vp config && effect-tsgo patch --oxlint"
   },
   "devDependencies": {
-    "@effect/tsgo": "0.45.0",
+    "@effect/tsgo": "0.48.1",
     "effect": "catalog:",
-    "eslint-plugin-solid": "0.18.0",
+    "eslint-plugin-solid": "0.18.1",
     "oxlint": "1.82.0",
     "oxlint-tsgolint": "7.0.2001",
-    "portless": "0.15.6",
+    "portless": "0.15.7",
     "typescript": "catalog:",
-    "ultracite": "7.11.1",
+    "ultracite": "7.12.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

@@ -5,9 +5,9 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import { sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http";
-import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
-import * as RpcServer from "effect/unstable/rpc/RpcServer";
+import { HttpRouter, HttpServer, HttpServerResponse } from "effect/http";
+import * as RpcSerialization from "effect/rpc/RpcSerialization";
+import * as RpcServer from "effect/rpc/RpcServer";
 
 import { Deliveries } from "./deliveries";
 import { LinkTokens } from "./link-tokens";

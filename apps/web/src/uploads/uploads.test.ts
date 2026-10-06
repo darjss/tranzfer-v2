@@ -6,7 +6,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { md5 } from "hash-wasm";
 
-import { RpcClientDefect, RpcClientError } from "effect/unstable/rpc/RpcClientError";
+import { RpcClientDefect, RpcClientError } from "effect/rpc/RpcClientError";
 
 import { fingerprint } from "./recovery";
 import {
