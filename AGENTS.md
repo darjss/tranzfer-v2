@@ -8,7 +8,7 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 - Effect workflows or layers: [.agents/skills/effect/SKILL.md](.agents/skills/effect/SKILL.md). Installed package types take precedence over examples.
 - Writing or reviewing any code (errors, unknown data, types, tests, run edges): [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
 - Local serving: [.agents/skills/portless/SKILL.md](.agents/skills/portless/SKILL.md), then `vp run dev`.
-- Product scope: [docs/VISION.md](docs/VISION.md). Product judgment and tone: [docs/SOUL.md](docs/SOUL.md).
+- Product scope: [docs/VISION.md](docs/VISION.md). Plans, prices and limits: [docs/PRODUCT.md](docs/PRODUCT.md). Product judgment and tone: [docs/SOUL.md](docs/SOUL.md).
 - Upload, resume, download or cancellation: [docs/RELIABILITY.md](docs/RELIABILITY.md). Measured gate results: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 - Tests, scenarios or lint guardrails: [docs/TESTING.md](docs/TESTING.md). Remaining work: [docs/plan/03-testing-and-guardrails.md](docs/plan/03-testing-and-guardrails.md).
 - Tool choices: [docs/STACK.md](docs/STACK.md). Code placement and request scope: [docs/STRUCTURE.md](docs/STRUCTURE.md). Effect reads in Solid: [docs/SOLID-EFFECT-BINDING.md](docs/SOLID-EFFECT-BINDING.md).
