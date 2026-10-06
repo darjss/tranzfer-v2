@@ -51,12 +51,6 @@ catalog:
 overrides:
   vitest: "catalog:"
   vite@*: "catalog:"
-  # Keep oxlint at 1.82/tsgolint at 7.0.2001: `effect-tsgo patch` refuses
-  # vite-plus rc.0's bundled 1.85/7.0.2002. Drop these once @effect/tsgo
-  # supports them.
-  "vite-plus>oxlint": "1.82.0"
-  "oxlint>oxlint-tsgolint": "7.0.2001"
-  oxlint-tsgolint: "7.0.2001"
   "@better-auth/drizzle-adapter>drizzle-orm": "catalog:"
 peerDependencyRules:
   allowAny:

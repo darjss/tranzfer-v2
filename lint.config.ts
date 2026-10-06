@@ -80,14 +80,6 @@ export const lintConfig = (
         },
       },
       {
-        files: ["**/vite.config.ts"],
-        rules: {
-          // Vite+ types `lint` against oxlint 1.81. Runtime is 1.82.0 so
-          // @effect/tsgo 0.45.0 can patch Oxlint.
-          "typescript/no-unsafe-type-assertion": "off",
-        },
-      },
-      {
         files: paths.effect,
         rules: {
           // Effect's catch/tapError/flatMap/forEach take callbacks and are neither promises nor arrays; these rules match on names.

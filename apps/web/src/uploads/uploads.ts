@@ -216,26 +216,25 @@ export interface ListedPart {
  * the resumed upload would seal an object mixing old and new bytes. Reads one
  * part at a time, so a partSize-worth of memory is the peak.
  */
-export const verifyParts = (file: Blob, parts: readonly ListedPart[], partSizeBytes: number) =>
-  Effect.tryPromise(async () => {
-    // Sequential on purpose: parallel reads would hold every part in memory.
-    const check = async (index: number): Promise<boolean> => {
-      const part = parts[index];
-      if (part === undefined) {
-        return true;
-      }
-      const start = (part.partNumber - 1) * partSizeBytes;
-      const expected = Math.min(partSizeBytes, file.size - start);
-      if (part.partNumber < 1 || expected <= 0 || part.size !== expected) {
-        return false;
-      }
-      const digest = await md5(
-        new Uint8Array(await file.slice(start, start + partSizeBytes).arrayBuffer()),
-      );
-      return digest === part.etag && (await check(index + 1));
-    };
-    return await check(0);
-  });
+export const verifyParts = (file: Blob, parts: readonly ListedPart[], partSizeBytes: number) => {
+  // Sequential on purpose: parallel reads would hold every part in memory.
+  const check = async (index: number): Promise<boolean> => {
+    const part = parts[index];
+    if (part === undefined) {
+      return true;
+    }
+    const start = (part.partNumber - 1) * partSizeBytes;
+    const expected = Math.min(partSizeBytes, file.size - start);
+    if (part.partNumber < 1 || expected <= 0 || part.size !== expected) {
+      return false;
+    }
+    const digest = await md5(
+      new Uint8Array(await file.slice(start, start + partSizeBytes).arrayBuffer()),
+    );
+    return digest === part.etag && (await check(index + 1));
+  };
+  return Effect.tryPromise(async () => await check(0));
+};
 
 // retryUpload, not upload(): upload() would first re-run every failed file
 // in Uppy, other deliveries' included, so each file starts on its own.
