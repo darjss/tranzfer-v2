@@ -1,5 +1,5 @@
-import { plans, RetentionDays } from "@tranzfer/contracts";
-import type { BillingSummary, PaidPlanId } from "@tranzfer/contracts";
+import { PaidPlanId, plans, RetentionDays } from "@tranzfer/contracts";
+import type { BillingSummary } from "@tranzfer/contracts";
 import { For, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 
@@ -18,6 +18,11 @@ const ghost = css({
   pos: "absolute",
   shadow: "paperGhost",
 });
+
+// The cheapest paid plan whose links last that long. Every retention option is
+// within Studio's, so one always exists.
+const unlockedBy = (days: RetentionDays) =>
+  PaidPlanId.literals.find((plan) => plans[plan].maxRetentionDays >= days) ?? "studio";
 
 /**
  * The send surface: a stack of paper with one big drop target. Dropping
@@ -148,13 +153,15 @@ export function SendCard(props: {
               })}
             >
               <legend class={css({ srOnly: true })}>Keep files for</legend>
-              <For
-                each={RetentionDays.literals.filter(
-                  (days) => days <= props.billing.maxRetentionDays,
-                )}
-              >
+              <For each={RetentionDays.literals}>
                 {(days) => (
                   <label
+                    // The native tooltip names the plan that unlocks the option.
+                    title={
+                      days > props.billing.maxRetentionDays
+                        ? `Needs ${plans[unlockedBy(days)].name} or higher`
+                        : undefined
+                    }
                     class={cx(
                       css({
                         "&:has(:focus-visible)": {
@@ -175,11 +182,14 @@ export function SendCard(props: {
                       props.retention === days
                         ? css({ bg: "white", color: "ink", shadow: "paperRow" })
                         : css({ _hover: { color: "ink" }, color: "mut" }),
+                      days > props.billing.maxRetentionDays &&
+                        css({ _hover: { color: "mut" }, cursor: "not-allowed", opacity: 0.5 }),
                     )}
                   >
                     <input
                       checked={props.retention === days}
                       class={css({ srOnly: true })}
+                      disabled={days > props.billing.maxRetentionDays}
                       name="retention"
                       onChange={() => {
                         props.setRetention(days);
@@ -188,6 +198,11 @@ export function SendCard(props: {
                       value={String(days)}
                     />
                     {days}d
+                    <Show when={days > props.billing.maxRetentionDays}>
+                      <span class={css({ srOnly: true })}>
+                        , needs {plans[unlockedBy(days)].name} or higher
+                      </span>
+                    </Show>
                   </label>
                 )}
               </For>

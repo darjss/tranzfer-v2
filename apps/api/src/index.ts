@@ -13,7 +13,7 @@ import * as Schema from "effect/Schema";
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
 import * as RpcServer from "effect/rpc/RpcServer";
 
-import { Billing } from "./billing";
+import { Billing, InvalidWebhook } from "./billing";
 import { Deliveries } from "./deliveries";
 import { LinkTokens } from "./link-tokens";
 import { ApiHandlers, AuthenticatedLive } from "./rpc";
@@ -56,18 +56,26 @@ export default ApiWorker.make(
       studio: yield* PolarProduct("Polar-studio", productProps("studio")).pipe(retain()),
     };
     const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
-    const webhook = yield* PolarWebhook("PolarWebhook", {
-      events: [
-        "subscription.created",
-        "subscription.active",
-        "subscription.updated",
-        "subscription.canceled",
-        "subscription.uncanceled",
-        "subscription.revoked",
-        "subscription.past_due",
-      ],
-      url: `${origin}/api/polar/webhook`,
-    });
+    // Local stages have no URL Polar can reach, so they get no endpoint and
+    // read Polar directly instead.
+    const stage = yield* deployStage;
+    const webhookSecret =
+      stage === "dev"
+        ? Effect.fail(new InvalidWebhook({ reason: "disabled" }))
+        : lazy(
+            yield* (yield* PolarWebhook("PolarWebhook", {
+              events: [
+                "subscription.created",
+                "subscription.active",
+                "subscription.updated",
+                "subscription.canceled",
+                "subscription.uncanceled",
+                "subscription.revoked",
+                "subscription.past_due",
+              ],
+              url: `${origin}/api/polar/webhook`,
+            })).secret,
+          );
     const billing = Billing.layer({
       access: yield* polarAccess,
       appUrl: origin,
@@ -76,14 +84,15 @@ export default ApiWorker.make(
         starter: lazy(yield* products.starter.id),
         studio: lazy(yield* products.studio.id),
       }),
-      webhookSecret: lazy(yield* webhook.secret),
+      reconcileOnRead: stage === "dev",
+      webhookSecret,
     });
 
     const isolate = yield* Layer.build(
       Layer.mergeAll(
         yield* filesStorage,
         LinkTokens.layer((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom))),
-        Layer.effect(Auth, makeAuth(yield* deployStage, handle)),
+        Layer.effect(Auth, makeAuth(stage, handle)),
         RpcSerialization.layerJson,
       ),
     );

@@ -27,7 +27,19 @@ export type PlanId = typeof PlanId.Type;
 export const PaidPlanId = Schema.Literals(["starter", "pro", "studio"]);
 export type PaidPlanId = typeof PaidPlanId.Type;
 
-export const SubscriptionStatus = Schema.Literals(["active", "trialing", "none"]);
+/**
+ * `past_due` keeps the paid plan while Polar retries the charge, and `canceled`
+ * keeps it until the paid period ends. `comp` is a plan granted without Polar
+ * (staging test user); webhooks never overwrite it.
+ */
+export const SubscriptionStatus = Schema.Literals([
+  "active",
+  "trialing",
+  "past_due",
+  "canceled",
+  "comp",
+  "none",
+]);
 export type SubscriptionStatus = typeof SubscriptionStatus.Type;
 
 export const BillingSummary = Schema.Struct({

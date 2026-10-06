@@ -121,6 +121,11 @@ export function TopBar(props: {
               {plans[props.billing.plan].name} · {bytes(props.billing.usedBytes)} of{" "}
               {bytes(props.billing.limitBytes)}
             </p>
+            <Show when={props.billing.status === "past_due"}>
+              <p class={css({ color: "rust", fontSize: "13" })}>
+                Payment failed. Update it under Manage billing.
+              </p>
+            </Show>
             <Show when={props.billing.periodEnd}>
               {(end) => (
                 <p class={css({ color: "mut", fontSize: "13" })}>

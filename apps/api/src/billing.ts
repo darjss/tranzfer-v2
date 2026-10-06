@@ -1,18 +1,27 @@
 import * as Polar from "@distilled.cloud/polar";
 import { BillingUnavailable, plans } from "@tranzfer/contracts";
-import type { BillingSummary, PaidPlanId, PlanId, Principal } from "@tranzfer/contracts";
+import type {
+  BillingSummary,
+  PaidPlanId,
+  PlanId,
+  Principal,
+  SubscriptionStatus,
+} from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import { Base64 } from "effect/encoding";
 import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 
 import { Deliveries } from "./deliveries";
 import { polarClient } from "./infrastructure/polar";
@@ -20,7 +29,7 @@ import type { polarAccess } from "./infrastructure/polar";
 
 /** The delivery is not from Polar: a missing header, a stale timestamp or a bad signature. */
 export class InvalidWebhook extends Data.TaggedError("InvalidWebhook")<{
-  readonly reason: "headers" | "payload" | "signature" | "timestamp";
+  readonly reason: "disabled" | "headers" | "payload" | "signature" | "timestamp";
 }> {}
 
 // Standard Webhooks allows five minutes of clock skew either way.
@@ -89,6 +98,10 @@ const WebhookEvent = Schema.Struct({
   }),
 });
 
+// Stale rows reconciled per sweep, and the pause before a row is tried again.
+const STALE_BATCH = 20;
+const STALE_RETRY = Duration.minutes(15);
+
 const highestFirst = ["studio", "pro", "starter"] as const;
 
 /** Billing for a signed-in user, kept in step with Polar through webhooks. */
@@ -104,6 +117,8 @@ export class Billing extends Context.Service<
     readonly portal: (
       userId: string,
     ) => Effect.Effect<{ readonly url: string }, BillingUnavailable>;
+    /** Refetches Polar state for rows past their period end. Returns how many it tried. */
+    readonly reconcileStale: Effect.Effect<number>;
     /** Verifies a Polar delivery and refreshes the user it names. */
     readonly webhook: (
       headers: Readonly<Record<string, string | undefined>>,
@@ -116,7 +131,10 @@ export class Billing extends Context.Service<
     readonly appUrl: string;
     /** Polar product ids by plan; binding values, so read per call. */
     readonly products: Effect.Effect<Readonly<Record<PaidPlanId, string>>>;
-    readonly webhookSecret: Effect.Effect<Redacted.Redacted>;
+    /** Fails with `disabled` on stages that have no webhook endpoint. */
+    readonly webhookSecret: Effect.Effect<Redacted.Redacted, InvalidWebhook>;
+    /** Stages without a webhook read Polar whenever the summary is read. */
+    readonly reconcileOnRead: boolean;
   }) =>
     Layer.effect(
       Billing,
@@ -146,26 +164,49 @@ export class Billing extends Context.Service<
           return { url: session.customer_portal_url };
         });
 
-        /** Replaces the user's row with what Polar says now, so replays and reordering converge. */
+        /**
+         * Replaces the user's row with what Polar says now, so replays and
+         * reordering converge. The customer state only lists active and
+         * trialing subscriptions, so this reads the subscription list, which
+         * keeps `past_due` visible. A subscription grants its plan while it is
+         * active, trialing or past due (Polar retries the charge), and when
+         * canceled until its paid period ends. Revoked, unpaid, paused and
+         * incomplete ones grant nothing. A comp row is never overwritten.
+         */
         const reconcile = Effect.fn("Billing.reconcile")(function* reconcile(userId: string) {
+          const current = yield* row(userId);
+          if (current?.status === "comp") {
+            return;
+          }
           const products = yield* options.products;
-          const state = yield* viaPolar(
-            Polar.customersGetStateExternal({ external_id: userId }).pipe(
-              Effect.map(Option.some),
-              Effect.catchTag("NotFound", () => Effect.succeedNone),
+          const subscriptions = yield* viaPolar(
+            Polar.subscriptionsList
+              .items({ external_customer_id: userId, limit: 100 })
+              .pipe(Stream.runCollect),
+          );
+          const now = yield* Clock.currentTimeMillis;
+          // The status a subscription is stored under, or none when it grants nothing.
+          const granted = (subscription: Polar.Subscription) =>
+            Match.value(subscription.status).pipe(
+              Match.whenOr("active", "trialing", "past_due", (status) => Option.some(status)),
+              Match.when("canceled", (status) =>
+                new Date(subscription.current_period_end).getTime() > now
+                  ? Option.some(status)
+                  : Option.none(),
+              ),
+              Match.orElse(() => Option.none()),
+            );
+          const owned = highestFirst.flatMap((plan) =>
+            subscriptions.flatMap((subscription) =>
+              subscription.product_id === products[plan]
+                ? Option.match(granted(subscription), {
+                    onNone: () => [],
+                    onSome: (status) => [{ plan, status, subscription }],
+                  })
+                : [],
             ),
           );
-          const owned = highestFirst.flatMap((plan) =>
-            Option.match(state, {
-              onNone: () => [],
-              onSome: ({ active_subscriptions }) =>
-                active_subscriptions
-                  .filter((subscription) => subscription.product_id === products[plan])
-                  .map((subscription) => ({ plan, subscription })),
-            }),
-          );
           const best = Arr.head(owned);
-          const now = yield* Clock.currentTimeMillis;
           const next = {
             cancelAtPeriodEnd: Option.exists(
               best,
@@ -176,13 +217,16 @@ export class Billing extends Context.Service<
               ({ subscription }) => new Date(subscription.current_period_end),
             ).pipe(Option.getOrNull),
             plan: Option.match(best, { onNone: (): PlanId => "free", onSome: ({ plan }) => plan }),
-            polarCustomerId: Option.map(state, ({ id }) => id).pipe(Option.getOrNull),
+            polarCustomerId: Option.map(
+              Arr.head(subscriptions),
+              (subscription) => subscription.customer_id,
+            ).pipe(Option.getOrNull),
             polarSubscriptionId: Option.map(best, ({ subscription }) => subscription.id).pipe(
               Option.getOrNull,
             ),
             status: Option.match(best, {
-              onNone: () => "none" as const,
-              onSome: ({ subscription }) => subscription.status,
+              onNone: (): SubscriptionStatus => "none",
+              onSome: ({ status }) => status,
             }),
             updatedAt: new Date(now),
           };
@@ -191,6 +235,29 @@ export class Billing extends Context.Service<
             .values({ userId, ...next })
             .onConflictDoUpdate({ set: next, target: schema.subscription.userId });
         }, dieOnDatabaseError);
+
+        /** Rows whose paid period has ended are the ones a lost webhook would strand. */
+        const reconcileStale = Effect.fn("Billing.reconcileStale")(function* reconcileStale() {
+          const now = yield* Clock.currentTimeMillis;
+          const stale = yield* db.query.subscription
+            .findMany({
+              columns: { userId: true },
+              limit: STALE_BATCH,
+              orderBy: { currentPeriodEnd: "asc" },
+              where: {
+                currentPeriodEnd: { lte: new Date(now) },
+                // Reconciling stamps updatedAt, so a row that stays past its
+                // period end (a failing charge) is retried every few minutes,
+                // not every run.
+                updatedAt: { lte: new Date(now - Duration.toMillis(STALE_RETRY)) },
+              },
+            })
+            .pipe(dieOnDatabaseError);
+          yield* Effect.forEach(stale, ({ userId }) => Effect.ignore(reconcile(userId)), {
+            discard: true,
+          });
+          return stale.length;
+        });
 
         return Billing.of({
           checkout: Effect.fn("Billing.checkout")(function* checkout(
@@ -216,7 +283,12 @@ export class Billing extends Context.Service<
 
           portal,
 
+          reconcileStale: reconcileStale(),
+
           summary: Effect.fn("Billing.summary")(function* summary(userId: string) {
+            if (options.reconcileOnRead) {
+              yield* Effect.ignore(reconcile(userId));
+            }
             const current = yield* row(userId);
             const plan = current?.plan ?? "free";
             return {

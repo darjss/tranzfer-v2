@@ -1,12 +1,14 @@
-import { expect, layer } from "@effect/vitest";
+import { expect, layer, vi } from "@effect/vitest";
 import { Database, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import { Base64 } from "effect/encoding";
+import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as TestClock from "effect/testing/TestClock";
 
-import { verifyWebhook } from "../src/billing";
+import { Billing, verifyWebhook } from "../src/billing";
 import { Deliveries } from "../src/deliveries";
 import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } from "./support";
 
@@ -296,6 +298,123 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       // The same signed delivery replayed past the five-minute window.
       yield* TestClock.adjust("6 minutes");
       expect(yield* check({})).toMatchObject({ reason: "timestamp" });
+    }),
+  );
+});
+
+// Polar, faked at fetch: the subscriptions it lists for the customer.
+let polarSubscriptions: readonly {
+  readonly cancel_at_period_end?: boolean;
+  readonly current_period_end: string;
+  readonly product_id: string;
+  readonly status: string;
+}[] = [];
+const polarCalls: string[] = [];
+
+const billingLayer = Billing.layer({
+  access: { apiBaseUrl: "https://sandbox-api.polar.sh", apiKey: Redacted.make("token") },
+  appUrl: "https://app.test",
+  products: Effect.succeed({ pro: "prod_pro", starter: "prod_starter", studio: "prod_studio" }),
+  reconcileOnRead: false,
+  webhookSecret: Effect.succeed(Redacted.make("secret")),
+}).pipe(Layer.provideMerge(domainLayer(storage.layer)));
+
+const polarPage = () =>
+  Response.json({
+    items: polarSubscriptions.map((subscription) => ({
+      ...subscription,
+      customer_id: "cus_1",
+      id: "sub_1",
+    })),
+    pagination: { max_page: 1, total_count: polarSubscriptions.length },
+  });
+
+const asPolar = (subscriptions: typeof polarSubscriptions) => {
+  polarSubscriptions = subscriptions;
+  vi.stubGlobal("fetch", async (input: Request | string | URL, init?: RequestInit) => {
+    const request = new Request(input, init);
+    await request.arrayBuffer();
+    polarCalls.push(request.url);
+    return polarPage();
+  });
+};
+const reconcileAs = (userId: string) =>
+  Effect.gen(function* reconcileUser() {
+    const billing = yield* Billing;
+    const body = JSON.stringify({ data: { customer: { external_id: userId } } });
+    const timestamp = Math.floor((yield* Clock.currentTimeMillis) / 1000);
+    const header = yield* signed("secret", "evt", timestamp, body);
+    yield* billing.webhook(
+      {
+        "webhook-id": "evt",
+        "webhook-signature": header,
+        "webhook-timestamp": String(timestamp),
+      },
+      body,
+    );
+    return yield* billing.summary(userId);
+  });
+const later = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+
+layer(billingLayer)("Billing reconcile", (it) => {
+  it.effect("keeps a paid plan while payment is past due and until a cancelled period ends", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("mona");
+      asPolar([{ current_period_end: later(2), product_id: "prod_pro", status: "past_due" }]);
+      expect(yield* reconcileAs("mona")).toMatchObject({ plan: "pro", status: "past_due" });
+
+      asPolar([{ current_period_end: later(2), product_id: "prod_pro", status: "canceled" }]);
+      expect(yield* reconcileAs("mona")).toMatchObject({ plan: "pro", status: "canceled" });
+
+      asPolar([{ current_period_end: later(-1), product_id: "prod_pro", status: "canceled" }]);
+      expect(yield* reconcileAs("mona")).toMatchObject({ plan: "free", status: "none" });
+
+      asPolar([{ current_period_end: later(9), product_id: "prod_pro", status: "unpaid" }]);
+      expect(yield* reconcileAs("mona")).toMatchObject({ plan: "free", status: "none" });
+
+      // The highest granting plan wins when a customer holds two.
+      asPolar([
+        { current_period_end: later(9), product_id: "prod_starter", status: "active" },
+        { current_period_end: later(9), product_id: "prod_studio", status: "trialing" },
+      ]);
+      expect(yield* reconcileAs("mona")).toMatchObject({ plan: "studio", status: "trialing" });
+    }),
+  );
+
+  it.effect("the sweep reconciles rows past their period end, a few at a time", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("nina");
+      yield* addUser("omar");
+      yield* addUser("comp");
+      const billing = yield* Billing;
+      const { db } = yield* Database;
+      const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const row = {
+        currentPeriodEnd: hourAgo,
+        plan: "pro",
+        status: "active",
+        updatedAt: hourAgo,
+      } as const;
+      yield* db.insert(schema.subscription).values([
+        { ...row, userId: "nina" },
+        // Still inside its period: left alone.
+        { ...row, currentPeriodEnd: new Date(Date.now() + 86_400_000), userId: "omar" },
+        // A grant has no period and Polar never owns it.
+        { plan: "studio", status: "comp", userId: "comp" },
+      ]);
+      // Polar says the subscription ended, which a lost webhook never told us.
+      asPolar([]);
+      polarCalls.length = 0;
+      expect(yield* billing.reconcileStale).toBe(1);
+      expect(polarCalls).toHaveLength(1);
+      expect(yield* billing.summary("nina")).toMatchObject({ plan: "free", status: "none" });
+      expect(yield* billing.summary("omar")).toMatchObject({ plan: "pro" });
+      expect(yield* billing.summary("comp")).toMatchObject({ plan: "studio", status: "comp" });
+      expect(yield* billing.reconcileStale).toBe(0);
+      // A webhook for a comp user cannot take the grant away.
+      expect(yield* reconcileAs("comp")).toMatchObject({ plan: "studio", status: "comp" });
     }),
   );
 });

@@ -290,7 +290,7 @@ describe("dashboard reactivity", () => {
     {
       billing: freePlan,
       manage: false,
-      retention: ["1d", "3d"],
+      retention: ["1:on", "3:on", "7:off", "14:off"],
       upgrade: "Upgrade to Starter · $15/mo",
       usage: "Free · 3.2 GB of 20 GB",
     },
@@ -305,7 +305,7 @@ describe("dashboard reactivity", () => {
         usedBytes: 3200 * MB,
       } satisfies BillingSummary,
       manage: true,
-      retention: ["1d", "3d", "7d", "14d"],
+      retention: ["1:on", "3:on", "7:on", "14:on"],
       upgrade: "Upgrade to Studio · $69/mo",
       usage: "Pro · 3.2 GB of 1 TB",
     },
@@ -352,9 +352,15 @@ describe("dashboard reactivity", () => {
     flush();
 
     // The account menu is a closed popover, so the queries include hidden nodes.
-    expect(screen.getAllByRole("radio").map((radio) => radio.parentElement?.textContent)).toEqual(
-      expected.retention,
-    );
+    // All four stay visible; the ones above the plan are disabled.
+    expect(
+      screen
+        .getAllByRole("radio")
+        .map(
+          (radio) =>
+            `${radio.getAttribute("value")}:${radio.hasAttribute("disabled") ? "off" : "on"}`,
+        ),
+    ).toEqual(expected.retention);
     expect(
       screen.getByRole("button", { hidden: true, name: expected.upgrade }),
     ).toBeInTheDocument();

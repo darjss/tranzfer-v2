@@ -18,7 +18,7 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 - Browser recovery metadata: idb-keyval.
 - Part hashing for resume verification: hash-wasm MD5.
 - Multipart signing: the `Storage` service signs Distilled S3 requests against the R2 endpoint, using a bucket-scoped API token Alchemy mints per stage.
-- Billing: Polar through `@distilled.cloud/polar`. The plan catalog is `packages/contracts/src/billing.ts`. The D1 `subscription` row caches Polar's customer state and is rebuilt from Polar on every webhook; no row means Free. Production bills the live organization, every other stage the sandbox one. Alchemy providers in `infra/polar-provider.ts` create the products (shared by all sandbox stages) and each stage's webhook endpoint (PR #85).
+- Billing: Polar through `@distilled.cloud/polar`. The plan catalog is `packages/contracts/src/billing.ts`. The D1 `subscription` row caches Polar's subscription list and is rebuilt from Polar on every webhook and by the sweeper for rows past their period end; no row means Free. A past-due subscription keeps its plan while Polar retries. The staging test login gets a `comp` Studio row that Polar never overwrites. Production bills the live organization, every other stage the sandbox one. Alchemy providers in `infra/polar-provider.ts` create the products (shared by all sandbox stages) and each stage's webhook endpoint (PR #85).
 - Infrastructure: Alchemy v2 in `infra/alchemy.run.ts`, on the app's Effect version.
 - Local URLs: Portless.
 - Lint and format: oxlint with type-aware rules and Solid diagnostics, oxfmt. Rules live in `lint.config.ts`.
