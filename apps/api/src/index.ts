@@ -9,13 +9,13 @@ import { HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 
-import { Deliveries } from "./implementation/deliveries";
-import { LinkTokens } from "./implementation/link-tokens";
-import { ApiHandlers, AuthenticatedLive } from "./implementation/rpc";
-import { SharedLinks } from "./implementation/shared-links";
-import { Storage } from "./implementation/storage";
-import { sweep } from "./implementation/sweeper";
-import { Transfers } from "./implementation/transfers";
+import { Deliveries } from "./deliveries";
+import { LinkTokens } from "./link-tokens";
+import { ApiHandlers, AuthenticatedLive } from "./rpc";
+import { SharedLinks } from "./shared-links";
+import { Storage } from "./storage";
+import { sweep } from "./sweeper";
+import { Transfers } from "./transfers";
 import { Auth, makeAuth } from "./infrastructure/auth";
 import { filesStorage } from "./infrastructure/r2";
 import { deployStage } from "./infrastructure/stage";

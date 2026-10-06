@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 
-import { Deliveries } from "../src/implementation/deliveries";
+import { Deliveries } from "../src/deliveries";
 import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } from "./support";
 
 const storage = makeMemoryStorage();

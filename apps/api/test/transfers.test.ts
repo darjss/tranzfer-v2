@@ -6,8 +6,8 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 
-import { Deliveries } from "../src/implementation/deliveries";
-import { Transfers } from "../src/implementation/transfers";
+import { Deliveries } from "../src/deliveries";
+import { Transfers } from "../src/transfers";
 import {
   addUser,
   domainLayer,
