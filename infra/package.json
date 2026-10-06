@@ -16,6 +16,7 @@
     "destroy": "env -u npm_execpath -u npm_config_user_agent APP_URL=https://tranzfer.app node ./node_modules/alchemy/bin/cli.js destroy --yes --stage production"
   },
   "dependencies": {
+    "@distilled.cloud/polar": "1.0.0-rc.13",
     "@effect/platform-node": "catalog:",
     "alchemy": "2.0.0-beta.81",
     "effect": "catalog:"
