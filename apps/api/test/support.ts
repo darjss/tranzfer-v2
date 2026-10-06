@@ -7,12 +7,12 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 
-import { Deliveries } from "../src/implementation/deliveries";
-import { LinkTokens } from "../src/implementation/link-tokens";
-import { SharedLinks } from "../src/implementation/shared-links";
-import { Storage } from "../src/implementation/storage";
-import type { StoredObject } from "../src/implementation/storage";
-import { Transfers } from "../src/implementation/transfers";
+import { Deliveries } from "../src/deliveries";
+import { LinkTokens } from "../src/link-tokens";
+import { SharedLinks } from "../src/shared-links";
+import { Storage } from "../src/storage";
+import type { StoredObject } from "../src/storage";
+import { Transfers } from "../src/transfers";
 
 /** Object storage as a map; tests put objects the way a browser upload would. */
 export const makeMemoryStorage = () => {

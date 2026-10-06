@@ -2,9 +2,9 @@ import { expect, layer } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 
-import { Deliveries } from "../src/implementation/deliveries";
-import { SharedLinks } from "../src/implementation/shared-links";
-import { Transfers } from "../src/implementation/transfers";
+import { Deliveries } from "../src/deliveries";
+import { SharedLinks } from "../src/shared-links";
+import { Transfers } from "../src/transfers";
 import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } from "./support";
 
 const storage = makeMemoryStorage();
