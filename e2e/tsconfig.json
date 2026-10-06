@@ -9,7 +9,14 @@
     "noEmit": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "types": ["node"]
+    "types": ["node"],
+    // Effect 4.0 still tags these unstable; we use them on purpose (#84).
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "allowedUnstableApis": ["effect/http", "effect/rpc", "effect/sql", "@effect/sql-d1"]
+      }
+    ]
   },
   "include": ["src", "scenarios", "gates", "vitest.config.ts", "vitest.gates.config.ts"]
 }
