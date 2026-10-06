@@ -338,6 +338,8 @@ Before calling browser recovery done, break it in all of these ways:
 
 ## Release gates
 
+Measured results and their evidence: [BENCHMARKS.md](BENCHMARKS.md).
+
 | Gate                | Required evidence                                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Internal            | 10 GB with network loss, failed-part retry and refresh                                                                    |
