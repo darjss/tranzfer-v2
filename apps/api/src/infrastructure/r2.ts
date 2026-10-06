@@ -249,7 +249,7 @@ export const r2Storage = (options: R2Options) =>
   );
 
 // Binding values resolve per invocation, never at deploy time.
-const lazy = <A>(value: Effect.Effect<A, never, RuntimeContext>) =>
+export const lazy = <A>(value: Effect.Effect<A, never, RuntimeContext>) =>
   value.pipe(Effect.provide(RuntimeContext.phantom));
 
 /** The Files bucket plus an account token scoped to it, as a Storage layer. */

@@ -5,6 +5,7 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import { sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { HttpRouter, HttpServer, HttpServerResponse } from "effect/http";
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
 import * as RpcServer from "effect/rpc/RpcServer";
@@ -100,6 +101,7 @@ export default ApiWorker.make(
         Cloudflare.D1.QueryDatabaseBinding,
         Cloudflare.R2.ReadBucketBinding,
         Cloudflare.Workers.CronEventSourceLive,
+        FetchHttpClient.layer,
         telemetry,
       ),
     ),

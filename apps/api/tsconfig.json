@@ -14,7 +14,13 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        "allowedUnstableApis": ["effect/http", "effect/rpc", "effect/sql", "@effect/sql-d1"]
+        "allowedUnstableApis": [
+          "effect/http",
+          "effect/observability",
+          "effect/rpc",
+          "effect/sql",
+          "@effect/sql-d1"
+        ]
       }
     ]
   },

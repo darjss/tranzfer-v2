@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { isPreviewStage } from "./infrastructure/stage";
+import { isPreviewStage, ownsAxiom, stageName } from "./infrastructure/stage";
 
 const DAY_SECONDS = 24 * 60 * 60;
 
@@ -65,32 +65,39 @@ export const Files = Cloudflare.R2.Bucket("Files", {
   ],
 }).pipe(Alchemy.remote());
 
-// Axiom names are org-wide, so each stage gets its own datasets and token.
+// Axiom names are org-wide, so production and staging each get their own
+// datasets and token. Previews reference staging's (see ownsAxiom).
 const axiomName = (kind: string) =>
   Output.fromEffect(Effect.map(Stage, (stage) => `tranzfer-${stage}-${kind}`));
 
-export const Traces = Axiom.Dataset("Traces", {
-  kind: "otel:traces:v1",
-  name: axiomName("traces"),
-});
+const ownedOrStaging = <A, R>(owned: Effect.Effect<A, never, R>, staging: Effect.Effect<A>) =>
+  Effect.flatMap(stageName, (stage) => (ownsAxiom(stage) ? owned : staging));
 
-export const Logs = Axiom.Dataset("Logs", {
-  kind: "otel:logs:v1",
-  name: axiomName("logs"),
-});
+export const Traces = ownedOrStaging(
+  Axiom.Dataset("Traces", { kind: "otel:traces:v1", name: axiomName("traces") }),
+  Axiom.Dataset.ref("Traces", { stage: "staging" }),
+);
+
+export const Logs = ownedOrStaging(
+  Axiom.Dataset("Logs", { kind: "otel:logs:v1", name: axiomName("logs") }),
+  Axiom.Dataset.ref("Logs", { stage: "staging" }),
+);
 
 // Ingest only: the token reaches the Worker as a secret, and the browser
 // relay forwards spans with it, so it must not be able to read anything back.
-export const Ingest = Effect.gen(function* ingest() {
-  const traces = yield* Traces;
-  const logs = yield* Logs;
-  return yield* Axiom.ApiToken("Ingest", {
-    datasetCapabilities: Output.all(traces.name, logs.name).pipe(
-      Output.map(([tracesName, logsName]) => ({
-        [logsName]: { ingest: ["create"] },
-        [tracesName]: { ingest: ["create"] },
-      })),
-    ),
-    name: axiomName("ingest"),
-  });
-});
+export const Ingest = ownedOrStaging(
+  Effect.gen(function* ingest() {
+    const traces = yield* Traces;
+    const logs = yield* Logs;
+    return yield* Axiom.ApiToken("Ingest", {
+      datasetCapabilities: Output.all(traces.name, logs.name).pipe(
+        Output.map(([tracesName, logsName]) => ({
+          [logsName]: { ingest: ["create"] },
+          [tracesName]: { ingest: ["create"] },
+        })),
+      ),
+      name: axiomName("ingest"),
+    });
+  }),
+  Axiom.ApiToken.ref("Ingest", { stage: "staging" }),
+);

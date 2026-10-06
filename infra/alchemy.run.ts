@@ -10,7 +10,7 @@ import * as Match from "effect/Match";
 
 import ApiWorkerLive from "../apps/api/src/index";
 import { ApiWorker } from "../apps/api/src/worker";
-import { deployStage, isPreviewStage } from "../apps/api/src/infrastructure/stage";
+import { isPreviewStage, ownsAxiom, stageName } from "../apps/api/src/infrastructure/stage";
 
 const envFile = new URL("../.env", import.meta.url);
 if (existsSync(envFile)) {
@@ -22,14 +22,14 @@ const webRoot = new URL("../apps/web", import.meta.url).pathname;
 export default Alchemy.Stack(
   "tranzfer",
   {
-    // Axiom credentials resolve when the providers build, so dev stages, which
-    // have no Axiom resources, leave the provider out and need no Axiom setup.
+    // Axiom credentials resolve when the providers build, so only the stages
+    // that own Axiom resources add the provider and need Axiom setup.
     providers: Layer.unwrap(
-      deployStage.pipe(
+      stageName.pipe(
         Effect.map((stage) =>
-          stage === "dev"
-            ? Cloudflare.providers()
-            : Layer.mergeAll(Cloudflare.providers(), Axiom.providers()),
+          ownsAxiom(stage)
+            ? Layer.mergeAll(Cloudflare.providers(), Axiom.providers())
+            : Cloudflare.providers(),
         ),
       ),
     ),

@@ -1,6 +1,5 @@
 import * as Alchemy from "alchemy";
 import * as Axiom from "alchemy/Axiom";
-import { RuntimeContext } from "alchemy";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -9,13 +8,13 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Tracer from "effect/Tracer";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { Ingest, Logs, Traces } from "../resources";
+import { lazy } from "./r2";
 import { deployStage } from "./stage";
 
 // Response headers worth keeping on a span. Everything else can carry a
@@ -43,7 +42,12 @@ export const isScrubbed = (key: string) => {
 const scrubbedTracer = Layer.effect(
   Tracer.Tracer,
   Effect.gen(function* scrubbedTracer() {
-    const exporters = yield* Layer.build(yield* Alchemy.Telemetry.Telemetry);
+    // Alchemy types its exporter layer with any errors and requirements. It
+    // reads config and the HTTP client and degrades to an empty layer when
+    // either fails, so the real shape is narrower.
+    const bound: Layer.Layer<never, Config.ConfigError, HttpClient.HttpClient> =
+      yield* Alchemy.Telemetry.Telemetry;
+    const exporters = yield* Layer.build(bound);
     const inner = Context.get(exporters, Tracer.Tracer);
     return Tracer.make({
       context: inner.context,
@@ -53,7 +57,10 @@ const scrubbedTracer = Layer.effect(
         // The span belongs to the exporter's tracer, so patching the one
         // method is the only seam between creating it and writing to it.
         span.attribute = (key, value) => {
-          attribute(key, isScrubbed(key) ? "<redacted>" : value);
+          // The client's address is not worth keeping.
+          if (key !== "client.address") {
+            attribute(key, isScrubbed(key) ? "<redacted>" : value);
+          }
         };
         return span;
       },
@@ -99,17 +106,13 @@ const BrowserSpans = Schema.fromJsonString(
 
 const status = (code: number) => HttpServerResponse.empty({ status: code });
 
-// Resolved at runtime, per invocation: the token is a binding, never a literal.
-const lazy = <A>(value: Effect.Effect<A, never, RuntimeContext>) =>
-  value.pipe(Effect.provide(RuntimeContext.phantom));
-
 /**
  * Where the browser relay forwards. Dev stages have no Axiom resources and
  * yielding them would create them, so `target` is absent there.
  */
 export const relayConfig = Effect.gen(function* relayConfig() {
   const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
-  const client = yield* HttpClient.HttpClient.pipe(Effect.provide(FetchHttpClient.layer));
+  const client = yield* HttpClient.HttpClient;
   if ((yield* deployStage) === "dev") {
     return { client, origin, target: undefined };
   }

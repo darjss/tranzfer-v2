@@ -14,7 +14,7 @@ Run `vp check`, `vp run test` and `vp run build` before committing. An empty tes
 
 From the main checkout, run `vp run build`, inspect `vp run plan`, then run `vp run deploy`. The production workflow declares its required GitHub secrets in [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
 
-Deploys to production, staging and PR previews create Axiom datasets and an ingest token per stage, so they need `AXIOM_TOKEN` and `AXIOM_ORG_ID` ([.env.example](.env.example)). Both are GitHub secrets in the three workflows. Dev stages ship no telemetry.
+Production and staging deploys create Axiom datasets and an ingest token, so they need `AXIOM_TOKEN` and `AXIOM_ORG_ID` ([.env.example](.env.example)). Both are GitHub secrets in `deploy.yml`. PR previews export into staging's datasets and need no Axiom credentials. Dev stages ship no telemetry.
 
 After deployment, check API `/health`, web `/infra`, and sign-in. The infrastructure probe checks D1 and R2 reads. A Worker rollback does not roll back migrations or storage changes.
 
