@@ -15,8 +15,6 @@ packages:
 minimumReleaseAgeExclude:
   - solid-js
   - "@solidjs/*"
-  - "@uppy/aws-s3@6.2.1"
-  - "@uppy/core@6.1.0"
   - "@effect/platform-node@4.0.1"
   - "@effect/tsgo-darwin-arm64@0.48.1"
   - "@effect/tsgo-darwin-x64@0.48.1"
@@ -63,4 +61,4 @@ allowBuilds:
   msgpackr-extract: false
   workerd: true
 patchedDependencies:
-  "@uppy/aws-s3@6.2.1": patches/@uppy__aws-s3@6.2.1.patch
+  "@uppy/aws-s3@6.2.2": patches/@uppy__aws-s3@6.2.2.patch

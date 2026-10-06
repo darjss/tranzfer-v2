@@ -18,7 +18,7 @@
     "@solidjs/router": "2.0.0-next.35",
     "@solidjs/web": "catalog:",
     "@tranzfer/contracts": "workspace:*",
-    "@uppy/aws-s3": "6.2.1",
+    "@uppy/aws-s3": "6.2.2",
     "@uppy/core": "6.2.0",
     "@uppy/drop-target": "5.0.0",
     "better-auth": "1.7.7",

@@ -12,10 +12,10 @@ index f85a7d84906d975ce5c72c0f0b383c624d70e8ce..6d8a3e34ec2f3213254f76f54cd00edb
      onPartComplete?: (part: {
          PartNumber: number;
 diff --git a/lib/S3Uploader.js b/lib/S3Uploader.js
-index 35ee299e872eb156595ffeeda6bce6ebf06bfe13..723e987d1f76b28278435fedd736ea9d6ddac65a 100644
+index 5facd21714c8bbd2826df7d63feeba1c941f7649..76b551e3b48f34a9b5105891fd786bbbaf9fa9b8 100644
 --- a/lib/S3Uploader.js
 +++ b/lib/S3Uploader.js
-@@ -207,39 +207,65 @@ export default class S3Uploader {
+@@ -208,39 +208,65 @@ export default class S3Uploader {
          await this.#uploadRemainingParts(signal);
      }
      async #uploadRemainingParts(signal) {
@@ -216,7 +216,7 @@ index 16be007eae9cb6353d154d83faf84b7a5114cda2..a3742f097da5c7986c060355b9f36c1b
      /** Completes a multipart upload by combining all uploaded parts. */
      async completeMultipartUpload({ key, uploadId, parts, signal, }) {
 diff --git a/lib/s3-client/types.d.ts b/lib/s3-client/types.d.ts
-index 1fecee872c7824a70914a8762bcd71d4c9e0b3c2..d30ac6e9332ebdf949aacb60cd1ea018cf1b8b97 100644
+index fd9a5cb399513c65c840e28ace0aa9833f404b44..41721b87dcb166e80ddd077e857878d8850c711c 100644
 --- a/lib/s3-client/types.d.ts
 +++ b/lib/s3-client/types.d.ts
 @@ -22,6 +22,7 @@ export interface DeleteMultipartUploadRequest extends PresignableRequestBase {

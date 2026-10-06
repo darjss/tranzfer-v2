@@ -210,7 +210,7 @@ overrides:
   '@better-auth/drizzle-adapter>drizzle-orm': 1.0.0-rc.5-ab785fc
 
 patchedDependencies:
-  '@uppy/aws-s3@6.2.1': ffba143aa3ff46fe8ce640adadc5ecb12ec1939ada6ad9bde14d99f88c4db4a9
+  '@uppy/aws-s3@6.2.2': 4016890f0dd65fbf3f7dfc95e00518b9157941fb3d757c6220f35c51dea8ece1
 
 importers:
 
@@ -311,8 +311,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/contracts
       '@uppy/aws-s3':
-        specifier: 6.2.1
-        version: 6.2.1(patch_hash=ffba143aa3ff46fe8ce640adadc5ecb12ec1939ada6ad9bde14d99f88c4db4a9)(@uppy/core@6.2.0)
+        specifier: 6.2.2
+        version: 6.2.2(patch_hash=4016890f0dd65fbf3f7dfc95e00518b9157941fb3d757c6220f35c51dea8ece1)(@uppy/core@6.2.0)
       '@uppy/core':
         specifier: 6.2.0
         version: 6.2.0
@@ -3411,10 +3411,10 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@uppy/aws-s3@6.2.1':
-    resolution: {integrity: sha512-TcoNW8nL6H92Eb7zNbdZBvJrnHvabcDBBUxX4sb5fi3n21bc/Zf3QutkmPTjyL4OafTcP7P1eBbBif7RUbTaPQ==}
+  '@uppy/aws-s3@6.2.2':
+    resolution: {integrity: sha512-HnrlXAc6EImAusdbT2h9o4MVs0TSQossRNqh124rx7aBnoP8f/6d/NHkV4R1YoyY3BqsTMpbex83W3QesTV0+g==}
     peerDependencies:
-      '@uppy/core': ^6.1.0
+      '@uppy/core': ^6.2.0
 
   '@uppy/core@6.2.0':
     resolution: {integrity: sha512-GujQtHazyHM2jjoNZyZlB+R3mUf1bynx0D+sPRt4IfLEfV09LbqA1kzwabL+WEKFdfqls15T+a/4u3XGV4n/oQ==}
@@ -7885,7 +7885,7 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@uppy/aws-s3@6.2.1(patch_hash=ffba143aa3ff46fe8ce640adadc5ecb12ec1939ada6ad9bde14d99f88c4db4a9)(@uppy/core@6.2.0)':
+  '@uppy/aws-s3@6.2.2(patch_hash=4016890f0dd65fbf3f7dfc95e00518b9157941fb3d757c6220f35c51dea8ece1)(@uppy/core@6.2.0)':
     dependencies:
       '@uppy/core': 6.2.0
 
