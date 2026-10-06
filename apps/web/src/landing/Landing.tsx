@@ -158,6 +158,11 @@ export default function Landing() {
       : { x: p.x / innerWidth - 0.5, y: p.y / innerHeight - 0.5 };
   };
 
+  // Pointer parallax; App.css zeroes it on coarse pointers.
+  const onMove = (e: MouseEvent) => {
+    setPos({ x: e.clientX, y: e.clientY });
+  };
+
   onSettled(() => {
     setMounted(true);
 
@@ -176,10 +181,6 @@ export default function Landing() {
       io.observe(el);
     }
 
-    // Pointer parallax; App.css zeroes it on coarse pointers.
-    const onMove = (e: MouseEvent) => {
-      setPos({ x: e.clientX, y: e.clientY });
-    };
     addEventListener("mousemove", onMove);
 
     let timeout: ReturnType<typeof setTimeout> | undefined;

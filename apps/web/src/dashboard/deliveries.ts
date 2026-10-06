@@ -2,7 +2,6 @@ import type { Delivery, DeliveryId, RetentionDays } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import type * as ManagedRuntime from "effect/ManagedRuntime";
-import * as Struct from "effect/Struct";
 import {
   action,
   createEffect,
@@ -20,14 +19,6 @@ import { transfers } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
 import type { ChosenFile } from "../uploads/uploads";
 import { kindOf, rollup, totalSize } from "./format";
-
-// What a cancel looks like before the server confirms it.
-const cancelled = (delivery: Delivery): Delivery =>
-  Struct.evolve(delivery, {
-    status: () => "cancelled" as const,
-    transfers: (rows) =>
-      rows.map((transfer) => Struct.evolve(transfer, { state: () => "cancelled" as const })),
-  });
 
 /**
  * The sender's deliveries and the actions that change them. Each action
@@ -98,10 +89,15 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
   /** Resolves to a problem to show, or undefined once the delivery is cancelled. */
   const cancel = action(async function* cancel(deliveryId: DeliveryId) {
     setDeliveries((list) => {
-      const index = list.findIndex((delivery) => delivery.id === deliveryId);
-      const row = list[index];
+      // Write the fields a cancel changes, not a whole new row, so the
+      // server's answer settles to the same values instead of replacing them.
+      // Object.assign because the contract types are readonly.
+      const row = list.find((delivery) => delivery.id === deliveryId);
       if (row !== undefined) {
-        list[index] = cancelled(row);
+        Object.assign(row, { status: "cancelled" });
+        for (const transfer of row.transfers) {
+          Object.assign(transfer, { state: "cancelled" });
+        }
       }
     });
     const exit = await runtime.runPromiseExit(Uploads.use((uploads) => uploads.cancel(deliveryId)));

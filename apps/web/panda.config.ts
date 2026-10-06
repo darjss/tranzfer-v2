@@ -1,4 +1,5 @@
 import { defineConfig } from "@pandacss/dev";
+import presetBase from "@pandacss/preset-base";
 import pandaPreset from "@pandacss/preset-panda";
 
 export default defineConfig({
@@ -7,7 +8,7 @@ export default defineConfig({
   jsxFramework: "solid",
   outdir: "styled-system",
   preflight: true,
-  presets: [pandaPreset],
+  presets: [presetBase, pandaPreset],
   strictTokens: true,
   theme: {
     extend: {

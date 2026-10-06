@@ -5,7 +5,7 @@ import { defineRelations } from "drizzle-orm/relations";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { SqlError } from "effect/unstable/sql/SqlError";
+import { SqlError } from "effect/sql/SqlError";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 
 import * as schema from "./schema";

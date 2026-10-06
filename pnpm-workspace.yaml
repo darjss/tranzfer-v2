@@ -15,30 +15,40 @@ packages:
 minimumReleaseAgeExclude:
   - solid-js
   - "@solidjs/*"
-  - "@uppy/aws-s3@6.2.1"
-  - "@uppy/core@6.1.0"
+  - "@effect/platform-node@4.0.1"
+  - "@effect/tsgo-darwin-arm64@0.48.1"
+  - "@effect/tsgo-darwin-x64@0.48.1"
+  - "@effect/tsgo-linux-arm64@0.48.1"
+  - "@effect/tsgo-linux-arm@0.48.1"
+  - "@effect/tsgo-linux-x64@0.48.1"
+  - "@effect/tsgo-win32-arm64@0.48.1"
+  - "@effect/tsgo-win32-x64@0.48.1"
+  - "@effect/tsgo@0.48.1"
+  - "@alchemy.run/better-auth@2.0.0-beta.81"
+  - "@alchemy.run/cloudflare-runtime@2.0.0-beta.81"
+  - "@alchemy.run/floci@2.0.0-beta.81"
+  - "@alchemy.run/node-utils@2.0.0-beta.81"
+  - alchemy@2.0.0-beta.81
+  - "@cloudflare/workers-types@5.20261006.1"
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0
   vite-plus: 1.0.0
-  solid-js: 2.0.0-rc.8
-  "@solidjs/web": 2.0.0-rc.8
-  "@solidjs/diagnostics": 2.0.0-rc.8
-  effect: 4.0.0-rc.115
-  "@effect/platform-node": 4.0.0-rc.115
-  "@effect/vitest": 4.0.0-rc.115
+  solid-js: 2.0.0-rc.13
+  "@solidjs/web": 2.0.0-rc.13
+  "@solidjs/diagnostics": 2.0.0-rc.13
+  effect: 4.0.1
+  "@effect/platform-node": 4.0.1
+  "@effect/vitest": 4.0.1
+  # vite-plus 1.0.0 bundles vitest 5.0.1. A second copy splits the test runner.
+  vitest: 5.0.1
   typescript: 7.0.2
-  "@types/node": 26.4.1
-  "@cloudflare/workers-types": 5.20260911.1
+  "@types/node": 26.6.4
+  "@cloudflare/workers-types": 5.20261006.1
   drizzle-orm: 1.0.0-rc.5-ab785fc
   drizzle-kit: 1.0.0-rc.5-ab785fc
 overrides:
+  vitest: "catalog:"
   vite@*: "catalog:"
-  # Keep oxlint at 1.82/tsgolint at 7.0.2001: `effect-tsgo patch` refuses
-  # vite-plus rc.0's bundled 1.85/7.0.2002. Drop these once @effect/tsgo
-  # supports them.
-  "vite-plus>oxlint": "1.82.0"
-  "oxlint>oxlint-tsgolint": "7.0.2001"
-  oxlint-tsgolint: "7.0.2001"
   "@better-auth/drizzle-adapter>drizzle-orm": "catalog:"
 peerDependencyRules:
   allowAny:
@@ -47,7 +57,8 @@ peerDependencyRules:
     vite: "*"
 allowBuilds:
   esbuild: true
+  "@parcel/watcher": false
   msgpackr-extract: false
   workerd: true
 patchedDependencies:
-  "@uppy/aws-s3@6.2.1": patches/@uppy__aws-s3@6.2.1.patch
+  "@uppy/aws-s3@6.2.2": patches/@uppy__aws-s3@6.2.2.patch

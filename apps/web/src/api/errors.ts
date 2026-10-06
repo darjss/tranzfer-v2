@@ -15,9 +15,9 @@ import type { Api } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
 import * as Match from "effect/Match";
 import * as Schema from "effect/Schema";
-import type * as Rpc from "effect/unstable/rpc/Rpc";
-import { RpcClientError } from "effect/unstable/rpc/RpcClientError";
-import type * as RpcGroup from "effect/unstable/rpc/RpcGroup";
+import type * as Rpc from "effect/rpc/Rpc";
+import { RpcClientError } from "effect/rpc/RpcClientError";
+import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 /** Every error an Api call can fail with, middleware and transport included. */
 export type ApiError = Rpc.Error<RpcGroup.Rpcs<typeof Api>> | RpcClientError;

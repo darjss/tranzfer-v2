@@ -115,29 +115,30 @@ const DeliveriesPage = () => {
     await pick(await getDroppedFiles(dropped));
   };
 
+  const over = (event: DragEvent) => {
+    if (hasFiles(event)) {
+      event.preventDefault();
+      setDragging(true);
+    }
+  };
+  const leave = (event: DragEvent) => {
+    if (event.relatedTarget === null) {
+      setDragging(false);
+    }
+  };
+  const drop = (event: DragEvent) => {
+    if (!hasFiles(event) || event.dataTransfer === null) {
+      return;
+    }
+    event.preventDefault();
+    setDragging(false);
+    void sendDropped(event.dataTransfer);
+  };
+
   // The whole window is the drop target. dragleave with no relatedTarget
   // means the pointer left the window, not just moved between children.
   onSettled(() => {
     wireWindow();
-    const over = (event: DragEvent) => {
-      if (hasFiles(event)) {
-        event.preventDefault();
-        setDragging(true);
-      }
-    };
-    const leave = (event: DragEvent) => {
-      if (event.relatedTarget === null) {
-        setDragging(false);
-      }
-    };
-    const drop = (event: DragEvent) => {
-      if (!hasFiles(event) || event.dataTransfer === null) {
-        return;
-      }
-      event.preventDefault();
-      setDragging(false);
-      void sendDropped(event.dataTransfer);
-    };
     window.addEventListener("dragover", over);
     window.addEventListener("dragleave", leave);
     window.addEventListener("drop", drop);
