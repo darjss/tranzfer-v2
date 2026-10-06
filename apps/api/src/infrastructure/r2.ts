@@ -16,7 +16,7 @@ import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 
-import { Storage, StorageError, UPLOAD_URL_TTL } from "../implementation/storage";
+import { Storage, StorageError, UPLOAD_URL_TTL } from "../storage";
 import { Files } from "../resources";
 
 // SAFETY: R2's S3 API signs against the pseudo-region "auto", which the AWS
