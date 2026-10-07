@@ -261,7 +261,7 @@ Record transfer and multipart identities, recovery transitions, retries, file mi
 
 Never log credentials, session tokens, signed URLs or file contents. A signed URL in a log is a working credential in a log.
 
-Traces and logs ship to Axiom ([STACK.md](STACK.md)). A delivery upload is a `Uploads.delivery` span with one `Uploads.file` child per file. Offline pauses, retries with their attempt number and status, `complete.signed`, and resume verification (duration, parts and bytes checked) are events on the file span. Parts get no span of their own. A file span ends `done`, `failed` or `cancelled`, and a failure carries an error tag, never a message. On the API, spans carry the delivery and transfer ids, part count and size, and the sweeper's counts. Query strings and most headers are redacted before export, so a new span attribute is never a place for a URL.
+Traces ship to Axiom, with log lines as span events ([STACK.md](STACK.md)). A delivery upload is a `Uploads.delivery` span with one `Uploads.file` child per file. Offline pauses, retries with their attempt number and status, `complete.signed`, and resume verification (duration, parts and bytes checked) are events on the file span. Parts get no span of their own. A file span ends `done`, `failed` or `cancelled`, and a failure carries an error tag, never a message. On the API, spans carry the delivery and transfer ids, part count and size, and the sweeper's counts. Query strings and most headers are redacted before export, so a new span attribute is never a place for a URL.
 
 Measure the things that matter: success rate, resume rate, bytes resent that did not need resending, manual interventions, retries and finalization failures.
 

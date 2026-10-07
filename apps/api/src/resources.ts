@@ -66,7 +66,9 @@ export const Files = Cloudflare.R2.Bucket("Files", {
 }).pipe(Alchemy.remote());
 
 // Axiom names are org-wide, so production and staging each get their own
-// datasets and token. Previews reference staging's (see ownsAxiom).
+// dataset and token. Previews reference staging's (see ownsAxiom). Traces only:
+// the free plan allows three datasets, and Effect already records every log
+// line as an event on its span.
 const axiomName = (kind: string) =>
   Output.fromEffect(Effect.map(Stage, (stage) => `tranzfer-${stage}-${kind}`));
 
@@ -74,13 +76,12 @@ const ownedOrStaging = <A, R>(owned: Effect.Effect<A, never, R>, staging: Effect
   Effect.flatMap(stageName, (stage) => (ownsAxiom(stage) ? owned : staging));
 
 export const Traces = ownedOrStaging(
-  Axiom.Dataset("Traces", { kind: "otel:traces:v1", name: axiomName("traces") }),
+  Axiom.Dataset("Traces", {
+    description: "Tranzfer API and browser upload spans",
+    kind: "otel:traces:v1",
+    name: axiomName("traces"),
+  }),
   Axiom.Dataset.ref("Traces", { stage: "staging" }),
-);
-
-export const Logs = ownedOrStaging(
-  Axiom.Dataset("Logs", { kind: "otel:logs:v1", name: axiomName("logs") }),
-  Axiom.Dataset.ref("Logs", { stage: "staging" }),
 );
 
 // Ingest only: the token reaches the Worker as a secret, and the browser
@@ -88,13 +89,9 @@ export const Logs = ownedOrStaging(
 export const Ingest = ownedOrStaging(
   Effect.gen(function* ingest() {
     const traces = yield* Traces;
-    const logs = yield* Logs;
     return yield* Axiom.ApiToken("Ingest", {
-      datasetCapabilities: Output.all(traces.name, logs.name).pipe(
-        Output.map(([tracesName, logsName]) => ({
-          [logsName]: { ingest: ["create"] },
-          [tracesName]: { ingest: ["create"] },
-        })),
+      datasetCapabilities: traces.name.pipe(
+        Output.map((tracesName) => ({ [tracesName]: { ingest: ["create"] } })),
       ),
       name: axiomName("ingest"),
     });
