@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
-import { InvalidUpload, NotUploaded } from "@tranzfer/contracts";
+import { DeliveryId, InvalidUpload, NotUploaded, TransferId } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Tracer from "effect/Tracer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { md5 } from "hash-wasm";
@@ -9,6 +10,7 @@ import { md5 } from "hash-wasm";
 import { RpcClientDefect, RpcClientError } from "effect/rpc/RpcClientError";
 
 import { fingerprint } from "./recovery";
+import { makeUploadSpans } from "./spans";
 import {
   chosenFiles,
   deliveryTitle,
@@ -257,4 +259,52 @@ describe("choosing files", () => {
       "a.mov and 2 more",
     );
   });
+});
+
+describe("upload spans", () => {
+  it.effect("a delivery span ends with its last file and counts the outcomes", () =>
+    Effect.gen(function* spanLifecycle() {
+      const ended: {
+        name: string;
+        parent: string | undefined;
+        attributes: Map<string, unknown>;
+      }[] = [];
+      const tracer = Tracer.make({
+        span: (options) =>
+          new (class extends Tracer.NativeSpan {
+            override end(...args: Parameters<Tracer.NativeSpan["end"]>) {
+              super.end(...args);
+              ended.push({
+                attributes: this.attributes,
+                name: this.name,
+                parent: this.parent._tag === "Some" ? this.parent.value.spanId : undefined,
+              });
+            }
+          })(options),
+      });
+      const deliveryId = DeliveryId.make(crypto.randomUUID());
+      const done = TransferId.make(crypto.randomUUID());
+      const failed = TransferId.make(crypto.randomUUID());
+      yield* Effect.gen(function* run() {
+        const spans = yield* makeUploadSpans;
+        yield* spans.beginDelivery(deliveryId, { "delivery.file_count": 2 });
+        yield* spans.beginFile(deliveryId, { id: done, size: 10 }, false);
+        yield* spans.beginFile(deliveryId, { id: failed, size: 10 }, false);
+        yield* spans.endFile(done, "done");
+        expect(ended.map(({ name }) => name)).toEqual(["Uploads.file"]);
+        yield* spans.endFile(failed, "failed", { "error.tag": "NotUploaded" });
+      }).pipe(Effect.withTracer(tracer));
+
+      const failedFile = ended.find((span) => span.attributes.get("upload.outcome") === "failed");
+      const delivery = ended.find((span) => span.name === "Uploads.delivery");
+      expect(ended.map(({ name }) => name)).toEqual([
+        "Uploads.file",
+        "Uploads.file",
+        "Uploads.delivery",
+      ]);
+      expect(failedFile?.attributes.get("error.tag")).toBe("NotUploaded");
+      expect(delivery?.attributes.get("delivery.files_done")).toBe(1);
+      expect(delivery?.attributes.get("delivery.files_failed")).toBe(1);
+    }),
+  );
 });

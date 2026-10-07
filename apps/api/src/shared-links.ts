@@ -49,6 +49,12 @@ export class SharedLinks extends Context.Service<
             return yield* new LinkNotFound();
           }
           const { delivery } = link;
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": delivery.transfers.length,
+            "delivery.id": delivery.id,
+            "delivery.status": delivery.status,
+            "delivery.total_bytes": delivery.transfers.reduce((sum, file) => sum + file.size, 0),
+          });
           if (delivery.status === "open") {
             return yield* new LinkNotReady({
               senderName: delivery.sender.name,

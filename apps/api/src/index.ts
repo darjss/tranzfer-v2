@@ -5,6 +5,7 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import { sql } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { HttpRouter, HttpServer, HttpServerResponse } from "effect/http";
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
 import * as RpcServer from "effect/rpc/RpcServer";
@@ -19,6 +20,7 @@ import { Transfers } from "./transfers";
 import { Auth, makeAuth } from "./infrastructure/auth";
 import { filesStorage } from "./infrastructure/r2";
 import { deployStage } from "./infrastructure/stage";
+import { relayConfig, relayTraces, telemetry } from "./infrastructure/telemetry";
 import { App } from "./resources";
 import { ApiWorker } from "./worker";
 
@@ -85,6 +87,7 @@ export default ApiWorker.make(
         ),
       ),
       HttpRouter.add("GET", "/health", perInvocation(health)),
+      HttpRouter.add("POST", "/api/telemetry/traces", relayTraces(yield* relayConfig)),
     );
     const handle_ = yield* routes.pipe(
       Layer.provide(HttpServer.layerServices),
@@ -98,6 +101,8 @@ export default ApiWorker.make(
         Cloudflare.D1.QueryDatabaseBinding,
         Cloudflare.R2.ReadBucketBinding,
         Cloudflare.Workers.CronEventSourceLive,
+        FetchHttpClient.layer,
+        telemetry,
       ),
     ),
   ),

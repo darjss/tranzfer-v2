@@ -132,6 +132,7 @@ export class Deliveries extends Context.Service<
         );
 
       const view = Effect.fn("Deliveries.view")(function* view(deliveryId: DeliveryId) {
+        yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
         const row = yield* load(deliveryId);
         if (row === undefined) {
           return yield* Effect.die(new Error(`Delivery ${deliveryId} vanished`));
@@ -148,6 +149,11 @@ export class Deliveries extends Context.Service<
           if (row === undefined || row.senderId !== senderId) {
             return yield* new DeliveryNotFound();
           }
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": row.transfers.length,
+            "delivery.id": deliveryId,
+            "delivery.status": row.status,
+          });
           yield* batch([
             db
               .update(schema.delivery)
@@ -170,8 +176,15 @@ export class Deliveries extends Context.Service<
           senderId: string,
           input: NewDelivery,
         ) {
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": input.files.length,
+            "delivery.id": input.id,
+            "delivery.retention_days": input.retentionDays,
+            "delivery.total_bytes": input.files.reduce((total, file) => total + file.size, 0),
+          });
           const existing = yield* load(input.id);
           if (existing !== undefined) {
+            yield* Effect.annotateCurrentSpan("delivery.replayed", true);
             return sameDelivery(senderId, input, existing)
               ? yield* toView(existing)
               : yield* new DeliveryConflict();
@@ -238,6 +251,7 @@ export class Deliveries extends Context.Service<
             where: { senderId },
             with: { link: true, transfers: { orderBy: { path: "asc" } } },
           });
+          yield* Effect.annotateCurrentSpan("delivery.count", rows.length);
           return yield* Effect.forEach(rows, toView);
         }, dieOnDatabaseError),
 
@@ -274,6 +288,7 @@ export class Deliveries extends Context.Service<
             ]);
             yield* Effect.logInfo("abandoned deliveries cancelled", { count: ids.length });
           }
+          yield* Effect.annotateCurrentSpan("sweep.abandoned", abandoned.length);
           const ended = yield* db.query.delivery.findMany({
             columns: { id: true },
             limit: PURGE_BATCH,
@@ -301,7 +316,9 @@ export class Deliveries extends Context.Service<
               ).pipe(Effect.tap((removed) => (removed ? markPurged(delivery.id) : Effect.void))),
             { concurrency: 4 },
           );
-          return purged.filter(Boolean).length;
+          const total = purged.filter(Boolean).length;
+          yield* Effect.annotateCurrentSpan({ "sweep.ended": ended.length, "sweep.purged": total });
+          return total;
         }).pipe(Effect.withSpan("Deliveries.purgeEnded"), dieOnDatabaseError),
 
         view,
