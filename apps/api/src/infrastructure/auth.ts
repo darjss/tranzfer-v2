@@ -45,7 +45,7 @@ export class Auth extends Context.Service<
 
 const SigningSecret = Schema.Redacted(Schema.String.check(Schema.isMinLength(32)));
 
-// A copied .env.example leaves empty values behind; treat them as unset.
+// An unset GitHub secret arrives as an empty string; treat it as unset.
 const optionalString = (name: string) =>
   Config.option(Config.String(name)).pipe(Config.map(Option.filter((value) => value !== "")));
 

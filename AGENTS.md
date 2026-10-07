@@ -30,6 +30,7 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
   - `IMMUTABLE_UPDATE_IN_STORE`, `UNSTABLE_LIST_IDENTITY`: mutate the store draft, or `reconcile(data, "id")`, and key `<For>` by a stable id.
   - `ASYNC_WATERFALL`: read every async source before using any, so they start together.
   - `SILENT_HOLD`, `LONG_HOLD`: add feedback with `isPending`, `latest` or an optimistic write. Never remove the hold; past 500 ms show a `Loading` fallback.
+- Never read `.env*` files or print secret values. Check config with `vp exec varlock load --agent`, and run a command that needs secrets as `vp exec varlock run -- <command>`.
 - Keep lint enabled. An exception needs user approval, a file-scoped override and a one-line reason.
 - Comments explain runtime quirks and non-obvious constraints.
 - When a check fails, reproduce it on unchanged `origin/main` before blaming the current diff.

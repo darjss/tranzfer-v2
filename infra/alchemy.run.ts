@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Stage } from "alchemy/Stage";
@@ -9,11 +7,6 @@ import * as Match from "effect/Match";
 import ApiWorkerLive from "../apps/api/src/index";
 import { ApiWorker } from "../apps/api/src/worker";
 import { isPreviewStage } from "../apps/api/src/infrastructure/stage";
-
-const envFile = new URL("../.env", import.meta.url);
-if (existsSync(envFile)) {
-  process.loadEnvFile(envFile);
-}
 
 const webRoot = new URL("../apps/web", import.meta.url).pathname;
 
