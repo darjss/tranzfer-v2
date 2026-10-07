@@ -13,7 +13,7 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
-import { Ingest, Logs, Traces } from "../resources";
+import { Ingest, Traces } from "../resources";
 import { lazy } from "./r2";
 import { deployStage } from "./stage";
 
@@ -69,7 +69,7 @@ const scrubbedTracer = Layer.effect(
 );
 
 /**
- * Traces and logs to this stage's Axiom datasets. Dev stages ship nothing:
+ * Traces, with log lines as span events, to this stage's Axiom dataset. Dev stages ship nothing:
  * the Axiom resources would need org credentials just to run `vp run dev`.
  */
 export const telemetry = Layer.unwrap(
@@ -78,7 +78,6 @@ export const telemetry = Layer.unwrap(
       ? Layer.empty
       : Layer.mergeAll(
           Axiom.Telemetry({
-            logs: Logs,
             serviceName: "tranzfer-api",
             token: Ingest,
             traces: Traces,
