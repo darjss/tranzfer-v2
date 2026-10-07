@@ -13,12 +13,14 @@ import type {
   UploadRequest,
 } from "@tranzfer/contracts";
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
+import * as HttpClient from "effect/http/HttpClient";
 import { md5 } from "hash-wasm";
 
 import { ApiClient } from "../api/client";
@@ -31,6 +33,7 @@ import {
   remember,
 } from "./recovery";
 import type { RecoveryRecord } from "./recovery";
+import { makeUploadSpans } from "./spans";
 import { patchTransfer, transfers, wireWindow } from "./store";
 
 type SignRequest = Extract<
@@ -244,22 +247,9 @@ export const verifyParts = (file: Blob, parts: readonly ListedPart[], partSizeBy
   return Effect.tryPromise(async () => await check(0));
 };
 
-// retryUpload, not upload(): upload() would first re-run every failed file
-// in Uppy, other deliveries' included, so each file starts on its own.
-// Per-file errors flow through upload-error; a rejection here is a
-// pre-flight failure no event covers. Interrupting this fiber does not
-// abort the upload: the promise has no signal.
-const start = (uppy: Uppy<TransferMeta, Body>, fileId: string, transferId: TransferId) =>
-  Effect.tryPromise(async () => await uppy.retryUpload(fileId)).pipe(
-    Effect.catch((error) =>
-      Effect.sync(() => {
-        patchTransfer(transferId, { bytesPerSecond: 0, error: error.cause, phase: "failed" });
-      }),
-    ),
-  );
-
 const make = Effect.gen(function* makeUploads() {
   const api = yield* ApiClient;
+  const spans = yield* makeUploadSpans;
   // Background work (finalize, per-file starts) runs in fibers owned by this
   // layer, so it belongs to the app runtime rather than to a component.
   const runFork = yield* FiberSet.makeRuntime();
@@ -291,6 +281,23 @@ const make = Effect.gen(function* makeUploads() {
     return ((bytesUploaded - previous.bytes) / (now - previous.at)) * 1000;
   };
 
+  // retryUpload, not upload(): upload() would first re-run every failed file
+  // in Uppy, other deliveries' included, so each file starts on its own.
+  // Per-file errors flow through upload-error; a rejection here is a
+  // pre-flight failure no event covers. Interrupting this fiber does not
+  // abort the upload: the promise has no signal.
+  const start = (uppy: Uppy<TransferMeta, Body>, fileId: string, transferId: TransferId) =>
+    Effect.tryPromise(async () => await uppy.retryUpload(fileId)).pipe(
+      Effect.catch((error) =>
+        Effect.andThen(
+          Effect.sync(() => {
+            patchTransfer(transferId, { bytesPerSecond: 0, error: error.cause, phase: "failed" });
+          }),
+          spans.endFile(transferId, "failed", { "error.tag": "StartFailed" }),
+        ),
+      ),
+    );
+
   const sign = Effect.fn("Uploads.sign")(function* sign(request: PresignableRequest) {
     const upload = toUploadRequest(request);
     if (upload === null) {
@@ -310,6 +317,7 @@ const make = Effect.gen(function* makeUploads() {
     const signed = yield* retryTransport(api.SignUpload({ key: request.key, request: upload }));
     if (upload._tag === "Complete" && transferId !== undefined) {
       completeSigned.add(transferId);
+      yield* spans.note(transferId, "complete.signed");
     }
     // The headers are part of the signature (an empty file's PUT carries
     // if-none-match), so Uppy must send them as given.
@@ -369,6 +377,9 @@ const make = Effect.gen(function* makeUploads() {
   // settles, so removing it frees memory without firing an abort.
   const settled = (uppy: Uppy<TransferMeta, Body>, fileId: string, transferId: TransferId) =>
     Effect.gen(function* settle() {
+      yield* spans.endFile(transferId, "done", {
+        "upload.parts_confirmed": doneParts.get(transferId)?.size,
+      });
       patchTransfer(transferId, { bytesPerSecond: 0, phase: "done" });
       completeSigned.delete(transferId);
       autoRetries.delete(transferId);
@@ -379,7 +390,7 @@ const make = Effect.gen(function* makeUploads() {
 
   // Once the bytes are in R2, finishing is the FinalizeTransfer retry loop.
   // Both the upload-success path and a post-upload retry go through this.
-  const finish = Effect.fn("Uploads.finish")(function* finish(
+  const finishFile = Effect.fn("Uploads.finish")(function* finishFile(
     uppy: Uppy<TransferMeta, Body>,
     fileId: string,
     transferId: TransferId,
@@ -387,13 +398,18 @@ const make = Effect.gen(function* makeUploads() {
     return yield* retryWhileNotUploaded(retryTransport(api.FinalizeTransfer({ transferId }))).pipe(
       Effect.matchEffect({
         onFailure: (error) =>
-          Effect.sync(() => {
-            patchTransfer(transferId, { error, phase: "failed" });
-          }),
+          Effect.andThen(
+            Effect.sync(() => {
+              patchTransfer(transferId, { error, phase: "failed" });
+            }),
+            spans.endFile(transferId, "failed", { "error.tag": error._tag }),
+          ),
         onSuccess: () => settled(uppy, fileId, transferId),
       }),
     );
   });
+  const finish = (uppy: Uppy<TransferMeta, Body>, fileId: string, transferId: TransferId) =>
+    spans.underFile(transferId)(finishFile(uppy, fileId, transferId));
 
   // One Uppy for the session, created on first use. It is never destroyed,
   // uninstalled or cancelled by component cleanup or navigation: Uppy aborts
@@ -412,7 +428,17 @@ const make = Effect.gen(function* makeUploads() {
         // Every file is multipart so finalize can seal its key (see
         // RELIABILITY.md). Uppy still sends an empty file as a single PUT.
         shouldUseMultipart: () => true,
-        signRequest: async (request) => await runPromise(sign(request)),
+        // A part is signed once per 64 MiB or more, so a span (and a propagated
+        // trace) per part would bury the file's own. The API still traces them.
+        signRequest: async (request) =>
+          await runPromise(
+            toUploadRequest(request)?._tag === "Part"
+              ? sign(request).pipe(
+                  Effect.withTracerEnabled(false),
+                  Effect.provideService(HttpClient.TracerPropagationEnabled, false),
+                )
+              : spans.underFile(keys.get(request.key))(sign(request)),
+          ),
       });
 
       uppy.on("s3-multipart:part-uploaded", (file, part) => {
@@ -456,7 +482,9 @@ const make = Effect.gen(function* makeUploads() {
           phase: "finalizing",
           uploaded: true,
         });
-        runFork(finish(uppy, file.id, transferId));
+        runFork(
+          Effect.andThen(spans.note(transferId, "uploaded"), finish(uppy, file.id, transferId)),
+        );
       });
 
       uppy.on("upload-error", (file, error) => {
@@ -481,8 +509,25 @@ const make = Effect.gen(function* makeUploads() {
           // non-transient and fails honestly on the next upload-error.
           patchTransfer(transferId, { bytesPerSecond: 0, inFlight: 0, phase: "uploading" });
           const delay = Duration.min(Duration.seconds(2 ** attempts), RETRY_CAP);
+          const status = Schema.is(s3Error)(error) ? error.status : undefined;
           runFork(
-            untilOnline.pipe(
+            Effect.suspend(() =>
+              navigator.onLine
+                ? Effect.void
+                : spans
+                    .note(transferId, "paused.offline")
+                    .pipe(
+                      Effect.andThen(untilOnline),
+                      Effect.andThen(spans.note(transferId, "resumed.online")),
+                    ),
+            ).pipe(
+              Effect.andThen(
+                spans.note(transferId, "retry", {
+                  attempt: attempts + 1,
+                  "delay.seconds": Duration.toSeconds(delay),
+                  "error.status": status,
+                }),
+              ),
               Effect.andThen(Effect.sleep(delay)),
               // A cancel removes the file and a manual Retry sets its error to
               // null; either means this retry must not fire.
@@ -506,6 +551,12 @@ const make = Effect.gen(function* makeUploads() {
           inFlight: 0,
           phase: "failed",
         });
+        runFork(
+          spans.endFile(transferId, "failed", {
+            "error.status": Schema.is(s3Error)(error) ? error.status : undefined,
+            "error.tag": "UploadError",
+          }),
+        );
       });
 
       return uppy;
@@ -561,7 +612,13 @@ const make = Effect.gen(function* makeUploads() {
     );
     const refused = (error: DeliveryConflict | OverPlanLimit | RetentionNotInPlan) =>
       Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error));
+    yield* spans.beginDelivery(deliveryId, {
+      "delivery.file_count": files.length,
+      "delivery.retention_days": retentionDays,
+      "delivery.total_bytes": files.reduce((total, { file }) => total + file.size, 0),
+    });
     const delivery = yield* api.CreateDelivery(payload).pipe(
+      spans.underDelivery(deliveryId),
       Effect.retry({
         schedule: Schedule.exponential("1 second"),
         times: 5,
@@ -575,10 +632,11 @@ const make = Effect.gen(function* makeUploads() {
         OverPlanLimit: refused,
         RetentionNotInPlan: refused,
       }),
+      Effect.tapError((error) => spans.abandon(deliveryId, error._tag)),
     );
 
     const byPath = new Map(delivery.transfers.map((transfer) => [transfer.path, transfer]));
-    const added: { fileId: string; transferId: TransferId }[] = [];
+    const added: { fileId: string; size: number; transferId: TransferId }[] = [];
     // All or nothing: the delivery exists, but if any file can't be queued
     // none will upload. Drop what landed and cancel the delivery, so no row
     // is left whose Retry has no file behind it.
@@ -601,7 +659,7 @@ const make = Effect.gen(function* makeUploads() {
           name: file.name,
           type: file.type,
         });
-        added.push({ fileId, transferId: transfer.id });
+        added.push({ fileId, size: transfer.size, transferId: transfer.id });
       }
     }).pipe(
       Effect.catch((error) =>
@@ -616,13 +674,18 @@ const make = Effect.gen(function* makeUploads() {
             patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
           }
           yield* forget(delivery.transfers.map((transfer) => transfer.id));
+          yield* spans.abandon(delivery.id, "files could not be queued");
           // If this cancel fails too, the sweeper ends the open delivery.
           yield* Effect.ignore(api.CancelDelivery({ deliveryId: delivery.id }));
           return yield* Effect.die(error.cause);
         }),
       ),
     );
-    for (const { fileId, transferId } of added) {
+    if (added.length === 0) {
+      yield* spans.abandon(delivery.id, "no file queued");
+    }
+    for (const { fileId, size, transferId } of added) {
+      yield* spans.beginFile(delivery.id, { id: transferId, size }, false);
       runFork(start(uppy, fileId, transferId));
     }
     return delivery;
@@ -634,6 +697,7 @@ const make = Effect.gen(function* makeUploads() {
     if (file === undefined) {
       return;
     }
+    yield* spans.beginFile(file.meta.deliveryId, { id: transferId, size: file.size ?? 0 }, true);
     if (transfers[transferId]?.uploaded) {
       // Uppy finished, so the object exists and only FinalizeTransfer failed;
       // re-uploading would send the whole file again for nothing. Full
@@ -650,15 +714,17 @@ const make = Effect.gen(function* makeUploads() {
       patchTransfer(transferId, { error: undefined, phase: "finalizing" });
       runFork(
         api.FinalizeTransfer({ transferId }).pipe(
+          spans.underFile(transferId),
           Effect.matchEffect({
             onFailure: (error) =>
-              Effect.sync(() => {
+              Effect.suspend(() => {
                 if (error._tag === "NotUploaded") {
                   patchTransfer(transferId, { phase: "uploading" });
                   runFork(start(uppy, file.id, transferId));
-                } else {
-                  patchTransfer(transferId, { error, phase: "failed" });
+                  return Effect.void;
                 }
+                patchTransfer(transferId, { error, phase: "failed" });
+                return spans.endFile(transferId, "failed", { "error.tag": error._tag });
               }),
             onSuccess: () => settled(uppy, file.id, transferId),
           }),
@@ -672,7 +738,9 @@ const make = Effect.gen(function* makeUploads() {
 
   const cancel = Effect.fn("Uploads.cancel")(function* cancel(deliveryId: DeliveryId) {
     const uppy = yield* engine;
-    const cancelled = yield* api.CancelDelivery({ deliveryId });
+    const cancelled = yield* api
+      .CancelDelivery({ deliveryId })
+      .pipe(spans.underDelivery(deliveryId));
     for (const file of uppy.getFiles()) {
       if (file.meta.deliveryId === deliveryId) {
         uppy.removeFile(file.id);
@@ -685,6 +753,7 @@ const make = Effect.gen(function* makeUploads() {
       completeSigned.delete(transfer.id);
       autoRetries.delete(transfer.id);
       patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
+      yield* spans.endFile(transfer.id, "cancelled");
     }
     yield* forget(cancelled.transfers.map((transfer) => transfer.id));
     return cancelled;
@@ -787,13 +856,19 @@ const make = Effect.gen(function* makeUploads() {
         );
       let first: "changed" | "gone" | "policy" | "unreadable" | undefined;
       let matched:
-        | { listed: readonly ListedPart[]; record: RecoveryRecord; transfer: Transfer }
+        | {
+            listed: readonly ListedPart[];
+            record: RecoveryRecord;
+            transfer: Transfer;
+            verifyMillis: number;
+          }
         | undefined;
       for (const candidate of matching) {
         const record = recordOf.get(candidate.id);
         if (record === undefined) {
           continue;
         }
+        const verifyStarted = yield* Clock.currentTimeMillis;
         let problem: "changed" | "gone" | "policy" | "unreadable" | undefined;
         let listed: readonly ListedPart[] = [];
         if (record.size !== file.size || record.lastModified !== file.lastModified) {
@@ -823,7 +898,12 @@ const make = Effect.gen(function* makeUploads() {
                 );
         }
         if (problem === undefined) {
-          matched = { listed, record, transfer: candidate };
+          matched = {
+            listed,
+            record,
+            transfer: candidate,
+            verifyMillis: (yield* Clock.currentTimeMillis) - verifyStarted,
+          };
           break;
         }
         first ??= problem;
@@ -836,7 +916,7 @@ const make = Effect.gen(function* makeUploads() {
         }
         continue;
       }
-      const { listed, record, transfer } = matched;
+      const { listed, record, transfer, verifyMillis } = matched;
       claimed.add(transfer.id);
       const done = new Set(listed.map((part) => part.partNumber));
       doneParts.set(transfer.id, done);
@@ -862,8 +942,18 @@ const make = Effect.gen(function* makeUploads() {
         error: undefined,
         phase: "queued",
       });
+      yield* spans.beginFile(delivery.id, transfer, true);
+      yield* spans.note(transfer.id, "resume.verified", {
+        bytes: partBytes(done, transfer.size),
+        "duration.ms": verifyMillis,
+        parts: listed.length,
+      });
       runFork(start(uppy, fileId, transfer.id));
     }
+    yield* Effect.annotateCurrentSpan({
+      "resume.matched": claimed.size,
+      "resume.problems": problems.length,
+    });
     return problems;
   });
 

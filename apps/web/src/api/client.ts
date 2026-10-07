@@ -8,6 +8,8 @@ import * as RpcClient from "effect/rpc/RpcClient";
 import type { RpcClientError } from "effect/rpc/RpcClientError";
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
 
+import { BrowserTracing } from "./telemetry";
+
 export class ApiClient extends Context.Service<
   ApiClient,
   RpcClient.FromGroup<typeof Api, RpcClientError>
@@ -23,4 +25,8 @@ export const WebLayer = ApiClient.layer.pipe(
       url: "/rpc",
     }).pipe(Layer.provide([RpcSerialization.layerJson, FetchHttpClient.layer])),
   ),
+  // Merged, not provided: spans are made in the caller's fiber, so the
+  // tracer has to be in the runtime's context. RPC calls send `traceparent`,
+  // which the API reads, so a call and its server work share one trace.
+  Layer.provideMerge(BrowserTracing),
 );

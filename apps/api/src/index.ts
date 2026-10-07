@@ -8,6 +8,7 @@ import { sql } from "drizzle-orm";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as Schema from "effect/Schema";
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
@@ -25,6 +26,7 @@ import { Auth, makeAuth } from "./infrastructure/auth";
 import { PolarProduct, PolarWebhook, polarAccess } from "./infrastructure/polar";
 import { filesStorage, lazy } from "./infrastructure/r2";
 import { deployStage } from "./infrastructure/stage";
+import { relayConfig, relayTraces, telemetry } from "./infrastructure/telemetry";
 import { App } from "./resources";
 import { ApiWorker } from "./worker";
 
@@ -158,6 +160,7 @@ export default ApiWorker.make(
         ),
       ),
       HttpRouter.add("GET", "/health", perInvocation(health)),
+      HttpRouter.add("POST", "/api/telemetry/traces", relayTraces(yield* relayConfig)),
     );
     const handle_ = yield* routes.pipe(
       Layer.provide(HttpServer.layerServices),
@@ -171,6 +174,8 @@ export default ApiWorker.make(
         Cloudflare.D1.QueryDatabaseBinding,
         Cloudflare.R2.ReadBucketBinding,
         Cloudflare.Workers.CronEventSourceLive,
+        FetchHttpClient.layer,
+        telemetry,
       ),
     ),
   ),

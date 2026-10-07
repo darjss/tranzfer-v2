@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 
 import * as Alchemy from "alchemy";
+import * as Axiom from "alchemy/Axiom";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Stage } from "alchemy/Stage";
 import * as Effect from "effect/Effect";
@@ -9,7 +10,7 @@ import * as Match from "effect/Match";
 
 import ApiWorkerLive from "../apps/api/src/index";
 import { ApiWorker } from "../apps/api/src/worker";
-import { isPreviewStage } from "../apps/api/src/infrastructure/stage";
+import { isPreviewStage, ownsAxiom, stageName } from "../apps/api/src/infrastructure/stage";
 import { polarProviders } from "./polar-provider";
 
 const envFile = new URL("../.env", import.meta.url);
@@ -22,7 +23,17 @@ const webRoot = new URL("../apps/web", import.meta.url).pathname;
 export default Alchemy.Stack(
   "tranzfer",
   {
-    providers: Layer.mergeAll(Cloudflare.providers(), polarProviders()),
+    // Axiom credentials resolve when the providers build, so only the stages
+    // that own Axiom resources add the provider and need Axiom setup.
+    providers: Layer.unwrap(
+      stageName.pipe(
+        Effect.map((stage) =>
+          ownsAxiom(stage)
+            ? Layer.mergeAll(Cloudflare.providers(), polarProviders(), Axiom.providers())
+            : Layer.mergeAll(Cloudflare.providers(), polarProviders()),
+        ),
+      ),
+    ),
     state: Cloudflare.state(),
   },
   Effect.gen(function* provision() {

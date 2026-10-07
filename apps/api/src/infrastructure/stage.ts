@@ -13,7 +13,7 @@ export const isPreviewStage = (stage: string) => /^pr-\d+$/u.test(stage);
  * running Worker there is no Stage service; Alchemy binds ALCHEMY_STAGE instead.
  * `alchemy dev` names local stages `dev_<user>`.
  */
-export const deployStage = Effect.serviceOption(Stage).pipe(
+export const stageName = Effect.serviceOption(Stage).pipe(
   Effect.flatMap(
     Option.match({
       onNone: () => Config.String("ALCHEMY_STAGE"),
@@ -21,6 +21,16 @@ export const deployStage = Effect.serviceOption(Stage).pipe(
     }),
   ),
   Effect.orDie,
+);
+
+/**
+ * Only production and staging create Axiom datasets and a token. Previews
+ * export into staging's, told apart by `alchemy.stage`, and dev stages ship
+ * nothing, so neither needs Axiom credentials.
+ */
+export const ownsAxiom = (stage: string) => stage === "production" || stage === "staging";
+
+export const deployStage = stageName.pipe(
   Effect.flatMap((stage) =>
     Match.value(stage).pipe(
       Match.when("production", () => Effect.succeed("production" as const)),

@@ -94,6 +94,10 @@ export class Transfers extends Context.Service<
         transfer: Transfer,
         object: StoredObject,
       ) {
+        yield* Effect.annotateCurrentSpan({
+          "transfer.id": transfer.id,
+          "transfer.size": object.size,
+        });
         const now = yield* Clock.currentTimeMillis;
         const claimed = yield* db
           .update(schema.transfer)
@@ -114,6 +118,7 @@ export class Transfers extends Context.Service<
             return yield* new UploadClosed();
           }
         }
+        yield* Effect.annotateCurrentSpan("transfer.claimed", claimed.length > 0);
         return claimed.length > 0;
       });
 
@@ -125,6 +130,11 @@ export class Transfers extends Context.Service<
        * reads the object that can no longer change.
        */
       const settle = Effect.fn("Transfers.settle")(function* settle(transfer: Transfer) {
+        yield* Effect.annotateCurrentSpan({
+          "delivery.id": transfer.deliveryId,
+          "transfer.id": transfer.id,
+          "transfer.size": transfer.size,
+        });
         yield* verify(transfer, yield* storage.head(transfer.objectKey));
         yield* db
           .update(schema.transfer)
@@ -164,10 +174,16 @@ export class Transfers extends Context.Service<
           senderId: string,
           transferId: TransferId,
         ) {
+          yield* Effect.annotateCurrentSpan("transfer.id", transferId);
           const transfer = yield* owned(senderId, { id: transferId });
           if (transfer === undefined) {
             return yield* new DeliveryNotFound();
           }
+          yield* Effect.annotateCurrentSpan({
+            "delivery.id": transfer.deliveryId,
+            "transfer.size": transfer.size,
+            "transfer.state": transfer.state,
+          });
           if (transfer.state === "cancelled") {
             return yield* new UploadClosed();
           }
@@ -223,7 +239,12 @@ export class Transfers extends Context.Service<
             { concurrency: 8 },
           );
           yield* markReady();
-          return recovered.reduce((total, count) => total + count, 0);
+          const total = recovered.reduce((sum, count) => sum + count, 0);
+          yield* Effect.annotateCurrentSpan({
+            "sweep.recovered": total,
+            "sweep.stuck": stuck.length,
+          });
+          return total;
         }).pipe(Effect.withSpan("Transfers.recoverFinalizing"), dieOnDatabaseError),
 
         sign: Effect.fn("Transfers.sign")(function* sign(
@@ -234,6 +255,17 @@ export class Transfers extends Context.Service<
           const transfer = yield* owned(senderId, { objectKey: key });
           if (transfer === undefined) {
             return yield* new DeliveryNotFound();
+          }
+          yield* Effect.annotateCurrentSpan({
+            "delivery.id": transfer.deliveryId,
+            "transfer.id": transfer.id,
+            "transfer.part_count": partCount(transfer.size),
+            "transfer.size": transfer.size,
+            "transfer.state": transfer.state,
+            "upload.request": request._tag,
+          });
+          if (request._tag === "Part") {
+            yield* Effect.annotateCurrentSpan("upload.part_number", request.partNumber);
           }
           if (transfer.delivery.status !== "open") {
             return yield* new UploadClosed();
