@@ -21,6 +21,7 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 - Billing, not built: Polar. Entitlements would live in D1 and get reconciled from webhooks.
 - Infrastructure: Alchemy v2 in `infra/alchemy.run.ts`, on the app's Effect version.
 - Local URLs: Portless.
+- Env and secrets: varlock. `.env.schema` declares every variable. Values live encrypted in `~/.config/tranzfer/.env.local`, CI passes them as process env, and the infra scripts run Alchemy under `varlock run`.
 - Lint and format: oxlint with type-aware rules and Solid diagnostics, oxfmt. Rules live in `lint.config.ts`.
 - Later, when real work needs it: a maintenance Worker or Queues for cleanup, KV for cache only, Electron with a separate Bun transport process and SQLite for desktop.
 - Observability, before launch: PostHog for product analytics, Axiom for the log and trace drain, Sentry for error capture.

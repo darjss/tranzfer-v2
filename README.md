@@ -4,9 +4,9 @@ Resumable file delivery for creators and editors. The first milestone is one com
 
 ## Development
 
-Install with `vp install`. Copy [.env.example](.env.example) to `.env`, fill in the values, follow the [local serving guide](.agents/skills/portless/SKILL.md), then run `vp run dev`.
+Install with `vp install`. Put your values in `~/.config/tranzfer/.env.local` and encrypt them with `vp exec varlock encrypt --file ~/.config/tranzfer/.env.local`. [.env.schema](.env.schema) lists every variable, and every checkout and worktree reads that one file. Then follow the [local serving guide](.agents/skills/portless/SKILL.md), then run `vp run dev`.
 
-Use `https://tranzfer.localhost`. Alchemy runs both Workers locally against a real D1 database and R2 bucket for your `dev_<user>` stage, so `infra/.env` needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Keep auth secrets server-side and register the matching Google OAuth callback for the chosen origin.
+Use `https://tranzfer.localhost`. Alchemy runs both Workers locally against a real D1 database and R2 bucket for your `dev_<user>` stage, so it needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. `vp exec varlock load --agent` shows what resolved, with secrets masked. Keep auth secrets server-side and register the matching Google OAuth callback for the chosen origin.
 
 Run `vp check`, `vp run test` and `vp run build` before committing. An empty test run is not passing coverage.
 

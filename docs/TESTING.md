@@ -45,10 +45,10 @@ Browsers upload through presigned URLs, and a presigned URL has to point at a re
 `vp run test:e2e` targets staging by default. Against a running `vp run dev`, point it at your Portless URL and trust the Portless CA:
 
 ```text
-E2E_BASE_URL=https://tranzfer.localhost NODE_EXTRA_CA_CERTS=~/.portless/ca.pem TEST_LOGIN_KEY=<key from .env> vp run test:e2e
+E2E_BASE_URL=https://tranzfer.localhost NODE_EXTRA_CA_CERTS=~/.portless/ca.pem vp exec varlock run -- vp run test:e2e
 ```
 
-The key must match `TEST_LOGIN_KEY` in the `.env` that `alchemy dev` loaded. A worktree uses its own host, such as `https://<branch>.tranzfer.localhost`.
+`varlock run` injects the same `TEST_LOGIN_KEY` that `alchemy dev` loaded. A worktree uses its own host, such as `https://<branch>.tranzfer.localhost`.
 
 ## Scenarios
 
@@ -86,7 +86,7 @@ Each run writes `e2e/runs/<slug>-<timestamp>/` with `result.json` (timeline, rec
 `e2e/gates/gates.ts` holds the fault plans — `internal`, `beta`, `promise` — matching the table in RELIABILITY.md, with `at` as the fraction of parts acked when the fault lands. Every gate also loses the Complete response: the trap lets the request reach R2, aborts the response, then checks the product converges without a second multipart upload. The `beta` sleep outlasts the 15-minute upload-URL TTL, which is the authorization-expiry row.
 
 ```text
-GATE=internal TEST_LOGIN_KEY=<key from .env> vp run test:gate
+GATE=internal vp exec varlock run -- vp run test:gate
 ```
 
 Requirements: `uv`, FUSE3 and `/dev/fuse`, and Chromium via `playwright` (installed as an e2e devDependency). `GATE_SIZE` overrides the size for rehearsals — bytes or `NGiB` — and `result.json` records `sizeOverridden: true`, so a rehearsal can't pass for a gate. `GATE_KEEP=1` leaves the delivery for inspection; browser and mounts still come down.

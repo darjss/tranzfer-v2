@@ -30,6 +30,7 @@
     "portless": "0.15.7",
     "typescript": "catalog:",
     "ultracite": "7.12.2",
+    "varlock": "1.21.1",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
