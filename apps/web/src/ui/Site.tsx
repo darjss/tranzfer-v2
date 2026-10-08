@@ -10,7 +10,20 @@ export const supportEmail = "support@tranzfer.app";
 
 const shell = css({ marginInline: "auto", maxW: "page", pos: "relative", px: "7" });
 
-export function SiteHeader(props: ParentProps) {
+const nav = [
+  { href: "/#survives", label: "What it survives" },
+  { href: "/#how", label: "How it works" },
+  { href: "/#pricing", label: "Pricing" },
+  { href: "/vs/masv", label: "Compare" },
+];
+
+const navLink = css({
+  _hover: { color: "ink" },
+  transitionDuration: "fast",
+  transitionProperty: "[color]",
+});
+
+export function SiteHeader() {
   return (
     <nav
       class={css({
@@ -25,11 +38,37 @@ export function SiteHeader(props: ParentProps) {
       })}
     >
       <Brand />
-      {props.children ?? (
-        <a class={button({ size: "sm", variant: "outline" })} href="/sign-in">
-          Sign in
-        </a>
-      )}
+      <ul
+        class={css({
+          alignItems: "center",
+          color: "mut",
+          display: "flex",
+          fontWeight: "medium",
+          gap: { base: "5", md: "7" },
+          listStyle: "none",
+          textStyle: "sm",
+        })}
+      >
+        <For each={nav}>
+          {(link) => (
+            <li class={css({ display: { base: "none", md: "block" } })}>
+              <a class={navLink} href={link.href}>
+                {link.label}
+              </a>
+            </li>
+          )}
+        </For>
+        <li>
+          <a class={navLink} href="/sign-in">
+            Sign in
+          </a>
+        </li>
+        <li class={css({ display: { base: "none", sm: "block" } })}>
+          <a class={button({ size: "sm" })} href="/sign-in">
+            Start free
+          </a>
+        </li>
+      </ul>
     </nav>
   );
 }
@@ -37,7 +76,7 @@ export function SiteHeader(props: ParentProps) {
 const columns = [
   {
     links: [
-      { href: "/#desk", label: "What it survives" },
+      { href: "/#survives", label: "What it survives" },
       { href: "/#how", label: "How it works" },
       { href: "/#pricing", label: "Pricing" },
       { href: "/#faq", label: "Questions" },

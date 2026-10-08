@@ -8,11 +8,11 @@ const paid = PlanId.literals.filter((id) => id !== "free");
 
 export const faq = [
   {
-    a: `As big as your plan's active space: ${bytes(plans.free.activeBytes)} on Free, up to ${bytes(plans.studio.activeBytes)} on Studio. There's no separate per-file cap. Every release is tested with a single 100 GB upload.`,
+    a: `As big as your plan holds at once: ${bytes(plans.free.activeBytes)} on Free, up to ${bytes(plans.studio.activeBytes)} on Studio. No separate limit per file. We've tested it with a single 100 GB upload, with eight things broken on purpose.`,
     q: "How big a file can I send?",
   },
   {
-    a: "Tranzfer keeps every part that already arrived. When the connection comes back it carries on by itself. After a sleep, reload or crash, pick the same files again; it checks them against what arrived and sends only what's missing.",
+    a: "Nothing you already sent is lost. When the connection comes back, Tranzfer carries on by itself. After a sleep, a reload or a crash, pick the same files again; it checks them against what arrived and sends only what's missing.",
     q: "What happens if my Wi-Fi drops or my laptop sleeps?",
   },
   {
@@ -35,11 +35,13 @@ export const faq = [
         (id) =>
           `${plans[id].name} is $${plans[id].monthlyUsd} a month for ${bytes(plans[id].activeBytes)}`,
       )
-      .join(", ")}. Space frees up as deliveries end, so it isn't a monthly data cap.`,
+      .join(
+        ", ",
+      )}. Space frees up as deliveries end, so there's no monthly cap on how much you send.`,
     q: "How much does it cost?",
   },
   {
-    a: "Files travel over HTTPS and are stored encrypted in Cloudflare R2. Only someone with the link can download them, and they're deleted when the link ends or you cancel it.",
+    a: "Your files are encrypted on the way and while they're stored. Only someone with the link can download them, and they're deleted when the link ends or you cancel it.",
     q: "Are my files private?",
   },
 ];
