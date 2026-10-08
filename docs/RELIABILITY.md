@@ -242,6 +242,14 @@ How the browser recovers today:
 
 An upload change is not finished until the recipient can download the correct file through an authorized link. Expiry is stated clearly on the page. Define download recovery, and do not make anyone redownload confirmed bytes where the client supports ranges.
 
+How the recipient page does it today:
+
+- One file: one Download button. The browser's download manager resumes it with the same 7-day URL.
+- Several files in Chromium: Download all saves into a folder the recipient picks (`showDirectoryPicker`), recreating each `RelativePath`, three files at a time. A file already at full size is skipped; a shorter one continues with `Range: bytes=<size on disk>-`. Picking the same folder after a reload carries on.
+- Chromium only replaces the real file when a writable closes, so a failure or interruption closes it to keep what arrived, and a long file also commits whenever its unsaved part reaches its saved part (at least 256 MiB). A reload loses at most half of the file in flight.
+- A network failure waits for `online`, re-opens the link for fresh URLs (or its typed refusal) and retries with the same capped backoff as uploads. A disk failure stops and names the file; Resume reuses the folder.
+- Safari and Firefox have no folder picker. They get the per-file list and a line pointing to Chrome or Edge. A streamed zip through a service worker was rejected: a dropped connection restarts the whole archive, and Safari buffers service-worker downloads. No server-side zip: CRC32 over hundreds of GB does not fit Worker CPU limits.
+
 ## Authorization and abuse
 
 Every create, sign, list, complete, abort and download checks identity, ownership, workspace membership where it applies, entitlement and transfer status. The object key and multipart ID are bound to the authorized transfer. A client-supplied upload ID never grants access to arbitrary storage. Resuming is not a way to read or write someone else's upload.
