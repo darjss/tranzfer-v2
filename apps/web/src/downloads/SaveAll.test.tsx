@@ -82,6 +82,7 @@ const makeWorld = () => {
       Api.toLayer(
         Api.of({
           CancelDelivery: () => Effect.die("unused"),
+          ClearDeliveries: () => Effect.die("unused"),
           CreateDelivery: () => Effect.die("unused"),
           Deliveries: () => Effect.die("unused"),
           FinalizeTransfer: () => Effect.die("unused"),

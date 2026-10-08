@@ -3,6 +3,8 @@ import {
   InvalidUpload,
   NotUploaded,
   partCount,
+  RateLimited,
+  rateLimits,
   StorageUnavailable,
   UploadClosed,
 } from "@tranzfer/contracts";
@@ -52,6 +54,16 @@ const verify = (transfer: Transfer, object: Option.Option<StoredObject>) =>
     Match.orElse((found) => Effect.succeed(found.value)),
   );
 
+/**
+ * Counts signing requests per sender. Cloudflare's rate-limit binding in the
+ * Worker, set to `rateLimits.uploadSigning`; it answers whether this request
+ * still fits.
+ */
+export class SigningRate extends Context.Service<
+  SigningRate,
+  { readonly allow: (senderId: string) => Effect.Effect<boolean> }
+>()("tranzfer/SigningRate") {}
+
 /** Upload signing and completion for a sender's transfers. */
 export class Transfers extends Context.Service<
   Transfers,
@@ -60,7 +72,7 @@ export class Transfers extends Context.Service<
       senderId: string,
       key: string,
       request: UploadRequest,
-    ) => Effect.Effect<SignedUrl, DeliveryNotFound | InvalidUpload | UploadClosed>;
+    ) => Effect.Effect<SignedUrl, DeliveryNotFound | InvalidUpload | RateLimited | UploadClosed>;
     readonly finalize: (
       senderId: string,
       transferId: TransferId,
@@ -77,6 +89,7 @@ export class Transfers extends Context.Service<
     Effect.gen(function* makeTransfers() {
       const { db } = yield* Database;
       const deliveries = yield* Deliveries;
+      const signingRate = yield* SigningRate;
       const storage = yield* Storage;
 
       const owned = (senderId: string, where: { id: TransferId } | { objectKey: string }) =>
@@ -252,6 +265,20 @@ export class Transfers extends Context.Service<
           key: string,
           request: UploadRequest,
         ) {
+          // Every sender is counted, but only Free is held to it, so the plan
+          // is read only once the count runs over.
+          if (!(yield* signingRate.allow(senderId))) {
+            const subscription = yield* db.query.subscription.findFirst({
+              columns: { plan: true },
+              where: { userId: senderId },
+            });
+            if (subscription === undefined || subscription.plan === "free") {
+              return yield* new RateLimited({
+                limit: "uploadSigning",
+                retryAfterSeconds: rateLimits.uploadSigning.windowSeconds,
+              });
+            }
+          }
           const transfer = yield* owned(senderId, { objectKey: key });
           if (transfer === undefined) {
             return yield* new DeliveryNotFound();

@@ -8,6 +8,7 @@ import {
   BillingUnavailable,
   OverPlanLimit,
   PaidPlanId,
+  RateLimited,
   RetentionNotInPlan,
 } from "./billing";
 import {
@@ -31,7 +32,7 @@ import {
 export class Api extends RpcGroup.make(
   Rpc.make("Me", { error: Unauthorized, success: Principal }).middleware(Authenticated),
   Rpc.make("CreateDelivery", {
-    error: Schema.Union([DeliveryConflict, OverPlanLimit, RetentionNotInPlan]),
+    error: Schema.Union([DeliveryConflict, OverPlanLimit, RateLimited, RetentionNotInPlan]),
     payload: NewDelivery,
     success: Delivery,
   }).middleware(Authenticated),
@@ -47,7 +48,7 @@ export class Api extends RpcGroup.make(
     payload: Schema.Struct({ deliveryIds: Schema.Array(DeliveryId).check(Schema.isMaxLength(50)) }),
   }).middleware(Authenticated),
   Rpc.make("SignUpload", {
-    error: Schema.Union([DeliveryNotFound, InvalidUpload, UploadClosed]),
+    error: Schema.Union([DeliveryNotFound, InvalidUpload, RateLimited, UploadClosed]),
     payload: SignUploadPayload,
     success: SignedUrl,
   }).middleware(Authenticated),

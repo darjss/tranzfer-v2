@@ -1,4 +1,4 @@
-import { Api, plans } from "@tranzfer/contracts";
+import { Api, plans, rateLimits } from "@tranzfer/contracts";
 import type { PaidPlanId } from "@tranzfer/contracts";
 import { Database } from "@tranzfer/db";
 import { Random, RuntimeContext } from "alchemy";
@@ -21,11 +21,11 @@ import { ApiHandlers, AuthenticatedLive } from "./rpc";
 import { SharedLinks } from "./shared-links";
 import { Storage } from "./storage";
 import { sweep } from "./sweeper";
-import { Transfers } from "./transfers";
+import { SigningRate, Transfers } from "./transfers";
 import { Auth, makeAuth } from "./infrastructure/auth";
 import { PolarProduct, PolarWebhook, polarAccess } from "./infrastructure/polar";
 import { filesStorage, lazy } from "./infrastructure/r2";
-import { deployStage } from "./infrastructure/stage";
+import { deployStage, stageName } from "./infrastructure/stage";
 import { relayConfig, relayTraces, telemetry } from "./infrastructure/telemetry";
 import { App } from "./resources";
 import { ApiWorker } from "./worker";
@@ -90,11 +90,39 @@ export default ApiWorker.make(
       webhookSecret,
     });
 
+    // Rate-limit namespaces are account-wide, so every stage shares the
+    // counters and the key carries the stage name.
+    const stageKey = yield* stageName;
+    const limiter = (client: Cloudflare.RateLimitClient) => (key: string) =>
+      client.limit({ key: `${stageKey}:${key}` }).pipe(
+        Effect.map(({ success }) => success),
+        // A limiter outage must not lock anyone out.
+        Effect.catchTag("RateLimitError", (error) =>
+          Effect.logWarning("rate limit check failed", error.message).pipe(Effect.as(true)),
+        ),
+        Effect.provide(RuntimeContext.phantom),
+      );
+    const authRequests = yield* Cloudflare.RateLimit("AUTH_REQUESTS", {
+      namespaceId: 1001,
+      simple: {
+        limit: rateLimits.authRequests.limit,
+        period: rateLimits.authRequests.windowSeconds,
+      },
+    });
+    const uploadSigning = yield* Cloudflare.RateLimit("UPLOAD_SIGNING", {
+      namespaceId: 1002,
+      simple: {
+        limit: rateLimits.uploadSigning.limit,
+        period: rateLimits.uploadSigning.windowSeconds,
+      },
+    });
+
     const isolate = yield* Layer.build(
       Layer.mergeAll(
         yield* filesStorage,
         LinkTokens.layer((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom))),
-        Layer.effect(Auth, makeAuth(stage, handle)),
+        Layer.effect(Auth, makeAuth(stage, handle, limiter(authRequests))),
+        Layer.succeed(SigningRate, SigningRate.of({ allow: limiter(uploadSigning) })),
         RpcSerialization.layerJson,
       ),
     );
@@ -173,6 +201,7 @@ export default ApiWorker.make(
       Layer.mergeAll(
         Cloudflare.D1.QueryDatabaseBinding,
         Cloudflare.R2.ReadBucketBinding,
+        Cloudflare.RateLimitBinding,
         Cloudflare.Workers.CronEventSourceLive,
         FetchHttpClient.layer,
         telemetry,

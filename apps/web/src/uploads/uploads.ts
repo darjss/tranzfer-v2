@@ -7,6 +7,7 @@ import type {
   Delivery,
   DeliveryConflict,
   OverPlanLimit,
+  RateLimited,
   RetentionDays,
   RetentionNotInPlan,
   Transfer,
@@ -624,7 +625,7 @@ const make = Effect.gen(function* makeUploads() {
         version: 1,
       })),
     );
-    const refused = (error: DeliveryConflict | OverPlanLimit | RetentionNotInPlan) =>
+    const refused = (error: DeliveryConflict | OverPlanLimit | RateLimited | RetentionNotInPlan) =>
       Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error));
     yield* spans.beginDelivery(deliveryId, {
       "delivery.file_count": files.length,
@@ -639,11 +640,12 @@ const make = Effect.gen(function* makeUploads() {
         while: (error) => error._tag === "RpcClientError",
       }),
       // A conflict means these ids already belong to different content, and a
-      // plan refusal means no delivery was made. Either way nothing from this
+      // plan or rate refusal means no delivery was made. Either way nothing from this
       // attempt exists to resume; its records go.
       Effect.catchTags({
         DeliveryConflict: refused,
         OverPlanLimit: refused,
+        RateLimited: refused,
         RetentionNotInPlan: refused,
       }),
       Effect.tapError((error) => spans.abandon(deliveryId, error._tag)),

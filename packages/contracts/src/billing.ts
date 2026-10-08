@@ -20,6 +20,38 @@ export const plans = {
   }
 >;
 
+export const RateLimitName = Schema.Literals([
+  "authRequests",
+  "deliveriesPerDay",
+  "deliveriesPerHour",
+  "newAccounts",
+  "uploadSigning",
+]);
+export type RateLimitName = typeof RateLimitName.Type;
+
+/**
+ * Rate limits, per rolling window. docs/PRODUCT.md is the spec. The auth
+ * limits count per client IP on every plan; the rest count per sender on the
+ * Free plan only, and paid or comp plans have none. Cloudflare's rate-limit
+ * binding enforces the 10 and 60 second windows, the only periods it offers.
+ */
+export const rateLimits = {
+  authRequests: { limit: 30, windowSeconds: 60 },
+  deliveriesPerDay: { limit: 100, windowSeconds: 24 * 60 * 60 },
+  deliveriesPerHour: { limit: 20, windowSeconds: 60 * 60 },
+  newAccounts: { limit: 10, windowSeconds: 24 * 60 * 60 },
+  uploadSigning: { limit: 200, windowSeconds: 10 },
+} as const satisfies Record<
+  RateLimitName,
+  { readonly limit: number; readonly windowSeconds: number }
+>;
+
+/** Over one of `rateLimits`; the same request works again after `retryAfterSeconds`. */
+export class RateLimited extends Schema.TaggedError<RateLimited>()("RateLimited", {
+  limit: RateLimitName,
+  retryAfterSeconds: Schema.Int,
+}) {}
+
 export const PlanId = Schema.Literals(["free", "starter", "pro", "studio"]);
 export type PlanId = typeof PlanId.Type;
 

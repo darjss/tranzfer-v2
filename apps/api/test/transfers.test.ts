@@ -1,7 +1,8 @@
 import { expect, layer } from "@effect/vitest";
-import { partSize } from "@tranzfer/contracts";
+import { partSize, rateLimits } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
+import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
@@ -199,6 +200,29 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       // (signed by the real storage) is what stops a second write.
       yield* transfers.sign("gus", objectKey, { _tag: "Put" });
       yield* transfers.sign("gus", objectKey, { _tag: "Put" });
+    }),
+  );
+
+  it.effect("holds Free senders to the signing rate, and paid plans not at all", () =>
+    Effect.gen(function* scenario() {
+      const free = first((yield* seed("fern", [newFile("a.bin", 200 * MIB)])).transfers);
+      const comp = first((yield* seed("cole", [newFile("a.bin", 200 * MIB)])).transfers);
+      const { db } = yield* Database;
+      yield* db
+        .insert(schema.subscription)
+        .values({ plan: "studio", status: "comp", userId: "cole" });
+      const transfers = yield* Transfers;
+      const { limit, windowSeconds } = rateLimits.uploadSigning;
+      const create = (sender: string, key: string) =>
+        transfers.sign(sender, key, { _tag: "Create" });
+
+      yield* Effect.forEach(Arr.range(1, limit), () => create("fern", free.objectKey));
+      expect(yield* Effect.flip(create("fern", free.objectKey))).toMatchObject({
+        _tag: "RateLimited",
+        limit: "uploadSigning",
+        retryAfterSeconds: windowSeconds,
+      });
+      yield* Effect.forEach(Arr.range(1, limit + 1), () => create("cole", comp.objectKey));
     }),
   );
 

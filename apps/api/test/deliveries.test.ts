@@ -1,7 +1,10 @@
 import { expect, layer, vi } from "@effect/vitest";
+import { DeliveryId, rateLimits } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
+import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import { Base64 } from "effect/encoding";
 import * as Layer from "effect/Layer";
@@ -289,6 +292,67 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
         deliveries.create("lena", newDelivery([newFile("f.bin", 1)], "Fortnight", 14)),
       );
       expect(tooLongForStarter).toMatchObject({ _tag: "RetentionNotInPlan", plan: "starter" });
+    }),
+  );
+
+  it.effect("caps new deliveries an hour on Free, with an exact wait, and not on paid plans", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("max");
+      yield* addUser("nia");
+      yield* subscribe("nia", "pro");
+      const deliveries = yield* Deliveries;
+      const send = (sender: string) => deliveries.create(sender, newDelivery([newFile("a", 1)]));
+      const refusal = send("max").pipe(
+        Effect.andThen(Effect.die(new Error("expected the hourly cap"))),
+        Effect.catchTag("RateLimited", Effect.succeed),
+      );
+      yield* Effect.forEach(Arr.range(1, rateLimits.deliveriesPerHour.limit), () =>
+        Effect.andThen(send("max"), send("nia")),
+      );
+
+      const refused = yield* refusal;
+      expect(refused.limit).toBe("deliveriesPerHour");
+      expect(refused.retryAfterSeconds).toBeGreaterThan(3500);
+      expect(refused.retryAfterSeconds).toBeLessThanOrEqual(3601);
+      yield* send("nia");
+
+      yield* TestClock.adjust(Duration.seconds(refused.retryAfterSeconds - 1));
+      yield* refusal;
+      yield* TestClock.adjust("1 second");
+      yield* send("max");
+    }),
+  );
+
+  it.effect("caps new deliveries a day on Free, counting the oldest still inside it", () =>
+    Effect.gen(function* scenario() {
+      const now = Date.now();
+      yield* TestClock.setTime(now);
+      yield* addUser("olga");
+      const deliveries = yield* Deliveries;
+      const { db } = yield* Database;
+      const { limit } = rateLimits.deliveriesPerDay;
+      // One short of the cap, every 12 minutes back from now: few enough in
+      // the last hour for the hourly cap, the oldest 19.8 hours ago.
+      yield* Effect.forEach(Arr.range(1, limit - 1), (step) =>
+        db.insert(schema.delivery).values({
+          createdAt: new Date(now - step * 12 * 60 * 1000),
+          id: DeliveryId.make(crypto.randomUUID()),
+          retentionDays: 3,
+          senderId: "olga",
+          title: "Earlier",
+        }),
+      );
+      yield* deliveries.create("olga", newDelivery([newFile("last.bin", 1)]));
+
+      const refused = yield* Effect.flip(
+        deliveries.create("olga", newDelivery([newFile("over.bin", 1)])),
+      );
+      expect(refused).toMatchObject({
+        _tag: "RateLimited",
+        limit: "deliveriesPerDay",
+        retryAfterSeconds: (24 * 60 - (limit - 1) * 12) * 60,
+      });
     }),
   );
 
