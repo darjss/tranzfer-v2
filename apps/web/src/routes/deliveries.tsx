@@ -219,6 +219,7 @@ const DeliveriesPage = () => {
     <>
       <Title>Deliveries · Tranzfer</Title>
       <Meta name="description" content="Your Tranzfer deliveries." />
+      <Meta name="robots" content="noindex" />
       <Loading fallback={<main class={css({ minH: "screen" })} />}>
         <Errored
           fallback={(error, retry) => (

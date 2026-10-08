@@ -7,6 +7,12 @@ import { WebLayer } from "./api/client";
 import { createRuntime, RuntimeContext } from "./api/solid-effect";
 import { Router } from "./router";
 import { Uploads } from "./uploads/uploads";
+// Self-hosted, so the first paint waits on no third-party stylesheet.
+import "@fontsource-variable/archivo/wght.css";
+import "@fontsource-variable/archivo/wght-italic.css";
+import "@fontsource-variable/caveat/wght.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
 import "./App.css";
 
 // The app root. Pages are the modules under src/routes; each owns its own

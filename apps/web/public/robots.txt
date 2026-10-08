@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /d/
+Disallow: /deliveries
+Disallow: /api/
+
+Sitemap: https://tranzfer.app/sitemap.xml

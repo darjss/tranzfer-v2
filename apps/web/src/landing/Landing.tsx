@@ -2,13 +2,13 @@ import { PlanId, plans } from "@tranzfer/contracts";
 import type { PaidPlanId } from "@tranzfer/contracts";
 import { For, Show, createSignal, onSettled, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
-import Brand from "./Brand";
 import Uploader from "./Uploader";
 import { ArrowIcon, Asterisk, Blob, Hand, Ink, Ring, Still, inkStrokes } from "./notebook";
 import { RuntimeContext } from "../api/solid-effect";
 import { goToCheckout } from "../dashboard/billing";
 import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
+import { SiteFooter, SiteHeader } from "../ui/Site";
 import "./landing.css";
 import coastRoad from "./assets/coast-road.webp";
 import filmmaker from "./assets/filmmaker.webp";
@@ -51,52 +51,48 @@ const stills = [
   },
 ];
 
+// Each card is a fault the release gate injects into a real 100 GB upload
+// (docs/BENCHMARKS.md). Keep the copy to what the gate proves.
 const failures = [
   {
-    gb: "38 GB landed",
+    gb: "10 GB landed",
     h: "Café Wi-Fi died",
-    p: "Goal: wait for the connection and retry only the missing parts.",
-    r: "Planned",
+    p: "Tranzfer waits for the connection, then retries only the parts that were in flight.",
     rot: -3,
     src: wrong1,
   },
   {
-    gb: "141 GB landed",
-    h: "Laptop slept on the train",
-    p: "Goal: check the remote parts after wake and continue from them.",
-    r: "Planned",
-    rot: 2,
-    src: wrong2,
-  },
-  {
-    gb: "220 GB landed",
+    gb: "25 GB landed",
     h: "Someone refreshed the tab",
-    p: "Goal: reselect and verify the same file, then resume the existing upload.",
-    r: "Planned",
-    rot: -1.5,
+    p: "Pick the files again. Tranzfer checks them against what already arrived and carries on.",
+    rot: 2,
     src: wrong3,
   },
   {
-    gb: "221 GB landed",
+    gb: "40 GB landed",
+    h: "The browser crashed",
+    p: "Reopen Tranzfer and the upload is waiting on your dashboard, every stored part still there.",
+    rot: -1.5,
+    src: wrong2,
+  },
+  {
+    gb: "50 GB landed",
     h: "Left it overnight",
-    p: "Goal: renew expired authorization without discarding uploaded parts.",
-    r: "Planned",
+    p: "Upload permissions run out while you sleep. Tranzfer asks for fresh ones and keeps going.",
     rot: 2.5,
     src: wrong4,
   },
   {
-    gb: "311 GB landed",
-    h: "One piece arrived damaged",
-    p: "Goal: detect a failed part and retry it without restarting the file.",
-    r: "Planned",
+    gb: "70 GB landed",
+    h: "Picked the wrong file",
+    p: "Same name, same size, different footage. Tranzfer notices before it mixes them up.",
     rot: -2,
     src: wrong5,
   },
   {
-    gb: "350 GB · done",
+    gb: "100 GB · done",
     h: "Delivered",
-    p: "Goal: confirm completion and let the recipient download the correct file.",
-    r: "Planned",
+    p: "Every part confirmed, one file assembled, and the download matches what you sent, byte for byte.",
     rot: 1.5,
     src: wrong6,
   },
@@ -105,17 +101,17 @@ const failures = [
 const steps = [
   {
     h: "Drop the cards",
-    p: "Select a file and start a multipart upload directly to storage.",
+    p: "Drag in files or whole folders. They upload straight to storage, four parts at a time.",
     src: videoEdit,
   },
   {
-    h: "Resume after interruptions",
-    p: "Restore file access when needed and continue from confirmed uploaded parts.",
+    h: "Close the laptop if you must",
+    p: "An interrupted upload waits on your dashboard. Pick the files again and only the missing parts go up.",
     src: loftPacking,
   },
   {
     h: "Send one link",
-    p: "Give your editor an authorized download link with a clear expiry.",
+    p: "Your editor opens it and downloads. No account, no app. The link ends when you said it would.",
     src: filmmaker,
   },
 ];
@@ -227,19 +223,7 @@ export default function Landing() {
       class={css({ overflowX: "clip" })}
     >
       <div class={css({ marginInline: "auto", maxW: "page", pos: "relative", px: "7" })}>
-        <nav
-          class={css({
-            alignItems: "center",
-            borderBottomWidth: "1px",
-            borderColor: "ink",
-            display: "flex",
-            h: "16",
-            justifyContent: "space-between",
-            pos: "relative",
-            zIndex: 5,
-          })}
-        >
-          <Brand />
+        <SiteHeader>
           <ul
             class={css({
               alignItems: "center",
@@ -253,12 +237,12 @@ export default function Landing() {
           >
             <li class={css({ display: { base: "none", md: "block" } })}>
               <a class={css({ _hover: { color: "ink" } })} href="#desk">
-                Recovery goals
+                What it survives
               </a>
             </li>
             <li class={css({ display: { base: "none", md: "block" } })}>
               <a class={css({ _hover: { color: "ink" } })} href="#how">
-                Planned workflow
+                How it works
               </a>
             </li>
             <li class={css({ display: { base: "none", md: "block" } })}>
@@ -271,8 +255,13 @@ export default function Landing() {
                 Sign in
               </a>
             </li>
+            <li class={css({ display: { base: "none", sm: "block" } })}>
+              <a class={button({ size: "sm" })} href="/sign-in">
+                Start free
+              </a>
+            </li>
           </ul>
-        </nav>
+        </SiteHeader>
 
         <section
           class={css({
@@ -310,21 +299,21 @@ export default function Landing() {
             tone="red"
             style="right:0;bottom:6%;width:130px;text-align:center;--r:-4deg;--d:1.4s"
           >
-            the target:
+            wifi died?
             <br />
             <b style="font-size:28px">resume</b>
             <br />
-            <small style="font-size:15px">verify first.</small>
+            <small style="font-size:15px">don't restart.</small>
           </Hand>
           <Asterisk style="left:34%;bottom:6%;width:30px;height:30px" />
           <Asterisk tone="blue" style="right:-3%;top:40%;width:24px;height:24px" />
           <Hand style="left:56%;top:1%;--r:-3deg;--d:1.2s">
-            example: 463 GB.
+            tested at 100 GB,
             <br />
-            designed for big shoots.
+            with 8 things going wrong.
           </Hand>
           <Hand tone="blue" style="left:50%;bottom:9%;--r:-3deg;--d:1.8s">
-            ↑ upload design, still in progress
+            ↑ the whole card. one link.
           </Hand>
 
           <div
@@ -417,8 +406,8 @@ export default function Landing() {
               )}
               style="--d:120ms"
             >
-              Tranzfer is an early build for sending large files to your editor. Sign-in works.
-              Uploads are not available yet. The preview shows what we are building.
+              Send hundreds of gigabytes from your browser. If the Wi-Fi drops or the laptop sleeps,
+              Tranzfer keeps what arrived and sends only the rest. Your editor gets one link.
             </p>
             <div
               class={cx(
@@ -428,7 +417,7 @@ export default function Landing() {
               style="--d:200ms"
             >
               <a class={button()} href="/sign-in">
-                Sign in <ArrowIcon />
+                Start free <ArrowIcon />
               </a>
               <a
                 class={css({
@@ -452,7 +441,7 @@ export default function Landing() {
                 })}
                 href="#desk"
               >
-                Explore the recovery goals <span>→</span>
+                See what it survives <span>→</span>
               </a>
             </div>
           </div>
@@ -486,17 +475,17 @@ export default function Landing() {
             keep the parts.
           </Hand>
           <Hand style="right:-2%;top:12%;--r:-7deg;--d:.6s;text-align:right">
-            the goal: resume
+            zero bytes
             <br />
-            after an interruption.
+            sent twice.
           </Hand>
           <Hand tone="blue" style="left:-9%;top:70%;--r:-5deg;--d:.8s">
-            make recovery
+            all in one
             <br />
-            predictable.
+            100 GB upload.
           </Hand>
           <div class={head}>
-            <p class={mono}>Illustrated recovery goals, not a completed transfer</p>
+            <p class={mono}>What it survives</p>
             <h2 class={cx("rv", h2)}>
               When a transfer breaks.
               <br />
@@ -506,8 +495,9 @@ export default function Landing() {
               class={cx("rv", css({ color: "mut", maxW: "[52ch]", mt: "4.5", textStyle: "lg" }))}
               style="--d:80ms"
             >
-              The goal is to check which parts arrived, verify that the source file is unchanged,
-              and send only what is missing. These scenarios describe planned behavior.
+              Tranzfer checks which parts already arrived, confirms your file hasn't changed, and
+              sends only what's missing. Before every release we throw all of these at a single 100
+              GB upload, and it has to finish with the right bytes.
             </p>
           </div>
           <div
@@ -594,7 +584,7 @@ export default function Landing() {
                       }),
                     )}
                   >
-                    {f.r}
+                    Survived in testing
                   </span>
                 </article>
               )}
@@ -604,12 +594,12 @@ export default function Landing() {
 
         <section id="how" class={css({ pos: "relative", py: { base: "20", lg: "30" } })}>
           <Hand style="right:0;top:6%;--r:4deg;--d:.5s">
-            planned for laptops
+            made for laptops
             <br />
             that need to sleep.
           </Hand>
           <div class={head}>
-            <p class={mono}>Planned workflow</p>
+            <p class={mono}>How it works</p>
             <h2 class={cx("rv", h2)}>
               From camera card <i>to editor.</i>
             </h2>
@@ -805,6 +795,10 @@ export default function Landing() {
               </p>
             )}
           </Show>
+          <p class={css({ color: "mut", mt: "6", textStyle: "sm" })}>
+            Billed monthly through Polar. Cancel anytime from your account; your plan runs to the
+            end of the month you paid for.
+          </p>
         </section>
 
         <section
@@ -824,7 +818,7 @@ export default function Landing() {
             <path d="M94 4 114 14 100 32" style="--len:60;--d:1s" />
           </Ink>
           <Hand tone="red" style="left:14%;top:72%;--r:-6deg;--d:1.2s">
-            next up:
+            your turn:
             <br />
             the first upload.
           </Hand>
@@ -835,7 +829,7 @@ export default function Landing() {
             style="--w:120px;--ar:2/3;--x:2%;--y:10%;--r:-8deg"
           />
           <Still in src={nightTravel} label="pickup" style="--w:140px;--x:84%;--y:55%;--r:9deg" />
-          <p class={mono}>Early build</p>
+          <p class={mono}>20 GB free, no card</p>
           <h2
             class={cx(
               "rv",
@@ -843,31 +837,17 @@ export default function Landing() {
               h2,
             )}
           >
-            Large files. <i>Still building.</i>
+            Send the big one. <i>Sleep anyway.</i>
           </h2>
           <a
             class={cx(css(button.raw(), { pos: "relative", zIndex: 1 }), "rv")}
             href="/sign-in"
             style="--d:80ms"
           >
-            Sign in <ArrowIcon />
+            Start free <ArrowIcon />
           </a>
         </section>
-        <footer
-          class={css({
-            borderColor: "ink",
-            borderTopWidth: "1px",
-            color: "mut",
-            display: "flex",
-            fontSize: "13",
-            justifyContent: "space-between",
-            paddingBottom: "[60px]",
-            pt: "7",
-          })}
-        >
-          <span>© 2026 Tranzfer</span>
-          <span>Built for the work between shoots.</span>
-        </footer>
+        <SiteFooter />
       </div>
     </div>
   );

@@ -320,6 +320,7 @@ export default function PublicDelivery() {
       })}
     >
       <Meta name="description" content="Download files shared with you through Tranzfer." />
+      <Meta name="robots" content="noindex" />
       <nav
         class={css({
           alignItems: "center",

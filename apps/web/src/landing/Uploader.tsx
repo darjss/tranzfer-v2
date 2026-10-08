@@ -1,18 +1,19 @@
-import { For } from "solid-js";
+import { For, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 import PhCheckBold from "~icons/ph/check-bold";
 import PhUploadSimpleBold from "~icons/ph/upload-simple-bold";
-import { Button } from "../ui/Button";
+import { button } from "../ui/Button";
 import coastRoad from "./assets/coast-road.webp";
 import frozenWilds from "./assets/frozen-wilds.webp";
 import neonCrosswalk from "./assets/neon-crosswalk.webp";
 
-// Static preview. Replace this with the real upload flow.
+// A still of the send card mid-delivery, for the hero. Decorative: the real
+// one lives on the dashboard.
 
 const files = [
   { meta: "214 GB · 1,842 clips", name: "EP04_A-Cam", thumb: neonCrosswalk },
   { meta: "188 GB · 1,204 clips", name: "EP04_B-Cam", thumb: frozenWilds },
-  { meta: "61 GB · 97 clips", name: "Drone_Day2", thumb: coastRoad },
+  { meta: "61 GB · 97 clips", name: "Drone_Day2", progress: "72%", thumb: coastRoad },
 ];
 
 const ghost = css({
@@ -26,6 +27,8 @@ const ghost = css({
 export default function Uploader(props: { in: boolean; rx: number; ry: number }) {
   return (
     <div
+      role="img"
+      aria-label="A delivery of three camera folders, 463 GB, resuming after the Wi-Fi came back"
       class={cx(
         "stage group",
         css({
@@ -117,7 +120,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
               }),
             )}
           >
-            Upload preview
+            Wi-Fi back · resumed
           </div>
           <header
             class={css({
@@ -128,7 +131,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
             })}
           >
             <div>
-              <b class={css({ fontWeight: "semibold" })}>Example transfer</b>
+              <b class={css({ fontWeight: "semibold" })}>EP04 dailies</b>
               <small class={css({ color: "mut", display: "block", fontSize: "13" })}>
                 To Marcus · your editor in Berlin
               </small>
@@ -150,7 +153,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
                 textStyle: "xs",
               })}
             >
-              Preview
+              Uploading
             </span>
           </header>
           <div
@@ -188,10 +191,8 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
             >
               <PhUploadSimpleBold class={css({ boxSize: "6" })} />
             </div>
-            <b class={css({ display: "block", fontWeight: "semibold" })}>Upload design preview</b>
-            <span class={css({ color: "mut", fontSize: "13" })}>
-              File uploads are not available yet.
-            </span>
+            <b class={css({ display: "block", fontWeight: "semibold" })}>Drop files or a folder</b>
+            <span class={css({ color: "mut", fontSize: "13" })}>Anywhere on this page works.</span>
           </div>
           <div class={css({ display: "grid", gap: "2.5", mt: "4" })}>
             <For each={files}>
@@ -233,19 +234,37 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
                       {f.meta}
                     </small>
                   </div>
-                  <span
-                    class={css({
-                      alignItems: "center",
-                      bg: "ok/12",
-                      borderRadius: "full",
-                      boxSize: "5.5",
-                      color: "ok",
-                      display: "grid",
-                      placeItems: "center",
-                    })}
+                  <Show
+                    when={f.progress}
+                    fallback={
+                      <span
+                        class={css({
+                          alignItems: "center",
+                          bg: "ok/12",
+                          borderRadius: "full",
+                          boxSize: "5.5",
+                          color: "ok",
+                          display: "grid",
+                          placeItems: "center",
+                        })}
+                      >
+                        <PhCheckBold class={css({ boxSize: "3" })} />
+                      </span>
+                    }
                   >
-                    <PhCheckBold class={css({ boxSize: "3" })} />
-                  </span>
+                    {(progress) => (
+                      <span
+                        class={css({
+                          color: "blue",
+                          fontFamily: "mono",
+                          fontWeight: "medium",
+                          textStyle: "xs",
+                        })}
+                      >
+                        {progress()}
+                      </span>
+                    )}
+                  </Show>
                 </div>
               )}
             </For>
@@ -264,9 +283,7 @@ export default function Uploader(props: { in: boolean; rx: number; ry: number })
             <small class={css({ color: "mut", fontFamily: "mono", fontSize: "13" })}>
               463 GB · link lives 7 days
             </small>
-            <Button size="sm" disabled>
-              Coming soon
-            </Button>
+            <span class={button({ size: "sm" })}>Copy link</span>
           </footer>
         </div>
       </div>

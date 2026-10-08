@@ -300,7 +300,17 @@ export default function SignIn() {
               Google sign-in didn't open. Try again.
             </p>
           </Show>
-          <p class={css({ color: "mut", mt: "6", textStyle: "sm" })}>{scopes}</p>
+          <p class={css({ color: "mut", mt: "6", textStyle: "sm" })}>
+            {scopes} By continuing you agree to the{" "}
+            <a class={css({ textDecoration: "underline" })} href="/terms">
+              terms
+            </a>{" "}
+            and{" "}
+            <a class={css({ textDecoration: "underline" })} href="/privacy">
+              privacy policy
+            </a>
+            .
+          </p>
           <Show when={staging()}>
             <form
               class={css({

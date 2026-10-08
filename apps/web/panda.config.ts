@@ -42,9 +42,9 @@ export default defineConfig({
           "40": { value: "40px" },
         },
         fonts: {
-          hand: { value: '"Caveat", cursive' },
+          hand: { value: '"Caveat Variable", cursive' },
           mono: { value: '"IBM Plex Mono", ui-monospace, monospace' },
-          sans: { value: '"Archivo", system-ui, sans-serif' },
+          sans: { value: '"Archivo Variable", system-ui, sans-serif' },
         },
         letterSpacings: {
           label: { value: ".08em" },
