@@ -44,7 +44,10 @@ export default defineConfig({
     fileRoutes({ codeSplitting: false, httpMethods: true, types: true }),
     Icons({ compiler: "solid" }),
     // The public pages ship as static HTML; everything else stays live SSR.
+    // Flat files (terms.html): Workers static assets serve /terms from them
+    // directly, where terms/index.html makes it redirect to /terms/.
     prerender({
+      autoSubfolderIndex: false,
       crawlLinks: false,
       emitPages: (p) => staticPages.includes(p),
       integrations: [sitemap({ hostname: "https://tranzfer.app" })],
