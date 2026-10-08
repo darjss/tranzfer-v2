@@ -278,7 +278,7 @@ We need the original file to continue.
 217 GB is already uploaded.
 ```
 
-Progress shows confirmed work. In-flight activity can be shown separately. Smooth the speed, keep the ETA approximate, and give a next action for offline, reselect file, permission required, upload expired and retrying.
+Progress shows confirmed work. In-flight activity can be shown separately. Speed and ETA come only from parts the server acknowledged, over a sliding window; until the first part lands the row says it is starting (#95). Keep the ETA approximate, and give a next action for offline, reselect file, permission required, upload expired and retrying.
 
 The user should come out of a recovery still knowing what already arrived.
 
