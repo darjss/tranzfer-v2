@@ -1,10 +1,13 @@
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { fileRoutes } from "filesystem-routing/vite";
+import { sitemap } from "prerender-crawler";
 import { prerender } from "prerender-crawler/vite";
 import Icons from "unplugin-icons/vite";
 import { defineConfig } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
 import { webLint } from "../../lint.config";
+
+const staticPages = ["/", "/terms", "/privacy", "/acceptable-use"];
 
 const envFlag = (value: string | undefined) => value !== undefined && value !== "";
 
@@ -40,7 +43,14 @@ export default defineConfig({
     }),
     fileRoutes({ codeSplitting: false, httpMethods: true, types: true }),
     Icons({ compiler: "solid" }),
-    prerender({ crawlLinks: false, emitPages: (p) => p === "/", mode: "hybrid", pages: ["/"] }),
+    // The public pages ship as static HTML; everything else stays live SSR.
+    prerender({
+      crawlLinks: false,
+      emitPages: (p) => staticPages.includes(p),
+      integrations: [sitemap({ hostname: "https://tranzfer.app" })],
+      mode: "hybrid",
+      pages: staticPages,
+    }),
   ],
   resolve: {
     alias: {
