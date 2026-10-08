@@ -1,0 +1,243 @@
+import { PlanId, plans } from "@tranzfer/contracts";
+import type { PaidPlanId, PlanId as Plan } from "@tranzfer/contracts";
+import { For, Show, createSignal, useContext } from "solid-js";
+import { css, cx } from "styled-system/css";
+import { Hand, Ink } from "./notebook";
+import { eyebrow, section, sectionHead, sectionTitle } from "./styles";
+import { RuntimeContext } from "../api/solid-effect";
+import { goToCheckout } from "../dashboard/billing";
+import { bytes } from "../dashboard/format";
+import { button } from "../ui/Button";
+
+// Who each plan is for, from docs/PRODUCT.md.
+const forWhom: Record<Plan, string> = {
+  free: "Try it on something big.",
+  pro: "For working editors.",
+  starter: "For the odd big shoot.",
+  studio: "For heavy weeks and studios.",
+};
+
+const card = css({
+  borderRadius: "card",
+  display: "flex",
+  flexDir: "column",
+  gap: "5",
+  p: "8",
+  pos: "relative",
+  transitionDuration: "[350ms]",
+  transitionProperty: "[translate,rotate,box-shadow]",
+  transitionTimingFunction: "smooth",
+});
+
+const plain = css({
+  "@media (hover: hover)": {
+    _hover: {
+      shadow: "[0 0 0 1px var(--colors-line),0 40px 60px -40px rgba(23,24,28,.5)]",
+      translate: "[0 -6px]",
+    },
+  },
+  bg: "panel",
+  shadow: "ring",
+});
+
+// Pro is the plan most people should be on, so it gets the room's attention:
+// dark, taller, tilted until you reach for it.
+const pro = css({
+  "@media (hover: hover)": { _hover: { rotate: "[0deg]", translate: "[0 -6px]" } },
+  bg: "ink",
+  color: "paper",
+  // Stacked on a phone, Pro leads.
+  order: { base: "-1", md: "0" },
+  pb: "11",
+  pt: "10",
+  rotate: { base: "[0deg]", lg: "[-1.5deg]" },
+  shadow: "[0 50px 90px -40px rgba(23,24,28,.9)]",
+  zIndex: 1,
+});
+
+export default function Pricing() {
+  const [problem, setProblem] = createSignal<string>();
+  const runtime = useContext(RuntimeContext);
+
+  // The checkout call needs a session. A signed-out visitor signs in first and
+  // the dashboard carries on to checkout for this plan.
+  const choose = async (plan: PaidPlanId) => {
+    setProblem(undefined);
+    const result = await goToCheckout(runtime, plan);
+    if (result?.tag === "Unauthorized") {
+      location.assign(`/sign-in?plan=${plan}`);
+    } else if (result !== undefined) {
+      setProblem(result.message);
+    }
+  };
+
+  return (
+    <section id="pricing" class={section}>
+      <Hand tone="blue" style="left:56%;top:31%;--r:-6deg;--d:.9s">
+        $29. one reshoot
+        <br />
+        costs more ↓
+      </Hand>
+      <Hand style="right:0;top:10%;--r:4deg;--d:.5s">
+        day 3. Marcus has
+        <br />
+        everything. <s>cancel</s>
+      </Hand>
+      <div class={sectionHead}>
+        <p class={eyebrow}>Pricing</p>
+        <h2 class={cx("rv", sectionTitle)}>
+          Pay for the work. <i>Not per gigabyte.</i>
+        </h2>
+        <p class={css({ color: "mut", fontSize: "17", mt: "4", textWrap: "pretty" })}>
+          Every plan resumes after anything, sends whole folders and gives your editor one link, no
+          account needed. Bigger plans hold more at once and keep links longer. Space frees up the
+          moment a delivery ends.
+        </p>
+      </div>
+
+      <div
+        class={css({
+          alignItems: "end",
+          display: "grid",
+          gap: "5",
+          gridTemplateColumns: {
+            base: "1fr",
+            lg: "repeat(4,minmax(0,1fr))",
+            md: "repeat(2,minmax(0,1fr))",
+          },
+        })}
+      >
+        <For each={PlanId.literals}>
+          {(id, i) => {
+            const hot = id === "pro";
+            return (
+              <div class={cx("rv", card, hot ? pro : plain)} style={`--d:${i() * 70}ms`}>
+                <Show when={hot}>
+                  <span
+                    class={css({
+                      bg: "[rgba(236,222,170,.92)]",
+                      color: "ink",
+                      fontFamily: "hand",
+                      fontSize: "[19px]",
+                      fontWeight: "semibold",
+                      left: "[50%]",
+                      lineHeight: "none",
+                      pos: "absolute",
+                      px: "3.5",
+                      py: "1.5",
+                      rotate: "[3deg]",
+                      shadow: "[0 2px 6px rgba(0,0,0,.18)]",
+                      top: "-3.5",
+                      translate: "[-50% 0]",
+                      whiteSpace: "nowrap",
+                    })}
+                  >
+                    most editors pick this
+                  </span>
+                </Show>
+                <h3
+                  class={css({
+                    color: hot ? "[#a9a79e]" : "mut",
+                    fontSize: "13",
+                    fontWeight: "medium",
+                  })}
+                >
+                  {plans[id].name}
+                </h3>
+                <div
+                  class={css({
+                    fontFamily: "mono",
+                    fontSize: "[48px]",
+                    fontWeight: "medium",
+                    letterSpacing: "[-0.04em]",
+                    lineHeight: "none",
+                    pos: "relative",
+                    w: "fit",
+                  })}
+                >
+                  <Show when={hot}>
+                    <Ink
+                      tone="blue"
+                      style="left:-18px;top:-14px;width:170px;height:76px"
+                      viewBox="0 0 180 80"
+                    >
+                      <ellipse
+                        cx="90"
+                        cy="40"
+                        rx="84"
+                        ry="32"
+                        style="--len:360;--d:.6s"
+                        transform="rotate(-3 90 40)"
+                      />
+                    </Ink>
+                  </Show>
+                  ${plans[id].monthlyUsd}
+                  <Show when={id !== "free"}>
+                    <small class={css({ color: "mut", fontSize: "15", letterSpacing: "normal" })}>
+                      /mo
+                    </small>
+                  </Show>
+                </div>
+                <p
+                  class={css({
+                    color: hot ? "[#e8e5dc]" : "ink",
+                    fontSize: "15",
+                    fontWeight: "medium",
+                  })}
+                >
+                  {forWhom[id]}
+                </p>
+                <ul
+                  class={css({
+                    "& li::before": { content: "'—'", mr: "2.5", opacity: 0.5 },
+                    color: hot ? "[#c9c6bc]" : "mut",
+                    display: "grid",
+                    flex: "1",
+                    fontSize: "15",
+                    gap: "2",
+                    listStyle: "none",
+                  })}
+                >
+                  <li>{bytes(plans[id].activeBytes)} on the go at once</li>
+                  <li>Links live up to {plans[id].maxRetentionDays} days</li>
+                </ul>
+                <Show
+                  when={id !== "free"}
+                  fallback={
+                    <a class={button({ variant: "outline" })} href="/sign-in">
+                      Start free
+                    </a>
+                  }
+                >
+                  <button
+                    class={button({ variant: hot ? "fill" : "outline" })}
+                    onClick={() => {
+                      // Free is the only plan without a checkout.
+                      if (id !== "free") {
+                        void choose(id);
+                      }
+                    }}
+                    type="button"
+                  >
+                    Choose {plans[id].name}
+                  </button>
+                </Show>
+              </div>
+            );
+          }}
+        </For>
+      </div>
+      <Show when={problem()}>
+        {(message) => (
+          <p class={css({ color: "rust", mt: "4", textStyle: "sm" })} role="alert">
+            {message()}
+          </p>
+        )}
+      </Show>
+      <p class={css({ color: "mut", mt: "8", textStyle: "sm" })}>
+        Billed monthly through Polar. Cancel whenever; your plan runs to the end of the month you
+        paid for.
+      </p>
+    </section>
+  );
+}

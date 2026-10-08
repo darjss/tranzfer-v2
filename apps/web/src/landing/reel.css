@@ -1,0 +1,336 @@
+/*
+ * The hero's 16s loop: an upload that loses Wi-Fi at 63%, waits it out, gets
+ * put to sleep, wakes up and delivers. CSS only. Every keyframe below shares
+ * one timeline, so the percentages line up:
+ *   0-20 sending, 20-36 Wi-Fi died, 36-46 back, 46-64 asleep,
+ *   64-86 carrying on, 86-100 delivered.
+ */
+@property --pct {
+  syntax: "<integer>";
+  inherits: true;
+  initial-value: 41;
+}
+
+.reel {
+  --t: 16s;
+  animation: reel-pct var(--t) linear infinite;
+  counter-reset: pct var(--pct);
+}
+
+@keyframes reel-pct {
+  0% {
+    --pct: 41;
+  }
+  20%,
+  36% {
+    --pct: 63;
+  }
+  46%,
+  64% {
+    --pct: 70;
+  }
+  86%,
+  100% {
+    --pct: 100;
+  }
+}
+
+.reel-pct::after {
+  content: counter(pct) "%";
+}
+
+.reel-bar > i {
+  display: block;
+  height: 100%;
+  width: calc(var(--pct) * 1%);
+  border-radius: inherit;
+  background: var(--colors-blue);
+  animation: reel-bar var(--t) step-end infinite;
+}
+@keyframes reel-bar {
+  0% {
+    background: var(--colors-blue);
+  }
+  20% {
+    background: var(--colors-rust);
+  }
+  36% {
+    background: var(--colors-blue);
+  }
+  86% {
+    background: var(--colors-ok);
+  }
+}
+
+/* A small jolt when the Wi-Fi goes. */
+.reel-card {
+  animation: reel-jolt var(--t) var(--easings-smooth) infinite;
+}
+@keyframes reel-jolt {
+  0%,
+  19.5%,
+  23%,
+  100% {
+    translate: 0 0;
+  }
+  20% {
+    translate: -5px 0;
+  }
+  20.6% {
+    translate: 5px 0;
+  }
+  21.2% {
+    translate: -3px 0;
+  }
+  21.8% {
+    translate: 2px 0;
+  }
+}
+
+/* One status line at a time, stacked in the same cell. */
+.reel-status > * {
+  grid-area: 1 / 1;
+  opacity: 0;
+  animation: var(--k) var(--t) infinite;
+}
+@keyframes reel-s1 {
+  0%,
+  18% {
+    opacity: 1;
+  }
+  20%,
+  99.9% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes reel-s2 {
+  0%,
+  19.9% {
+    opacity: 0;
+  }
+  20%,
+  34% {
+    opacity: 1;
+  }
+  36%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes reel-s3 {
+  0%,
+  35.9% {
+    opacity: 0;
+  }
+  36%,
+  44% {
+    opacity: 1;
+  }
+  46%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes reel-s4 {
+  0%,
+  45.9% {
+    opacity: 0;
+  }
+  46%,
+  62% {
+    opacity: 1;
+  }
+  64%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes reel-s5 {
+  0%,
+  63.9% {
+    opacity: 0;
+  }
+  64%,
+  84% {
+    opacity: 1;
+  }
+  86%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes reel-s6 {
+  0%,
+  85.9% {
+    opacity: 0;
+  }
+  86%,
+  98% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The log: each line lands at its moment and stays until the loop restarts. */
+.reel-log > li {
+  opacity: 0;
+  translate: 0 4px;
+  animation: var(--k) var(--t) var(--easings-smooth) infinite;
+}
+@keyframes reel-l1 {
+  0%,
+  20% {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  22%,
+  98% {
+    opacity: 1;
+    translate: 0 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes reel-l2 {
+  0%,
+  36% {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  38%,
+  98% {
+    opacity: 1;
+    translate: 0 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes reel-l3 {
+  0%,
+  46% {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  48%,
+  98% {
+    opacity: 1;
+    translate: 0 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes reel-l4 {
+  0%,
+  86% {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  88%,
+  98% {
+    opacity: 1;
+    translate: 0 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Lid closed: the card dims and dozes. */
+.reel-night {
+  opacity: 0;
+  animation: reel-night var(--t) var(--easings-smooth) infinite;
+}
+@keyframes reel-night {
+  0%,
+  46% {
+    opacity: 0;
+  }
+  48%,
+  62% {
+    opacity: 1;
+  }
+  64%,
+  100% {
+    opacity: 0;
+  }
+}
+.reel-night span {
+  display: inline-block;
+  animation: reel-z 1.6s ease-in-out infinite;
+}
+.reel-night span:nth-child(2) {
+  animation-delay: 0.25s;
+}
+.reel-night span:nth-child(3) {
+  animation-delay: 0.5s;
+}
+@keyframes reel-z {
+  0%,
+  100% {
+    translate: 0 0;
+    opacity: 0.5;
+  }
+  50% {
+    translate: 0 -6px;
+    opacity: 1;
+  }
+}
+
+/* Delivered: the copy button gets one cheerful pop. */
+.reel-copy {
+  animation: reel-pop var(--t) var(--easings-spring) infinite;
+}
+@keyframes reel-pop {
+  0%,
+  86% {
+    scale: 1;
+    filter: saturate(0.4);
+    opacity: 0.55;
+  }
+  88% {
+    scale: 1.12;
+    filter: none;
+    opacity: 1;
+  }
+  90%,
+  99% {
+    scale: 1;
+    filter: none;
+    opacity: 1;
+  }
+  100% {
+    filter: saturate(0.4);
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reel,
+  .reel-card,
+  .reel-bar > i,
+  .reel-status > *,
+  .reel-log > li,
+  .reel-night,
+  .reel-copy {
+    animation: none;
+  }
+  .reel {
+    --pct: 100;
+  }
+  .reel-status > :last-child,
+  .reel-log > li {
+    opacity: 1;
+    translate: none;
+  }
+  .reel-bar > i {
+    background: var(--colors-ok);
+  }
+}
