@@ -52,6 +52,8 @@ export const ApiHandlers = Api.toLayer(
     return Api.of({
       CancelDelivery: ({ deliveryId }) =>
         Effect.flatMap(sender, (id) => deliveries.cancel(id, deliveryId)),
+      ClearDeliveries: ({ deliveryIds }) =>
+        Effect.flatMap(sender, (id) => deliveries.clear(id, deliveryIds)),
       CreateDelivery: (input) => Effect.flatMap(sender, (id) => deliveries.create(id, input)),
       Deliveries: () => Effect.flatMap(sender, deliveries.list),
       FinalizeTransfer: ({ transferId }) =>

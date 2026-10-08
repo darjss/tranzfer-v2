@@ -93,7 +93,7 @@ const DeliveriesPage = () => {
   };
 
   const me = createMemo(() => runEffect(ApiClient.use((api) => api.Me())));
-  const { billing, cancel, deliveries, send, sending } = createDeliveries(runtime);
+  const { billing, cancel, clear, deliveries, send, sending } = createDeliveries(runtime);
   const selected = () => {
     const id = searchParams.d;
     return id === undefined ? undefined : deliveries.find((delivery) => delivery.id === id);
@@ -103,6 +103,9 @@ const DeliveriesPage = () => {
 
   const [retention, setRetention] = createSignal<RetentionDays>(defaultRetentionDays);
   const [problems, setProblems] = createSignal<readonly string[]>([]);
+  // Upgrade and Manage billing live in the account menu, so their failures
+  // show there too, whichever button started them.
+  const [billingProblem, setBillingProblem] = createSignal<string>();
   const [dragging, setDragging] = createSignal(false);
   let filesInput: HTMLInputElement | undefined;
   let folderInput: HTMLInputElement | undefined;
@@ -128,16 +131,14 @@ const DeliveriesPage = () => {
   };
 
   const upgrade = async (plan: PaidPlanId) => {
+    setBillingProblem(undefined);
     const problem = await goToCheckout(runtime, plan);
-    if (problem !== undefined) {
-      setProblems([problem.message]);
-    }
+    setBillingProblem(problem?.message);
   };
   const manage = async () => {
+    setBillingProblem(undefined);
     const problem = await goToPortal(runtime);
-    if (problem !== undefined) {
-      setProblems([problem.message]);
-    }
+    setBillingProblem(problem?.message);
   };
 
   // Signing in from a pricing button lands here with the plan to buy.
@@ -260,10 +261,14 @@ const DeliveriesPage = () => {
           >
             <TopBar
               billing={billing()}
+              dismissProblem={() => {
+                setBillingProblem(undefined);
+              }}
               manage={() => {
                 void manage();
               }}
               principal={me()}
+              problem={billingProblem()}
               send={() => {
                 filesInput?.click();
               }}
@@ -367,6 +372,7 @@ const DeliveriesPage = () => {
                 </Show>
                 <Board
                   cancel={cancel}
+                  clear={clear}
                   deliveries={deliveries}
                   online={online()}
                   select={select}

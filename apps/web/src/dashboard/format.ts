@@ -206,5 +206,6 @@ export const kindWords: Record<Kind, { readonly label: string; readonly detail: 
     label: "Paused, offline",
   },
   ready: { detail: "Ready. Anyone with the link can download.", label: "Ready" },
-  starting: { detail: "", label: "Starting" },
+  // No speed or time left until R2 has acknowledged real parts.
+  starting: { detail: "", label: "Starting…" },
 };

@@ -116,7 +116,21 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     return failure;
   });
 
-  return { billing, cancel, deliveries, send, sending };
+  /** Takes ended deliveries off the list at once; resolves to a problem to show, if any. */
+  const clear = action(async function* clear(deliveryIds: readonly DeliveryId[]) {
+    setDeliveries((list) => list.filter((delivery) => !deliveryIds.includes(delivery.id)));
+    const exit = await runtime.runPromiseExit(
+      ApiClient.use((api) => api.ClearDeliveries({ deliveryIds })),
+    );
+    yield;
+    const failure = Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
+    if (failure === undefined) {
+      void refresh(deliveries);
+    }
+    return failure;
+  });
+
+  return { billing, cancel, clear, deliveries, send, sending };
 };
 
 /** A delivery's live state: server status plus whatever this tab is uploading. */

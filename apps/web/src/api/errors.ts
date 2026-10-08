@@ -25,6 +25,7 @@ import { RpcClientError } from "effect/rpc/RpcClientError";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 import { bytes } from "../dashboard/format";
+import { supportEmail } from "../ui/Site";
 
 /** Every error an Api call can fail with, middleware and transport included. */
 export type ApiError = Rpc.Error<RpcGroup.Rpcs<typeof Api>> | RpcClientError;
@@ -62,7 +63,10 @@ const planThatFits = (error: OverPlanLimit) =>
 const words = Match.type<ApiError>().pipe(
   Match.tagsExhaustive({
     AuthenticationUnavailable: () => "We couldn't check your sign-in. Try again in a moment.",
-    BillingUnavailable: () => "Billing didn't answer. Try again in a moment.",
+    // One tag covers Polar refusing the request and Polar not answering.
+    // Neither charges anything.
+    BillingUnavailable: () =>
+      `Our payment provider turned this down or didn't answer, so nothing changed and nothing was charged. Try again later, or write to ${supportEmail}.`,
     DeliveryConflict: () => "That delivery already exists. Refresh to see it.",
     DeliveryNotFound: () => "We can't find that delivery anymore.",
     InvalidUpload: () => "This file doesn't match what the delivery expects. Send it again.",
