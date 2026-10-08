@@ -6,6 +6,9 @@ export default defineConfig({
   exclude: [],
   include: ["./src/**/*.{ts,tsx}"],
   jsxFramework: "solid",
+  // Styles go through css(); without this Panda reads JSX props such as
+  // <Meta content> as CSS and emits invalid rules.
+  jsxStyleProps: "none",
   outdir: "styled-system",
   preflight: true,
   presets: [presetBase, pandaPreset],

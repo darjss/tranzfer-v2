@@ -1,7 +1,7 @@
 import { PlanId, plans } from "@tranzfer/contracts";
 import { bytes } from "../dashboard/format";
 import { faq } from "../landing/faq";
-import { supportEmail } from "../ui/Site";
+import { supportEmail } from "../ui/support";
 
 // A plain summary for language models and answer engines (llmstxt.org).
 // Prerendered to a static file; plans and answers come from the same sources
@@ -28,6 +28,8 @@ ${faq.map((item) => `### ${item.q}\n\n${item.a}`).join("\n\n")}
 ## Pages
 
 - [Home](https://tranzfer.app/): what it does, what it survives, pricing
+- [Pricing](https://tranzfer.app/pricing): plans, and a calculator comparing monthly cost with MASV, Smash and Filemail
+- [Why we built it](https://tranzfer.app/about)
 - [Tranzfer vs MASV](https://tranzfer.app/vs/masv): flat plans vs per-GB pricing, resume after a closed tab
 - [Tranzfer vs WeTransfer](https://tranzfer.app/vs/wetransfer): free plan limits, surviving dropped Wi-Fi
 - [Terms of service](https://tranzfer.app/terms)

@@ -26,7 +26,7 @@ import { RpcClientError } from "effect/rpc/RpcClientError";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 import { bytes } from "../dashboard/format";
-import { supportEmail } from "../ui/Site";
+import { supportEmail } from "../ui/support";
 
 /** Every error an Api call can fail with, middleware and transport included. */
 export type ApiError = Rpc.Error<RpcGroup.Rpcs<typeof Api>> | RpcClientError;

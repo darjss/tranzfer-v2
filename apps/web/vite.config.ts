@@ -13,8 +13,17 @@ const staticPages = [
   "/terms",
   "/privacy",
   "/acceptable-use",
+  "/pricing",
+  "/about",
   "/vs/masv",
   "/vs/wetransfer",
+  // One per entry in src/marketing/content.ts.
+  ...["send-large-files", "resume", "folders", "share-links", "dashboard", "privacy"].map(
+    (slug) => `/features/${slug}`,
+  ),
+  ...["videographers", "photographers", "editors", "creators", "studios", "music"].map(
+    (slug) => `/for/${slug}`,
+  ),
   "/llms.txt",
 ];
 

@@ -1,5 +1,5 @@
 import LegalArticle from "../legal/LegalArticle";
-import { supportEmail } from "../ui/Site";
+import { supportEmail } from "../ui/support";
 
 export default function Privacy() {
   return (
