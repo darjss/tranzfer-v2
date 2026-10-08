@@ -19,6 +19,11 @@ import "./App.css";
 // chrome (the landing has its own nav) until there is a signed-in shell.
 export default function App() {
   const event = getRequestEvent();
+  // Only tranzfer.app belongs in search results; public/_headers covers the
+  // prerendered pages, this covers everything the Worker renders.
+  if (event !== undefined && new URL(event.request.url).hostname !== "tranzfer.app") {
+    event.response.headers.set("X-Robots-Tag", "noindex");
+  }
   const api = isServer
     ? serverLayer(
         event?.request.headers.get("cookie") ?? null,

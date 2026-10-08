@@ -114,6 +114,9 @@ export const delivery = sqliteTable(
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
     // Set once the sweeper has removed a cancelled or expired delivery's objects.
     purgedAt: integer("purged_at", { mode: "timestamp_ms" }),
+    // Set when the sender clears an ended delivery off the dashboard. The row
+    // stays so the sweeper still purges it and its link still reads as ended.
+    clearedAt: integer("cleared_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

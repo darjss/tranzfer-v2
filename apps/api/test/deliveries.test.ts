@@ -135,6 +135,33 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
     }),
   );
 
+  it.effect("clears only the sender's ended deliveries off the list, and still purges them", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("ivy");
+      const deliveries = yield* Deliveries;
+      const { db } = yield* Database;
+      const live = yield* deliveries.create("ivy", newDelivery([newFile("live.bin", 1)]));
+      const cancelled = yield* deliveries.create("ivy", newDelivery([newFile("gone.bin", 1)]));
+      const expired = yield* deliveries.create("ivy", newDelivery([newFile("old.bin", 1)]));
+      yield* deliveries.cancel("ivy", cancelled.id);
+      yield* db
+        .update(schema.delivery)
+        .set({ expiresAt: new Date(Date.now() - 60_000), status: "ready" })
+        .where(eq(schema.delivery.id, expired.id));
+
+      // Someone else's ids, and a live delivery, are left alone.
+      yield* deliveries.clear("alice", [cancelled.id]);
+      yield* deliveries.clear("ivy", [live.id, cancelled.id, expired.id]);
+      const listed = yield* deliveries.list("ivy");
+      expect(listed.map((delivery) => delivery.id)).toEqual([live.id]);
+
+      // Clearing only hides the row: the sweeper still purges what ended.
+      yield* TestClock.adjust("20 minutes");
+      expect(yield* deliveries.purgeEnded).toBe(2);
+    }),
+  );
+
   it.effect("cancels only for the sender, and purges the objects", () =>
     Effect.gen(function* scenario() {
       // D1 stamps updatedAt from the wall clock; start the test clock there too.

@@ -10,7 +10,7 @@ import {
 } from "@tranzfer/contracts";
 import type { DeliveryId, NewDelivery } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -99,6 +99,8 @@ export class Deliveries extends Context.Service<
       senderId: string,
       deliveryId: DeliveryId,
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
+    /** Takes the sender's ended deliveries among these off their list; live ones stay. */
+    readonly clear: (senderId: string, deliveryIds: readonly DeliveryId[]) => Effect.Effect<void>;
     readonly view: (deliveryId: DeliveryId) => Effect.Effect<Delivery>;
     /** Removes the objects of cancelled and expired deliveries. Returns how many it purged. */
     readonly purgeEnded: Effect.Effect<number>;
@@ -224,6 +226,31 @@ export class Deliveries extends Context.Service<
             row.transfers.map((transfer) => transfer.objectKey),
           );
           return yield* view(deliveryId);
+        }, dieOnDatabaseError),
+
+        clear: Effect.fn("Deliveries.clear")(function* clear(
+          senderId: string,
+          deliveryIds: readonly DeliveryId[],
+        ) {
+          yield* Effect.annotateCurrentSpan("delivery.count", deliveryIds.length);
+          if (deliveryIds.length === 0) {
+            return;
+          }
+          const now = new Date(yield* Clock.currentTimeMillis);
+          yield* db
+            .update(schema.delivery)
+            .set({ clearedAt: now })
+            .where(
+              and(
+                eq(schema.delivery.senderId, senderId),
+                inArray(schema.delivery.id, deliveryIds),
+                isNull(schema.delivery.clearedAt),
+                or(
+                  eq(schema.delivery.status, "cancelled"),
+                  and(eq(schema.delivery.status, "ready"), lte(schema.delivery.expiresAt, now)),
+                ),
+              ),
+            );
         }, dieOnDatabaseError),
 
         create: Effect.fn("Deliveries.create")(function* create(
@@ -353,7 +380,7 @@ export class Deliveries extends Context.Service<
           const rows = yield* db.query.delivery.findMany({
             limit: 50,
             orderBy: { createdAt: "desc" },
-            where: { senderId },
+            where: { clearedAt: { isNull: true }, senderId },
             with: { link: true, transfers: { orderBy: { path: "asc" } } },
           });
           yield* Effect.annotateCurrentSpan("delivery.count", rows.length);

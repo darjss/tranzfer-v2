@@ -144,7 +144,8 @@ export function Progress(props: {
   );
 }
 
-export const Avatar = (props: { name: string }) => (
+// The Google photo when the account has one, its initial otherwise.
+export const Avatar = (props: { image: string | null; name: string }) => (
   <span
     aria-hidden="true"
     class={css({
@@ -155,10 +156,21 @@ export const Avatar = (props: { name: string }) => (
       display: "grid",
       fontSize: "13",
       fontWeight: "semibold",
+      overflow: "hidden",
       placeItems: "center",
     })}
   >
-    {props.name.trim().charAt(0).toUpperCase() || "?"}
+    <Show when={props.image} fallback={props.name.trim().charAt(0).toUpperCase() || "?"}>
+      {(image) => (
+        // Google's photo host can answer 403 to a request with a referrer.
+        <img
+          alt=""
+          class={css({ boxSize: "full", objectFit: "cover" })}
+          referrerpolicy="no-referrer"
+          src={image()}
+        />
+      )}
+    </Show>
   </span>
 );
 

@@ -42,6 +42,11 @@ export class Api extends RpcGroup.make(
     payload: Schema.Struct({ deliveryId: DeliveryId }),
     success: Delivery,
   }).middleware(Authenticated),
+  // Hides ended deliveries from the sender's list. Live ones are left alone.
+  // The dashboard lists at most 50, so one call never needs more.
+  Rpc.make("ClearDeliveries", {
+    payload: Schema.Struct({ deliveryIds: Schema.Array(DeliveryId).check(Schema.isMaxLength(50)) }),
+  }).middleware(Authenticated),
   Rpc.make("SignUpload", {
     error: Schema.Union([DeliveryNotFound, InvalidUpload, RateLimited, UploadClosed]),
     payload: SignUploadPayload,

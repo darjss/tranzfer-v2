@@ -20,6 +20,7 @@ import { ApiClient } from "../../api/client";
 import { appError } from "../../api/errors";
 import { runEffect, RuntimeContext } from "../../api/solid-effect";
 import { bytes, files, fromNow, untilDate } from "../../dashboard/format";
+import { SaveAll } from "../../downloads/SaveAll";
 import Brand from "../../landing/Brand";
 
 const ghost = css({
@@ -137,7 +138,11 @@ const LinkError = (props: { error: unknown }) => {
   );
 };
 
-const Delivery = (props: { delivery: SharedDelivery; download: (path: string) => void }) => {
+const Delivery = (props: {
+  delivery: SharedDelivery;
+  download: (path: string) => void;
+  token: string;
+}) => {
   const total = () => props.delivery.files.reduce((sum, file) => sum + file.size, 0);
   return (
     <Paper>
@@ -174,6 +179,9 @@ const Delivery = (props: { delivery: SharedDelivery; download: (path: string) =>
           )}
         </Show>
       </p>
+      <Show when={props.delivery.files.length > 1}>
+        <SaveAll delivery={props.delivery} token={props.token} />
+      </Show>
 
       <ul class={css({ borderColor: "line", borderTopWidth: "1px", listStyle: "none", mt: "6" })}>
         <For each={props.delivery.files}>
@@ -288,6 +296,7 @@ const LinkPage = () => {
               download={(path) => {
                 void download(path);
               }}
+              token={params.token}
             />
           }
         >
