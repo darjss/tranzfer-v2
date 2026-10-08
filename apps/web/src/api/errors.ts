@@ -11,12 +11,13 @@ import {
   OverPlanLimit,
   PaidPlanId,
   plans,
+  RateLimited,
   RetentionNotInPlan,
   StorageUnavailable,
   Unauthorized,
   UploadClosed,
 } from "@tranzfer/contracts";
-import type { Api } from "@tranzfer/contracts";
+import type { Api, RateLimitName } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
 import * as Match from "effect/Match";
 import * as Schema from "effect/Schema";
@@ -40,6 +41,7 @@ const ApiErrors = Schema.Union([
   LinkNotReady,
   NotUploaded,
   OverPlanLimit,
+  RateLimited,
   RetentionNotInPlan,
   RpcClientError,
   StorageUnavailable,
@@ -59,6 +61,27 @@ const planThatFits = (error: OverPlanLimit) =>
       plans[plan].activeBytes >= error.usedBytes + error.requestedBytes,
   );
 
+const tooMany = {
+  authRequests: "Too many sign-in attempts from your network.",
+  deliveriesPerDay: "Too many new deliveries in a day.",
+  deliveriesPerHour: "Too many new deliveries in an hour.",
+  newAccounts: "Too many new accounts from your network today.",
+  uploadSigning: "Too many upload requests at once.",
+} satisfies Record<RateLimitName, string>;
+
+const count = (value: number, unit: string) => `${value} ${unit}${value === 1 ? "" : "s"}`;
+
+// Rounded up, so the wait it names is never too short.
+const wait = (seconds: number) => {
+  if (seconds < 60) {
+    return count(seconds, "second");
+  }
+  if (seconds < 60 * 60) {
+    return count(Math.ceil(seconds / 60), "minute");
+  }
+  return count(Math.ceil(seconds / (60 * 60)), "hour");
+};
+
 const words = Match.type<ApiError>().pipe(
   Match.tagsExhaustive({
     AuthenticationUnavailable: () => "We couldn't check your sign-in. Try again in a moment.",
@@ -77,6 +100,8 @@ const words = Match.type<ApiError>().pipe(
         ? `${facts} Cancel a delivery to free space, or send this one in smaller parts.`
         : `${facts} ${plans[fit].name} holds ${bytes(plans[fit].activeBytes)}. Upgrade, or cancel a delivery to free space.`;
     },
+    RateLimited: (error) =>
+      `${tooMany[error.limit]} Try again in ${wait(error.retryAfterSeconds)}.`,
     RetentionNotInPlan: (error) =>
       `${plans[error.plan].name} links last up to ${error.maxRetentionDays} days. Choose a shorter time, or upgrade.`,
     RpcClientError: () => "We couldn't reach Tranzfer. Check your connection and try again.",

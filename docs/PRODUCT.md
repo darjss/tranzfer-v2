@@ -36,6 +36,19 @@ Capacity is active transfer space. It isn't storage you keep, and it isn't a mon
 
 A new delivery that would push active space past the plan's limit is refused before any bytes upload, with copy that names the limit and the upgrade.
 
+## Rate limits
+
+Limits stop one person or bot from flooding sign-up, sign-in or the Free plan. They sit well above what a real person does, so nobody sending work should ever meet one. Over a limit, the request is refused with how long to wait, and the app says so in words. The numbers live in `rateLimits` in `packages/contracts/src/billing.ts`.
+
+| Limit                   | Counted per | Plans | Cap                   |
+| ----------------------- | ----------- | ----- | --------------------- |
+| Requests to sign-in     | client IP   | all   | 30 a minute           |
+| New accounts            | client IP   | all   | 10 a day              |
+| New deliveries          | sender      | Free  | 20 an hour, 100 a day |
+| Upload signing requests | sender      | Free  | 200 every 10 seconds  |
+
+Sign-in covers every `/api/auth` request, Google's start and callback and the staging login included. An IPv6 client counts by its /64. Cancelled deliveries count toward the delivery cap, so create-and-cancel can't loop. A part is at least 64 MiB, so 20 signing requests a second is faster than a gigabit line needs. Paid and comp plans have no delivery or signing cap; they pay for what they use.
+
 ## Cost guardrail
 
 R2 storage is about $0.015 per GB-month, and egress is free. Worst case, with the allocation full all month:

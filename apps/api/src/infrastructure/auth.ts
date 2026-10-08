@@ -1,9 +1,12 @@
 import { BetterAuth, Database as AuthDatabase } from "@alchemy.run/better-auth";
 import type { BetterAuthProps, DatabaseService } from "@alchemy.run/better-auth";
 import { schema } from "@tranzfer/db";
+import { RateLimited, rateLimits } from "@tranzfer/contracts";
 import type { Principal } from "@tranzfer/contracts";
 import { RuntimeContext } from "alchemy";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { APIError, getIP } from "better-auth/api";
+import { and, desc, eq, gt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -18,9 +21,10 @@ import type * as Scope from "effect/Scope";
 import * as Cookies from "effect/http/Cookies";
 import type * as HttpBody from "effect/http/HttpBody";
 import type * as HttpServerError from "effect/http/HttpServerError";
-import type * as HttpServerRequest from "effect/http/HttpServerRequest";
-import type * as HttpServerResponse from "effect/http/HttpServerResponse";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
+import { secondsUntilRoom } from "../deliveries";
 import { stagingLogin } from "./staging-login";
 
 /** The session lookup failed inside better-auth. Its cause can hold tokens: never log it. */
@@ -42,6 +46,10 @@ export class Auth extends Context.Service<
     >;
   }
 >()("tranzfer/Auth") {}
+
+// Cloudflare sets this on every request at the edge; a client can't forge it,
+// and the web Worker forwards the original headers over the service binding.
+const ipAddress = { ipAddressHeaders: ["cf-connecting-ip"] };
 
 const SigningSecret = Schema.Redacted(Schema.String.check(Schema.isMinLength(32)));
 
@@ -96,9 +104,20 @@ const providers = (stage: "production" | "staging" | "dev", d1: Effect.Effect<D1
     ),
   );
 
-export const makeAuth = (stage: "production" | "staging" | "dev", d1: Effect.Effect<D1Database>) =>
+/**
+ * `allowRequest` answers whether a client IP still fits
+ * `rateLimits.authRequests`; it is checked before Better Auth sees a request.
+ */
+export const makeAuth = (
+  stage: "production" | "staging" | "dev",
+  d1: Effect.Effect<D1Database>,
+  allowRequest: (ip: string) => Effect.Effect<boolean>,
+) =>
   Effect.gen(function* auth() {
     const configured = yield* providers(stage, d1);
+    // Better Auth's hooks are plain async callbacks; they reach D1 through
+    // the services this Effect runs with.
+    const services = yield* Effect.context();
     const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
 
     // Our snake_case, integer-ms columns rule out the plugin's Kysely D1 layer.
@@ -111,9 +130,50 @@ export const makeAuth = (stage: "production" | "staging" | "dev", d1: Effect.Eff
 
     const instance = yield* BetterAuth({
       ...configured,
-      advanced: { database: { validateSchema: false } },
+      advanced: { database: { validateSchema: false }, ipAddress },
       basePath: "/api/auth",
       baseURL: origin,
+      databaseHooks: {
+        user: {
+          create: {
+            // New accounts per client IP. A creation outside a request has no
+            // IP and is not counted. The OAuth callback turns this error into
+            // a redirect to the error URL with the code and description.
+            before: async (user, context) => {
+              const headers = context?.headers;
+              const ip = headers === undefined ? null : getIP(headers, { advanced: { ipAddress } });
+              if (ip === null) {
+                return { data: user };
+              }
+              const { newAccounts } = rateLimits;
+              const now = Date.now();
+              const recent = await drizzle(await Effect.runPromiseWith(services)(d1))
+                .select({ createdAt: schema.user.createdAt })
+                .from(schema.user)
+                .where(
+                  and(
+                    eq(schema.user.signupIp, ip),
+                    gt(schema.user.createdAt, new Date(now - newAccounts.windowSeconds * 1000)),
+                  ),
+                )
+                .orderBy(desc(schema.user.createdAt))
+                .limit(newAccounts.limit);
+              const retryAfterSeconds = secondsUntilRoom(
+                recent.map((row) => row.createdAt),
+                newAccounts,
+                now,
+              );
+              if (retryAfterSeconds !== undefined) {
+                throw new APIError("TOO_MANY_REQUESTS", {
+                  code: "RateLimited",
+                  message: String(retryAfterSeconds),
+                });
+              }
+              return { data: { ...user, signupIp: ip } };
+            },
+          },
+        },
+      },
       logger: {
         // Adapter error arguments can contain session tokens in SQL parameters.
         log: (level, message) => {
@@ -121,11 +181,31 @@ export const makeAuth = (stage: "production" | "staging" | "dev", d1: Effect.Eff
         },
       },
       migrate: false,
+      // Sign-in errors land on the sign-in page, which shows the words.
+      onAPIError: { errorURL: `${origin}/sign-in` },
+      // Its stores are per isolate or per path; allowRequest limits instead.
+      rateLimit: { enabled: false },
       trustedOrigins: [origin],
+      user: {
+        additionalFields: {
+          signupIp: { input: false, required: false, returned: false, type: "string" },
+        },
+      },
     }).pipe(Effect.provide(authDatabase));
 
     return Auth.of({
-      fetch: instance.fetch.pipe(Effect.provide(RuntimeContext.phantom)),
+      fetch: Effect.gen(function* fetch() {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const ip = getIP(new Headers(request.headers), { advanced: { ipAddress } }) ?? "unknown";
+        if (!(yield* allowRequest(ip))) {
+          const { windowSeconds } = rateLimits.authRequests;
+          return yield* HttpServerResponse.schemaJson(RateLimited)(
+            new RateLimited({ limit: "authRequests", retryAfterSeconds: windowSeconds }),
+            { headers: { "retry-after": String(windowSeconds) }, status: 429 },
+          );
+        }
+        return yield* instance.fetch.pipe(Effect.provide(RuntimeContext.phantom));
+      }).pipe(Effect.withSpan("Auth.fetch")),
       session: Effect.fn("Auth.session")(function* session(headers: Headers) {
         const native = yield* instance.auth.pipe(Effect.provide(RuntimeContext.phantom));
         // getSession through the plugin can't return the renewed Set-Cookie.

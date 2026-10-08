@@ -4,11 +4,13 @@ import {
   DeliveryNotFound,
   OverPlanLimit,
   plans,
+  RateLimited,
+  rateLimits,
   RetentionNotInPlan,
 } from "@tranzfer/contracts";
 import type { DeliveryId, NewDelivery } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -33,6 +35,22 @@ const CANCEL_SETTLE = Duration.sum(UPLOAD_URL_TTL, Duration.minutes(1));
  * refuses past it, and the sweeper ends what is still open.
  */
 export const UPLOAD_WINDOW = Duration.days(7);
+
+/**
+ * Seconds until a rolling window has room again, given the creation times in
+ * it newest first, or undefined while it has room. The window is full when
+ * its limit-th newest entry is still inside it.
+ */
+export const secondsUntilRoom = (
+  newestFirst: readonly Date[],
+  rule: { readonly limit: number; readonly windowSeconds: number },
+  now: number,
+) => {
+  const oldestCounted = newestFirst[rule.limit - 1];
+  const reopensAt =
+    oldestCounted === undefined ? now : oldestCounted.getTime() + rule.windowSeconds * 1000;
+  return reopensAt > now ? Math.ceil((reopensAt - now) / 1000) : undefined;
+};
 
 export const objectPrefix = (deliveryId: DeliveryId) => `d/${deliveryId}/`;
 
@@ -69,7 +87,10 @@ export class Deliveries extends Context.Service<
     readonly create: (
       senderId: string,
       input: NewDelivery,
-    ) => Effect.Effect<Delivery, DeliveryConflict | OverPlanLimit | RetentionNotInPlan>;
+    ) => Effect.Effect<
+      Delivery,
+      DeliveryConflict | OverPlanLimit | RateLimited | RetentionNotInPlan
+    >;
     /** Bytes of the sender's deliveries that are open, or ready and not yet expired. */
     readonly activeBytes: (senderId: string) => Effect.Effect<number>;
     readonly list: (senderId: string) => Effect.Effect<readonly Delivery[]>;
@@ -230,6 +251,32 @@ export class Deliveries extends Context.Service<
             where: { userId: senderId },
           });
           const plan = subscription?.plan ?? "free";
+          if (plan === "free") {
+            // Cancelled deliveries count too, so create-and-cancel can't loop.
+            const now = yield* Clock.currentTimeMillis;
+            const { deliveriesPerDay } = rateLimits;
+            const recent = yield* db
+              .select({ createdAt: schema.delivery.createdAt })
+              .from(schema.delivery)
+              .where(
+                and(
+                  eq(schema.delivery.senderId, senderId),
+                  gt(
+                    schema.delivery.createdAt,
+                    new Date(now - deliveriesPerDay.windowSeconds * 1000),
+                  ),
+                ),
+              )
+              .orderBy(desc(schema.delivery.createdAt))
+              .limit(deliveriesPerDay.limit);
+            const createdAt = recent.map((row) => row.createdAt);
+            for (const limit of ["deliveriesPerHour", "deliveriesPerDay"] as const) {
+              const retryAfterSeconds = secondsUntilRoom(createdAt, rateLimits[limit], now);
+              if (retryAfterSeconds !== undefined) {
+                return yield* new RateLimited({ limit, retryAfterSeconds });
+              }
+            }
+          }
           if (input.retentionDays > plans[plan].maxRetentionDays) {
             return yield* new RetentionNotInPlan({
               maxRetentionDays: plans[plan].maxRetentionDays,
