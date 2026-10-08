@@ -4,6 +4,7 @@ import { supportEmail } from "../ui/Site";
 export default function Terms() {
   return (
     <LegalArticle
+      path="/terms"
       title="Terms of service"
       description="The rules for using Tranzfer to send large files: accounts, plans, links, your files and ours."
       updated="8 October 2026"

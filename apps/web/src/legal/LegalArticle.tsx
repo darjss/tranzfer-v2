@@ -1,4 +1,4 @@
-import { Meta, Title } from "@solidjs/meta";
+import { Link, Meta, Title } from "@solidjs/meta";
 import type { ParentProps } from "solid-js";
 import { css } from "styled-system/css";
 import { SitePage } from "../ui/Site";
@@ -28,12 +28,16 @@ const prose = css({
 });
 
 export default function LegalArticle(
-  props: ParentProps<{ description: string; title: string; updated: string }>,
+  props: ParentProps<{ description: string; path: string; title: string; updated: string }>,
 ) {
   return (
     <SitePage>
       <Title>{props.title} · Tranzfer</Title>
       <Meta name="description" content={props.description} />
+      <Meta property="og:title" content={`${props.title} · Tranzfer`} />
+      <Meta property="og:description" content={props.description} />
+      <Meta property="og:url" content={`https://tranzfer.app${props.path}`} />
+      <Link rel="canonical" href={`https://tranzfer.app${props.path}`} />
       <main class={css({ py: { base: "14", lg: "20" } })}>
         <p
           class={css({

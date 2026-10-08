@@ -40,6 +40,7 @@ const columns = [
       { href: "/#desk", label: "What it survives" },
       { href: "/#how", label: "How it works" },
       { href: "/#pricing", label: "Pricing" },
+      { href: "/#faq", label: "Questions" },
       { href: "/sign-in", label: "Sign in" },
     ],
     title: "Product",

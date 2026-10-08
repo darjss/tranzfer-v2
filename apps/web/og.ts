@@ -290,11 +290,21 @@ export const renderOgImage = async () => {
   return new Resvg(svg, { fitTo: { mode: "width", value: 1200 } }).render().asPng();
 };
 
-/** Emits /og.png into the client build. */
+// The brand mark on a paper tile, for places that want a PNG: Safari's home
+// screen, search result favicons and the JSON-LD logo.
+const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="${paper}"/><g transform="translate(12 12) scale(1.25)" fill="none" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.5A3.5 3.5 0 0 0 10.5 11h-5A3.5 3.5 0 0 0 2 14.5v5A3.5 3.5 0 0 0 5.5 23h5a3.5 3.5 0 0 0 3.5-3.5" stroke="${blue}" stroke-opacity=".4"/><path d="M18 17.5a3.5 3.5 0 0 0 3.5 3.5h5a3.5 3.5 0 0 0 3.5-3.5v-5A3.5 3.5 0 0 0 26.5 9h-5A3.5 3.5 0 0 0 18 12.5" stroke="${blue}"/><path d="M6 16h20M23.2 13.2 26 16l-2.8 2.8" stroke="${ink}"/></g></svg>`;
+
+const icons = { "apple-touch-icon.png": 180, "favicon-48.png": 48, "icon-512.png": 512 };
+
+/** Emits /og.png and the PNG icons into the client build. */
 export const ogImage = (): Plugin => ({
   applyToEnvironment: (environment) => environment.name === "client",
   async generateBundle() {
     this.emitFile({ fileName: "og.png", source: await renderOgImage(), type: "asset" });
+    for (const [fileName, size] of Object.entries(icons)) {
+      const source = new Resvg(iconSvg, { fitTo: { mode: "width", value: size } }).render().asPng();
+      this.emitFile({ fileName, source, type: "asset" });
+    }
   },
   name: "tranzfer:og-image",
 });

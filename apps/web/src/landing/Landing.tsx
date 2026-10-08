@@ -3,6 +3,7 @@ import type { PaidPlanId } from "@tranzfer/contracts";
 import { For, Show, createSignal, onSettled, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
 import Uploader from "./Uploader";
+import { faq } from "./faq";
 import { ArrowIcon, Asterisk, Blob, Hand, Ink, Ring, Still, inkStrokes } from "./notebook";
 import { RuntimeContext } from "../api/solid-effect";
 import { goToCheckout } from "../dashboard/billing";
@@ -799,6 +800,71 @@ export default function Landing() {
             Billed monthly through Polar. Cancel anytime from your account; your plan runs to the
             end of the month you paid for.
           </p>
+        </section>
+
+        <section
+          id="faq"
+          class={css({
+            display: "grid",
+            gap: { base: "8", lg: "16" },
+            gridTemplateColumns: { base: "1fr", lg: "minmax(0,1fr) minmax(0,1.5fr)" },
+            py: { base: "20", lg: "30" },
+          })}
+        >
+          <div>
+            <p class={mono}>Questions</p>
+            <h2 class={cx("rv", h2)}>
+              Before you send <i>the big one.</i>
+            </h2>
+          </div>
+          <div class={css({ borderBottomWidth: "1px", borderColor: "line" })}>
+            <For each={faq}>
+              {(item) => (
+                <details
+                  class={css({
+                    "&[open] summary span": { rotate: "[45deg]" },
+                    borderColor: "line",
+                    borderTopWidth: "1px",
+                  })}
+                >
+                  <summary
+                    class={css({
+                      "&::-webkit-details-marker": { display: "none" },
+                      alignItems: "center",
+                      cursor: "pointer",
+                      display: "flex",
+                      fontSize: "[19px]",
+                      fontWeight: "semibold",
+                      gap: "4",
+                      justifyContent: "space-between",
+                      letterSpacing: "snug",
+                      listStyle: "none",
+                      py: "5",
+                    })}
+                  >
+                    {item.q}
+                    <span
+                      aria-hidden="true"
+                      class={css({
+                        color: "blue",
+                        flexShrink: 0,
+                        fontSize: "26",
+                        fontWeight: "normal",
+                        lineHeight: "none",
+                        transitionDuration: "normal",
+                        transitionProperty: "[rotate]",
+                      })}
+                    >
+                      +
+                    </span>
+                  </summary>
+                  <p class={css({ color: "mut", maxW: "[60ch]", pb: "6", textStyle: "lg" })}>
+                    {item.a}
+                  </p>
+                </details>
+              )}
+            </For>
+          </div>
         </section>
 
         <section
