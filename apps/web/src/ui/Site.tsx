@@ -41,6 +41,8 @@ const columns = [
       { href: "/#how", label: "How it works" },
       { href: "/#pricing", label: "Pricing" },
       { href: "/#faq", label: "Questions" },
+      { href: "/vs/masv", label: "Tranzfer vs MASV" },
+      { href: "/vs/wetransfer", label: "Tranzfer vs WeTransfer" },
       { href: "/sign-in", label: "Sign in" },
     ],
     title: "Product",

@@ -20,8 +20,10 @@ import "./App.css";
 export default function App() {
   const event = getRequestEvent();
   // Only tranzfer.app belongs in search results; public/_headers covers the
-  // prerendered pages, this covers everything the Worker renders.
-  if (event !== undefined && new URL(event.request.url).hostname !== "tranzfer.app") {
+  // prerendered pages, this covers everything the Worker renders. The build's
+  // prerender crawls localhost, and its sitemap drops any page marked noindex.
+  const host = event === undefined ? "" : new URL(event.request.url).hostname;
+  if (event !== undefined && host !== "tranzfer.app" && host !== "localhost") {
     event.response.headers.set("X-Robots-Tag", "noindex");
   }
   const api = isServer

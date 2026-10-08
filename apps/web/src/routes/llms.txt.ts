@@ -28,6 +28,8 @@ ${faq.map((item) => `### ${item.q}\n\n${item.a}`).join("\n\n")}
 ## Pages
 
 - [Home](https://tranzfer.app/): what it does, what it survives, pricing
+- [Tranzfer vs MASV](https://tranzfer.app/vs/masv): flat plans vs per-GB pricing, resume after a closed tab
+- [Tranzfer vs WeTransfer](https://tranzfer.app/vs/wetransfer): free plan limits, surviving dropped Wi-Fi
 - [Terms of service](https://tranzfer.app/terms)
 - [Privacy policy](https://tranzfer.app/privacy)
 - [Acceptable use](https://tranzfer.app/acceptable-use)
