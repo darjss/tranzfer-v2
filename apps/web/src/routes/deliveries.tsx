@@ -30,7 +30,9 @@ import { inkStrokes } from "../landing/notebook";
 import { online, wireWindow } from "../uploads/store";
 import { chosenFiles, getDroppedFiles, invalidPaths } from "../uploads/uploads";
 import { bytes } from "../dashboard/format";
+import { button } from "../ui/Button";
 import { toaster } from "../ui/Toasts";
+import DashboardLoading from "../dashboard/DashboardLoading";
 import "../dashboard/dashboard.css";
 
 const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
@@ -242,24 +244,44 @@ const DeliveriesPage = () => {
       <Title>Deliveries · Tranzfer</Title>
       <Meta name="description" content="Your Tranzfer deliveries." />
       <Meta name="robots" content="noindex" />
-      <Loading fallback={<main class={css({ minH: "screen" })} />}>
+      <Loading fallback={<DashboardLoading />}>
         <Errored
           fallback={(error, retry) => (
             <Show
               when={appError(error()).tag === "Unauthorized"}
               fallback={
                 <main
-                  class={css({ display: "grid", minH: "screen", placeItems: "center" })}
+                  class={css({ display: "grid", minH: "screen", placeItems: "center", px: "5" })}
                   role="alert"
                 >
-                  <div class={css({ textAlign: "center" })}>
-                    <p class={css({ color: "mut", textStyle: "sm" })}>
-                      {appError(error()).message}
+                  <div
+                    class={css({
+                      bg: "panel",
+                      borderRadius: "card",
+                      maxW: "[440px]",
+                      p: "8",
+                      rotate: "[-1deg]",
+                      shadow: "paper",
+                      textAlign: "center",
+                    })}
+                  >
+                    <p
+                      class={css({
+                        fontSize: "22",
+                        fontWeight: "semibold",
+                        letterSpacing: "tight",
+                      })}
+                    >
+                      Well, that didn't load.
+                    </p>
+                    <p class={css({ color: "mut", mt: "2", textStyle: "sm" })}>
+                      {appError(error()).message} Your uploads are fine; this is just the list.
                     </p>
                     <button
-                      class={css({ color: "ink", mt: "3", textDecoration: "underline" })}
+                      class={button({ size: "sm" })}
                       onClick={retry}
                       type="button"
+                      style={{ "margin-top": "20px" }}
                     >
                       Try again
                     </button>
@@ -454,5 +476,5 @@ const DeliveriesPage = () => {
 const LazyDeliveries = clientOnly(async () => await Promise.resolve({ default: DeliveriesPage }));
 
 export default function Deliveries() {
-  return <LazyDeliveries fallback={<main class={css({ minH: "screen" })} />} />;
+  return <LazyDeliveries fallback={<DashboardLoading />} />;
 }
