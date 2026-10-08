@@ -4,6 +4,7 @@ import { supportEmail } from "../ui/Site";
 export default function AcceptableUse() {
   return (
     <LegalArticle
+      path="/acceptable-use"
       title="Acceptable use"
       description="What you can't send with Tranzfer, and how to report a link that breaks the rules."
       updated="8 October 2026"

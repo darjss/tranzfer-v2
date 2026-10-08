@@ -4,6 +4,7 @@ import { supportEmail } from "../ui/Site";
 export default function Privacy() {
   return (
     <LegalArticle
+      path="/privacy"
       title="Privacy policy"
       description="What Tranzfer stores about you and your files, who processes it, and how long it lives."
       updated="8 October 2026"

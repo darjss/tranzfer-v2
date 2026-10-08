@@ -11,6 +11,8 @@ export default function Document(props: ParentProps) {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="theme-color" content="#f3efe6" />
         <meta property="og:site_name" content="Tranzfer" />
         <meta property="og:image" content="https://tranzfer.app/og.png" />
