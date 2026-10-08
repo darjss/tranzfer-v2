@@ -2,87 +2,94 @@ import { For } from "solid-js";
 import { css, cx } from "styled-system/css";
 import PhCaretDownBold from "~icons/ph/caret-down-bold";
 import PhListBold from "~icons/ph/list-bold";
+import PhXBold from "~icons/ph/x-bold";
 import Brand from "../landing/Brand";
 import { audiences, features, resources } from "../marketing/content";
 import { button } from "./Button";
 
-// The public pages' top bar. Desktop menus open on hover or keyboard focus
-// with CSS alone; phones get one popover sheet with everything in it.
+// The public pages' top bar. Every menu is a native popover: the browser
+// handles click to toggle, Escape, outside clicks, focus return and the
+// expanded state. Desktop panels sit under their button by anchor position.
 
 const groups = [
   {
+    id: "features",
     items: features.map((f) => ({ href: `/features/${f.slug}`, label: f.menu })),
     label: "Features",
   },
-  { items: audiences.map((a) => ({ href: `/for/${a.slug}`, label: a.menu })), label: "Use cases" },
-  { items: resources.map((r) => ({ href: r.href, label: r.menu })), label: "Resources" },
+  {
+    id: "use-cases",
+    items: audiences.map((a) => ({ href: `/for/${a.slug}`, label: a.menu })),
+    label: "Use cases",
+  },
+  {
+    id: "resources",
+    items: resources.map((r) => ({ href: r.href, label: r.menu })),
+    label: "Resources",
+  },
 ];
 
 const trigger = css({
   _hover: { color: "ink" },
   alignItems: "center",
   color: "mut",
-  cursor: "default",
+  cursor: "pointer",
   display: "flex",
   fontWeight: "medium",
   gap: "1.5",
-  py: "5",
+  minH: "11",
   textStyle: "sm",
   transitionDuration: "fast",
   transitionProperty: "[color]",
 });
 
 const panel = css({
+  "&:popover-open": { animation: "[menu-in 160ms var(--easings-smooth)]" },
   bg: "panel",
+  border: "none",
   borderRadius: "2xl",
-  display: "grid",
-  left: "-4",
+  color: "ink",
+  inset: "[auto]",
+  m: "0",
   minW: "[240px]",
-  opacity: 0,
+  mt: "1",
   p: "2",
-  pos: "absolute",
-  scale: "[.97]",
   shadow: "paper",
-  top: "[calc(100% - 6px)]",
-  transformOrigin: "top left",
-  // A short grace period on the way out so the pointer can cross the gap.
-  transition:
-    "[opacity 180ms var(--easings-smooth) 120ms, scale 180ms var(--easings-smooth) 120ms, visibility 0s 300ms]",
-  translate: "[0 -4px]",
-  visibility: "hidden",
-  zIndex: 10,
-});
-
-const open = css({
-  "&:hover > div, &:focus-within > div": {
-    opacity: 1,
-    scale: "[1]",
-    transition:
-      "[opacity 180ms var(--easings-smooth), scale 180ms var(--easings-smooth), visibility 0s]",
-    translate: "[0 0]",
-    visibility: "visible",
-  },
-  "&:hover svg, &:focus-within svg": { rotate: "[180deg]" },
-  pos: "relative",
 });
 
 const item = css({
   _hover: { bg: "ink/5", color: "ink" },
+  alignItems: "center",
   borderRadius: "lg",
   color: "[#3a3b40]",
-  display: "block",
+  display: "flex",
   fontSize: "15",
+  minH: "11",
   px: "3.5",
-  py: "2.5",
   transitionDuration: "fast",
   transitionProperty: "[background-color,color]",
   whiteSpace: "nowrap",
 });
 
 const caret = css({
+  "[aria-expanded=true] > &": { rotate: "[180deg]" },
   boxSize: "3",
   transitionDuration: "fast",
   transitionProperty: "[rotate]",
+});
+
+const groupLabel = css({
+  "&::-webkit-details-marker": { display: "none" },
+  "[open] > &": { "& svg": { rotate: "[180deg]" } },
+  alignItems: "center",
+  color: "ink",
+  cursor: "pointer",
+  display: "flex",
+  fontWeight: "semibold",
+  justifyContent: "space-between",
+  listStyle: "none",
+  minH: "11",
+  px: "3.5",
 });
 
 export function SiteHeader() {
@@ -99,6 +106,25 @@ export function SiteHeader() {
         zIndex: 20,
       })}
     >
+      <a
+        class={css({
+          _focus: { left: "0", top: "3" },
+          alignItems: "center",
+          bg: "ink",
+          borderRadius: "lg",
+          color: "paper",
+          display: "flex",
+          fontWeight: "semibold",
+          left: "[-9999px]",
+          minH: "11",
+          pos: "absolute",
+          px: "4",
+          zIndex: 30,
+        })}
+        href="#content"
+      >
+        Skip to content
+      </a>
       <Brand />
       <ul
         class={css({
@@ -110,12 +136,22 @@ export function SiteHeader() {
       >
         <For each={groups}>
           {(group) => (
-            <li class={open}>
-              <button class={trigger} type="button" aria-haspopup="true">
+            <li>
+              <button
+                class={trigger}
+                popovertarget={`menu-${group.id}`}
+                style={`anchor-name:--menu-${group.id}`}
+                type="button"
+              >
                 {group.label}
                 <PhCaretDownBold class={caret} aria-hidden="true" />
               </button>
-              <div class={panel}>
+              <div
+                class={panel}
+                id={`menu-${group.id}`}
+                popover="auto"
+                style={`position-anchor:--menu-${group.id};position-area:bottom span-right`}
+              >
                 <For each={group.items}>
                   {(link) => (
                     <a class={item} href={link.href}>
@@ -134,7 +170,7 @@ export function SiteHeader() {
         </li>
       </ul>
       <div class={css({ alignItems: "center", display: "flex", gap: "5" })}>
-        <a class={cx(trigger, css({ cursor: "pointer" }))} href="/sign-in">
+        <a class={trigger} href="/sign-in">
           Sign in
         </a>
         <a
@@ -147,7 +183,7 @@ export function SiteHeader() {
           aria-label="Menu"
           class={cx(
             button({ size: "sm", variant: "outline" }),
-            css({ display: { base: "inline-flex", lg: "none" }, px: "3" }),
+            css({ display: { base: "inline-flex", lg: "none" }, minH: "11", minW: "12", px: "3" }),
           )}
           popovertarget="site-menu"
           type="button"
@@ -158,13 +194,14 @@ export function SiteHeader() {
       <div
         class={css({
           bg: "panel",
+          border: "none",
           borderRadius: "2xl",
           inset: "[auto]",
           left: "4",
           m: "0",
           maxH: "[calc(100vh - 96px)]",
           overflowY: "auto",
-          p: "5",
+          p: "4",
           pos: "fixed",
           right: "4",
           shadow: "paper",
@@ -174,24 +211,32 @@ export function SiteHeader() {
         id="site-menu"
         popover="auto"
       >
-        <a class={cx(item, css({ fontWeight: "semibold" }))} href="/pricing">
-          Pricing
-        </a>
+        <div
+          class={css({ alignItems: "center", display: "flex", justifyContent: "space-between" })}
+        >
+          <a class={cx(item, css({ color: "ink", fontWeight: "semibold" }))} href="/pricing">
+            Pricing
+          </a>
+          <button
+            class={cx(item, css({ cursor: "pointer", gap: "2" }))}
+            popovertarget="site-menu"
+            popovertargetaction="hide"
+            type="button"
+          >
+            Close menu <PhXBold aria-hidden="true" />
+          </button>
+        </div>
         <For each={groups}>
-          {(group) => (
-            <div class={css({ mt: "4" })}>
-              <p
-                class={css({
-                  color: "mut",
-                  fontFamily: "mono",
-                  fontSize: "11",
-                  letterSpacing: "widest",
-                  px: "3.5",
-                  textTransform: "uppercase",
-                })}
-              >
+          {(group, i) => (
+            <details
+              class={css({ borderColor: "line", borderTopWidth: "1px", mt: "2", pt: "2" })}
+              name="site-menu"
+              open={i() === 0}
+            >
+              <summary class={groupLabel}>
                 {group.label}
-              </p>
+                <PhCaretDownBold class={caret} aria-hidden="true" />
+              </summary>
               <For each={group.items}>
                 {(link) => (
                   <a class={item} href={link.href}>
@@ -199,7 +244,7 @@ export function SiteHeader() {
                   </a>
                 )}
               </For>
-            </div>
+            </details>
           )}
         </For>
       </div>

@@ -50,8 +50,11 @@ const value = css({
 export default function PriceCalculator() {
   const [sizeIndex, setSizeIndex] = createSignal(6, { name: "calculator-size" });
   const [count, setCount] = createSignal(4, { name: "calculator-count" });
+  const [live, setLive] = createSignal(1, { name: "calculator-live" });
   const size = () => sizes[sizeIndex()] ?? 1;
-  const quotes = createMemo(() => quote(size(), count()), { name: "calculator-quotes" });
+  const quotes = createMemo(() => quote(size(), count(), live()), {
+    name: "calculator-quotes",
+  });
   const most = () => Math.max(1, ...quotes().map((q) => q.price ?? 0));
   const cheapest = () =>
     Math.min(...quotes().flatMap((q) => (q.price === undefined ? [] : [q.price])));
@@ -81,16 +84,17 @@ export default function PriceCalculator() {
         class={css({
           display: "grid",
           gap: "8",
-          gridTemplateColumns: { base: "1fr", md: "1fr 1fr" },
+          gridTemplateColumns: { base: "1fr", md: "repeat(3,1fr)" },
           mt: "8",
         })}
       >
         <label>
           <span class={label}>
-            <span class={css({ fontWeight: "medium" })}>How big is a delivery?</span>
+            <span class={css({ fontWeight: "medium" })}>Delivery size</span>
             <span class={value}>{showSize(size())}</span>
           </span>
           <input
+            aria-valuetext={showSize(size())}
             class={range}
             max={sizes.length - 1}
             min={0}
@@ -104,7 +108,7 @@ export default function PriceCalculator() {
         </label>
         <label>
           <span class={label}>
-            <span class={css({ fontWeight: "medium" })}>How many a month?</span>
+            <span class={css({ fontWeight: "medium" })}>Deliveries a month</span>
             <span class={value}>{count()}</span>
           </span>
           <input
@@ -119,9 +123,28 @@ export default function PriceCalculator() {
             value={count()}
           />
         </label>
+        <label>
+          <span class={label}>
+            <span class={css({ fontWeight: "medium" })}>Live at the same time</span>
+            <span class={value}>{live()}</span>
+          </span>
+          <input
+            class={range}
+            max={10}
+            min={1}
+            onInput={(event) => {
+              setLive(Number(event.currentTarget.value));
+            }}
+            step={1}
+            type="range"
+            value={live()}
+          />
+        </label>
       </div>
-      <p class={css({ color: "mut", mt: "4", textStyle: "sm" })}>
-        That's {showSize(size() * count())} a month.
+      <p class={css({ color: "mut", fontSize: "15", mt: "4", textWrap: "pretty" })}>
+        That's {showSize(size() * count())} a month. Tranzfer needs room for{" "}
+        {showSize(size() * live())} at once, because a link counts until it expires or you cancel
+        it.
       </p>
 
       <div class={css({ display: "grid", gap: "3", mt: "8" })} aria-live="polite">
@@ -177,10 +200,11 @@ export default function PriceCalculator() {
                     style={{ scale: `${Math.max(0.02, (q.price ?? 0) / most())} 1` }}
                   />
                 </div>
-                <small
-                  class={css({ display: "block", fontSize: "[12px]", mt: "1.5", opacity: 0.7 })}
-                >
-                  Tab closed or crash: {q.resume}
+                <small class={css({ display: "block", fontSize: "13", mt: "1.5", opacity: 0.75 })}>
+                  {q.resume} ·{" "}
+                  <a class={css({ textDecoration: "underline" })} href={q.source}>
+                    source
+                  </a>
                 </small>
               </div>
               <div class={css({ textAlign: "right" })}>
@@ -215,12 +239,16 @@ export default function PriceCalculator() {
         </For>
       </div>
 
-      <p class={css({ color: "mut", fontSize: "13", mt: "6", textWrap: "pretty" })}>
-        Monthly USD on monthly billing, from each company's own pricing page, checked {checked}.
-        Tranzfer assumes one delivery is live at a time. WeTransfer shows prices only after you sign
-        in and Dropbox priced us in yen, so neither is here. Prices change; check theirs before you
-        decide.
-      </p>
+      <details class={css({ color: "mut", fontSize: "[14px]", mt: "6" })}>
+        <summary class={css({ cursor: "pointer" })}>
+          Monthly USD on monthly billing, checked {checked}.
+        </summary>
+        <p class={css({ mt: "2", textWrap: "pretty" })}>
+          Prices come from each company's own pricing page, linked on its row. WeTransfer and
+          Dropbox don't publish comparable USD prices without an account, so they're left out.
+          Prices change, so check theirs before you decide.
+        </p>
+      </details>
     </section>
   );
 }

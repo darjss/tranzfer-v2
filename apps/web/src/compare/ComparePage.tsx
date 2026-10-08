@@ -65,7 +65,7 @@ export default function ComparePage(props: {
       <Meta property="og:description" content={props.description} />
       <Meta property="og:url" content={url()} />
       <Link rel="canonical" href={url()} />
-      <main class={css({ py: { base: "14", lg: "20" } })}>
+      <main id="content" class={css({ py: { base: "14", lg: "20" } })}>
         <p class={label}>Tranzfer vs {props.them}</p>
         <h1
           class={css({

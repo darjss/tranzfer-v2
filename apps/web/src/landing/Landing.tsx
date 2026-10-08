@@ -19,16 +19,22 @@ export default function Landing() {
     <Reveal class={css({ overflowX: "clip" })}>
       <div class={page}>
         <SiteHeader />
-        <Hero />
       </div>
-      <Ticker />
+      <main id="content">
+        <div class={page}>
+          <Hero />
+        </div>
+        <Ticker />
+        <div class={page}>
+          <Survives />
+          <Receipts />
+          <HowItWorks />
+          <Pricing />
+          <Faq />
+          <FinalCta />
+        </div>
+      </main>
       <div class={page}>
-        <Survives />
-        <Receipts />
-        <HowItWorks />
-        <Pricing />
-        <Faq />
-        <FinalCta />
         <SiteFooter />
       </div>
     </Reveal>

@@ -51,3 +51,10 @@
     rotate: 360deg;
   }
 }
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}

@@ -31,7 +31,7 @@ export const features: readonly Page[] = [
     image: videoEdit,
     lede: "Drag in a whole shoot and hit send. Tranzfer moves hundreds of gigabytes straight from your browser. Nothing to install, nothing to zip, no splitting a project into polite little pieces.",
     menu: "Send huge files",
-    note: "400 GB? sure.",
+    note: "the whole shoot? sure.",
     points: [
       {
         h: "Your plan is the only limit",
@@ -54,7 +54,7 @@ export const features: readonly Page[] = [
       "Wi-Fi drops, laptop sleeps, browser crashes: Tranzfer keeps what arrived and sends only what's missing.",
     eyebrow: "Resume anything",
     image: wrong1,
-    lede: "Uploads die at the worst moment. Tranzfer keeps every piece that already arrived, so a dropped connection, a sleeping laptop or a crashed browser costs you minutes, not the whole night.",
+    lede: "Uploads die at the worst moment. Tranzfer keeps every piece that already arrived, so a dropped connection, a sleeping laptop or a crashed browser never sends you back to zero.",
     menu: "Resume anything",
     note: "63%? keep going.",
     points: [
@@ -76,10 +76,10 @@ export const features: readonly Page[] = [
   },
   {
     description:
-      "Send a whole folder with its subfolders. Recipients on Chrome or Edge save it all in one go.",
+      "Send a whole folder with its subfolders. Recipients on desktop Chrome or Edge save it all into one folder.",
     eyebrow: "Send whole folders",
     image: loftPacking,
-    lede: "Pick a folder and everything inside goes, subfolders and file names included. On Chrome or Edge, your recipient saves the lot into one folder with a single click.",
+    lede: "Pick a folder and everything inside goes, subfolders and file names included. On desktop Chrome or Edge, your recipient picks a destination folder once and everything lands there. Other browsers download the files one by one.",
     menu: "Send whole folders",
     note: "A001/, A002/… all of it.",
     points: [
@@ -89,7 +89,7 @@ export const features: readonly Page[] = [
       },
       {
         h: "One click to save it all",
-        p: "Chrome and Edge save everything into a folder you choose, and carry on if it gets interrupted.",
+        p: "Desktop Chrome and Edge save everything into a folder you choose, and carry on if it gets interrupted.",
       },
       {
         h: "Or file by file",
@@ -182,7 +182,7 @@ export const audiences: readonly Page[] = [
       "Send raw footage, dailies and whole camera cards to your editor, without babysitting the upload.",
     eyebrow: "For videographers",
     image: videoEdit,
-    lede: "Wrap the shoot, dump the cards, send the lot to your editor tonight. Tranzfer handles 400 GB of dailies over hotel Wi-Fi and doesn't need you watching.",
+    lede: "Wrap the shoot, dump the cards, send the lot to your editor. When the hotel Wi-Fi drops, Tranzfer keeps what arrived and carries on. You don't have to watch it.",
     menu: "For videographers",
     note: "A-cam, B-cam, drone. go.",
     points: [
@@ -196,11 +196,11 @@ export const audiences: readonly Page[] = [
       },
       {
         h: "Your editor just clicks",
-        p: "One link, no account. Days of footage, one download.",
+        p: "One link, no account. Desktop Chrome or Edge saves it all into one folder; other browsers take it file by file.",
       },
     ],
     slug: "videographers",
-    title: ["Dailies tonight.", "Not 'when the upload finishes'."],
+    title: ["Dailies to your editor.", "Without starting over."],
   },
   {
     description:
@@ -241,7 +241,7 @@ export const audiences: readonly Page[] = [
       },
       {
         h: "Everything in one folder",
-        p: "On Chrome or Edge, save the entire delivery with one click.",
+        p: "On desktop Chrome or Edge, pick a folder once and the whole delivery saves into it.",
       },
       {
         h: "Same files, every byte",

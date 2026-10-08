@@ -17,8 +17,8 @@ export default function PricingPage() {
       />
       <Link rel="canonical" href="https://tranzfer.app/pricing" />
       <Reveal>
-        <main>
-          <Pricing />
+        <main id="content">
+          <Pricing heading="h1" />
           <div class={css({ pb: "10" })}>
             <PriceCalculator />
           </div>

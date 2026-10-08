@@ -1,6 +1,7 @@
 import { PlanId, plans } from "@tranzfer/contracts";
 
-// Monthly cost of sending `count` deliveries of `sizeGb` each, per service.
+// Monthly cost of sending `count` deliveries of `sizeGb` each, per service,
+// with `live` of them still downloadable at the same time.
 // Competitor numbers are their published USD prices on monthly billing,
 // checked 8 October 2026 (sources below). Pure, so the page and its test share
 // one set of rules.
@@ -27,18 +28,18 @@ const filemailTiers = [
   { maxGb: Infinity, plan: "Business", price: 24 },
 ];
 
-export const quote = (sizeGb: number, count: number): readonly Quote[] => {
+export const quote = (sizeGb: number, count: number, live = 1): readonly Quote[] => {
   const totalGb = sizeGb * count;
   const filemail = filemailTiers.find((tier) => sizeGb <= tier.maxGb) ?? filemailTiers[2];
-  // Assumes one delivery is live at a time; overlapping ones need more room.
-  const tranzfer = PlanId.literals.find((id) => plans[id].activeBytes >= sizeGb * GB);
+  // Tranzfer counts every live link against the plan, so overlap needs room.
+  const tranzfer = PlanId.literals.find((id) => plans[id].activeBytes >= sizeGb * live * GB);
   return [
     {
       id: "tranzfer",
       name: "Tranzfer",
       plan: tranzfer === undefined ? "Over 3 TB at once" : plans[tranzfer].name,
       price: tranzfer === undefined ? undefined : plans[tranzfer].monthlyUsd,
-      resume: "Picks up where it stopped",
+      resume: "Picks up after a closed tab in the browser",
       source: "/#pricing",
     },
     {
@@ -46,7 +47,7 @@ export const quote = (sizeGb: number, count: number): readonly Quote[] => {
       name: "MASV",
       plan: "Pay as you go",
       price: Math.max(0, totalGb - 15) * 0.25,
-      resume: "Starts over in the browser",
+      resume: "Starts over after a closed tab in the browser",
       source: "https://masv.io/pricing",
     },
     {
@@ -54,7 +55,7 @@ export const quote = (sizeGb: number, count: number): readonly Quote[] => {
       name: "Smash",
       plan: sizeGb <= 2 ? "Free" : "Pro",
       price: sizeGb <= 2 ? 0 : 10,
-      resume: "Starts over if it freezes",
+      resume: "Starts over after a closed tab or crash",
       source: "https://fromsmash.com/pricing",
     },
     {
@@ -62,7 +63,7 @@ export const quote = (sizeGb: number, count: number): readonly Quote[] => {
       name: "Filemail",
       plan: filemail.plan,
       price: filemail.price,
-      resume: "Desktop app only",
+      resume: "Recovery only in its desktop app",
       source: "https://www.filemail.com/price-plans-comparison",
     },
   ];

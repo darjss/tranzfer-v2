@@ -1,5 +1,6 @@
 import { PlanId, plans } from "@tranzfer/contracts";
 import type { PaidPlanId, PlanId as Plan } from "@tranzfer/contracts";
+import { dynamic } from "@solidjs/web";
 import { For, Show, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
 import { Hand, Ink } from "./notebook";
@@ -46,8 +47,6 @@ const pro = css({
   "@media (hover: hover)": { _hover: { rotate: "[0deg]", translate: "[0 -6px]" } },
   bg: "ink",
   color: "paper",
-  // Stacked on a phone, Pro leads.
-  order: { base: "-1", md: "0" },
   pb: "11",
   pt: "10",
   rotate: { base: "[0deg]", lg: "[-1.5deg]" },
@@ -55,8 +54,10 @@ const pro = css({
   zIndex: 1,
 });
 
-export default function Pricing() {
+/** On /pricing this section is the page, so its title is the h1. */
+export default function Pricing(props: { heading?: "h1" }) {
   const runtime = useContext(RuntimeContext);
+  const Heading = dynamic(() => props.heading ?? "h2");
 
   // The checkout call needs a session. A signed-out visitor signs in first and
   // the dashboard carries on to checkout for this plan.
@@ -84,13 +85,14 @@ export default function Pricing() {
       </Hand>
       <div class={sectionHead}>
         <p class={eyebrow}>Pricing</p>
-        <h2 class={cx("rv", sectionTitle)}>
+        <Heading class={cx("rv", sectionTitle)}>
           Pay for the work. <i>Not per gigabyte.</i>
-        </h2>
+        </Heading>
         <p class={css({ color: "mut", fontSize: "17", mt: "4", textWrap: "pretty" })}>
-          Every plan resumes after anything, sends whole folders and gives your editor one link, no
-          account needed. Bigger plans hold more at once and keep links longer. Space frees up the
-          moment a delivery ends.
+          Every plan picks up after dropped Wi-Fi, reloads and crashes, sends whole folders and
+          gives your editor one link, no account needed. Bigger plans hold more at once and keep
+          links longer. Files count against your space until the link expires or you cancel it.
+          Downloads don't free space.
         </p>
       </div>
 
@@ -131,7 +133,7 @@ export default function Pricing() {
                       whiteSpace: "nowrap",
                     })}
                   >
-                    most editors pick this
+                    for regular big sends
                   </span>
                 </Show>
                 <h3
@@ -197,7 +199,7 @@ export default function Pricing() {
                     listStyle: "none",
                   })}
                 >
-                  <li>{bytes(plans[id].activeBytes)} on the go at once</li>
+                  <li>{bytes(plans[id].activeBytes)} across live links</li>
                   <li>Links live up to {plans[id].maxRetentionDays} days</li>
                 </ul>
                 <Show

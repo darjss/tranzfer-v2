@@ -29,7 +29,7 @@ export default function MarketingPage(props: {
       <Meta property="og:url" content={url()} />
       <Link rel="canonical" href={url()} />
       <Reveal>
-        <main>
+        <main id="content">
           <section
             class={css({
               alignItems: "center",

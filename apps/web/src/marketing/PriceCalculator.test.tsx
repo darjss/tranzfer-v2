@@ -30,7 +30,7 @@ describe("PriceCalculator", () => {
     flush();
 
     // One 1 GB delivery: Free everywhere it exists, Filemail's cheapest plan.
-    expect(screen.getByText("That's 1 GB a month.")).toBeInTheDocument();
+    expect(screen.getByText(/^That's 1 GB a month\./u)).toBeInTheDocument();
     expect(price("Tranzfer")).toContain("$0");
     expect(price("MASV")).toContain("$0");
     expect(price("Filemail")).toContain("$6");

@@ -29,6 +29,7 @@ export default function NotFound() {
       <Title>Not found · Tranzfer</Title>
       <Meta name="robots" content="noindex" />
       <main
+        id="content"
         class={css({
           display: "grid",
           minH: "[min(70vh,640px)]",
@@ -88,15 +89,14 @@ export default function NotFound() {
                 textWrap: "balance",
               })}
             >
-              Nothing here. <i class={css({ color: "blue" })}>Your files are fine.</i>
+              We can't find <i class={css({ color: "blue" })}>this page.</i>
             </h1>
             <p class={css({ color: "mut", mt: "3", textWrap: "pretty" })}>
-              This address doesn't match a page. If someone sent you a download link, check that it
-              came through whole, or ask them for a fresh one.
+              Check the full link, or ask the sender for a new one.
             </p>
             <div class={css({ display: "flex", flexWrap: "wrap", gap: "3", mt: "7" })}>
               <a class={button({ size: "sm" })} href="/">
-                Go to Tranzfer <ArrowIcon />
+                Go to homepage <ArrowIcon />
               </a>
               <a class={button({ size: "sm", variant: "outline" })} href="/deliveries">
                 Your deliveries

@@ -57,15 +57,21 @@ export default function Hero() {
 
   onSettled(() => {
     setMounted(true);
-    addEventListener("mousemove", onMove);
+    // Reduced motion keeps the headline on "shoot." and the stills in place.
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!still) {
+      addEventListener("mousemove", onMove);
+    }
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    const interval = setInterval(() => {
-      setPrev(word());
-      setWord((w) => (w + 1) % words.length);
-      timeout = setTimeout(() => {
-        setPrev(-1);
-      }, 600);
-    }, 2600);
+    const interval = still
+      ? undefined
+      : setInterval(() => {
+          setPrev(word());
+          setWord((w) => (w + 1) % words.length);
+          timeout = setTimeout(() => {
+            setPrev(-1);
+          }, 600);
+        }, 2600);
     return () => {
       removeEventListener("mousemove", onMove);
       clearInterval(interval);
@@ -150,7 +156,8 @@ export default function Hero() {
           Send the whole
           <br />
           <span class={css({ display: "inline-block", pos: "relative" })}>
-            <span class="flip">
+            <span class={css({ srOnly: true })}>shoot.</span>
+            <span class="flip" aria-hidden="true">
               <For each={words}>
                 {(w, i) => <span class={{ on: word() === i(), out: prev() === i() }}>{w}</span>}
               </For>
@@ -198,8 +205,9 @@ export default function Hero() {
           )}
           style="--d:120ms"
         >
-          Hundreds of gigabytes, straight from your browser. The Wi-Fi dies, the laptop naps,
-          someone closes the tab. Tranzfer shrugs and carries on. Your editor gets one link.
+          Hundreds of gigabytes, straight from your browser. Wi-Fi drops? It retries. Laptop naps?
+          It waits. Closed the tab? Pick the same files and it carries on. Your editor gets one
+          link.
         </p>
         <div
           class={cx(

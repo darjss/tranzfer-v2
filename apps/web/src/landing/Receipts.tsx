@@ -58,7 +58,7 @@ export default function Receipts() {
           <i>It didn't care.</i>
         </h2>
         <p class={cx("rv", lede)} style="--d:80ms">
-          Before anyone else touched it, we sent 100 GB through Tranzfer and wrecked the upload
+          Before anyone else touched it, we sent 100 GiB through Tranzfer and wrecked the upload
           eight different ways. It finished. The file on the other end matched the original exactly.
           Here's the receipt.
         </p>
@@ -86,7 +86,7 @@ export default function Receipts() {
               bg: "white",
               color: "ink",
               fontFamily: "mono",
-              fontSize: "13",
+              fontSize: "[14px]",
               lineHeight: "[1.7]",
               maxW: "[340px]",
               p: "7",
@@ -102,7 +102,7 @@ export default function Receipts() {
             TRANZFER
           </p>
           <p class={css({ color: "mut", fontSize: "11", textAlign: "center" })}>
-            test run · 5 oct 2026
+            100 GiB test run · 5 oct 2026
           </p>
           <div
             class={css({
@@ -112,14 +112,13 @@ export default function Receipts() {
               my: "4",
             })}
           />
-          <Line label="upload" value="100 GB" />
+          <Line label="upload" value="100 GiB" />
           <Line label="things broken" value="8" />
-          <ul
-            class={css({ color: "mut", fontSize: "[12px]", listStyle: "none", my: "1.5", pl: "4" })}
-          >
+          <ul class={css({ color: "mut", fontSize: "13", listStyle: "none", my: "1.5", pl: "4" })}>
             <For each={broken}>{(item) => <li>· {item}</li>}</For>
           </ul>
-          <Line label="sent twice" value="0 bytes" />
+          <Line label="files re-picked" value="5 times" />
+          <Line label="arrived, then resent" value="0 bytes" />
           <div
             class={css({
               borderColor: "ink/30",

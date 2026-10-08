@@ -11,7 +11,7 @@ import { SitePage } from "../ui/Site";
 const beliefs = [
   {
     h: "Reliability before features",
-    p: "Nothing we add matters if the upload doesn't finish. So it finishes.",
+    p: "Nothing we add matters if the upload doesn't finish. A 100 GiB send survived eight deliberate failures before beta.",
   },
   {
     h: "One obvious way in, one way out",
@@ -41,7 +41,7 @@ export default function About() {
         content="Every big upload dies at 63%. Tranzfer exists so that night ends with a delivered file instead of a restart."
       />
       <Link rel="canonical" href="https://tranzfer.app/about" />
-      <main class={css({ py: { base: "14", lg: "24" } })}>
+      <main id="content" class={css({ py: { base: "14", lg: "24" } })}>
         <p class={eyebrow}>Why we built it</p>
         <h1 class={cx(sectionTitle, css({ fontSize: "[clamp(44px,6vw,88px)]", mb: "12" }))}>
           It's always <i>63%.</i>

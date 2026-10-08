@@ -1,5 +1,5 @@
 import { Meta, Title } from "@solidjs/meta";
-import { PaidPlanId, RateLimited } from "@tranzfer/contracts";
+import { PaidPlanId, RateLimited, plans } from "@tranzfer/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { createSignal, onSettled, Show } from "solid-js";
@@ -7,6 +7,7 @@ import { css, cx } from "styled-system/css";
 
 import { authClient } from "../api/auth-client";
 import { appError } from "../api/errors";
+import { bytes } from "../dashboard/format";
 import Brand from "../landing/Brand";
 import videoEdit from "../landing/assets/video-edit.webp";
 import "../landing/landing.css";
@@ -275,6 +276,10 @@ export default function SignIn() {
           </h1>
           <p class={css({ color: "mut", fontSize: "17", mt: "4" })}>
             One Google account. No password, no setup.
+          </p>
+          <p class={css({ color: "ink", fontSize: "[14px]", fontWeight: "medium", mt: "3" })}>
+            {bytes(plans.free.activeBytes)} free. Links last up to {plans.free.maxRetentionDays}{" "}
+            days. No card.
           </p>
           <button
             class={css({

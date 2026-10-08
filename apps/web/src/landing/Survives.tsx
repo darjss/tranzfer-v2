@@ -35,9 +35,9 @@ const disasters = [
     src: wrong2,
   },
   {
-    at: "50% · asleep all night",
-    h: "You fell asleep on it.",
-    p: "Hours later, it picks up like nothing happened. Nothing you already sent gets thrown away.",
+    at: "50% · frozen 20 min",
+    h: "Your laptop went to sleep.",
+    p: "Wake it up and it carries on. Nothing that already arrived gets thrown away. We froze one for 20 minutes mid-upload to check.",
     rot: 2.5,
     src: wrong4,
   },
@@ -89,9 +89,9 @@ export default function Survives() {
         it's always 63%.
       </Hand>
       <Hand style="right:-2%;top:12%;--r:-7deg;--d:.6s;text-align:right">
-        sent twice:
+        bytes sent
         <br />
-        zero bytes.
+        twice: zero.
       </Hand>
       <div class={sectionHead}>
         <p class={eyebrow}>What it survives</p>
