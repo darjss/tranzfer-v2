@@ -31,7 +31,6 @@ import { online, wireWindow } from "../uploads/store";
 import { chosenFiles, getDroppedFiles, invalidPaths } from "../uploads/uploads";
 import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
-import { toaster } from "../ui/Toasts";
 import DashboardLoading from "../dashboard/DashboardLoading";
 import "../dashboard/dashboard.css";
 
@@ -85,6 +84,15 @@ const Empty = (props: { firstRun: boolean }) => (
   </div>
 );
 
+// The toast module stays out of the server bundle; see ui/Toasts.tsx.
+const welcome = async (plan: PaidPlanId) => {
+  const { toaster } = await import("../ui/Toasts");
+  toaster.success({
+    description: `${bytes(plans[plan].activeBytes)} at once, links up to ${plans[plan].maxRetentionDays} days.`,
+    title: `You're on ${plans[plan].name}`,
+  });
+};
+
 const DeliveriesPage = () => {
   const runtime = useContext(RuntimeContext);
   const [searchParams, setSearchParams] = useSearchParams<{
@@ -130,6 +138,7 @@ const DeliveriesPage = () => {
       setProblems([`${failure} Nothing was uploaded.`]);
       return;
     }
+    const { toaster } = await import("../ui/Toasts");
     toaster.success({
       description: "Close the tab if you have to. It picks up where it left off.",
       title: chosen.length === 1 ? "Sending 1 file" : `Sending ${chosen.length} files`,
@@ -139,12 +148,14 @@ const DeliveriesPage = () => {
   const upgrade = async (plan: PaidPlanId) => {
     const problem = await goToCheckout(runtime, plan);
     if (problem !== undefined) {
+      const { toaster } = await import("../ui/Toasts");
       toaster.error({ description: problem.message, title: "Checkout didn't open" });
     }
   };
   const manage = async () => {
     const problem = await goToPortal(runtime);
     if (problem !== undefined) {
+      const { toaster } = await import("../ui/Toasts");
       toaster.error({ description: problem.message, title: "Billing didn't open" });
     }
   };
@@ -186,10 +197,7 @@ const DeliveriesPage = () => {
     () => (searchParams.checkout === "success" ? billing().plan : "free"),
     (plan) => {
       if (plan !== "free") {
-        toaster.success({
-          description: `${bytes(plans[plan].activeBytes)} at once, links up to ${plans[plan].maxRetentionDays} days.`,
-          title: `You're on ${plans[plan].name}`,
-        });
+        void welcome(plan);
         setSearchParams({ checkout: undefined });
       }
     },

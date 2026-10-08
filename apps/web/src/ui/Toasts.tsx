@@ -9,9 +9,11 @@ import PhInfoBold from "~icons/ph/info-bold";
 import PhWarningBold from "~icons/ph/warning-bold";
 import PhXBold from "~icons/ph/x-bold";
 
-// The app's notifications: call `toaster.success({ title })` and friends from
-// anywhere. The library owns stacking, timers, swipe and the live region; this
-// file owns how a toast looks.
+// The app's notifications. Load this module with `import("../ui/Toasts")` from
+// browser-only code, never statically: the package exports its server build
+// only under the `node` condition, so the Worker bundle would get the browser
+// build and crash the prerender. The library owns stacking, timers, swipe and
+// the live region; this file owns how a toast looks.
 export { toaster } from "@trev.zip/solid-toast";
 
 const badge = css({

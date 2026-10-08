@@ -19,7 +19,6 @@ import { transfers } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
 import type { ChosenFile } from "../uploads/uploads";
 import { kindOf, rollup, totalSize } from "./format";
-import { toaster } from "../ui/Toasts";
 
 /**
  * The sender's deliveries and the actions that change them. Each action
@@ -111,12 +110,13 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     yield;
     const failure = Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
     if (failure === undefined) {
+      void refresh(deliveries);
+      void refresh(billing);
+      const { toaster } = await import("../ui/Toasts");
       toaster.success({
         description: "The link stopped working and the files are being deleted.",
         title: "Delivery cancelled",
       });
-      void refresh(deliveries);
-      void refresh(billing);
     }
     return failure;
   });
@@ -130,13 +130,14 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     yield;
     const failure = Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
     if (failure === undefined) {
+      void refresh(deliveries);
+      const { toaster } = await import("../ui/Toasts");
       toaster.success({
         title:
           deliveryIds.length === 1
             ? "Cleared 1 delivery"
             : `Cleared ${deliveryIds.length} deliveries`,
       });
-      void refresh(deliveries);
     }
     return failure;
   });

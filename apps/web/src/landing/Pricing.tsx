@@ -8,7 +8,6 @@ import { RuntimeContext } from "../api/solid-effect";
 import { goToCheckout } from "../dashboard/billing";
 import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
-import { toaster } from "../ui/Toasts";
 
 // Who each plan is for, from docs/PRODUCT.md.
 const forWhom: Record<Plan, string> = {
@@ -66,6 +65,7 @@ export default function Pricing() {
     if (result?.tag === "Unauthorized") {
       location.assign(`/sign-in?plan=${plan}`);
     } else if (result !== undefined) {
+      const { toaster } = await import("../ui/Toasts");
       toaster.error({ description: result.message, title: "Checkout didn't open" });
     }
   };
