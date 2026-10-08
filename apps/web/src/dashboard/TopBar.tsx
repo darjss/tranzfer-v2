@@ -1,6 +1,6 @@
 import { plans } from "@tranzfer/contracts";
 import type { BillingSummary, PaidPlanId, Principal } from "@tranzfer/contracts";
-import { createEffect, Show } from "solid-js";
+import { Show } from "solid-js";
 import { css } from "styled-system/css";
 
 import PhSignOutBold from "~icons/ph/sign-out-bold";
@@ -34,25 +34,11 @@ const menuItem = css({
 
 export function TopBar(props: {
   billing: BillingSummary;
-  dismissProblem: () => void;
   manage: () => void;
   principal: Principal;
-  /** A failed Upgrade or Manage billing. It opens the menu that holds both. */
-  problem: string | undefined;
   send: () => void;
   upgrade: (plan: PaidPlanId) => void;
 }) {
-  let menu: HTMLDivElement | undefined;
-  // The upgrade can start outside the menu (the send card, a pricing link),
-  // so a failure opens the menu instead of landing below the fold.
-  createEffect(
-    () => props.problem,
-    (problem) => {
-      if (problem !== undefined) {
-        menu?.showPopover();
-      }
-    },
-  );
   return (
     <nav
       aria-label="Account"
@@ -122,15 +108,7 @@ export function TopBar(props: {
             top: "[60px]",
           })}
           id="account-menu"
-          onToggle={(event) => {
-            if (event.newState === "closed") {
-              props.dismissProblem();
-            }
-          }}
           popover="auto"
-          ref={(element) => {
-            menu = element;
-          }}
         >
           <div class={css({ px: "3", py: "2.5" })}>
             <p class={css({ fontWeight: "semibold", truncate: true })}>{props.principal.name}</p>
@@ -179,16 +157,6 @@ export function TopBar(props: {
             >
               Manage billing
             </button>
-          </Show>
-          <Show when={props.problem}>
-            {(problem) => (
-              <p
-                class={css({ color: "rust", maxW: "[240px]", px: "3", py: "2", textStyle: "sm" })}
-                role="alert"
-              >
-                {problem()}
-              </p>
-            )}
           </Show>
           <button
             class={menuItem}

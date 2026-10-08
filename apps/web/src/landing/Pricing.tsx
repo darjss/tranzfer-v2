@@ -1,6 +1,6 @@
 import { PlanId, plans } from "@tranzfer/contracts";
 import type { PaidPlanId, PlanId as Plan } from "@tranzfer/contracts";
-import { For, Show, createSignal, useContext } from "solid-js";
+import { For, Show, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
 import { Hand, Ink } from "./notebook";
 import { eyebrow, section, sectionHead, sectionTitle } from "./styles";
@@ -8,6 +8,7 @@ import { RuntimeContext } from "../api/solid-effect";
 import { goToCheckout } from "../dashboard/billing";
 import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
+import { toaster } from "../ui/Toasts";
 
 // Who each plan is for, from docs/PRODUCT.md.
 const forWhom: Record<Plan, string> = {
@@ -56,18 +57,16 @@ const pro = css({
 });
 
 export default function Pricing() {
-  const [problem, setProblem] = createSignal<string>();
   const runtime = useContext(RuntimeContext);
 
   // The checkout call needs a session. A signed-out visitor signs in first and
   // the dashboard carries on to checkout for this plan.
   const choose = async (plan: PaidPlanId) => {
-    setProblem(undefined);
     const result = await goToCheckout(runtime, plan);
     if (result?.tag === "Unauthorized") {
       location.assign(`/sign-in?plan=${plan}`);
     } else if (result !== undefined) {
-      setProblem(result.message);
+      toaster.error({ description: result.message, title: "Checkout didn't open" });
     }
   };
 
@@ -227,13 +226,6 @@ export default function Pricing() {
           }}
         </For>
       </div>
-      <Show when={problem()}>
-        {(message) => (
-          <p class={css({ color: "rust", mt: "4", textStyle: "sm" })} role="alert">
-            {message()}
-          </p>
-        )}
-      </Show>
       <p class={css({ color: "mut", mt: "8", textStyle: "sm" })}>
         Billed monthly through Polar. Cancel whenever; your plan runs to the end of the month you
         paid for.

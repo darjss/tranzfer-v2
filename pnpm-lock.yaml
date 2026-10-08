@@ -319,6 +319,9 @@ importers:
       '@tranzfer/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@trev.zip/solid-toast':
+        specifier: ^1.2.2
+        version: 1.2.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
       '@uppy/aws-s3':
         specifier: 6.2.2
         version: 6.2.2(patch_hash=4016890f0dd65fbf3f7dfc95e00518b9157941fb3d757c6220f35c51dea8ece1)(@uppy/core@6.2.0)
@@ -3330,6 +3333,12 @@ packages:
   '@transloadit/prettier-bytes@2.0.0':
     resolution: {integrity: sha512-GYzxSL3y9XlhwamBLkHT1y2jFrRsHkZZ1jNctn8NeMNyTtIbMK1Qf0f1koHkDdW+MwOUowCmpm8zP6ZpQ36G5w==}
     engines: {node: '>=22'}
+
+  '@trev.zip/solid-toast@1.2.2':
+    resolution: {integrity: sha512-7St0FvDOSgVdav2chrjgYFtZ/sBAIYe5zB9v6RFHstZJ8DfsvTnHIF71aDfnFJgHR/kMNay5n7s3P+/CTRCrgQ==}
+    peerDependencies:
+      '@solidjs/web': ^2.0.0-rc.13
+      solid-js: ^2.0.0-rc.13
 
   '@tybys/wasm-util@0.10.4':
     resolution: {integrity: sha512-W3c4gRigFS0T/Ma4qIYF3GDAc5AQdHb1yL5znJT1Zv1YaD9Kitx656wBjvr19qbiosmZT8lWDM5BEMynUqX65A==}
@@ -8007,6 +8016,11 @@ snapshots:
       '@testing-library/dom': 10.4.2
 
   '@transloadit/prettier-bytes@2.0.0': {}
+
+  '@trev.zip/solid-toast@1.2.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
 
   '@tybys/wasm-util@0.10.4':
     dependencies:

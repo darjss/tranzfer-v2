@@ -1,7 +1,7 @@
 import { Meta, Title } from "@solidjs/meta";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import { clientOnly } from "@solidjs/web";
-import { defaultRetentionDays, PaidPlanId } from "@tranzfer/contracts";
+import { defaultRetentionDays, PaidPlanId, plans } from "@tranzfer/contracts";
 import type { RetentionDays } from "@tranzfer/contracts";
 import * as Schema from "effect/Schema";
 import {
@@ -29,6 +29,8 @@ import { TopBar } from "../dashboard/TopBar";
 import { inkStrokes } from "../landing/notebook";
 import { online, wireWindow } from "../uploads/store";
 import { chosenFiles, getDroppedFiles, invalidPaths } from "../uploads/uploads";
+import { bytes } from "../dashboard/format";
+import { toaster } from "../ui/Toasts";
 import "../dashboard/dashboard.css";
 
 const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
@@ -103,9 +105,6 @@ const DeliveriesPage = () => {
 
   const [retention, setRetention] = createSignal<RetentionDays>(defaultRetentionDays);
   const [problems, setProblems] = createSignal<readonly string[]>([]);
-  // Upgrade and Manage billing live in the account menu, so their failures
-  // show there too, whichever button started them.
-  const [billingProblem, setBillingProblem] = createSignal<string>();
   const [dragging, setDragging] = createSignal(false);
   let filesInput: HTMLInputElement | undefined;
   let folderInput: HTMLInputElement | undefined;
@@ -127,18 +126,25 @@ const DeliveriesPage = () => {
     const failure = await send(chosen, retention());
     if (failure !== undefined) {
       setProblems([`${failure} Nothing was uploaded.`]);
+      return;
     }
+    toaster.success({
+      description: "Close the tab if you have to. It picks up where it left off.",
+      title: chosen.length === 1 ? "Sending 1 file" : `Sending ${chosen.length} files`,
+    });
   };
 
   const upgrade = async (plan: PaidPlanId) => {
-    setBillingProblem(undefined);
     const problem = await goToCheckout(runtime, plan);
-    setBillingProblem(problem?.message);
+    if (problem !== undefined) {
+      toaster.error({ description: problem.message, title: "Checkout didn't open" });
+    }
   };
   const manage = async () => {
-    setBillingProblem(undefined);
     const problem = await goToPortal(runtime);
-    setBillingProblem(problem?.message);
+    if (problem !== undefined) {
+      toaster.error({ description: problem.message, title: "Billing didn't open" });
+    }
   };
 
   // Signing in from a pricing button lands here with the plan to buy.
@@ -169,6 +175,21 @@ const DeliveriesPage = () => {
       return () => {
         clearInterval(timer);
       };
+    },
+  );
+
+  // Back from checkout once the new plan is in: say so once, then drop the
+  // query so a reload doesn't say it again.
+  createEffect(
+    () => (searchParams.checkout === "success" ? billing().plan : "free"),
+    (plan) => {
+      if (plan !== "free") {
+        toaster.success({
+          description: `${bytes(plans[plan].activeBytes)} at once, links up to ${plans[plan].maxRetentionDays} days.`,
+          title: `You're on ${plans[plan].name}`,
+        });
+        setSearchParams({ checkout: undefined });
+      }
     },
   );
 
@@ -261,14 +282,10 @@ const DeliveriesPage = () => {
           >
             <TopBar
               billing={billing()}
-              dismissProblem={() => {
-                setBillingProblem(undefined);
-              }}
               manage={() => {
                 void manage();
               }}
               principal={me()}
-              problem={billingProblem()}
               send={() => {
                 filesInput?.click();
               }}

@@ -91,6 +91,8 @@ export default defineConfig({
     environment: "jsdom",
     globals: false,
     include: ["src/**/*.test.{ts,tsx}"],
+    // It imports its own stylesheet, which Node can't load; let Vite handle it.
+    server: { deps: { inline: ["@trev.zip/solid-toast"] } },
     setupFiles: ["./vitest-setup.ts"],
   },
 });
