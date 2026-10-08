@@ -255,9 +255,9 @@ importers:
       '@distilled.cloud/aws':
         specifier: 1.0.0-rc.13
         version: 1.0.0-rc.13(effect@4.0.1)
-      '@polar-sh/sdk':
-        specifier: 1.0.2
-        version: 1.0.2
+      '@distilled.cloud/polar':
+        specifier: 1.0.0-rc.13
+        version: 1.0.0-rc.13(effect@4.0.1)
       '@tranzfer/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -429,6 +429,9 @@ importers:
 
   infra:
     dependencies:
+      '@distilled.cloud/polar':
+        specifier: 1.0.0-rc.13
+        version: 1.0.0-rc.13(effect@4.0.1)
       '@effect/platform-node':
         specifier: 'catalog:'
         version: 4.0.1(effect@4.0.1)(redis@6.3.0)
@@ -963,6 +966,11 @@ packages:
 
   '@distilled.cloud/planetscale@1.0.0-rc.13':
     resolution: {integrity: sha512-AM97YGRnDfZdqsxFgQMQ83p7ZlRqxS6/foTTJA5P590UMbbOyrQyFyd33BD0agul8a3ngZde3Oej6v7BN55aWw==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@distilled.cloud/polar@1.0.0-rc.13':
+    resolution: {integrity: sha512-BOui5CxtbFLotll4WId0rAj/pjShXjmcdG2OF2sJVsPQbNPTVTZsvfb6pT+t06qy8HIvCh0/KDoFLNQ6TNqq2w==}
     peerDependencies:
       effect: ^4.0.0
 
@@ -2629,10 +2637,6 @@ packages:
   '@parcel/watcher@2.5.6':
     resolution: {integrity: sha512-tmmZ3lQxAe/k/+rNnXQRawJ4NjxO2hqiOLTHvWchtGZULp4RyFeh6aU4XdOYBFe2KE1oShQTv4AblOs2iOrNnQ==}
     engines: {node: '>= 10.0.0'}
-
-  '@polar-sh/sdk@1.0.2':
-    resolution: {integrity: sha512-c3jdqYloVfcejKsAqYfYcW4bG7KkXj5bXkgdsdx4GHlJPzHFV5tysfeZGf9V7dJReLBirAluchsuHWiAIBco8w==}
-    engines: {node: '>=22'}
 
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
@@ -6052,6 +6056,11 @@ snapshots:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
       effect: 4.0.1
 
+  '@distilled.cloud/polar@1.0.0-rc.13(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
+      effect: 4.0.1
+
   '@distilled.cloud/prisma@1.0.0-rc.13(effect@4.0.1)':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
@@ -7248,8 +7257,6 @@ snapshots:
       '@parcel/watcher-win32-arm64': 2.5.6
       '@parcel/watcher-win32-ia32': 2.5.6
       '@parcel/watcher-win32-x64': 2.5.6
-
-  '@polar-sh/sdk@1.0.2': {}
 
   '@polka/url@1.0.0-next.29': {}
 

@@ -69,6 +69,11 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
       };
     },
   );
+  // Space in use changes whenever a delivery is made or cancelled, so the
+  // plan summary is read and refreshed beside the list.
+  const billing = createMemo(() => runEffect(ApiClient.use((api) => api.GetBilling())), {
+    name: "Billing.summary",
+  });
   const [sending, setSending] = createOptimistic(false);
 
   const send = action(async function* send(chosen: readonly ChosenFile[], days: RetentionDays) {
@@ -83,6 +88,7 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
       });
       void refresh(deliveries);
     }
+    void refresh(billing);
     return failure;
   });
 
@@ -105,11 +111,12 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     const failure = Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
     if (failure === undefined) {
       void refresh(deliveries);
+      void refresh(billing);
     }
     return failure;
   });
 
-  return { cancel, deliveries, send, sending };
+  return { billing, cancel, deliveries, send, sending };
 };
 
 /** A delivery's live state: server status plus whatever this tab is uploading. */

@@ -49,6 +49,18 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/api/polar/webhook";
+      page: false;
+      $POST: FileRouteEagerRef<typeof import("./src/routes/api/polar/webhook")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/api/telemetry/traces";
+      page: false;
+      $POST: FileRouteEagerRef<typeof import("./src/routes/api/telemetry/traces")>;
+      $$route?: undefined;
+    },
+    {
       path: "/d/:token";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/d/[token]")>;

@@ -1,5 +1,6 @@
 import {
   AuthenticationUnavailable,
+  BillingUnavailable,
   DeliveryConflict,
   DeliveryNotFound,
   InvalidUpload,
@@ -7,6 +8,10 @@ import {
   LinkNotFound,
   LinkNotReady,
   NotUploaded,
+  OverPlanLimit,
+  PaidPlanId,
+  plans,
+  RetentionNotInPlan,
   StorageUnavailable,
   Unauthorized,
   UploadClosed,
@@ -19,11 +24,14 @@ import type * as Rpc from "effect/rpc/Rpc";
 import { RpcClientError } from "effect/rpc/RpcClientError";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
+import { bytes } from "../dashboard/format";
+
 /** Every error an Api call can fail with, middleware and transport included. */
 export type ApiError = Rpc.Error<RpcGroup.Rpcs<typeof Api>> | RpcClientError;
 
 const ApiErrors = Schema.Union([
   AuthenticationUnavailable,
+  BillingUnavailable,
   DeliveryConflict,
   DeliveryNotFound,
   InvalidUpload,
@@ -31,6 +39,8 @@ const ApiErrors = Schema.Union([
   LinkNotFound,
   LinkNotReady,
   NotUploaded,
+  OverPlanLimit,
+  RetentionNotInPlan,
   RpcClientError,
   StorageUnavailable,
   Unauthorized,
@@ -41,9 +51,18 @@ const ApiErrors = Schema.Union([
 // the build at the Match below instead of silently reading as "unknown".
 const isApiError: (value: unknown) => value is ApiError = Schema.is(ApiErrors);
 
+// The cheapest paid plan above the current one that fits, if any does.
+const planThatFits = (error: OverPlanLimit) =>
+  PaidPlanId.literals.find(
+    (plan) =>
+      plans[plan].activeBytes > error.limitBytes &&
+      plans[plan].activeBytes >= error.usedBytes + error.requestedBytes,
+  );
+
 const words = Match.type<ApiError>().pipe(
   Match.tagsExhaustive({
     AuthenticationUnavailable: () => "We couldn't check your sign-in. Try again in a moment.",
+    BillingUnavailable: () => "Billing didn't answer. Try again in a moment.",
     DeliveryConflict: () => "That delivery already exists. Refresh to see it.",
     DeliveryNotFound: () => "We can't find that delivery anymore.",
     InvalidUpload: () => "This file doesn't match what the delivery expects. Send it again.",
@@ -51,6 +70,15 @@ const words = Match.type<ApiError>().pipe(
     LinkNotFound: () => "This link doesn't work. It may have been cancelled.",
     LinkNotReady: () => "Still uploading. The link starts working once every file is finished.",
     NotUploaded: () => "Still finishing up on our end. Retry in a moment.",
+    OverPlanLimit: (error) => {
+      const facts = `This delivery is ${bytes(error.requestedBytes)} and ${bytes(error.usedBytes)} of your ${bytes(error.limitBytes)} on ${plans[error.plan].name} is in use.`;
+      const fit = planThatFits(error);
+      return fit === undefined
+        ? `${facts} Cancel a delivery to free space, or send this one in smaller parts.`
+        : `${facts} ${plans[fit].name} holds ${bytes(plans[fit].activeBytes)}. Upgrade, or cancel a delivery to free space.`;
+    },
+    RetentionNotInPlan: (error) =>
+      `${plans[error.plan].name} links last up to ${error.maxRetentionDays} days. Choose a shorter time, or upgrade.`,
     RpcClientError: () => "We couldn't reach Tranzfer. Check your connection and try again.",
     StorageUnavailable: () => "Storage didn't answer. Try again in a moment.",
     Unauthorized: () => "Your sign-in expired. Sign in again to continue.",

@@ -246,6 +246,8 @@ An upload change is not finished until the recipient can download the correct fi
 
 Every create, sign, list, complete, abort and download checks identity, ownership, workspace membership where it applies, entitlement and transfer status. The object key and multipart ID are bound to the authorized transfer. A client-supplied upload ID never grants access to arbitrary storage. Resuming is not a way to read or write someone else's upload.
 
+Entitlement is the sender's plan ([PRODUCT.md](PRODUCT.md)). `CreateDelivery` refuses a delivery before any byte moves when its link lifetime is longer than the plan allows (`RetentionNotInPlan`) or when its declared size would push the sender's active space past the limit (`OverPlanLimit`). Active space is the bytes of the sender's open deliveries plus ready ones that haven't expired; cancelled and expired deliveries free it. Two creates racing past the limit both succeed, and the next create sees both. Signing does not re-check the limit, and the declared size is verified at finalize, not while bytes move, so a client that uploads more than it declared is only caught at the end.
+
 Before public uploads:
 
 - enforce the creative-media allowlist by file signature, not extension

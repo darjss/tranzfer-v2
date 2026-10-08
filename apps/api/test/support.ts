@@ -1,5 +1,5 @@
 import { DeliveryId, TransferId } from "@tranzfer/contracts";
-import type { NewDelivery, NewFile } from "@tranzfer/contracts";
+import type { NewDelivery, NewFile, RetentionDays } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { testDatabase } from "@tranzfer/db/testing";
 import * as Effect from "effect/Effect";
@@ -71,10 +71,14 @@ export const newFile = (path: string, size: number): NewFile => ({
   size,
 });
 
-export const newDelivery = (files: readonly NewFile[], title = "Delivery"): NewDelivery => ({
+export const newDelivery = (
+  files: readonly NewFile[],
+  title = "Delivery",
+  retentionDays: RetentionDays = 3,
+): NewDelivery => ({
   files,
   id: DeliveryId.make(crypto.randomUUID()),
-  retentionDays: 3,
+  retentionDays,
   title,
 });
 

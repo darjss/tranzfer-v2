@@ -4,6 +4,13 @@ import * as RpcGroup from "effect/rpc/RpcGroup";
 
 import { Authenticated, Principal, Unauthorized } from "./auth";
 import {
+  BillingSummary,
+  BillingUnavailable,
+  OverPlanLimit,
+  PaidPlanId,
+  RetentionNotInPlan,
+} from "./billing";
+import {
   Delivery,
   DeliveryConflict,
   DeliveryId,
@@ -24,7 +31,7 @@ import {
 export class Api extends RpcGroup.make(
   Rpc.make("Me", { error: Unauthorized, success: Principal }).middleware(Authenticated),
   Rpc.make("CreateDelivery", {
-    error: DeliveryConflict,
+    error: Schema.Union([DeliveryConflict, OverPlanLimit, RetentionNotInPlan]),
     payload: NewDelivery,
     success: Delivery,
   }).middleware(Authenticated),
@@ -49,6 +56,16 @@ export class Api extends RpcGroup.make(
     ]),
     payload: Schema.Struct({ transferId: TransferId }),
     success: Delivery,
+  }).middleware(Authenticated),
+  Rpc.make("GetBilling", { success: BillingSummary }).middleware(Authenticated),
+  Rpc.make("StartCheckout", {
+    error: BillingUnavailable,
+    payload: Schema.Struct({ plan: PaidPlanId }),
+    success: Schema.Struct({ url: Schema.String }),
+  }).middleware(Authenticated),
+  Rpc.make("OpenBillingPortal", {
+    error: BillingUnavailable,
+    success: Schema.Struct({ url: Schema.String }),
   }).middleware(Authenticated),
   Rpc.make("OpenLink", {
     error: Schema.Union([LinkExpired, LinkNotFound, LinkNotReady]),

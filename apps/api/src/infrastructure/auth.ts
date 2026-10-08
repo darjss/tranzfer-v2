@@ -64,7 +64,7 @@ const google = Config.all({
  * What each stage signs in with. Production requires Google and never
  * registers the test login; the other stages take whatever is configured.
  */
-const providers = (stage: "production" | "staging" | "dev") =>
+const providers = (stage: "production" | "staging" | "dev", d1: Effect.Effect<D1Database>) =>
   Match.value(stage).pipe(
     Match.when("production", () =>
       Effect.gen(function* productionProviders() {
@@ -87,7 +87,7 @@ const providers = (stage: "production" | "staging" | "dev") =>
         const testLoginKey = yield* Config.option(Config.schema(SigningSecret, "TEST_LOGIN_KEY"));
         return {
           plugins: Option.toArray(
-            Option.map(testLoginKey, (key) => stagingLogin(Redacted.value(key))),
+            Option.map(testLoginKey, (key) => stagingLogin(Redacted.value(key), d1)),
           ),
           secret: Option.getOrUndefined(secret),
           socialProviders: Option.getOrUndefined(socialProviders),
@@ -98,7 +98,7 @@ const providers = (stage: "production" | "staging" | "dev") =>
 
 export const makeAuth = (stage: "production" | "staging" | "dev", d1: Effect.Effect<D1Database>) =>
   Effect.gen(function* auth() {
-    const configured = yield* providers(stage);
+    const configured = yield* providers(stage, d1);
     const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
 
     // Our snake_case, integer-ms columns rule out the plugin's Kysely D1 layer.

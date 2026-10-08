@@ -3,7 +3,7 @@ import { assertBudget, captureArtifact } from "@solidjs/diagnostics";
 import "@solidjs/diagnostics/vitest";
 import { cleanup, render, screen } from "@solidjs/testing-library";
 import { Api, Authenticated, CurrentPrincipal, DeliveryId, TransferId } from "@tranzfer/contracts";
-import type { Delivery } from "@tranzfer/contracts";
+import type { BillingSummary, Delivery } from "@tranzfer/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -19,6 +19,8 @@ import { RuntimeContext } from "../api/solid-effect";
 import { patchTransfer } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
 import { Board } from "./Board";
+import { SendCard } from "./SendCard";
+import { TopBar } from "./TopBar";
 import { createDeliveries } from "./deliveries";
 import { DeliverySheet } from "./DeliverySheet";
 
@@ -55,7 +57,21 @@ const delivery = (
 
 // The API side of the dashboard, in memory: a server list the fake cancel
 // really changes, behind the typed RPC client the page uses.
-const makeWorld = (server: Delivery[], gate?: Deferred.Deferred<boolean>) => {
+const freePlan: BillingSummary = {
+  cancelsAtPeriodEnd: false,
+  limitBytes: 20_000 * MB,
+  maxRetentionDays: 3,
+  periodEnd: null,
+  plan: "free",
+  status: "none",
+  usedBytes: 3200 * MB,
+};
+
+const makeWorld = (
+  server: Delivery[],
+  gate?: Deferred.Deferred<boolean>,
+  billing: BillingSummary = freePlan,
+) => {
   const api = Layer.effect(ApiClient, RpcTest.makeClient(Api)).pipe(
     Layer.provide(
       Api.toLayer(
@@ -64,9 +80,12 @@ const makeWorld = (server: Delivery[], gate?: Deferred.Deferred<boolean>) => {
           CreateDelivery: () => Effect.die("unused"),
           Deliveries: () => Effect.sync(() => [...server]),
           FinalizeTransfer: () => Effect.die("unused"),
+          GetBilling: () => Effect.succeed(billing),
           Me: () => Effect.service(CurrentPrincipal),
+          OpenBillingPortal: () => Effect.die("unused"),
           OpenLink: () => Effect.die("unused"),
           SignUpload: () => Effect.die("unused"),
+          StartCheckout: () => Effect.die("unused"),
         }),
       ),
     ),
@@ -265,6 +284,90 @@ describe("dashboard reactivity", () => {
     expect(screen.getByText("20 MB already uploaded.")).toBeInTheDocument();
     expect(artifact).toHaveNoDiagnostics();
     assertBudget(artifact, { allow: [], maxReruns: 5, maxWastedRuns: 2 });
+    await runtime.dispose();
+  });
+  it.each([
+    {
+      billing: freePlan,
+      manage: false,
+      retention: ["1:on", "3:on", "7:off", "14:off"],
+      upgrade: "Upgrade to Starter · $15/mo",
+      usage: "Free · 3.2 GB of 20 GB",
+    },
+    {
+      billing: {
+        cancelsAtPeriodEnd: false,
+        limitBytes: 1_000_000 * MB,
+        maxRetentionDays: 14,
+        periodEnd: new Date("2026-11-06T00:00:00Z"),
+        plan: "pro",
+        status: "active",
+        usedBytes: 3200 * MB,
+      } satisfies BillingSummary,
+      manage: true,
+      retention: ["1:on", "3:on", "7:on", "14:on"],
+      upgrade: "Upgrade to Studio · $69/mo",
+      usage: "Pro · 3.2 GB of 1 TB",
+    },
+  ])("shows $billing.plan usage and only the retention the plan allows", async (expected) => {
+    const runtime = makeWorld([], undefined, expected.billing);
+    const Harness = () => {
+      const state = createDeliveries(runtime);
+      return (
+        <>
+          <TopBar
+            billing={state.billing()}
+            manage={noop}
+            principal={{ email: "s@test", id: "s", image: null, name: "Sender" }}
+            send={noop}
+            upgrade={noop}
+          />
+          <SendCard
+            billing={state.billing()}
+            dragging={false}
+            pickFiles={noop}
+            pickFolder={noop}
+            problems={[]}
+            retention={3}
+            sending={false}
+            setRetention={noop}
+            upgrade={noop}
+          />
+        </>
+      );
+    };
+    const { artifact } = await captureArtifact(
+      () => {
+        render(() => (
+          <RuntimeContext value={runtime}>
+            <Loading fallback={<p>loading</p>}>
+              <Harness />
+            </Loading>
+          </RuntimeContext>
+        ));
+      },
+      { scenario: `billing-${expected.billing.plan}` },
+    );
+    await screen.findByText(expected.usage);
+    flush();
+
+    // The account menu is a closed popover, so the queries include hidden nodes.
+    // All four stay visible; the ones above the plan are disabled.
+    expect(
+      screen
+        .getAllByRole("radio")
+        .map(
+          (radio) =>
+            `${radio.getAttribute("value")}:${radio.hasAttribute("disabled") ? "off" : "on"}`,
+        ),
+    ).toEqual(expected.retention);
+    expect(
+      screen.getByRole("button", { hidden: true, name: expected.upgrade }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { hidden: true, name: "Manage billing" }) !== null).toBe(
+      expected.manage,
+    );
+    expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
   });
 });

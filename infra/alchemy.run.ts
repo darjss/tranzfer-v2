@@ -11,6 +11,7 @@ import * as Match from "effect/Match";
 import ApiWorkerLive from "../apps/api/src/index";
 import { ApiWorker } from "../apps/api/src/worker";
 import { isPreviewStage, ownsAxiom, stageName } from "../apps/api/src/infrastructure/stage";
+import { polarProviders } from "./polar-provider";
 
 const envFile = new URL("../.env", import.meta.url);
 if (existsSync(envFile)) {
@@ -28,8 +29,8 @@ export default Alchemy.Stack(
       stageName.pipe(
         Effect.map((stage) =>
           ownsAxiom(stage)
-            ? Layer.mergeAll(Cloudflare.providers(), Axiom.providers())
-            : Cloudflare.providers(),
+            ? Layer.mergeAll(Cloudflare.providers(), polarProviders(), Axiom.providers())
+            : Layer.mergeAll(Cloudflare.providers(), polarProviders()),
         ),
       ),
     ),

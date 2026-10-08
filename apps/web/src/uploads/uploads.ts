@@ -3,7 +3,15 @@ import AwsS3 from "@uppy/aws-s3";
 import { Uppy } from "@uppy/core";
 import type { Body, Meta } from "@uppy/core/utils";
 import { DeliveryId, partSize, RelativePath, TransferId } from "@tranzfer/contracts";
-import type { Delivery, RetentionDays, Transfer, UploadRequest } from "@tranzfer/contracts";
+import type {
+  Delivery,
+  DeliveryConflict,
+  OverPlanLimit,
+  RetentionDays,
+  RetentionNotInPlan,
+  Transfer,
+  UploadRequest,
+} from "@tranzfer/contracts";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -602,6 +610,8 @@ const make = Effect.gen(function* makeUploads() {
         version: 1,
       })),
     );
+    const refused = (error: DeliveryConflict | OverPlanLimit | RetentionNotInPlan) =>
+      Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error));
     yield* spans.beginDelivery(deliveryId, {
       "delivery.file_count": files.length,
       "delivery.retention_days": retentionDays,
@@ -614,11 +624,14 @@ const make = Effect.gen(function* makeUploads() {
         times: 5,
         while: (error) => error._tag === "RpcClientError",
       }),
-      // A conflict means these ids already belong to different content, so
-      // nothing from this attempt exists to resume; its records go.
-      Effect.catchTag("DeliveryConflict", (error) =>
-        Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error)),
-      ),
+      // A conflict means these ids already belong to different content, and a
+      // plan refusal means no delivery was made. Either way nothing from this
+      // attempt exists to resume; its records go.
+      Effect.catchTags({
+        DeliveryConflict: refused,
+        OverPlanLimit: refused,
+        RetentionNotInPlan: refused,
+      }),
       Effect.tapError((error) => spans.abandon(deliveryId, error._tag)),
     );
 

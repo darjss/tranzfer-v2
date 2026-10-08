@@ -10,7 +10,7 @@
   "dependencies": {
     "@alchemy.run/better-auth": "2.0.0-beta.81",
     "@distilled.cloud/aws": "1.0.0-rc.13",
-    "@polar-sh/sdk": "1.0.2",
+    "@distilled.cloud/polar": "1.0.0-rc.13",
     "@tranzfer/contracts": "workspace:*",
     "@tranzfer/db": "workspace:*",
     "alchemy": "2.0.0-beta.81",
