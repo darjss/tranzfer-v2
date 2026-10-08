@@ -6,6 +6,7 @@ import Icons from "unplugin-icons/vite";
 import { defineConfig } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
 import { webLint } from "../../lint.config";
+import { ogImage } from "./og";
 
 const staticPages = ["/", "/terms", "/privacy", "/acceptable-use"];
 
@@ -43,6 +44,7 @@ export default defineConfig({
     }),
     fileRoutes({ codeSplitting: false, httpMethods: true, types: true }),
     Icons({ compiler: "solid" }),
+    ogImage(),
     // The public pages ship as static HTML; everything else stays live SSR.
     // Flat files (terms.html): Workers static assets serve /terms from them
     // directly, where terms/index.html makes it redirect to /terms/.
