@@ -15,6 +15,7 @@ import { RuntimeContext } from "../api/solid-effect";
 import { bytes, files } from "../dashboard/format";
 import { Progress } from "../dashboard/parts";
 import { button } from "../ui/Button";
+import Confetti from "../ui/Confetti";
 import { saveFolder } from "./save-folder";
 import type { Folder, SaveStopped } from "./save-folder";
 
@@ -148,7 +149,8 @@ export const SaveAll = (props: { delivery: SharedDelivery; token: string }) => {
                 {progress.current}
               </p>
             </div>
-            <div hidden={status() !== "done"}>
+            <div class={css({ pos: "relative" })} hidden={status() !== "done"}>
+              <Confetti />
               <p
                 class={css({ alignItems: "center", color: "ok", display: "flex", gap: "2" })}
                 role="status"

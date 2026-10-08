@@ -79,6 +79,7 @@ export function KindIcon(props: { kind: Kind; class?: string }) {
   return (
     <span
       aria-hidden="true"
+      data-kind={props.kind}
       class={cx(
         css({
           borderRadius: "full",
