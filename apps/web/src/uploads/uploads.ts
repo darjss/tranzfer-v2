@@ -51,7 +51,10 @@ interface TransferMeta extends Meta {
   readonly transferId: TransferId;
 }
 
-const SPEED_EMA = 0.25;
+// Speed counts only parts R2 acknowledged, over about the last half minute.
+// Socket progress runs ahead of the server (the OS buffers a burst at the
+// start), so it never feeds speed or time left.
+const SPEED_WINDOW_MS = 30_000;
 // R2's S3 endpoint is HTTP/1.1, so Chromium opens at most 6 connections to
 // it; one part stream tops out near 20 MB/s. Four parts at once is rclone's
 // default and leaves room for a second file.
@@ -254,7 +257,9 @@ const make = Effect.gen(function* makeUploads() {
   // layer, so it belongs to the app runtime rather than to a component.
   const runFork = yield* FiberSet.makeRuntime();
   const runPromise = yield* FiberSet.makeRuntimePromise();
-  const rates = new Map<string, { at: number; bytes: number }>();
+  // transferId -> acknowledged bytes over time, oldest first, since the
+  // transfer last started moving in this tab.
+  const acks = new Map<TransferId, { at: number; confirmed: number }[]>();
   // objectKey -> transferId, for every file this tab sent or resumed. Signing
   // hands us keys, so this is how a signed request finds its record.
   const keys = new Map<string, TransferId>();
@@ -271,14 +276,20 @@ const make = Effect.gen(function* makeUploads() {
   // confirmed bytes come from this set, seeded from ListParts on resume.
   const doneParts = new Map<TransferId, Set<number>>();
 
-  const sampleSpeed = (transferId: string, bytesUploaded: number) => {
+  // The rate from the newest sample at least a window old (or the start, early
+  // on) to this acknowledgement.
+  const ackedSpeed = (transferId: TransferId, confirmed: number) => {
     const now = Date.now();
-    const previous = rates.get(transferId);
-    rates.set(transferId, { at: now, bytes: bytesUploaded });
-    if (previous === undefined || now === previous.at || bytesUploaded <= previous.bytes) {
-      return null;
+    const samples = acks.get(transferId) ?? [];
+    samples.push({ at: now, confirmed });
+    while (samples.length > 2 && now - (samples[1]?.at ?? now) >= SPEED_WINDOW_MS) {
+      samples.shift();
     }
-    return ((bytesUploaded - previous.bytes) / (now - previous.at)) * 1000;
+    acks.set(transferId, samples);
+    const [base] = samples;
+    return base === undefined || now === base.at
+      ? 0
+      : ((confirmed - base.confirmed) / (now - base.at)) * 1000;
   };
 
   // retryUpload, not upload(): upload() would first re-run every failed file
@@ -446,7 +457,11 @@ const make = Effect.gen(function* makeUploads() {
         doneParts.set(file.meta.transferId, done.add(part.PartNumber));
         const confirmed = partBytes(done, file.size ?? 0);
         autoRetries.delete(file.meta.transferId);
-        patchTransfer(file.meta.transferId, { confirmed, phase: "uploading" });
+        patchTransfer(file.meta.transferId, {
+          bytesPerSecond: ackedSpeed(file.meta.transferId, confirmed),
+          confirmed,
+          phase: "uploading",
+        });
         runFork(recordConfirmed(file.meta.transferId, confirmed));
       });
 
@@ -455,18 +470,13 @@ const make = Effect.gen(function* makeUploads() {
           return;
         }
         const { transferId } = file.meta;
-        const uploaded = progress.bytesUploaded;
-        const current = transfers[transferId];
-        const previousSpeed = current?.bytesPerSecond ?? 0;
-        const sample = sampleSpeed(transferId, uploaded);
-        let smoothed = previousSpeed;
-        if (sample !== null) {
-          smoothed =
-            previousSpeed === 0 ? sample : previousSpeed * (1 - SPEED_EMA) + sample * SPEED_EMA;
+        const confirmed = transfers[transferId]?.confirmed ?? 0;
+        // The first bytes on the wire start the speed window.
+        if (!acks.has(transferId)) {
+          acks.set(transferId, [{ at: Date.now(), confirmed }]);
         }
         patchTransfer(transferId, {
-          bytesPerSecond: smoothed,
-          inFlight: Math.max(uploaded - (current?.confirmed ?? 0), 0),
+          inFlight: Math.max(progress.bytesUploaded - confirmed, 0),
           phase: "uploading",
         });
       });
@@ -476,7 +486,9 @@ const make = Effect.gen(function* makeUploads() {
           return;
         }
         const { transferId } = file.meta;
+        acks.delete(transferId);
         patchTransfer(transferId, {
+          bytesPerSecond: 0,
           confirmed: Math.max(file.size ?? 0, transfers[transferId]?.confirmed ?? 0),
           inFlight: 0,
           phase: "finalizing",
@@ -492,6 +504,8 @@ const make = Effect.gen(function* makeUploads() {
           return;
         }
         const { transferId } = file.meta;
+        // A retry measures speed afresh from its own first bytes.
+        acks.delete(transferId);
         // Complete was already signed, so the object may exist; reconcile
         // through FinalizeTransfer instead of starting transport again.
         if (completeSigned.has(transferId)) {

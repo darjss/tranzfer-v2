@@ -1,8 +1,15 @@
-import { afterEach, describe, expect, it } from "@effect/vitest";
+import { afterEach, describe, expect, it, vi } from "@effect/vitest";
 import { assertBudget, captureArtifact } from "@solidjs/diagnostics";
 import "@solidjs/diagnostics/vitest";
 import { cleanup, render, screen } from "@solidjs/testing-library";
-import { Api, Authenticated, CurrentPrincipal, DeliveryId, TransferId } from "@tranzfer/contracts";
+import {
+  Api,
+  Authenticated,
+  BillingUnavailable,
+  CurrentPrincipal,
+  DeliveryId,
+  TransferId,
+} from "@tranzfer/contracts";
 import type { BillingSummary, Delivery } from "@tranzfer/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -12,9 +19,10 @@ import * as Option from "effect/Option";
 import * as Struct from "effect/Struct";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as RpcTest from "effect/rpc/RpcTest";
-import { flush, Loading } from "solid-js";
+import { createSignal, flush, Loading } from "solid-js";
 
 import { ApiClient } from "../api/client";
+import { appError } from "../api/errors";
 import { RuntimeContext } from "../api/solid-effect";
 import { patchTransfer } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
@@ -31,6 +39,9 @@ HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogEleme
 HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
   this.removeAttribute("open");
 };
+// Nor popovers; the account menu opens itself to show a billing failure.
+const showPopover = vi.fn<() => void>();
+HTMLElement.prototype.showPopover = showPopover;
 
 const MB = 1_000_000;
 
@@ -77,6 +88,15 @@ const makeWorld = (
       Api.toLayer(
         Api.of({
           CancelDelivery: () => Effect.die("unused"),
+          // Like the real list, a cleared delivery stops coming back.
+          ClearDeliveries: ({ deliveryIds }) =>
+            Effect.sync(() => {
+              server.splice(
+                0,
+                server.length,
+                ...server.filter((row) => !deliveryIds.includes(row.id)),
+              );
+            }),
           CreateDelivery: () => Effect.die("unused"),
           Deliveries: () => Effect.sync(() => [...server]),
           FinalizeTransfer: () => Effect.die("unused"),
@@ -169,6 +189,7 @@ describe("dashboard reactivity", () => {
       <RuntimeContext value={runtime}>
         <Board
           cancel={nothingToReport}
+          clear={nothingToReport}
           deliveries={[moving, ...ready]}
           online
           select={noop}
@@ -212,6 +233,7 @@ describe("dashboard reactivity", () => {
       return (
         <Board
           cancel={state.cancel}
+          clear={state.clear}
           deliveries={state.deliveries}
           online
           select={noop}
@@ -264,6 +286,7 @@ describe("dashboard reactivity", () => {
           <RuntimeContext value={runtime}>
             <Board
               cancel={nothingToReport}
+              clear={nothingToReport}
               deliveries={[waiting]}
               online
               select={noop}
@@ -282,6 +305,8 @@ describe("dashboard reactivity", () => {
     expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Choose files" })).toBeInTheDocument();
     expect(screen.getByText("20 MB already uploaded.")).toBeInTheDocument();
+    // The row says how much already arrived, so picking the files is worth it.
+    expect(screen.getByText("1 file · 20 MB of 60 MB arrived")).toBeInTheDocument();
     expect(artifact).toHaveNoDiagnostics();
     assertBudget(artifact, { allow: [], maxReruns: 5, maxWastedRuns: 2 });
     await runtime.dispose();
@@ -317,8 +342,10 @@ describe("dashboard reactivity", () => {
         <>
           <TopBar
             billing={state.billing()}
+            dismissProblem={noop}
             manage={noop}
             principal={{ email: "s@test", id: "s", image: null, name: "Sender" }}
+            problem={undefined}
             send={noop}
             upgrade={noop}
           />
@@ -369,5 +396,175 @@ describe("dashboard reactivity", () => {
     );
     expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
+  });
+  it("a row says Starting… until acknowledged parts give it a speed", async () => {
+    const fresh = delivery("Fresh", "open", [500 * MB]);
+    const [transfer] = fresh.transfers;
+    if (transfer === undefined) {
+      throw new Error("fixture needs a transfer");
+    }
+    // Bytes are on the wire, but R2 has acknowledged none: no speed exists yet.
+    patchTransfer(transfer.id, { inFlight: 40 * MB, phase: "uploading" });
+    const runtime = makeWorld([fresh]);
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Board
+          cancel={nothingToReport}
+          clear={nothingToReport}
+          deliveries={[fresh]}
+          online
+          select={noop}
+          sendAgain={noop}
+        />
+      </RuntimeContext>
+    ));
+    flush();
+    expect(screen.getByText("Starting…")).toBeInTheDocument();
+    expect(screen.queryByText(/\/s|left/u)).toBeNull();
+
+    const { artifact } = await captureArtifact(
+      () => {
+        // The first part lands; the engine now has a measured rate.
+        patchTransfer(transfer.id, { bytesPerSecond: 20 * MB, confirmed: 64 * MB, inFlight: 0 });
+      },
+      { scenario: "first-ack" },
+    );
+
+    flush();
+    expect(screen.getByText("20 MB/s · about a minute left")).toBeInTheDocument();
+    expect(screen.queryByText("Starting…")).toBeNull();
+    expect(artifact).toHaveNoDiagnostics();
+    // A one-off change of state, not a tick: Board.groups confirms nothing
+    // regrouped, and every binding that reads the row's kind re-checks once.
+    assertBudget(artifact, { allow: [], maxReruns: 21, maxWastedRuns: 10 });
+    await runtime.dispose();
+  });
+
+  it("an interrupted row starts over after an in-place confirm", async () => {
+    // Open on the server with no record in this browser: it can't continue.
+    const stuck = delivery("Stuck", "open", [80 * MB]);
+    const cancel = vi.fn(nothingToReport);
+    const sendAgain = vi.fn<() => void>();
+    const runtime = makeWorld([stuck]);
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Board
+          cancel={cancel}
+          clear={nothingToReport}
+          deliveries={[stuck]}
+          online
+          select={noop}
+          sendAgain={sendAgain}
+        />
+      </RuntimeContext>
+    ));
+
+    const { artifact } = await captureArtifact(
+      () => {
+        screen.getByRole("button", { name: "Start over" }).click();
+        flush();
+        screen.getByRole("button", { name: "Yes, start over" }).click();
+        flush();
+      },
+      { scenario: "start-over" },
+    );
+
+    expect(sendAgain).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledWith(stuck.id);
+    expect(artifact).toHaveNoDiagnostics();
+    assertBudget(artifact, { allow: [], maxReruns: 6, maxWastedRuns: 2 });
+    await runtime.dispose();
+  });
+
+  it("clearing ended deliveries takes them off the board at once", async () => {
+    const server = [
+      delivery("Live", "ready", [MB]),
+      delivery("GoneA", "cancelled", [MB]),
+      delivery("GoneB", "cancelled", [MB]),
+    ];
+    const runtime = makeWorld(server);
+    const Harness = () => {
+      const state = createDeliveries(runtime);
+      return (
+        <Board
+          cancel={state.cancel}
+          clear={state.clear}
+          deliveries={state.deliveries}
+          online
+          select={noop}
+          sendAgain={noop}
+        />
+      );
+    };
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Harness />
+        </Loading>
+      </RuntimeContext>
+    ));
+    await screen.findByText("Live");
+    // Ended rows start folded; the heading counts them.
+    const ended = screen.getByRole("button", { name: /Ended/u });
+    expect(ended).toHaveTextContent("Ended 2");
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        ended.click();
+        flush();
+        // One row by its own button, then the rest at once.
+        const [clearA] = screen.getAllByRole("button", { name: "Clear" });
+        clearA?.click();
+        flush();
+        expect(ended).toHaveTextContent("Ended 1");
+        await vi.waitFor(() => {
+          expect(server).toHaveLength(2);
+        });
+        screen.getByRole("button", { name: "Clear all" }).click();
+        flush();
+        expect(screen.queryByRole("button", { name: /Ended/u })).toBeNull();
+        await vi.waitFor(() => {
+          expect(server.map((row) => row.title)).toEqual(["Live"]);
+        });
+      },
+      { scenario: "clear-ended" },
+    );
+
+    expect(screen.getByText("Live")).toBeInTheDocument();
+    expect(artifact).toHaveNoDiagnostics();
+    await runtime.dispose();
+  });
+
+  it("a billing failure opens the account menu and says so there", async () => {
+    const [problem, setProblem] = createSignal<string>();
+    render(() => (
+      <TopBar
+        billing={freePlan}
+        dismissProblem={noop}
+        manage={noop}
+        principal={{ email: "s@test", id: "s", image: null, name: "Sender" }}
+        problem={problem()}
+        send={noop}
+        upgrade={noop}
+      />
+    ));
+    flush();
+    showPopover.mockClear();
+
+    const { message } = appError(new BillingUnavailable());
+    const { artifact } = await captureArtifact(
+      () => {
+        setProblem(message);
+        flush();
+      },
+      { scenario: "billing-problem" },
+    );
+
+    expect(showPopover).toHaveBeenCalledOnce();
+    expect(screen.getByRole("alert", { hidden: true })).toHaveTextContent(message);
+    expect(message).toContain("turned this down or didn't answer");
+    expect(artifact).toHaveNoDiagnostics();
+    // The effect that opens the menu, plus the alert appearing; nothing else.
+    assertBudget(artifact, { allow: [], maxReruns: 5, maxWastedRuns: 0 });
   });
 });
