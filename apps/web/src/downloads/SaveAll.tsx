@@ -3,7 +3,7 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
-import { createSignal, createStore, Match, onSettled, Show, Switch, useContext } from "solid-js";
+import { createSignal, createStore, onSettled, Show, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
 
 import PhCheckCircleBold from "~icons/ph/check-circle-bold";
@@ -98,8 +98,10 @@ export const SaveAll = (props: { delivery: SharedDelivery; token: string }) => {
         }
       >
         {(picker) => (
-          <Switch>
-            <Match when={status() === "idle"}>
+          // Three small panes rendered once and shown by status: rebuilding a
+          // subtree on each flip blew the HOT_SCOPE_TIME budget on slow CI.
+          <>
+            <div hidden={status() !== "idle"}>
               <button
                 class={button({ size: "sm" })}
                 onClick={() => {
@@ -125,8 +127,8 @@ export const SaveAll = (props: { delivery: SharedDelivery; token: string }) => {
                   </p>
                 )}
               </Show>
-            </Match>
-            <Match when={status() === "saving"}>
+            </div>
+            <div hidden={status() !== "saving"}>
               <Progress
                 confirmed={progress.bytes}
                 inFlight={0}
@@ -145,8 +147,8 @@ export const SaveAll = (props: { delivery: SharedDelivery; token: string }) => {
               >
                 {progress.current}
               </p>
-            </Match>
-            <Match when={status() === "done"}>
+            </div>
+            <div hidden={status() !== "done"}>
               <p
                 class={css({ alignItems: "center", color: "ok", display: "flex", gap: "2" })}
                 role="status"
@@ -154,8 +156,8 @@ export const SaveAll = (props: { delivery: SharedDelivery; token: string }) => {
                 <PhCheckCircleBold aria-hidden="true" class={css({ boxSize: "4" })} />
                 All {files(props.delivery.files.length)} are in {progress.folder}.
               </p>
-            </Match>
-          </Switch>
+            </div>
+          </>
         )}
       </Show>
     </div>

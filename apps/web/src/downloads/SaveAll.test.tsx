@@ -160,7 +160,10 @@ describe("SaveAll", () => {
     const { artifact } = await captureArtifact(
       async () => {
         screen.getByRole("button", { name: "Download all" }).click();
-        await screen.findByText("All 4 files are in Recipient.");
+        // ByRole skips hidden panes, so this waits for the done pane to show.
+        expect(await screen.findByRole("status")).toHaveTextContent(
+          "All 4 files are in Recipient.",
+        );
       },
       { scenario: "save-all" },
     );
@@ -177,11 +180,10 @@ describe("SaveAll", () => {
       "notes.txt": null,
     });
     expect(artifact).toHaveNoDiagnostics();
-    // Idle to saving to done flips the Switch twice; the Match that stays
-    // false re-checks each time (the two wasted runs). Every progress report
+    // Idle to saving to done flips the three panes' hidden bindings. Every progress report
     // (start and end of each file) re-runs only the counts, the current path
     // and the bar: 28 runs, plus room for one throttled byte report.
-    assertBudget(artifact, { allow: [], maxReruns: 32, maxWastedRuns: 2 });
+    assertBudget(artifact, { allow: [], maxReruns: 32, maxWastedRuns: 0 });
     await runtime.dispose();
   });
 
