@@ -20,11 +20,15 @@ const subscribe = (userId: string, plan: "pro" | "starter") =>
     db.insert(schema.subscription).values({ plan, status: "active", userId }),
   ).pipe(Effect.orDie);
 
-const signed = (secret: string, id: string, timestamp: number, body: string) =>
+// Polar's secret is `whsec_` plus the base64 of the HMAC key.
+const webhookSecret = (key: string) =>
+  Redacted.make(`whsec_${Base64.encode(new TextEncoder().encode(key))}`);
+
+const signed = (rawKey: string, id: string, timestamp: number, body: string) =>
   Effect.promise(async () => {
     const key = await crypto.subtle.importKey(
       "raw",
-      new TextEncoder().encode(secret),
+      new TextEncoder().encode(rawKey),
       { hash: "SHA-256", name: "HMAC" },
       false,
       ["sign"],
@@ -264,30 +268,28 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
   it.effect("accepts only a Polar delivery that is signed, fresh and intact", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(1_800_000_000_000);
-      const secret = "polar_whs_test_secret";
+      const secret = webhookSecret("test webhook key");
       const body = '{"type":"subscription.updated"}';
       const timestamp = 1_800_000_000;
-      const good = yield* signed(secret, "evt_1", timestamp, body);
+      const good = yield* signed("test webhook key", "evt_1", timestamp, body);
       const headers = {
         "webhook-id": "evt_1",
         "webhook-signature": good,
         "webhook-timestamp": String(timestamp),
       };
       const check = (overrides: Partial<typeof headers>, payload = body, key = secret) =>
-        Effect.flip(verifyWebhook(Redacted.make(key), { ...headers, ...overrides }, payload));
+        Effect.flip(verifyWebhook(key, { ...headers, ...overrides }, payload));
 
-      yield* verifyWebhook(Redacted.make(secret), headers, body);
+      yield* verifyWebhook(secret, headers, body);
       // A rotating secret sends several signatures; one match is enough.
-      yield* verifyWebhook(
-        Redacted.make(secret),
-        { ...headers, "webhook-signature": `v1,AAAA ${good}` },
-        body,
-      );
+      yield* verifyWebhook(secret, { ...headers, "webhook-signature": `v1,AAAA ${good}` }, body);
 
       expect(yield* check({}, '{"type":"subscription.canceled"}')).toMatchObject({
         reason: "signature",
       });
-      expect(yield* check({}, body, "another_secret")).toMatchObject({ reason: "signature" });
+      expect(yield* check({}, body, webhookSecret("another key"))).toMatchObject({
+        reason: "signature",
+      });
       expect(yield* check({ "webhook-id": "evt_2" })).toMatchObject({ reason: "signature" });
       expect(yield* check({ "webhook-signature": "v2,abc" })).toMatchObject({
         reason: "signature",
@@ -316,7 +318,7 @@ const billingLayer = Billing.layer({
   appUrl: "https://app.test",
   products: Effect.succeed({ pro: "prod_pro", starter: "prod_starter", studio: "prod_studio" }),
   reconcileOnRead: false,
-  webhookSecret: Effect.succeed(Redacted.make("secret")),
+  webhookSecret: Effect.succeed(webhookSecret("billing webhook key")),
 }).pipe(Layer.provideMerge(domainLayer(storage.layer)));
 
 const polarPage = () =>
@@ -343,7 +345,7 @@ const reconcileAs = (userId: string) =>
     const billing = yield* Billing;
     const body = JSON.stringify({ data: { customer: { external_id: userId } } });
     const timestamp = Math.floor((yield* Clock.currentTimeMillis) / 1000);
-    const header = yield* signed("secret", "evt", timestamp, body);
+    const header = yield* signed("billing webhook key", "evt", timestamp, body);
     yield* billing.webhook(
       {
         "webhook-id": "evt",

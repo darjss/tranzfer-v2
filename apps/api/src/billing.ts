@@ -37,8 +37,9 @@ const TOLERANCE_SECONDS = 300;
 
 /**
  * Checks a Polar delivery against Standard Webhooks. The HMAC key is the
- * UTF-8 bytes of the endpoint secret as Polar shows it (Polar's own SDK
- * base64-encodes it only to hand it to a library that decodes it again).
+ * base64 after the secret's `whsec_` prefix: Polar signs that way for every
+ * endpoint created since 2026-09-08 (polarsource/polar
+ * `server/polar/webhook/constants.py`), and ours are all newer.
  * `subtle.verify` compares in constant time.
  */
 export const verifyWebhook = Effect.fn("Billing.verifyWebhook")(function* verifyWebhook(
@@ -57,16 +58,15 @@ export const verifyWebhook = Effect.fn("Billing.verifyWebhook")(function* verify
   if (!Number.isFinite(sentAt) || Math.abs(now - sentAt) > TOLERANCE_SECONDS) {
     return yield* new InvalidWebhook({ reason: "timestamp" });
   }
+  const keyBytes = yield* Effect.orDie(
+    Effect.fromResult(Base64.decode(Redacted.value(secret).replace(/^whsec_/u, ""))),
+  );
   const encoder = new TextEncoder();
   const key = yield* Effect.promise(
     async () =>
-      await crypto.subtle.importKey(
-        "raw",
-        encoder.encode(Redacted.value(secret)),
-        { hash: "SHA-256", name: "HMAC" },
-        false,
-        ["verify"],
-      ),
+      await crypto.subtle.importKey("raw", keyBytes, { hash: "SHA-256", name: "HMAC" }, false, [
+        "verify",
+      ]),
   );
   const signed = encoder.encode(`${id}.${timestamp}.${body}`);
   // The header holds space-separated `v1,<base64>` entries, one per active secret.
