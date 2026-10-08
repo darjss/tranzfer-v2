@@ -8,7 +8,15 @@ import solid from "@solidjs/vite-plugin";
 import { webLint } from "../../lint.config";
 import { ogImage } from "./og";
 
-const staticPages = ["/", "/terms", "/privacy", "/acceptable-use", "/llms.txt"];
+const staticPages = [
+  "/",
+  "/terms",
+  "/privacy",
+  "/acceptable-use",
+  "/vs/masv",
+  "/vs/wetransfer",
+  "/llms.txt",
+];
 
 const envFlag = (value: string | undefined) => value !== undefined && value !== "";
 
