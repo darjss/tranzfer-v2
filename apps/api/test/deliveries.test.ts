@@ -15,7 +15,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { Billing, verifyWebhook } from "../src/billing";
 import { Deliveries } from "../src/deliveries";
-import { Emails, sendWelcome } from "../src/emails";
+import { Emails, queueOpenings, sendWelcome } from "../src/emails";
 import { Mail, MailError } from "../src/infrastructure/email";
 import { admitSignup } from "../src/infrastructure/auth";
 import {
@@ -902,14 +902,6 @@ const interestRows = Effect.flatMap(Effect.service(Database), ({ db }) =>
   db.query.planInterest.findMany({ orderBy: { id: "asc" } }),
 ).pipe(Effect.orDie);
 
-const queue = (plan: "pro" | "starter" | "studio") =>
-  Effect.flatMap(Effect.service(Database), ({ db }) =>
-    db
-      .update(schema.planInterest)
-      .set({ notifyQueuedAt: new Date() })
-      .where(eq(schema.planInterest.plan, plan)),
-  ).pipe(Effect.orDie);
-
 layer(emailsLayer)("Emails", (it) => {
   it.effect("keeps one row per address and plan, and confirms only the first ask", () =>
     Effect.gen(function* scenario() {
@@ -1009,9 +1001,11 @@ layer(emailsLayer)("Emails", (it) => {
         "5.5.5.5",
       );
       bouncing.add("o2@example.com");
-      // Nothing is queued yet, so nothing goes out.
+      // Nothing is queued yet, so nothing goes out, and a dry run only counts.
       expect(yield* emails.sendOpenings).toBe(0);
-      yield* queue("studio");
+      expect(yield* queueOpenings("studio", { dryRun: true })).toEqual({ queued: 0, waiting: 3 });
+      expect(yield* emails.sendOpenings).toBe(0);
+      expect(yield* queueOpenings("studio", { dryRun: false })).toEqual({ queued: 3, waiting: 3 });
       sent.length = 0;
       const studioRows = Effect.map(interestRows, (rows) =>
         rows
@@ -1035,7 +1029,7 @@ layer(emailsLayer)("Emails", (it) => {
       // A second sweep sends nothing; queueing again retries only the failure.
       expect(yield* emails.sendOpenings).toBe(0);
       bouncing.delete("o2@example.com");
-      yield* queue("studio");
+      expect(yield* queueOpenings("studio", { dryRun: false })).toEqual({ queued: 1, waiting: 1 });
       expect(yield* emails.sendOpenings).toBe(1);
       expect(sent.at(-1)).toEqual({ subject: "Studio is open", to: "o2@example.com" });
     }),

@@ -1,7 +1,7 @@
 import { plans, RateLimited, rateLimits } from "@tranzfer/contracts";
 import type { PaidPlanId } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -75,6 +75,36 @@ const planOpen = (plan: PaidPlanId, appUrl: string) =>
     "That was the one email we promised, so you won't hear from us about this again.",
     "Tranzfer",
   ]);
+
+const waitingFor = (plan: PaidPlanId) =>
+  and(eq(schema.planInterest.plan, plan), isNull(schema.planInterest.notifiedAt));
+
+/**
+ * Queues the "plan is open" email for everyone on a plan's list who hasn't
+ * had it; the sweep sends the queue (`Emails.sendOpenings`). Rows already
+ * queued keep their place. With `dryRun` it only counts. Run by
+ * `interest:notify` against a stage's database.
+ */
+export const queueOpenings = Effect.fn("Emails.queueOpenings")(function* queueOpenings(
+  plan: PaidPlanId,
+  options: { readonly dryRun: boolean },
+) {
+  const { db } = yield* Database;
+  const [row] = yield* db
+    .select({ people: count() })
+    .from(schema.planInterest)
+    .where(waitingFor(plan));
+  const waiting = row?.people ?? 0;
+  if (options.dryRun) {
+    return { queued: 0, waiting };
+  }
+  const queued = yield* db
+    .update(schema.planInterest)
+    .set({ notifyQueuedAt: new Date(yield* Clock.currentTimeMillis) })
+    .where(and(waitingFor(plan), isNull(schema.planInterest.notifyQueuedAt)))
+    .returning({ id: schema.planInterest.id });
+  return { queued: queued.length, waiting };
+}, dieOnDatabaseError);
 
 /** The interest list and the emails Tranzfer sends on its own. */
 export class Emails extends Context.Service<
