@@ -11,7 +11,7 @@ import {
   TransferId,
   Unauthorized,
 } from "@tranzfer/contracts";
-import type { BillingSummary, Delivery } from "@tranzfer/contracts";
+import type { BillingSummary, Delivery, DeliveryEmail } from "@tranzfer/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -98,6 +98,11 @@ const betaPro: BillingSummary = {
   usedBytes: 3200 * MB,
 };
 
+// What the fake API holds for emails: each request, and a row per address that
+// a test settles the way the real background send would.
+const emailRequests: (readonly string[])[] = [];
+const emailRows: DeliveryEmail[] = [];
+
 const makeWorld = (
   server: Delivery[],
   gate?: Deferred.Deferred<boolean>,
@@ -128,6 +133,7 @@ const makeWorld = (
               listsToFail -= 1;
               return listsToFail < 0 ? Effect.succeed([...server]) : Effect.die("list failed");
             }),
+          DeliveryEmails: () => Effect.sync(() => emailRows.toReversed()),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.sync(() => billing),
           // Like the real one: without an address it needs a session, and
@@ -145,6 +151,19 @@ const makeWorld = (
                 })
               : Effect.fail(new AccessCodeRefused({ reason: "unknown" })),
           ReportDownload: () => Effect.die("unused"),
+          SendDeliveryEmail: ({ recipients }) =>
+            Effect.sync(() => {
+              emailRequests.push(recipients);
+              return recipients.map(() => {
+                const row = {
+                  errorCode: null,
+                  id: emailRows.length + 1,
+                  status: "queued" as const,
+                };
+                emailRows.push(row);
+                return row;
+              });
+            }),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
           UpdateDelivery: ({ deliveryId, note, title }) =>
@@ -822,6 +841,9 @@ describe("dashboard reactivity", () => {
           <SendDoneList
             deliveries={state.deliveries}
             dismiss={state.dismiss}
+            email={state.email}
+            emailed={state.emailed}
+            emailing={state.emailing()}
             finished={state.finished()}
             update={state.update}
           />
@@ -946,6 +968,102 @@ describe("dashboard reactivity", () => {
     await screen.findByText("Episode 14, final");
     expect(screen.queryByText("Your files are ready")).toBeNull();
     clock.mockRestore();
+    await runtime.dispose();
+  });
+
+  it("the finished card emails the link and says only what the mail server reported", async () => {
+    emailRequests.length = 0;
+    emailRows.length = 0;
+    const server: Delivery[] = [];
+    const runtime = makeWorld(server);
+    let state: ReturnType<typeof createDeliveries> | undefined;
+    const Harness = () => {
+      state = createDeliveries(runtime);
+      return (
+        <SendDoneList
+          deliveries={state.deliveries}
+          dismiss={state.dismiss}
+          email={state.email}
+          emailed={state.emailed}
+          emailing={state.emailing()}
+          finished={state.finished()}
+          update={state.update}
+        />
+      );
+    };
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Harness />
+        </Loading>
+      </RuntimeContext>
+    ));
+    await vi.waitFor(() => {
+      expect(screen.queryByText("loading")).toBeNull();
+    });
+    await state?.send(
+      [{ file: new File([new Uint8Array(5 * MB)], "cut.mov"), path: "cut.mov" }],
+      3,
+    );
+    flush();
+    const [open] = server;
+    const [transfer] = open?.transfers ?? [];
+    if (open === undefined || transfer === undefined) {
+      throw new Error("the fake send makes one transfer");
+    }
+    patchTransfer(transfer.id, { confirmed: 5 * MB, phase: "finalizing", uploaded: true });
+    server[0] = Struct.evolve(open, {
+      expiresAt: () => new Date("2026-10-23T09:00:00Z"),
+      status: () => "ready" as const,
+      transfers: (rows) =>
+        rows.map((row) => Struct.evolve(row, { state: () => "complete" as const })),
+    });
+    patchTransfer(transfer.id, { phase: "done" });
+    await screen.findByText("Your files are ready");
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        screen.getByRole("button", { name: "Email it" }).click();
+        flush();
+        // A bad address stops at the form; nothing is sent.
+        fireEvent.input(screen.getByRole("textbox", { name: /Email addresses/u }), {
+          target: { value: "ann@example.com, nope" },
+        });
+        flush();
+        screen.getByRole("button", { name: "Send email" }).click();
+        await screen.findByText('"nope" doesn\'t look like an email address.');
+        expect(emailRequests).toEqual([]);
+
+        // Case and repeats don't make a second email.
+        fireEvent.input(screen.getByRole("textbox", { name: /Email addresses/u }), {
+          target: { value: "Ann@Example.com, bob@example.com\nann@example.com" },
+        });
+        flush();
+        screen.getByRole("button", { name: "Send email" }).click();
+        await screen.findByText("bob@example.com");
+        expect(emailRequests).toEqual([["ann@example.com", "bob@example.com"]]);
+        expect(screen.getAllByText("Sending")).toHaveLength(3);
+
+        // The background send ends: one went out, one bounced before.
+        emailRows.splice(
+          0,
+          2,
+          { errorCode: null, id: 1, status: "sent" },
+          { errorCode: "E_RECIPIENT_SUPPRESSED", id: 2, status: "failed" },
+        );
+        await screen.findByText("Sent to 1 of 2, one address bounced", {}, { timeout: 5000 });
+      },
+      { scenario: "email-it" },
+    );
+    flush();
+
+    const card = within(screen.getByRole("region", { name: "Your files are ready" }));
+    expect(card.getByText("Sent")).toBeInTheDocument();
+    expect(card.getByText("Not sent, this address bounced before")).toBeInTheDocument();
+    expect(card.getByText(/We can't see anyone's inbox/u)).toBeInTheDocument();
+    expect(card.getByRole("button", { name: "Email it to more people" })).toBeInTheDocument();
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    assertBudget(artifact, { allow: ["OPTIMISTIC_REVERTED"], maxReruns: 45, maxWastedRuns: 0 });
     await runtime.dispose();
   });
 

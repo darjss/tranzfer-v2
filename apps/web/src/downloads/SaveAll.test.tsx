@@ -87,6 +87,7 @@ const makeWorld = () => {
           ClearDeliveries: () => Effect.die("unused"),
           CreateDelivery: () => Effect.die("unused"),
           Deliveries: () => Effect.die("unused"),
+          DeliveryEmails: () => Effect.die("unused"),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.die("unused"),
           JoinInterest: () => Effect.die("unused"),
@@ -98,6 +99,7 @@ const makeWorld = () => {
             Effect.sync(() => {
               reports.push(`${event} ${path}`);
             }),
+          SendDeliveryEmail: () => Effect.die("unused"),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
           UpdateDelivery: () => Effect.die("unused"),

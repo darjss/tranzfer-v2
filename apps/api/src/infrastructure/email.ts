@@ -10,7 +10,11 @@ import * as Schema from "effect/Schema";
 /** Cloudflare refused or failed the send. `code` is theirs, like `E_RECIPIENT_SUPPRESSED`. */
 export class MailError extends Data.TaggedError("MailError")<{ readonly code: string }> {}
 
-/** One email to one person, from hello@ with replies going to support@. */
+/**
+ * One email to one person, from hello@. Replies go to support@ unless the
+ * message names another `replyTo`. Resolves to `sent` once Cloudflare took the
+ * message, or `held` when this stage's allowlist kept it back.
+ */
 export class Mail extends Context.Service<
   Mail,
   {
@@ -19,7 +23,8 @@ export class Mail extends Context.Service<
       readonly subject: string;
       readonly text: string;
       readonly html: string;
-    }) => Effect.Effect<void, MailError>;
+      readonly replyTo?: string;
+    }) => Effect.Effect<"sent" | "held", MailError>;
   }
 >()("tranzfer/Mail") {}
 
@@ -59,13 +64,13 @@ export const makeMail = (
     send: Effect.fn("Mail.send")(function* send(message) {
       if (stage === "staging" && !allowlist.has(message.to.toLowerCase())) {
         yield* Effect.logInfo("email held because the recipient is not on this stage's allowlist");
-        return;
+        return "held" as const;
       }
       yield* client
         .send({
           ...message,
           from: { email: "hello@tranzfer.app", name: "Tranzfer" },
-          replyTo: "support@tranzfer.app",
+          replyTo: message.replyTo ?? "support@tranzfer.app",
         })
         .pipe(
           Effect.provide(RuntimeContext.phantom),
@@ -80,5 +85,6 @@ export const makeMail = (
           ),
           Effect.tapError((error) => Effect.logWarning("email not sent", error.code)),
         );
+      return "sent" as const;
     }),
   });

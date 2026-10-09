@@ -1,4 +1,8 @@
+import { EmailAddress, maxRecipients } from "@tranzfer/contracts";
 import type { Delivery, DeliveryId } from "@tranzfer/contracts";
+import * as Arr from "effect/Array";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { createSignal, For, onCleanup, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 
@@ -7,7 +11,8 @@ import PhXBold from "~icons/ph/x-bold";
 
 import { Button, button } from "../ui/Button";
 import type { Finished } from "./deliveries";
-import { bytes, files, totalSize, untilDate } from "./format";
+import { bytes, emailSummary, emailWords, files, totalSize, untilDate } from "./format";
+import type { Emailed } from "./format";
 import { CopyLink } from "./parts";
 import "./dashboard.css";
 
@@ -15,6 +20,10 @@ type Update = (
   deliveryId: DeliveryId,
   details: { readonly note: string; readonly title: string },
 ) => Promise<string | undefined>;
+
+type Email = (deliveryId: DeliveryId, recipients: readonly string[]) => Promise<string | undefined>;
+
+const parseAddress = Schema.decodeUnknownOption(EmailAddress);
 
 /** "42 s", "4 min 12 s", "1 h 5 min": how long a send took, as a person says it. */
 export const tookAt = (ms: number) => {
@@ -179,6 +188,136 @@ function EditDetails(props: { delivery: Delivery; update: Update }) {
   );
 }
 
+/** Emails the link to up to ten people and lists how each send ended. */
+function EmailIt(props: {
+  delivery: Delivery;
+  email: Email;
+  emailing: boolean;
+  sent: readonly Emailed[];
+}) {
+  const [open, setOpen] = createSignal(false);
+  const [text, setText] = createSignal("");
+  const [problem, setProblem] = createSignal<string>();
+  const submit = async (event: SubmitEvent) => {
+    event.preventDefault();
+    const typed = Arr.dedupe(
+      text()
+        .split(/[\s,;]+/u)
+        .filter((address) => address !== "")
+        .map((address) => address.toLowerCase()),
+    );
+    const bad = typed.find((address) => Option.isNone(parseAddress(address)));
+    if (typed.length === 0) {
+      setProblem("Type at least one email address.");
+    } else if (typed.length > maxRecipients) {
+      setProblem(`That's ${typed.length} addresses. Send to up to ${maxRecipients} at a time.`);
+    } else if (bad === undefined) {
+      const failure = await props.email(props.delivery.id, typed);
+      if (failure === undefined) {
+        setText("");
+        setProblem(undefined);
+        setOpen(false);
+      } else {
+        setProblem(failure);
+      }
+    } else {
+      setProblem(`"${bad}" doesn't look like an email address.`);
+    }
+  };
+  return (
+    <div class={css({ display: "grid", gap: "3" })}>
+      <Show when={open()}>
+        <form
+          class={css({ display: "grid", gap: "3", maxW: "[460px]" })}
+          onSubmit={(event) => {
+            void submit(event);
+          }}
+        >
+          <label class={fieldLabel}>
+            Email addresses, up to {maxRecipients}. Separate them with commas or new lines.
+            <textarea
+              class={field}
+              name="recipients"
+              onInput={(event) => {
+                setText(event.currentTarget.value);
+              }}
+              rows={3}
+              value={text()}
+            />
+          </label>
+          <p class={css({ color: "mut", textStyle: "xs" })}>
+            Each person gets their own email with this link, from Tranzfer. Replies go to your
+            account's address.
+          </p>
+          <Show when={problem()}>
+            {(message) => (
+              <p class={css({ color: "rust", textStyle: "sm" })} role="alert">
+                {message()}
+              </p>
+            )}
+          </Show>
+          <div class={css({ display: "flex", gap: "2" })}>
+            <Button disabled={props.emailing} size="xs" type="submit">
+              {props.emailing ? "Sending" : "Send email"}
+            </Button>
+            <Button
+              onClick={() => {
+                setOpen(false);
+                setProblem(undefined);
+              }}
+              size="xs"
+              variant="outline"
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Show>
+      <Show when={!open()}>
+        <Button
+          css={{ alignSelf: "start" }}
+          onClick={() => {
+            setOpen(true);
+          }}
+          size="xs"
+          variant="outline"
+        >
+          {props.sent.length === 0 ? "Email it" : "Email it to more people"}
+        </Button>
+      </Show>
+      <Show when={props.sent.length > 0}>
+        <div aria-live="polite" class={css({ display: "grid", gap: "1.5", textStyle: "sm" })}>
+          <p class={css({ fontWeight: "semibold" })}>
+            {props.sent.some((row) => row.status === "queued")
+              ? "Sending"
+              : emailSummary(props.sent)}
+          </p>
+          <ul class={css({ display: "grid", gap: "1" })}>
+            <For each={props.sent}>
+              {(row) => (
+                <li
+                  class={css({
+                    color: row.status === "failed" ? "rust" : "mut",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "[2px 12px]",
+                  })}
+                >
+                  <span class={css({ color: "ink", overflowWrap: "anywhere" })}>{row.to}</span>
+                  <span>{emailWords(row)}</span>
+                </li>
+              )}
+            </For>
+          </ul>
+          <p class={css({ color: "mut", textStyle: "xs" })}>
+            Sent means the mail server took it. We can't see anyone's inbox.
+          </p>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
 /**
  * The finished-send moment: a delivery this page just sent has every file
  * uploaded and finalized. It plays one short reveal on mount and sits above
@@ -187,6 +326,9 @@ function EditDetails(props: { delivery: Delivery; update: Update }) {
 export function SendDone(props: {
   delivery: Delivery;
   dismiss: () => void;
+  email: Email;
+  emailing: boolean;
+  sent: readonly Emailed[];
   tookMs: number;
   update: Update;
 }) {
@@ -327,6 +469,12 @@ export function SendDone(props: {
         </a>
       </div>
 
+      <EmailIt
+        delivery={props.delivery}
+        email={props.email}
+        emailing={props.emailing}
+        sent={props.sent}
+      />
       <EditDetails delivery={props.delivery} update={props.update} />
     </section>
   );
@@ -336,6 +484,9 @@ export function SendDone(props: {
 export function SendDoneList(props: {
   deliveries: readonly Delivery[];
   dismiss: (deliveryId: DeliveryId) => void;
+  email: Email;
+  emailed: Record<string, Emailed[]>;
+  emailing: boolean;
   finished: readonly Finished[];
   update: Update;
 }) {
@@ -355,6 +506,9 @@ export function SendDoneList(props: {
                   dismiss={() => {
                     props.dismiss(done.id);
                   }}
+                  email={props.email}
+                  emailing={props.emailing}
+                  sent={props.emailed[done.id] ?? []}
                   tookMs={done.tookMs}
                   update={props.update}
                 />

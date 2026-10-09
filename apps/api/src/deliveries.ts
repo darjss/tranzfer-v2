@@ -115,6 +115,11 @@ export class Deliveries extends Context.Service<
       senderId: string,
       deliveryId: DeliveryId,
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
+    /** The sender's own delivery as the dashboard shows it, whatever its status. */
+    readonly owned: (
+      senderId: string,
+      deliveryId: DeliveryId,
+    ) => Effect.Effect<Delivery, DeliveryNotFound>;
     /** Takes the sender's ended deliveries among these off their list; live ones stay. */
     readonly clear: (senderId: string, deliveryIds: readonly DeliveryId[]) => Effect.Effect<void>;
     /** Replaces the title and note of the sender's own delivery, whatever its status. */
@@ -490,6 +495,17 @@ export class Deliveries extends Context.Service<
           yield* Effect.annotateCurrentSpan("delivery.count", rows.length);
           const downloads = yield* downloadsOf(rows.map((row) => row.id));
           return yield* Effect.forEach(rows, (row) => toView(row, downloads.get(row.id) ?? null));
+        }, dieOnDatabaseError),
+
+        owned: Effect.fn("Deliveries.owned")(function* owned(
+          senderId: string,
+          deliveryId: DeliveryId,
+        ) {
+          const row = yield* load(deliveryId);
+          if (row === undefined || row.senderId !== senderId) {
+            return yield* new DeliveryNotFound();
+          }
+          return yield* viewRow(row);
         }, dieOnDatabaseError),
 
         purgeEnded: Effect.gen(function* purgeEnded() {

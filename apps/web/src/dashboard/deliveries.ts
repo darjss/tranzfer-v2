@@ -1,5 +1,6 @@
-import { plans } from "@tranzfer/contracts";
-import type { Delivery, DeliveryId, RetentionDays } from "@tranzfer/contracts";
+import { DeliveryId, plans } from "@tranzfer/contracts";
+import type { Delivery, RetentionDays } from "@tranzfer/contracts";
+import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import type * as ManagedRuntime from "effect/ManagedRuntime";
@@ -10,6 +11,7 @@ import {
   createOptimistic,
   createOptimisticStore,
   createSignal,
+  createStore,
   refresh,
 } from "solid-js";
 
@@ -21,7 +23,8 @@ import { transfers } from "../uploads/store";
 import { untilFree } from "../uploads/tabs";
 import { retryTransport, Uploads } from "../uploads/uploads";
 import type { ChosenFile } from "../uploads/uploads";
-import { bytes, kindOf, rollup, totalSize, untilDate } from "./format";
+import { bytes, emailSummary, kindOf, rollup, totalSize, untilDate } from "./format";
+import type { Emailed } from "./format";
 
 // Deliveries this page load sent, with when each send began. A delivery that
 // finishes while it is listed here gets its finished card once. Module state,
@@ -230,6 +233,89 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     return failure;
   });
 
+  // Emails this page asked for, by delivery. The server keeps no address, so
+  // each row carries the one typed here.
+  const [emailed, setEmailed] = createStore<Record<string, Emailed[]>>({});
+  const [emailing, setEmailing] = createOptimistic(false);
+
+  /** Emails the link to each distinct address; resolves to a problem to show, or undefined once queued. */
+  const email = action(async function* email(
+    deliveryId: DeliveryId,
+    recipients: readonly string[],
+  ) {
+    setEmailing(true);
+    const distinct = Arr.dedupe(recipients.map((to) => to.trim().toLowerCase()));
+    const exit = await runtime.runPromiseExit(
+      ApiClient.use((api) => api.SendDeliveryEmail({ deliveryId, recipients: distinct })),
+    );
+    yield;
+    if (Exit.isSuccess(exit)) {
+      const rows = Arr.zipWith(exit.value, distinct, (row, to) => ({ ...row, to }));
+      setEmailed((all) => {
+        all[deliveryId] = [...rows, ...(all[deliveryId] ?? [])];
+      });
+    }
+    return Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
+  });
+
+  // The mail goes out after the server answers, so read how each ended until
+  // none of this page's emails is still queued.
+  const readEmails = async (deliveryId: string) => {
+    const exit = await runtime.runPromiseExit(
+      ApiClient.use((api) => api.DeliveryEmails({ deliveryId: DeliveryId.make(deliveryId) })),
+    );
+    if (Exit.isFailure(exit)) {
+      return;
+    }
+    const emailsDone: Emailed[][] = [];
+    setEmailed((all) => {
+      const rows = all[deliveryId] ?? [];
+      const waiting = rows.some((row) => row.status === "queued");
+      for (const row of rows) {
+        const fresh = exit.value.find((candidate) => candidate.id === row.id);
+        if (fresh !== undefined) {
+          Object.assign(row, { errorCode: fresh.errorCode, status: fresh.status });
+        }
+      }
+      if (waiting && !rows.some((row) => row.status === "queued")) {
+        emailsDone.push(rows.map((row) => ({ ...row })));
+      }
+    });
+    const [rows] = emailsDone;
+    if (rows !== undefined) {
+      const { toaster } = await import("../ui/Toasts");
+      const toast = {
+        description: "The mail server took them. We can't see inboxes.",
+        title: emailSummary(rows),
+      };
+      if (rows.every((row) => row.status === "sent")) {
+        toaster.success(toast);
+      } else {
+        toaster.warning(toast);
+      }
+    }
+  };
+  createEffect(
+    () =>
+      Object.entries(emailed)
+        .filter(([, rows]) => rows.some((row) => row.status === "queued"))
+        .map(([deliveryId]) => deliveryId)
+        .join(","),
+    (waiting) => {
+      const timer =
+        waiting === ""
+          ? undefined
+          : setInterval(() => {
+              for (const deliveryId of waiting.split(",")) {
+                void readEmails(deliveryId);
+              }
+            }, 2000);
+      return () => {
+        clearInterval(timer);
+      };
+    },
+  );
+
   const [redeeming, setRedeeming] = createOptimistic(false);
 
   /** Applies an access code and says what it gave; resolves to a problem, if any. */
@@ -258,6 +344,9 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     clear,
     deliveries,
     dismiss,
+    email,
+    emailed,
+    emailing,
     finished,
     redeem,
     redeeming,
