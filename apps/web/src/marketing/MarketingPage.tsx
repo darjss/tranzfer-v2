@@ -1,20 +1,43 @@
 import { Link, Meta, Title } from "@solidjs/meta";
+import { PlanId, plans } from "@tranzfer/contracts";
 import { For, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 import type { Page } from "./content";
+import { Crumbs } from "./Crumbs";
+import { bytes } from "../dashboard/format";
 import { ArrowIcon, Hand } from "../landing/notebook";
-import { eyebrow, lede, sectionTitle } from "../landing/styles";
+import { eyebrow, sectionTitle } from "../landing/styles";
 import "../landing/landing.css";
 import { button } from "../ui/Button";
 import Reveal from "../ui/Reveal";
 import { SitePage } from "../ui/Site";
 
-// One feature or use-case page: a claim, a photo, three plain points and a
-// way in. Use-case pages add steps, file types, what it replaces and a FAQ.
-// `related` links to the neighbours in the same menu.
+// One feature or use-case page: a claim, a photo, three plain points, a FAQ,
+// the plans and links onward. Use-case pages add how a send goes, file types
+// and what it replaces. Below the hero each section is a notebook row: a
+// handwritten label in the margin, the content beside it.
 
-const block = css({ borderColor: "line", borderTopWidth: "1px", py: { base: "14", lg: "20" } });
-const blockTitle = cx(sectionTitle, css({ fontSize: "[clamp(30px,3.6vw,48px)]", mt: "2" }));
+export const noteRow = css({
+  borderColor: "line",
+  borderTopWidth: "1px",
+  columnGap: "10",
+  display: "grid",
+  gridTemplateColumns: { base: "1fr", lg: "[180px minmax(0,1fr)]" },
+  py: { base: "7", lg: "9" },
+  rowGap: "4",
+});
+
+export const noteLabel = css({
+  color: "blue",
+  fontFamily: "hand",
+  fontSize: "26",
+  fontWeight: "semibold",
+  lineHeight: "compact",
+  rotate: "[-2deg]",
+  transformOrigin: "left",
+});
+
+const body = css({ color: "mut", fontSize: "15", mt: "1", textWrap: "pretty" });
 
 export default function MarketingPage(props: {
   readonly page: Page;
@@ -23,6 +46,12 @@ export default function MarketingPage(props: {
 }) {
   const url = () => `https://tranzfer.app${props.path}`;
   const title = () => `${props.page.title[0]} ${props.page.title[1]}`;
+  const useCase = () => props.path.startsWith("/for/");
+  // "For videographers" in the menu reads as "Videographers" in the trail.
+  const crumb = () => {
+    const name = props.page.menu.replace(/^For /u, "");
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  };
 
   return (
     <SitePage>
@@ -34,14 +63,15 @@ export default function MarketingPage(props: {
       <Link rel="canonical" href={url()} />
       <Reveal>
         <main id="content">
+          <Crumbs name={crumb()} path={props.path} section={useCase() ? "Use cases" : "Features"} />
           <section
             class={css({
               alignItems: "center",
               display: "grid",
-              gap: { base: "10", lg: "16" },
-              gridTemplateColumns: { base: "1fr", lg: "minmax(0,1.1fr) minmax(0,.9fr)" },
-              pos: "relative",
-              py: { base: "14", lg: "24" },
+              gap: { base: "10", lg: "14" },
+              gridTemplateColumns: { base: "1fr", lg: "minmax(0,1.15fr) minmax(0,.85fr)" },
+              pb: { base: "10", lg: "14" },
+              pt: { base: "8", lg: "10" },
             })}
           >
             <div>
@@ -50,7 +80,7 @@ export default function MarketingPage(props: {
                 class={cx(
                   "rv",
                   sectionTitle,
-                  css({ fontSize: "[clamp(42px,5vw,72px)]", lineHeight: "[.98]" }),
+                  css({ fontSize: "[clamp(38px,4.6vw,62px)]", lineHeight: "[1]" }),
                 )}
               >
                 {props.page.title[0]}
@@ -58,28 +88,42 @@ export default function MarketingPage(props: {
                 <i>{props.page.title[1]}</i>
               </h1>
               <p
-                class={cx("rv", lede, css({ color: "[#3a3b40]", fontSize: "[19px]" }))}
+                class={cx(
+                  "rv",
+                  css({
+                    color: "[#3a3b40]",
+                    fontSize: "17",
+                    lineHeight: "[1.6]",
+                    maxW: "[52ch]",
+                    mt: "5",
+                    textWrap: "pretty",
+                  }),
+                )}
                 style="--d:80ms"
               >
                 {props.page.lede}
               </p>
               <div
-                class={cx("rv", css({ alignItems: "center", display: "flex", gap: "4", mt: "9" }))}
+                class={cx(
+                  "rv",
+                  css({
+                    alignItems: "center",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "5",
+                    mt: "7",
+                  }),
+                )}
                 style="--d:140ms"
               >
                 <a class={button()} href="/sign-in">
                   Start free <ArrowIcon />
                 </a>
-                <a
-                  class={css({ _hover: { color: "ink" }, color: "mut", fontWeight: "semibold" })}
-                  href="/pricing"
-                >
-                  See pricing
-                </a>
+                <span class={css({ color: "mut", fontSize: "15" })}>20 GB free, no card.</span>
               </div>
             </div>
-            <div class={css({ pos: "relative" })}>
-              <Hand tone="red" style="right:2%;top:-12%;--r:-5deg;--d:.8s">
+            <div class={css({ pos: "relative", px: { base: "2", lg: "0" } })}>
+              <Hand tone="red" style="left:-4%;bottom:-9%;--r:-4deg;--d:.8s">
                 {props.page.note}
               </Hand>
               <div
@@ -113,123 +157,185 @@ export default function MarketingPage(props: {
             </div>
           </section>
 
-          <section
+          <ul
             class={css({
               borderColor: "line",
               borderTopWidth: "1px",
               display: "grid",
-              gap: "10",
+              gap: { base: "5", md: "8" },
               gridTemplateColumns: { base: "1fr", md: "repeat(3,minmax(0,1fr))" },
-              py: { base: "14", lg: "20" },
+              listStyle: "none",
+              py: { base: "7", lg: "9" },
             })}
           >
             <For each={props.page.points}>
               {(point, i) => (
-                <div class="rv" style={`--d:${i() * 80}ms`}>
-                  <span class={css({ color: "blue", fontFamily: "mono", textStyle: "xs" })}>
+                <li class={css({ display: "grid", gap: "3", gridTemplateColumns: "[auto 1fr]" })}>
+                  <span
+                    aria-hidden="true"
+                    class={css({ color: "blue", fontFamily: "mono", fontSize: "13", pt: "0.5" })}
+                  >
                     0{i() + 1}
                   </span>
-                  <h2
-                    class={css({
-                      fontSize: "22",
-                      fontWeight: "semibold",
-                      letterSpacing: "tight",
-                      mt: "2",
-                    })}
-                  >
-                    {point.h}
-                  </h2>
-                  <p class={css({ color: "mut", fontSize: "17", mt: "2", textWrap: "pretty" })}>
-                    {point.p}
-                  </p>
-                </div>
+                  <div>
+                    <h2
+                      class={css({ fontSize: "17", fontWeight: "semibold", letterSpacing: "snug" })}
+                    >
+                      {point.h}
+                    </h2>
+                    <p class={body}>{point.p}</p>
+                  </div>
+                </li>
               )}
             </For>
-          </section>
+          </ul>
 
           <Show when={props.page.steps}>
             {(steps) => (
-              <section class={block}>
-                <p class={eyebrow}>How it goes</p>
-                <h2 class={cx("rv", blockTitle)}>Three steps. Then back to work.</h2>
-                <ol
+              <section class={noteRow}>
+                <h2 class={noteLabel}>How a send goes</h2>
+                <div
                   class={css({
+                    alignItems: "start",
                     display: "grid",
-                    gap: "8",
-                    gridTemplateColumns: { base: "1fr", md: "repeat(3,minmax(0,1fr))" },
-                    listStyle: "none",
-                    mt: "10",
+                    gap: { base: "8", lg: "12" },
+                    gridTemplateColumns: { base: "1fr", md: "minmax(0,1.2fr) minmax(0,1fr)" },
                   })}
                 >
-                  <For each={steps()}>
-                    {(step, i) => (
-                      <li
-                        class={cx(
-                          "rv",
-                          css({ bg: "panel", borderRadius: "card", p: "7", shadow: "ring" }),
-                        )}
-                        style={`--d:${i() * 80}ms`}
-                      >
-                        <span
+                  <ol class={css({ listStyle: "none" })}>
+                    <For each={steps()}>
+                      {(step, i) => (
+                        <li
                           class={css({
-                            color: "blue",
-                            fontFamily: "hand",
-                            fontSize: "[40px]",
-                            lineHeight: "none",
+                            "& + &": {
+                              borderColor: "line",
+                              borderTopStyle: "dashed",
+                              borderTopWidth: "1px",
+                            },
+                            display: "grid",
+                            gap: "4",
+                            gridTemplateColumns: "[32px 1fr]",
+                            py: "4",
                           })}
                         >
-                          {i() + 1}.
-                        </span>
-                        <h3 class={css({ fontSize: "[19px]", fontWeight: "semibold", mt: "3" })}>
-                          {step.h}
-                        </h3>
-                        <p
-                          class={css({ color: "mut", fontSize: "17", mt: "2", textWrap: "pretty" })}
+                          <span
+                            aria-hidden="true"
+                            class={css({
+                              color: "blue",
+                              fontFamily: "hand",
+                              fontSize: "40",
+                              fontWeight: "semibold",
+                              lineHeight: "[.8]",
+                            })}
+                          >
+                            {i() + 1}
+                          </span>
+                          <div>
+                            <h3
+                              class={css({
+                                fontSize: "17",
+                                fontWeight: "semibold",
+                                letterSpacing: "snug",
+                              })}
+                            >
+                              {step.h}
+                            </h3>
+                            <p class={body}>{step.p}</p>
+                          </div>
+                        </li>
+                      )}
+                    </For>
+                  </ol>
+                  <Show when={props.page.files}>
+                    {(files) => (
+                      <div
+                        class={cx(
+                          "note",
+                          "rv",
+                          css({
+                            bg: "white",
+                            borderRadius: "md",
+                            mt: { base: "0", md: "3" },
+                            pos: "relative",
+                            px: "6",
+                            py: "5",
+                            rotate: "var(--r)",
+                            shadow:
+                              "[0 30px 60px -36px rgba(23,24,28,.5),0 0 0 1px rgba(0,0,0,.06)]",
+                          }),
+                        )}
+                        style="--r:-1.5deg"
+                      >
+                        <span class="tape" />
+                        <h3 class={eyebrow}>Any file type, including</h3>
+                        <ul
+                          class={css({
+                            columnGap: "6",
+                            columns: "2",
+                            fontSize: "15",
+                            listStyle: "none",
+                            mt: "3",
+                          })}
                         >
-                          {step.p}
-                        </p>
-                      </li>
+                          <For each={files()}>
+                            {(file) => (
+                              <li
+                                class={css({
+                                  breakInside: "avoid",
+                                  display: "flex",
+                                  gap: "2",
+                                  lineHeight: "snug",
+                                  py: "1",
+                                })}
+                              >
+                                <span aria-hidden="true" class={css({ color: "blue" })}>
+                                  ✓
+                                </span>
+                                {file}
+                              </li>
+                            )}
+                          </For>
+                        </ul>
+                      </div>
                     )}
-                  </For>
-                </ol>
+                  </Show>
+                </div>
               </section>
             )}
           </Show>
 
-          <Show when={props.page.files}>
-            {(files) => (
-              <section class={block}>
-                <p class={eyebrow}>What you can send</p>
-                <h2 class={cx("rv", blockTitle)}>
-                  Any file type. <i>Including these.</i>
-                </h2>
-                <ul
-                  class={css({
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "2.5",
-                    listStyle: "none",
-                    mt: "8",
-                  })}
-                >
-                  <For each={files()}>
-                    {(file, i) => (
+          <Show when={props.page.instead}>
+            {(instead) => (
+              <section class={noteRow}>
+                <h2 class={noteLabel}>What it replaces</h2>
+                <ul class={css({ listStyle: "none" })}>
+                  <For each={instead()}>
+                    {(item) => (
                       <li
-                        class={cx(
-                          "rv",
-                          css({
-                            bg: "white",
-                            borderRadius: "full",
-                            fontFamily: "mono",
-                            fontSize: "15",
-                            px: "4",
-                            py: "2",
-                            shadow: "ring",
-                          }),
-                        )}
-                        style={`--d:${i() * 30}ms`}
+                        class={css({
+                          alignItems: "baseline",
+                          columnGap: "8",
+                          display: "grid",
+                          gridTemplateColumns: { base: "1fr", md: "minmax(0,1fr) minmax(0,1fr)" },
+                          py: "2",
+                          rowGap: "1",
+                        })}
                       >
-                        {file}
+                        <s
+                          class={css({
+                            fontFamily: "hand",
+                            fontSize: "26",
+                            fontWeight: "semibold",
+                            lineHeight: "compact",
+                            textDecorationColor: "rust",
+                            textDecorationThickness: "[2px]",
+                          })}
+                        >
+                          {item.h}
+                        </s>
+                        <p class={css({ color: "[#3a3b40]", fontSize: "15", textWrap: "pretty" })}>
+                          {item.p}
+                        </p>
                       </li>
                     )}
                   </For>
@@ -238,48 +344,9 @@ export default function MarketingPage(props: {
             )}
           </Show>
 
-          <Show when={props.page.instead}>
-            {(instead) => (
-              <section class={block}>
-                <p class={eyebrow}>Instead of</p>
-                <h2 class={cx("rv", blockTitle)}>What you get to stop doing.</h2>
-                <div
-                  class={css({
-                    display: "grid",
-                    gap: "8",
-                    gridTemplateColumns: { base: "1fr", md: "repeat(3,minmax(0,1fr))" },
-                    mt: "10",
-                  })}
-                >
-                  <For each={instead()}>
-                    {(item, i) => (
-                      <div class="rv" style={`--d:${i() * 80}ms`}>
-                        <s
-                          class={css({
-                            fontSize: "[19px]",
-                            fontWeight: "semibold",
-                            textDecorationColor: "[#c8412b]",
-                            textDecorationThickness: "[2px]",
-                          })}
-                        >
-                          {item.h}
-                        </s>
-                        <p
-                          class={css({ color: "mut", fontSize: "17", mt: "2", textWrap: "pretty" })}
-                        >
-                          {item.p}
-                        </p>
-                      </div>
-                    )}
-                  </For>
-                </div>
-              </section>
-            )}
-          </Show>
-
           <Show when={props.page.faq}>
             {(faq) => (
-              <section class={block}>
+              <section class={noteRow}>
                 <script type="application/ld+json">
                   {JSON.stringify({
                     "@context": "https://schema.org",
@@ -291,26 +358,52 @@ export default function MarketingPage(props: {
                     })),
                   })}
                 </script>
-                <p class={eyebrow}>Questions</p>
-                <h2 class={cx("rv", blockTitle)}>Asked by people like you.</h2>
-                <div class={css({ maxW: "[760px]", mt: "8" })}>
+                <h2 class={noteLabel}>Questions</h2>
+                <div
+                  class={css({ borderBottomWidth: "1px", borderColor: "line", maxW: "[720px]" })}
+                >
                   <For each={faq()}>
                     {(item) => (
-                      <details class={css({ borderColor: "line", borderTopWidth: "1px", py: "5" })}>
+                      <details
+                        class={css({
+                          "&:first-child": { borderTopWidth: "0" },
+                          "&[open] summary span": { rotate: "[45deg]" },
+                          borderColor: "line",
+                          borderTopWidth: "1px",
+                        })}
+                      >
                         <summary
                           class={css({
+                            "&::-webkit-details-marker": { display: "none" },
+                            alignItems: "center",
                             cursor: "pointer",
-                            fontSize: "[18px]",
+                            display: "flex",
+                            fontSize: "17",
                             fontWeight: "semibold",
+                            gap: "4",
+                            justifyContent: "space-between",
+                            letterSpacing: "snug",
+                            listStyle: "none",
+                            py: "3",
                           })}
                         >
                           {item.q}
+                          <span
+                            aria-hidden="true"
+                            class={css({
+                              color: "blue",
+                              flexShrink: 0,
+                              fontSize: "22",
+                              fontWeight: "normal",
+                              lineHeight: "none",
+                              transitionDuration: "normal",
+                              transitionProperty: "[rotate]",
+                            })}
+                          >
+                            +
+                          </span>
                         </summary>
-                        <p
-                          class={css({ color: "mut", fontSize: "17", mt: "3", textWrap: "pretty" })}
-                        >
-                          {item.a}
-                        </p>
+                        <p class={cx(body, css({ maxW: "[62ch]", mt: "0", pb: "4" }))}>{item.a}</p>
                       </details>
                     )}
                   </For>
@@ -319,39 +412,84 @@ export default function MarketingPage(props: {
             )}
           </Show>
 
-          <section
-            class={css({
-              borderColor: "line",
-              borderTopWidth: "1px",
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "3",
-              py: "10",
-            })}
-          >
-            <span class={cx(eyebrow, css({ alignSelf: "center", mr: "2" }))}>Also</span>
-            <For each={props.related}>
-              {(link) => (
+          <section class={noteRow}>
+            <h2 class={noteLabel}>What it costs</h2>
+            <div>
+              <dl
+                class={css({
+                  display: "grid",
+                  gap: "4",
+                  gridTemplateColumns: {
+                    base: "repeat(2,minmax(0,1fr))",
+                    md: "repeat(4,minmax(0,1fr))",
+                  },
+                })}
+              >
+                <For each={PlanId.literals}>
+                  {(id) => (
+                    <div
+                      class={css({ borderColor: "line", borderLeftWidth: "2px", pl: "4", py: "1" })}
+                    >
+                      <dt class={css({ fontSize: "15", fontWeight: "semibold" })}>
+                        {plans[id].name}{" "}
+                        <span class={css({ color: "mut", fontWeight: "normal" })}>
+                          {plans[id].monthlyUsd === 0 ? "$0" : `$${plans[id].monthlyUsd}/mo`}
+                        </span>
+                      </dt>
+                      <dd class={css({ color: "mut", fontSize: "13", mt: "0.5" })}>
+                        {bytes(plans[id].activeBytes)} at once, links up to{" "}
+                        {plans[id].maxRetentionDays} days
+                      </dd>
+                    </div>
+                  )}
+                </For>
+              </dl>
+              <p class={css({ color: "mut", fontSize: "15", maxW: "[62ch]", mt: "4" })}>
+                You pay for what's live at once, not for every gigabyte you send. When a link ends,
+                its space comes back.{" "}
                 <a
-                  class={css({
-                    _hover: { bg: "white", color: "ink" },
-                    bg: "panel",
-                    borderRadius: "full",
-                    color: "[#3a3b40]",
-                    fontSize: "15",
-                    px: "4",
-                    py: "2",
-                    shadow: "ring",
-                    transitionDuration: "fast",
-                    transitionProperty: "[background-color,color]",
-                  })}
-                  href={link.href}
+                  class={css({ _hover: { color: "ink" }, color: "blue", fontWeight: "semibold" })}
+                  href="/pricing"
                 >
-                  {link.label}
+                  Compare prices
                 </a>
-              )}
-            </For>
+              </p>
+            </div>
           </section>
+
+          <nav aria-label="Related pages" class={noteRow}>
+            <h2 class={noteLabel}>{useCase() ? "More use cases" : "More features"}</h2>
+            <ul
+              class={css({
+                columnGap: "6",
+                display: "flex",
+                flexWrap: "wrap",
+                fontSize: "15",
+                listStyle: "none",
+                rowGap: "2",
+              })}
+            >
+              {/* The route builds fresh link objects on every visit; key by href so
+                  moving between pages keeps the rows that stay. */}
+              <For each={props.related} keyed={(link) => link.href}>
+                {(link) => (
+                  <li>
+                    <a
+                      class={css({
+                        _hover: { color: "blue", textDecorationColor: "blue" },
+                        textDecoration: "underline",
+                        textDecorationColor: "line",
+                        textUnderlineOffset: "[4px]",
+                      })}
+                      href={link().href}
+                    >
+                      {link().label}
+                    </a>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </nav>
         </main>
       </Reveal>
     </SitePage>
