@@ -268,6 +268,8 @@ Every create, sign, list, complete, abort and download checks identity, ownershi
 
 Entitlement is the sender's plan ([PRODUCT.md](PRODUCT.md)). `CreateDelivery` refuses a delivery before any byte moves when its link lifetime is longer than the plan allows (`RetentionNotInPlan`) or when its declared size would push the sender's active space past the limit (`OverPlanLimit`). Active space is the bytes of the sender's open deliveries plus ready ones that haven't expired; cancelled and expired deliveries free it. Two creates racing past the limit both succeed, and the next create sees both. Signing does not re-check the limit, and the declared size is verified at finalize, not while bytes move, so a client that uploads more than it declared is only caught at the end.
 
+An uploader without an account (a file request, [PRODUCT.md](PRODUCT.md#file-requests)) is authorized by the request's token on every create, sign, finalize and list call. A transfer signs and finalizes only when its delivery was created through that same request, so the token reaches neither the owner's other deliveries nor another request's. The entitlement is the owner's plan and the request's cap, checked in the statement that inserts the delivery. Closing or expiring the request ends the token at once. A transfer already `finalizing` is still completed by the sweeper.
+
 Before public uploads:
 
 - enforce the creative-media allowlist by file signature, not extension
