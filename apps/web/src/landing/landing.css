@@ -201,14 +201,15 @@
   .rv,
   .still,
   .chip,
-  .note {
+  .note,
+  .note.rv {
     transition: none;
     opacity: 1;
     transform: none;
     translate: none;
     animation: none;
   }
-  .marq,
+  .ticker .marq,
   .ico {
     animation: none;
   }
