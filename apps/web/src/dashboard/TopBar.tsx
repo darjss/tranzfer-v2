@@ -10,6 +10,7 @@ import { authClient } from "../api/auth-client";
 import Brand from "../landing/Brand";
 import { Button } from "../ui/Button";
 import { upgradeFrom } from "./billing";
+import { paidPlansOpen } from "../ui/support";
 import { bytes, untilDate } from "./format";
 import { Avatar } from "./parts";
 
@@ -134,7 +135,7 @@ export function TopBar(props: {
               )}
             </Show>
           </div>
-          <Show when={upgradeFrom[props.billing.plan]}>
+          <Show when={paidPlansOpen && upgradeFrom[props.billing.plan]}>
             {(target) => (
               <button
                 class={menuItem}
@@ -147,7 +148,7 @@ export function TopBar(props: {
               </button>
             )}
           </Show>
-          <Show when={props.billing.plan !== "free"}>
+          <Show when={paidPlansOpen && props.billing.plan !== "free"}>
             <button
               class={menuItem}
               onClick={() => {

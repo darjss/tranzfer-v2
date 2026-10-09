@@ -111,6 +111,8 @@ export default defineConfig({
     "*": "vp check --fix",
   },
   test: {
+    // Tests cover the open product; infra/alchemy.run.ts sets this per stage.
+    env: { VITE_PAID_PLANS_OPEN: "true" },
     environment: "jsdom",
     globals: false,
     include: ["src/**/*.test.{ts,tsx}"],

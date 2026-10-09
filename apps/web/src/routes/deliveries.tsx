@@ -31,6 +31,7 @@ import { online, wireWindow } from "../uploads/store";
 import { chosenFiles, getDroppedFiles, invalidPaths } from "../uploads/uploads";
 import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
+import { paidPlansOpen } from "../ui/support";
 import DashboardLoading from "../dashboard/DashboardLoading";
 import "../dashboard/dashboard.css";
 
@@ -160,12 +161,15 @@ const DeliveriesPage = () => {
     }
   };
 
-  // Signing in from a pricing button lands here with the plan to buy.
+  // Signing in from a pricing button lands here with the plan to buy. An old
+  // link can carry one while paid plans are closed; it is dropped.
   onSettled(() => {
     const plan = Schema.decodeUnknownOption(PaidPlanId)(searchParams.plan);
     if (plan._tag === "Some") {
       setSearchParams({ plan: undefined });
-      void upgrade(plan.value);
+      if (paidPlansOpen) {
+        void upgrade(plan.value);
+      }
     }
   });
 
