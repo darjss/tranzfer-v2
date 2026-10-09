@@ -583,7 +583,18 @@ export function DeliverySheet(props: {
                   {delivery().title}
                 </h2>
                 <p class={css({ color: "mut", fontFamily: "mono", fontSize: "13", mt: "1.5" })}>
-                  sent {sentAt(delivery().createdAt)} · kept {delivery().retentionDays}{" "}
+                  <Show
+                    when={delivery().uploader}
+                    fallback={<>sent {sentAt(delivery().createdAt)}</>}
+                  >
+                    {(uploader) => (
+                      <>
+                        received {sentAt(delivery().createdAt)} from {uploader().name}
+                        <Show when={uploader().email}>{(email) => <> ({email()})</>}</Show>
+                      </>
+                    )}
+                  </Show>{" "}
+                  · kept {delivery().retentionDays}{" "}
                   {delivery().retentionDays === 1 ? "day" : "days"} after upload
                 </p>
               </div>
