@@ -25,6 +25,8 @@ import { Board } from "../dashboard/Board";
 import { goToCheckout, goToPortal } from "../dashboard/billing";
 import { createDeliveries } from "../dashboard/deliveries";
 import { DeliverySheet } from "../dashboard/DeliverySheet";
+import { Requests } from "../dashboard/Requests";
+import { createRequests } from "../dashboard/requests";
 import { SendCard } from "../dashboard/SendCard";
 import { SendDoneList } from "../dashboard/SendDone";
 import { TopBar } from "../dashboard/TopBar";
@@ -36,6 +38,8 @@ import { button } from "../ui/Button";
 import { paidPlansOpen } from "../ui/support";
 import DashboardLoading from "../dashboard/DashboardLoading";
 import "../dashboard/dashboard.css";
+
+const REQUEST_POLL_MS = 15_000;
 
 const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
 
@@ -139,6 +143,23 @@ const DeliveriesPage = () => {
     setPassword,
     update,
   } = createDeliveries(runtime);
+  const { close: closeRequest, create: createRequest, requests } = createRequests(runtime);
+  // While a request is open, people may be uploading into it. Their deliveries
+  // reach this page only by being read, so read both lists now and then.
+  createEffect(
+    () => requests.some((request) => request.status === "open"),
+    (listening) => {
+      const timer = listening
+        ? setInterval(() => {
+            void refresh(deliveries);
+            void refresh(requests);
+          }, REQUEST_POLL_MS)
+        : undefined;
+      return () => {
+        clearInterval(timer);
+      };
+    },
+  );
   const selected = () => {
     const id = searchParams.d;
     return id === undefined ? undefined : deliveries.find((delivery) => delivery.id === id);
@@ -479,6 +500,12 @@ const DeliveriesPage = () => {
                   sendAgain={() => {
                     filesInput?.click();
                   }}
+                />
+                <Requests
+                  billing={billing()}
+                  close={closeRequest}
+                  create={createRequest}
+                  requests={requests}
                 />
               </div>
             </main>
