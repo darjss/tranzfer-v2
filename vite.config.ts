@@ -4,7 +4,7 @@ import { rootLint } from "./lint.config";
 
 export default defineConfig({
   fmt: {
-    ignorePatterns: ["**/file-routes.d.ts", "**/styled-system/**"],
+    ignorePatterns: ["**/file-routes.d.ts", "**/styled-system/**", "tools/oxlint/anti-slop/**"],
   },
   lint: rootLint,
   staged: {

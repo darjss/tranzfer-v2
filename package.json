@@ -23,13 +23,13 @@
   },
   "devDependencies": {
     "@effect/tsgo": "0.48.1",
+    "@oxlint/plugins": "1.85.0",
     "effect": "catalog:",
     "eslint-plugin-solid": "0.18.1",
     "oxlint": "1.85.0",
     "oxlint-tsgolint": "7.0.2003",
     "portless": "0.15.7",
     "typescript": "catalog:",
-    "ultracite": "7.12.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
