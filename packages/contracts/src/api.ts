@@ -2,7 +2,7 @@ import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 
-import { Authenticated, Principal, Unauthorized } from "./auth";
+import { Authenticated, AuthenticationUnavailable, Principal, Unauthorized } from "./auth";
 import {
   AccessCodeInput,
   AccessCodeRefused,
@@ -22,6 +22,7 @@ import {
   NewDelivery,
   TransferId,
 } from "./delivery";
+import { InterestJoined, JoinInterestPayload } from "./interest";
 import { LinkExpired, LinkNotFound, LinkNotReady, SharedDelivery } from "./link";
 import {
   InvalidUpload,
@@ -81,6 +82,12 @@ export class Api extends RpcGroup.make(
     payload: Schema.Struct({ code: AccessCodeInput }),
     success: PlanGrant,
   }).middleware(Authenticated),
+  // Public: the pricing page asks before anyone has an account.
+  Rpc.make("JoinInterest", {
+    error: Schema.Union([AuthenticationUnavailable, RateLimited, Unauthorized]),
+    payload: JoinInterestPayload,
+    success: InterestJoined,
+  }),
   Rpc.make("OpenLink", {
     error: Schema.Union([LinkExpired, LinkNotFound, LinkNotReady]),
     payload: Schema.Struct({ token: Schema.String }),

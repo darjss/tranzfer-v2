@@ -15,6 +15,8 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { Billing, verifyWebhook } from "../src/billing";
 import { Deliveries } from "../src/deliveries";
+import { Emails, queueOpenings, sendWelcome } from "../src/emails";
+import { Mail, MailError } from "../src/infrastructure/email";
 import { admitSignup } from "../src/infrastructure/auth";
 import {
   createAccessCode,
@@ -866,6 +868,170 @@ layer(closedBilling)("Billing before paid plans open", (it) => {
         status: "none",
       });
       expect(polarCalls).toEqual([]);
+    }),
+  );
+});
+
+// Email as a list of what went out. Addresses in `bouncing` fail the way the
+// send binding fails for a suppressed recipient.
+const sent: { readonly to: string; readonly subject: string }[] = [];
+const bouncing = new Set<string>();
+const memoryMail = Layer.succeed(
+  Mail,
+  Mail.of({
+    send: (message) =>
+      bouncing.has(message.to)
+        ? Effect.fail(new MailError({ code: "E_RECIPIENT_SUPPRESSED" }))
+        : Effect.sync(() => {
+            sent.push({ subject: message.subject, to: message.to });
+          }),
+  }),
+);
+const interestIps = new Map<string, number>();
+const emailsLayer = Emails.layer({
+  allowInterest: (ip) =>
+    Effect.sync(() => {
+      const count = (interestIps.get(ip) ?? 0) + 1;
+      interestIps.set(ip, count);
+      return count <= rateLimits.interestSignups.limit;
+    }),
+  appUrl: "https://app.test",
+}).pipe(Layer.provideMerge(memoryMail), Layer.provideMerge(domainLayer(storage.layer)));
+
+const interestRows = Effect.flatMap(Effect.service(Database), ({ db }) =>
+  db.query.planInterest.findMany({ orderBy: { id: "asc" } }),
+).pipe(Effect.orDie);
+
+layer(emailsLayer)("Emails", (it) => {
+  it.effect("keeps one row per address and plan, and confirms only the first ask", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("kai");
+      const emails = yield* Emails;
+      sent.length = 0;
+      expect(
+        yield* emails.joinInterest(
+          { email: "Ana@Example.com", plan: "pro", userId: null },
+          "1.1.1.1",
+        ),
+      ).toEqual({ email: "ana@example.com" });
+      yield* emails.joinInterest(
+        { email: "ana@example.com", plan: "pro", userId: null },
+        "1.1.1.1",
+      );
+      yield* emails.joinInterest(
+        { email: "ana@example.com", plan: "studio", userId: null },
+        "1.1.1.1",
+      );
+      yield* emails.joinInterest({ email: "kai@test", plan: "pro", userId: "kai" }, "1.1.1.2");
+      expect(
+        (yield* interestRows).map(({ email, plan, userId }) => ({ email, plan, userId })),
+      ).toEqual([
+        { email: "ana@example.com", plan: "pro", userId: null },
+        { email: "ana@example.com", plan: "studio", userId: null },
+        { email: "kai@test", plan: "pro", userId: "kai" },
+      ]);
+      expect(sent).toEqual([
+        { subject: "You're on the list for Pro", to: "ana@example.com" },
+        { subject: "You're on the list for Studio", to: "ana@example.com" },
+        { subject: "You're on the list for Pro", to: "kai@test" },
+      ]);
+    }),
+  );
+
+  it.effect("keeps a sign-up whose confirmation bounced", () =>
+    Effect.gen(function* scenario() {
+      bouncing.add("gone@example.com");
+      const emails = yield* Emails;
+      expect(
+        yield* emails.joinInterest(
+          { email: "gone@example.com", plan: "starter", userId: null },
+          "2.2.2.2",
+        ),
+      ).toEqual({ email: "gone@example.com" });
+      expect((yield* interestRows).filter((row) => row.email === "gone@example.com")).toHaveLength(
+        1,
+      );
+    }),
+  );
+
+  it.effect("holds interest sign-ups to the per-IP rate, and other IPs not at all", () =>
+    Effect.gen(function* scenario() {
+      const emails = yield* Emails;
+      const { limit, windowSeconds } = rateLimits.interestSignups;
+      yield* Effect.forEach(Arr.range(1, limit), (n) =>
+        emails.joinInterest({ email: `n${n}@example.com`, plan: "pro", userId: null }, "3.3.3.3"),
+      );
+      expect(
+        yield* Effect.flip(
+          emails.joinInterest({ email: "late@example.com", plan: "pro", userId: null }, "3.3.3.3"),
+        ),
+      ).toMatchObject({
+        _tag: "RateLimited",
+        limit: "interestSignups",
+        retryAfterSeconds: windowSeconds,
+      });
+      expect(
+        yield* emails.joinInterest(
+          { email: "late@example.com", plan: "pro", userId: null },
+          "4.4.4.4",
+        ),
+      ).toEqual({ email: "late@example.com" });
+    }),
+  );
+
+  it.effect("a failed welcome send never fails the sign-up that triggered it", () =>
+    Effect.gen(function* scenario() {
+      sent.length = 0;
+      bouncing.add("bounce@example.com");
+      yield* sendWelcome("bounce@example.com", "https://app.test");
+      yield* sendWelcome("new@example.com", "https://app.test");
+      expect(sent).toEqual([{ subject: "Your Tranzfer account is ready", to: "new@example.com" }]);
+    }),
+  );
+
+  it.effect("sends the opening email once to queued rows, and unqueues a failed send", () =>
+    Effect.gen(function* scenario() {
+      const emails = yield* Emails;
+      yield* emails.joinInterest(
+        { email: "o1@example.com", plan: "studio", userId: null },
+        "5.5.5.5",
+      );
+      yield* emails.joinInterest(
+        { email: "o2@example.com", plan: "studio", userId: null },
+        "5.5.5.5",
+      );
+      bouncing.add("o2@example.com");
+      // Nothing is queued yet, so nothing goes out, and a dry run only counts.
+      expect(yield* emails.sendOpenings).toBe(0);
+      expect(yield* queueOpenings("studio", { dryRun: true })).toEqual({ queued: 0, waiting: 3 });
+      expect(yield* emails.sendOpenings).toBe(0);
+      expect(yield* queueOpenings("studio", { dryRun: false })).toEqual({ queued: 3, waiting: 3 });
+      sent.length = 0;
+      const studioRows = Effect.map(interestRows, (rows) =>
+        rows
+          .filter((row) => row.plan === "studio")
+          .map(({ email, notifiedAt, notifyQueuedAt }) => ({
+            email,
+            notified: notifiedAt !== null,
+            queued: notifyQueuedAt !== null,
+          })),
+      );
+      expect(yield* emails.sendOpenings).toBe(3);
+      expect(sent).toEqual([
+        { subject: "Studio is open", to: "ana@example.com" },
+        { subject: "Studio is open", to: "o1@example.com" },
+      ]);
+      expect(yield* studioRows).toEqual([
+        { email: "ana@example.com", notified: true, queued: true },
+        { email: "o1@example.com", notified: true, queued: true },
+        { email: "o2@example.com", notified: false, queued: false },
+      ]);
+      // A second sweep sends nothing; queueing again retries only the failure.
+      expect(yield* emails.sendOpenings).toBe(0);
+      bouncing.delete("o2@example.com");
+      expect(yield* queueOpenings("studio", { dryRun: false })).toEqual({ queued: 1, waiting: 1 });
+      expect(yield* emails.sendOpenings).toBe(1);
+      expect(sent.at(-1)).toEqual({ subject: "Studio is open", to: "o2@example.com" });
     }),
   );
 });

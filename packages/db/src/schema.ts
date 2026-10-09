@@ -249,3 +249,26 @@ export const planGrant = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.userId, table.code] })],
 );
+
+// People who asked to hear when a paid plan opens. The email is stored
+// lowercased, so one person is one row per plan. The founder queues a plan's
+// rows with `interest:notify`; the sweeper sends and sets `notifiedAt`.
+export const planInterest = sqliteTable(
+  "plan_interest",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    email: text("email").notNull(),
+    plan: text("plan").$type<PaidPlanId>().notNull(),
+    // Set when the sign-up came from a signed-in account.
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    notifyQueuedAt: integer("notify_queued_at", { mode: "timestamp_ms" }),
+    notifiedAt: integer("notified_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    uniqueIndex("plan_interest_email_plan_unique").on(table.email, table.plan),
+    index("plan_interest_notifyQueuedAt_idx").on(table.notifyQueuedAt),
+  ],
+);

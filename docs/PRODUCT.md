@@ -38,7 +38,9 @@ A closed stage:
 
 - declares no Polar products or webhook endpoint and never reads `POLAR_ACCESS_TOKEN`
 - fails checkout and the billing portal with `BillingUnavailable` reason `notOpen`, and rejects Polar webhooks
-- builds the web with `VITE_PAID_PLANS_OPEN=false`: pricing keeps the prices and each paid plan offers a "Tell me when it opens" email, the dashboard shows no upgrade or Manage billing, and a `?plan=` from sign-in doesn't start a checkout
+- builds the web with `VITE_PAID_PLANS_OPEN=false`: pricing keeps the prices and each paid plan offers "Tell me when it opens", the dashboard shows no upgrade or Manage billing, and a `?plan=` from sign-in doesn't start a checkout
+
+"Tell me when it opens" puts the visitor on that plan's interest list (`plan_interest`, one row per address and plan) through the public `JoinInterest` RPC. A signed-in visitor joins in one click with their account's address; anyone else types one. Each new row gets one "You're on the list" email. Asking again changes nothing and sends nothing.
 
 To open production once Polar clears verification:
 
@@ -47,6 +49,15 @@ To open production once Polar clears verification:
 3. Re-run the deploy workflow on `main`. It creates the three live products and the webhook endpoint, then ships the web with checkout buttons.
 
 No code changes. Setting the variable back to `false` and redeploying closes it again and deletes the live webhook endpoint; products stay in Polar.
+
+Then tell the people who asked. The interest list promises one email the day a plan opens, so send it once per plan, after the deploy is live. From the main checkout, count first, then queue:
+
+```text
+vp run --filter @tranzfer/api interest:notify -- --plan pro --dry-run
+vp run --filter @tranzfer/api interest:notify -- --plan pro
+```
+
+Repeat for `starter` and `studio`. Like the code commands, it finds the stage's D1 through Alchemy state with your Alchemy profile's credentials, and `--stage` defaults to `production`. It prints how many on the list haven't had the email and how many it queued. It sends nothing itself: the API Worker's minute sweep sends 20 queued emails a minute and marks each `notified_at`. A send that fails is unqueued, so running the command again retries only those.
 
 ## Access codes
 
@@ -74,6 +85,18 @@ Capacity is active transfer space. It isn't storage you keep, and it isn't a mon
 
 A new delivery that would push active space past the plan's limit is refused before any bytes upload, with copy that names the limit and the upgrade.
 
+## Email
+
+Tranzfer sends three emails, all from `Tranzfer <hello@tranzfer.app>` with replies to support@tranzfer.app, as plain text with a simple HTML copy:
+
+- A welcome when an account is created, with what Free gives and how to send the first file. Better Auth's user-created hook hands it to the request's `waitUntil`, so sign-up never waits on it, and a failed send is logged and dropped.
+- "You're on the list" when someone joins a plan's interest list.
+- "Pro is open" (or Starter, Studio) once per person, queued by `interest:notify` above.
+
+The API Worker sends through Cloudflare Email Sending's `send_email` binding. `tranzfer.app` is the onboarded sending domain, so any recipient works; the account quota is 1,000 a day. Logs and spans carry Cloudflare's error code, never an address.
+
+Only production emails anyone. Staging and previews email only the addresses in `EMAIL_ALLOWLIST` (comma-separated, a GitHub variable on the staging environment) and log the rest, so test sign-ups and copied lists never reach real people. Local `alchemy dev` binds Alchemy's email simulator, which writes `.eml` files under `.alchemy/local/email` and delivers nothing. `Mail` in `apps/api/src/infrastructure/email.ts` holds the rule.
+
 ## Rate limits
 
 Limits stop one person or bot from flooding sign-up, sign-in or the Free plan. They sit well above what a real person does, so nobody sending work should ever meet one. Over a limit, the request is refused with how long to wait, and the app says so in words. The numbers live in `rateLimits` in `packages/contracts/src/billing.ts`.
@@ -85,6 +108,7 @@ Limits stop one person or bot from flooding sign-up, sign-in or the Free plan. T
 | New deliveries          | sender      | Free  | 20 an hour, 100 a day |
 | Upload signing requests | sender      | Free  | 200 every 10 seconds  |
 | Access code attempts    | user        | all   | 5 a minute            |
+| Interest list sign-ups  | client IP   | all   | 10 a minute           |
 
 Sign-in covers every `/api/auth` request, Google's start and callback and the staging login included. An IPv6 client counts by its /64. Cancelled deliveries count toward the delivery cap, so create-and-cancel can't loop. A part is at least 64 MiB, so 20 signing requests a second is faster than a gigabit line needs. Paid, comp and code-granted plans have no delivery or signing cap. Code attempts count wrong and right codes alike, so nobody can guess codes quickly.
 

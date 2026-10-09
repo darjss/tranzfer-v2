@@ -69,6 +69,7 @@ const tooMany = {
   codeRedemptions: "Too many code attempts.",
   deliveriesPerDay: "Too many new deliveries in a day.",
   deliveriesPerHour: "Too many new deliveries in an hour.",
+  interestSignups: "Too many sign-ups from your network.",
   newAccounts: "Too many new accounts from your network today.",
   uploadSigning: "Too many upload requests at once.",
 } satisfies Record<RateLimitName, string>;

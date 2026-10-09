@@ -16,6 +16,7 @@ import * as RpcServer from "effect/rpc/RpcServer";
 
 import { Billing, InvalidWebhook } from "./billing";
 import { Deliveries } from "./deliveries";
+import { Emails } from "./emails";
 import { LinkTokens } from "./link-tokens";
 import { Plans } from "./plans";
 import { ApiHandlers, AuthenticatedLive } from "./rpc";
@@ -24,6 +25,7 @@ import { Storage } from "./storage";
 import { sweep } from "./sweeper";
 import { SigningRate, Transfers } from "./transfers";
 import { Auth, makeAuth } from "./infrastructure/auth";
+import { emailAllowlist, Mail, makeMail } from "./infrastructure/email";
 import { PolarProduct, PolarWebhook, paidPlansOpen, polarAccess } from "./infrastructure/polar";
 import { filesStorage, lazy } from "./infrastructure/r2";
 import { deployStage, stageName } from "./infrastructure/stage";
@@ -131,12 +133,26 @@ export default ApiWorker.make(
       },
     });
 
+    const interestSignups = yield* Cloudflare.RateLimit("INTEREST_SIGNUPS", {
+      namespaceId: 1004,
+      simple: {
+        limit: rateLimits.interestSignups.limit,
+        period: rateLimits.interestSignups.windowSeconds,
+      },
+    });
+
+    // Sends through Cloudflare Email Sending as hello@tranzfer.app. The
+    // domain is onboarded on the account, so any recipient is allowed.
+    const email = yield* Cloudflare.Email.Send(yield* Cloudflare.Email.SendEmail("EMAIL"));
+    const mail = makeMail(stage, email, yield* emailAllowlist);
+
     const isolate = yield* Layer.build(
       Layer.mergeAll(
         yield* filesStorage,
         LinkTokens.layer((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom))),
         Layer.effect(Auth, makeAuth(stage, handle, limiter(authRequests))),
         Layer.succeed(SigningRate, SigningRate.of({ allow: limiter(uploadSigning) })),
+        Layer.succeed(Mail, mail),
         RpcSerialization.layerJson,
       ),
     );
@@ -144,7 +160,12 @@ export default ApiWorker.make(
     // A D1 client belongs to one invocation, so the services over it are
     // rebuilt per request (and per cron run) with a fresh memo map.
     const database = Layer.unwrap(Effect.map(handle, Database.fromD1));
-    const domain = Layer.mergeAll(Transfers.layer, SharedLinks.layer, billing).pipe(
+    const domain = Layer.mergeAll(
+      Transfers.layer,
+      SharedLinks.layer,
+      billing,
+      Emails.layer({ allowInterest: limiter(interestSignups), appUrl: origin }),
+    ).pipe(
       Layer.provideMerge(Deliveries.layer),
       Layer.provideMerge(Plans.layer(limiter(codeRedemptions))),
       Layer.provideMerge(database),
@@ -217,6 +238,7 @@ export default ApiWorker.make(
     Effect.provide(
       Layer.mergeAll(
         Cloudflare.D1.QueryDatabaseBinding,
+        Cloudflare.Email.SendBinding,
         Cloudflare.R2.ReadBucketBinding,
         Cloudflare.RateLimitBinding,
         Cloudflare.Workers.CronEventSourceLive,

@@ -28,6 +28,8 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { secondsUntilRoom } from "../deliveries";
+import { sendWelcome } from "../emails";
+import type { Mail } from "./email";
 import { stagingLogin } from "./staging-login";
 
 /** The session lookup failed inside better-auth. Its cause can hold tokens: never log it. */
@@ -39,7 +41,7 @@ export class Auth extends Context.Service<
     readonly fetch: Effect.Effect<
       HttpServerResponse.HttpServerResponse,
       HttpServerError.HttpServerError | HttpBody.HttpBodyError,
-      Database | HttpServerRequest.HttpServerRequest | Scope.Scope
+      Database | HttpServerRequest.HttpServerRequest | Mail | Scope.Scope
     >;
     readonly session: (
       headers: Headers,
@@ -54,11 +56,15 @@ export class Auth extends Context.Service<
 // and the web Worker forwards the original headers over the service binding.
 const ipAddress = { ipAddressHeaders: ["cf-connecting-ip"] };
 
+/** The caller's IP as the rate limits count it: an IPv6 address by its /64. */
+export const clientIp = (headers: Headers) =>
+  getIP(headers, { advanced: { ipAddress } }) ?? "unknown";
+
 // Better Auth calls hooks and plugin endpoints as Promise callbacks. Each auth
 // request runs Better Auth inside its own store, so a callback reaches the
 // services and abort signal of the request that triggered it.
 const authRequests = new AsyncLocalStorage<{
-  readonly context: Context.Context<Database>;
+  readonly context: Context.Context<Database | Mail>;
   readonly signal: AbortSignal;
 }>();
 
@@ -68,7 +74,7 @@ const authRequests = new AsyncLocalStorage<{
  * triggered it. To make Better Auth answer with an error, fail with its
  * `APIError`; any other failure rejects as a defect.
  */
-export const runAuthCallback = async <A, E>(effect: Effect.Effect<A, E, Database>) => {
+export const runAuthCallback = async <A, E>(effect: Effect.Effect<A, E, Database | Mail>) => {
   const current = authRequests.getStore();
   if (current === undefined) {
     throw new APIError("SERVICE_UNAVAILABLE", {
@@ -205,6 +211,14 @@ export const makeAuth = (
       databaseHooks: {
         user: {
           create: {
+            // The plugin hands Better Auth's background tasks to the
+            // request's waitUntil, so sign-up never waits on the welcome
+            // email, and the welcome never fails.
+            after: async (user, context) => {
+              await context?.context.runInBackgroundOrAwait(
+                runAuthCallback(sendWelcome(user.email, origin)),
+              );
+            },
             // New accounts per client IP. A creation outside a request has no
             // IP and is not counted. The OAuth callback turns this error into
             // a redirect to the error URL with the code and description.
@@ -246,8 +260,7 @@ export const makeAuth = (
     return Auth.of({
       fetch: Effect.gen(function* fetch() {
         const request = yield* HttpServerRequest.HttpServerRequest;
-        const ip = getIP(new Headers(request.headers), { advanced: { ipAddress } }) ?? "unknown";
-        if (!(yield* allowRequest(ip))) {
+        if (!(yield* allowRequest(clientIp(new Headers(request.headers))))) {
           const { windowSeconds } = rateLimits.authRequests;
           return yield* HttpServerResponse.schemaJson(RateLimited)(
             new RateLimited({ limit: "authRequests", retryAfterSeconds: windowSeconds }),
@@ -256,7 +269,7 @@ export const makeAuth = (
         }
         const native = yield* instance.auth.pipe(Effect.provide(RuntimeContext.phantom));
         const web = yield* HttpServerRequest.toWeb(request).pipe(Effect.orDie);
-        const context = yield* Effect.context<Database>();
+        const context = yield* Effect.context<Database | Mail>();
         // Better Auth answers API errors as responses; it rejects only on defects.
         const response = yield* Effect.promise(
           async (signal) =>

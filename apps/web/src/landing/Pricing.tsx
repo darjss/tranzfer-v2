@@ -1,15 +1,18 @@
 import { PlanId, plans } from "@tranzfer/contracts";
 import type { PaidPlanId, PlanId as Plan } from "@tranzfer/contracts";
 import { dynamic } from "@solidjs/web";
-import { For, Show, useContext } from "solid-js";
+import * as Exit from "effect/Exit";
+import { action, createOptimistic, createSignal, For, Show, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
 import { Hand, Ink } from "./notebook";
 import { eyebrow, section, sideTitle } from "./styles";
+import { ApiClient } from "../api/client";
+import { appError } from "../api/errors";
 import { RuntimeContext } from "../api/solid-effect";
 import { goToCheckout } from "../dashboard/billing";
 import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
-import { paidPlansOpen, supportEmail } from "../ui/support";
+import { paidPlansOpen } from "../ui/support";
 
 // Who each plan is for, from docs/PRODUCT.md.
 const forWhom: Record<Plan, string> = {
@@ -54,6 +57,122 @@ const pro = css({
   shadow: "[0 50px 90px -40px rgba(23,24,28,.9)]",
   zIndex: 1,
 });
+
+const field = css({
+  _focusVisible: {
+    outlineColor: "blue",
+    outlineOffset: "0.5",
+    outlineStyle: "solid",
+    outlineWidth: "2px",
+  },
+  bg: "white",
+  borderRadius: "xl",
+  color: "ink",
+  fontSize: "[16px]",
+  minW: "0",
+  px: "4",
+  py: "3",
+  shadow: "[inset 0 0 0 1px var(--colors-line)]",
+});
+
+/**
+ * Asks to hear once when a closed paid plan opens. A signed-in visitor is
+ * added in one click with their account's address; anyone else is asked for one.
+ */
+export function NotifyMe(props: { plan: PaidPlanId; hot: boolean }) {
+  const runtime = useContext(RuntimeContext);
+  const [asking, setAsking] = createOptimistic(false);
+  const [needsEmail, setNeedsEmail] = createSignal(false);
+  const [joined, setJoined] = createSignal<string>();
+
+  const join = action(async function* join(input: {
+    readonly email?: string;
+    readonly plan: PaidPlanId;
+  }) {
+    setAsking(true);
+    const exit = await runtime.runPromiseExit(ApiClient.use((api) => api.JoinInterest(input)));
+    yield;
+    if (Exit.isSuccess(exit)) {
+      setJoined(exit.value.email);
+      return;
+    }
+    const problem = appError(exit.cause);
+    // Signed out: ask for an address instead.
+    if (problem.tag === "Unauthorized") {
+      setNeedsEmail(true);
+      return;
+    }
+    const { toaster } = await import("../ui/Toasts");
+    toaster.error({ description: problem.message, title: "We couldn't add you" });
+  });
+
+  return (
+    <Show
+      when={joined()}
+      fallback={
+        <Show
+          when={needsEmail()}
+          fallback={
+            <button
+              class={button({ variant: props.hot ? "fill" : "outline" })}
+              disabled={asking()}
+              onClick={() => {
+                void join({ plan: props.plan });
+              }}
+              type="button"
+            >
+              Tell me when it opens
+            </button>
+          }
+        >
+          <form
+            class={css({ display: "grid", gap: "2" })}
+            onSubmit={(event) => {
+              event.preventDefault();
+              const input = event.currentTarget.elements.namedItem("email");
+              if (input instanceof HTMLInputElement) {
+                void join({ email: input.value.trim(), plan: props.plan });
+              }
+            }}
+          >
+            <input
+              aria-label="Your email"
+              autocomplete="email"
+              class={field}
+              maxlength={254}
+              name="email"
+              placeholder="you@studio.com"
+              ref={(input) => {
+                // The form replaces the button that had focus.
+                requestAnimationFrame(() => {
+                  input.focus();
+                });
+              }}
+              required
+              type="email"
+            />
+            <button
+              class={button({ variant: props.hot ? "fill" : "outline" })}
+              disabled={asking()}
+              type="submit"
+            >
+              {asking() ? "Adding…" : "Notify me"}
+            </button>
+            <p class={css({ color: props.hot ? "[#c9c6bc]" : "mut", fontSize: "13" })}>
+              We'll email you once, the day {plans[props.plan].name} opens.
+            </p>
+          </form>
+        </Show>
+      }
+    >
+      {(email) => (
+        <p class={css({ color: props.hot ? "[#e8e5dc]" : "ink", fontSize: "15" })} role="status">
+          You're on the list. We'll email {email()} once, the day {plans[props.plan].name} opens.
+        </p>
+      )}
+    </Show>
+  );
+}
 
 /** On /pricing this section is the page, so its title is the h1. */
 export default function Pricing(props: { heading?: "h1" }) {
@@ -226,14 +345,7 @@ export default function Pricing(props: { heading?: "h1" }) {
                 >
                   <Show
                     when={paidPlansOpen}
-                    fallback={
-                      <a
-                        class={button({ variant: hot ? "fill" : "outline" })}
-                        href={`mailto:${supportEmail}?subject=${encodeURIComponent(`Tell me when ${plans[id].name} opens`)}`}
-                      >
-                        Tell me when it opens
-                      </a>
-                    }
+                    fallback={id === "free" ? undefined : <NotifyMe hot={hot} plan={id} />}
                   >
                     <button
                       class={button({ variant: hot ? "fill" : "outline" })}

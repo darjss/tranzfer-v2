@@ -8,7 +8,8 @@
     "test": "vp test",
     "code:create": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/codes.ts create",
     "code:list": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/codes.ts list",
-    "code:revoke": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/codes.ts revoke"
+    "code:revoke": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/codes.ts revoke",
+    "interest:notify": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/interest-notify.ts"
   },
   "dependencies": {
     "@alchemy.run/better-auth": "2.0.0-beta.81",
