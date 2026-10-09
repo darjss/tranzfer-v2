@@ -4,6 +4,7 @@ import { clientOnly, getRequestEvent, isServer } from "@solidjs/web";
 import { LinkExpired, LinkNotReady } from "@tranzfer/contracts";
 import type { SharedDelivery } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 import { createMemo, createSignal, Errored, For, Loading, Show, useContext } from "solid-js";
@@ -282,6 +283,12 @@ const LinkPage = () => {
     }
     const file = exit.value.files.find((candidate) => candidate.path === path);
     if (file !== undefined) {
+      // Only the click is known; the browser's download manager takes it from here.
+      runtime.runFork(
+        ApiClient.use((api) =>
+          api.ReportDownload({ event: "started", path, token: params.token }),
+        ).pipe(Effect.ignore),
+      );
       location.assign(file.url);
     }
   };

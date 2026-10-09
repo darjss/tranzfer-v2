@@ -19,6 +19,8 @@ export const bytes = (size: number) => {
 
 export const files = (count: number) => `${count} ${count === 1 ? "file" : "files"}`;
 
+const DAY = 24 * 60 * 60 * 1000;
+
 const sentFormat = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   hour: "2-digit",
@@ -28,6 +30,37 @@ const sentFormat = new Intl.DateTimeFormat("en-GB", {
 
 export const sentAt = (date: Date) => sentFormat.format(date);
 
+const weekdayTime = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  weekday: "long",
+});
+
+/** "Tuesday 14:02" within the last week, "9 Oct, 14:02" before that. */
+const when = (date: Date) =>
+  Date.now() - date.getTime() < 6 * DAY
+    ? weekdayTime.format(date).replace(",", "")
+    : sentFormat.format(date);
+
+/**
+ * What the sender can honestly say about a download. The recipient's browser
+ * reports it, and only a folder save knows a file is whole, so a one-file
+ * download in the browser's own manager stays "started".
+ */
+export const downloadWords = (delivery: Delivery) => {
+  const { download } = delivery;
+  if (download === null) {
+    return "Not downloaded yet";
+  }
+  const total = delivery.transfers.length;
+  if (download.filesSaved === 0) {
+    return `Download started ${when(download.startedAt)}`;
+  }
+  return download.filesSaved >= total
+    ? `Downloaded, ${total} of ${files(total)}`
+    : `${download.filesSaved} of ${files(total)} downloaded, last ${when(download.lastAt)}`;
+};
+
 const untilFormat = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   month: "long",
@@ -36,7 +69,6 @@ const untilFormat = new Intl.DateTimeFormat("en-GB", {
 
 export const untilDate = (date: Date) => untilFormat.format(date);
 
-const DAY = 24 * 60 * 60 * 1000;
 const relative = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto" });
 
 /** "in 3 days", "tomorrow", "in 5 hours": the expiry as a person says it. */

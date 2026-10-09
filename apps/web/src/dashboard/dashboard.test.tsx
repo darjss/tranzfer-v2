@@ -47,8 +47,10 @@ const delivery = (
   title: string,
   status: Delivery["status"],
   sizes: readonly number[],
+  download: Delivery["download"] = null,
 ): Delivery => ({
   createdAt: new Date("2026-09-29T08:00:00Z"),
+  download,
   expiresAt: status === "ready" ? new Date("2026-10-02T08:00:00Z") : null,
   id: DeliveryId.make(crypto.randomUUID()),
   link: `/d/${title}`,
@@ -129,6 +131,7 @@ const makeWorld = (
                   return { endsAt: betaEnds, plan: "pro" as const };
                 })
               : Effect.fail(new AccessCodeRefused({ reason: "unknown" })),
+          ReportDownload: () => Effect.die("unused"),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
         }),
@@ -251,6 +254,37 @@ describe("dashboard reactivity", () => {
     const reruns = (artifact.attribution?.reruns ?? []).map((run) => run.nodeName);
     expect(reruns).toEqual(expect.arrayContaining(["Board.groups", "Row.kind", "Row.roll"]));
     expect(reruns).not.toContain("condition value");
+    await runtime.dispose();
+  });
+
+  it("a ready row says how far its download got, and claims nothing more", async () => {
+    const at = new Date(Date.now() - 60_000);
+    const withDownload = (title: string, filesSaved: number) =>
+      delivery(title, "ready", [MB, MB, MB], { filesSaved, lastAt: at, startedAt: at });
+    const rows = [
+      delivery("Fresh", "ready", [MB]),
+      withDownload("Started", 0),
+      withDownload("Partway", 2),
+      withDownload("Whole", 3),
+    ];
+    const runtime = makeWorld(rows);
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Board
+          cancel={nothingToReport}
+          clear={nothingToReport}
+          deliveries={rows}
+          online
+          select={noop}
+          sendAgain={noop}
+        />
+      </RuntimeContext>
+    ));
+    flush();
+    expect(screen.getByText("Not downloaded yet")).toBeInTheDocument();
+    expect(screen.getByText(/^Download started /u)).toBeInTheDocument();
+    expect(screen.getByText(/^2 of 3 files downloaded, last /u)).toBeInTheDocument();
+    expect(screen.getByText("Downloaded, 3 of 3 files")).toBeInTheDocument();
     await runtime.dispose();
   });
 

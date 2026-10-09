@@ -11,6 +11,7 @@ import { transfers } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
 import {
   bytes,
+  downloadWords,
   etaAt,
   files,
   fromNow,
@@ -235,12 +236,15 @@ function Row(
           <Switch>
             <Match when={live.kind() === "ready" ? props.delivery.expiresAt : null}>
               {(expiresAt) => (
-                <span>
-                  expires {fromNow(expiresAt())}
-                  <span class={css({ display: { base: "none", sm: "inline" } })}>
-                    , {shortDate.format(expiresAt())}
+                <>
+                  <span>
+                    expires {fromNow(expiresAt())}
+                    <span class={css({ display: { base: "none", sm: "inline" } })}>
+                      , {shortDate.format(expiresAt())}
+                    </span>
                   </span>
-                </span>
+                  <span>{downloadWords(props.delivery)}</span>
+                </>
               )}
             </Match>
             <Match when={live.kind() === "moving"}>
