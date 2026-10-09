@@ -1,9 +1,9 @@
 import { plans } from "@tranzfer/contracts";
+import * as Schema from "effect/Schema";
 import { For } from "solid-js";
 import { css, cx } from "styled-system/css";
 import { bytes } from "../dashboard/format";
 import { quote } from "../marketing/prices";
-import { table, tableWrap } from "./Article";
 
 // What each service says about itself, for the /alternatives pages. Every
 // competitor line comes from the page in its `sources`; where their pages
@@ -23,6 +23,17 @@ const monthCost = (id: string) => {
   const q = month.find((item) => item.id === id);
   return q?.price === undefined ? "Too big" : `${usd.format(q.price)} on ${q.plan}`;
 };
+
+export const ServiceId = Schema.Literals([
+  "tranzfer",
+  "masv",
+  "wetransfer",
+  "filemail",
+  "smash",
+  "dropbox",
+  "drive",
+]);
+export type ServiceId = typeof ServiceId.Type;
 
 export const services = {
   drive: {
@@ -191,13 +202,11 @@ export const services = {
   },
 };
 
-export type ServiceId = keyof typeof services;
-
 /** The side-by-side table, in ranked order. */
 export function CompareTable(props: { readonly ids: readonly ServiceId[] }) {
   return (
-    <div class={tableWrap}>
-      <table class={cx(table, css({ minW: "[960px]" }))}>
+    <div>
+      <table class={css({ minW: "[960px]" })}>
         <thead>
           <tr>
             <th scope="col">Service</th>
@@ -211,8 +220,10 @@ export function CompareTable(props: { readonly ids: readonly ServiceId[] }) {
         <tbody>
           <For each={props.ids}>
             {(id) => (
-              <tr class={id === "tranzfer" ? "us" : undefined}>
-                <th scope="row">{services[id].name}</th>
+              <tr>
+                <th scope="row">
+                  {id === "tranzfer" ? <strong>{services[id].name}</strong> : services[id].name}
+                </th>
                 <td>{services[id].bestFor}</td>
                 <td>{services[id].price}</td>
                 <td>{services[id].limit}</td>

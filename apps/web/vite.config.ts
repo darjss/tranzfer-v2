@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { fileRoutes } from "filesystem-routing/vite";
 import { sitemap } from "prerender-crawler";
@@ -7,7 +8,14 @@ import Icons from "unplugin-icons/vite";
 import { defineConfig } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
 import { webLint } from "../../lint.config";
+import { markdown } from "./markdown";
 import { ogImage } from "./og";
+
+// One page per Markdown file in content/guides and content/alternatives.
+const contentPages = (dir: string) =>
+  readdirSync(`${import.meta.dirname}/content/${dir}`)
+    .filter((file) => file.endsWith(".md"))
+    .map((file) => `/${dir}/${file.slice(0, -3)}`);
 
 const staticPages = [
   "/",
@@ -18,18 +26,10 @@ const staticPages = [
   "/about",
   "/vs/masv",
   "/vs/wetransfer",
-  "/alternatives/wetransfer",
-  "/alternatives/masv",
   "/tools/upload-time-calculator",
   "/guides",
-  // One per entry in src/guides/guides.ts.
-  ...[
-    "how-to-send-large-files",
-    "send-large-video-files-to-an-editor",
-    "send-raw-photos-to-a-client",
-    "send-pro-tools-or-logic-session",
-    "how-long-to-upload-100-gb",
-  ].map((slug) => `/guides/${slug}`),
+  ...contentPages("guides"),
+  ...contentPages("alternatives"),
   // One per entry in src/marketing/content.ts.
   ...["send-large-files", "resume", "folders", "share-links", "dashboard", "privacy"].map(
     (slug) => `/features/${slug}`,
@@ -46,7 +46,7 @@ const staticPages = [
 // The production deploy checks out full history so this stays accurate there.
 const lastmod = execFileSync(
   "git",
-  ["log", "-1", "--format=%cI", "--", "src", "../../packages/contracts/src"],
+  ["log", "-1", "--format=%cI", "--", "src", "content", "../../packages/contracts/src"],
   { cwd: import.meta.dirname, encoding: "utf-8" },
 ).trim();
 
@@ -84,6 +84,7 @@ export default defineConfig({
     }),
     fileRoutes({ codeSplitting: false, httpMethods: true, types: true }),
     Icons({ compiler: "solid" }),
+    markdown(),
     ogImage(),
     // The public pages ship as static HTML; everything else stays live SSR.
     // Flat files (terms.html): Workers static assets serve /terms from them

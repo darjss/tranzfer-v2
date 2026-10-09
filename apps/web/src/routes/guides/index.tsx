@@ -1,7 +1,7 @@
 import { Link, Meta, Title } from "@solidjs/meta";
 import { For } from "solid-js";
 import { css, cx } from "styled-system/css";
-import { guides } from "../../guides/guides";
+import { alternatives, guides } from "../../guides/pages";
 import { eyebrow, lede, sectionTitle } from "../../landing/styles";
 import "../../landing/landing.css";
 import Reveal from "../../ui/Reveal";
@@ -11,16 +11,7 @@ const site = "https://tranzfer.app";
 const description =
   "Plain answers about sending large files: video to an editor, RAW photos to a client, audio sessions to a mixer, and how long a 100 GB upload takes.";
 
-// The pillar first, then the specific questions.
-const list = (
-  [
-    "how-to-send-large-files",
-    "send-large-video-files-to-an-editor",
-    "send-raw-photos-to-a-client",
-    "send-pro-tools-or-logic-session",
-    "how-long-to-upload-100-gb",
-  ] as const
-).map((slug) => ({ href: `/guides/${slug}`, ...guides[slug] }));
+const list = guides.map((g) => ({ href: `/guides/${g.slug}`, summary: g.summary, title: g.title }));
 
 const more = [
   {
@@ -28,16 +19,11 @@ const more = [
     summary: "File size and upload speed in, time out. Runs in your browser.",
     title: "Upload time calculator",
   },
-  {
-    href: "/alternatives/wetransfer",
-    summary: "Six services ranked for big files, with prices, limits and what happens on a drop.",
-    title: "WeTransfer alternatives for large files",
-  },
-  {
-    href: "/alternatives/masv",
-    summary: "Flat plans against per-GB pricing, and who should stay with MASV.",
-    title: "MASV alternatives for large files",
-  },
+  ...alternatives.map((a) => ({
+    href: `/alternatives/${a.slug}`,
+    summary: a.summary,
+    title: a.title,
+  })),
   {
     href: "/pricing",
     summary: "What the same month of deliveries costs on Tranzfer, MASV, Smash and Filemail.",
