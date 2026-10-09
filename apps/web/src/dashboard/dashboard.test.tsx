@@ -20,7 +20,7 @@ import * as Option from "effect/Option";
 import * as Struct from "effect/Struct";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as RpcTest from "effect/rpc/RpcTest";
-import { createSignal, flush, Loading, onSettled, Show } from "solid-js";
+import { createSignal, Errored, flush, Loading, onSettled, Show } from "solid-js";
 
 import { ApiClient } from "../api/client";
 import { NotifyMe } from "../landing/Pricing";
@@ -99,9 +99,12 @@ const makeWorld = (
   server: Delivery[],
   gate?: Deferred.Deferred<boolean>,
   initialBilling: BillingSummary = freePlan,
+  // How many list reads fail before the server answers, like a dropped request.
+  listFailures = 0,
 ) => {
   // Redeeming BETA-PRO changes what the next GetBilling answers, like the real API.
   let billing = initialBilling;
+  let listsToFail = listFailures;
   const api = Layer.effect(ApiClient, RpcTest.makeClient(Api)).pipe(
     Layer.provide(
       Api.toLayer(
@@ -117,7 +120,11 @@ const makeWorld = (
               );
             }),
           CreateDelivery: () => Effect.die("unused"),
-          Deliveries: () => Effect.sync(() => [...server]),
+          Deliveries: () =>
+            Effect.suspend(() => {
+              listsToFail -= 1;
+              return listsToFail < 0 ? Effect.succeed([...server]) : Effect.die("list failed");
+            }),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.sync(() => billing),
           // Like the real one: without an address it needs a session, and
@@ -936,6 +943,53 @@ describe("dashboard reactivity", () => {
     await screen.findByText("Episode 14, final");
     expect(screen.queryByText("Your files are ready")).toBeNull();
     clock.mockRestore();
+    await runtime.dispose();
+  });
+
+  it("Try again re-reads a list that failed to load and the board comes back", async () => {
+    const server = [delivery("Live", "ready", [MB])];
+    // The first read of the list fails, which is what the user sees on a dropped request.
+    const runtime = makeWorld(server, undefined, freePlan, 1);
+    const Harness = () => {
+      const state = createDeliveries(runtime);
+      return (
+        <Errored
+          fallback={(_error, retry) => (
+            <button onClick={retry} type="button">
+              Try again
+            </button>
+          )}
+        >
+          <Board
+            cancel={state.cancel}
+            clear={state.clear}
+            deliveries={state.deliveries}
+            online
+            select={noop}
+            sendAgain={noop}
+          />
+        </Errored>
+      );
+    };
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Harness />
+        </Loading>
+      </RuntimeContext>
+    ));
+    const tryAgain = await screen.findByRole("button", { name: "Try again" });
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        tryAgain.click();
+        await screen.findByText("Live");
+      },
+      { scenario: "try-again" },
+    );
+
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
   });
 });
