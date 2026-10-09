@@ -1,5 +1,5 @@
 import { Meta, Title } from "@solidjs/meta";
-import { PaidPlanId, RateLimited, plans } from "@tranzfer/contracts";
+import { AccessCodeInput, PaidPlanId, RateLimited, plans } from "@tranzfer/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { createSignal, onSettled, Show } from "solid-js";
@@ -33,13 +33,25 @@ const GoogleG = (props: { class?: string }) => (
   </svg>
 );
 
-// A pricing button sends signed-out visitors here with the plan to buy; the
-// dashboard carries on to checkout once they are in.
+// A pricing button sends signed-out visitors here with the plan to buy, and a
+// beta invite with an access code; the dashboard carries on with either once
+// they are in.
+const accessCode = () =>
+  Schema.decodeUnknownOption(AccessCodeInput)(new URLSearchParams(location.search).get("code"));
+
 const destination = () => {
   const plan = Schema.decodeUnknownOption(PaidPlanId)(
     new URLSearchParams(location.search).get("plan"),
   );
-  return Option.isSome(plan) ? `/deliveries?plan=${plan.value}` : "/deliveries";
+  const code = accessCode();
+  const next = new URLSearchParams();
+  if (Option.isSome(plan)) {
+    next.set("plan", plan.value);
+  }
+  if (Option.isSome(code)) {
+    next.set("code", code.value);
+  }
+  return next.size === 0 ? "/deliveries" : `/deliveries?${next.toString()}`;
 };
 
 const scopes = "We use your name, email and photo from Google. Nothing else.";
@@ -69,12 +81,14 @@ export default function SignIn() {
   const [keyFailure, setKeyFailure] = createSignal<string>();
   const [key, setKey] = createSignal("");
   const [staging, setStaging] = createSignal(false);
+  const [code, setCode] = createSignal<string>();
   // Only production has a Google provider; everywhere else the staging key
   // endpoint is the way in. The signal flips after mount so SSR and the
   // first client render match.
   onSettled(() => {
     setStaging(location.hostname !== "tranzfer.app");
     setFailure(callbackFailure(new URLSearchParams(location.search)));
+    setCode(Option.getOrUndefined(accessCode()));
   });
 
   const signInWithGoogle = async () => {
@@ -277,10 +291,22 @@ export default function SignIn() {
           <p class={css({ color: "mut", fontSize: "17", mt: "4" })}>
             One Google account. No password, no setup.
           </p>
-          <p class={css({ color: "ink", fontSize: "[14px]", fontWeight: "medium", mt: "3" })}>
-            {bytes(plans.free.activeBytes)} free. Links last up to {plans.free.maxRetentionDays}{" "}
-            days. No card.
-          </p>
+          <Show
+            when={code()}
+            fallback={
+              <p class={css({ color: "ink", fontSize: "[14px]", fontWeight: "medium", mt: "3" })}>
+                {bytes(plans.free.activeBytes)} free. Links last up to {plans.free.maxRetentionDays}{" "}
+                days. No card.
+              </p>
+            }
+          >
+            {(value) => (
+              <p class={css({ color: "ink", fontSize: "[14px]", fontWeight: "medium", mt: "3" })}>
+                Your code <span class={css({ fontFamily: "mono" })}>{value()}</span> goes on your
+                account as soon as you're in. No card.
+              </p>
+            )}
+          </Show>
           <button
             class={css({
               _active: { translate: "[0 1px]" },

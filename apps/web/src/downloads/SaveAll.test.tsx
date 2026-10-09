@@ -90,6 +90,7 @@ const makeWorld = () => {
           Me: () => Effect.die("unused"),
           OpenBillingPortal: () => Effect.die("unused"),
           OpenLink: () => Effect.succeed(delivery),
+          RedeemCode: () => Effect.die("unused"),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
         }),

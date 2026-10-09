@@ -1,3 +1,4 @@
+import { plans } from "@tranzfer/contracts";
 import type { Delivery, DeliveryId, RetentionDays } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -18,7 +19,7 @@ import type { AppServices } from "../api/solid-effect";
 import { transfers } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
 import type { ChosenFile } from "../uploads/uploads";
-import { kindOf, rollup, totalSize } from "./format";
+import { bytes, kindOf, rollup, totalSize, untilDate } from "./format";
 
 /**
  * The sender's deliveries and the actions that change them. Each action
@@ -142,7 +143,29 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     return failure;
   });
 
-  return { billing, cancel, clear, deliveries, send, sending };
+  const [redeeming, setRedeeming] = createOptimistic(false);
+
+  /** Applies an access code and says what it gave; resolves to a problem, if any. */
+  const redeem = action(async function* redeem(code: string) {
+    setRedeeming(true);
+    const exit = await runtime.runPromiseExit(ApiClient.use((api) => api.RedeemCode({ code })));
+    yield;
+    const problem = Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
+    const { toaster } = await import("../ui/Toasts");
+    if (Exit.isSuccess(exit)) {
+      void refresh(billing);
+      const { endsAt, plan } = exit.value;
+      toaster.success({
+        description: `${bytes(plans[plan].activeBytes)} at once, links up to ${plans[plan].maxRetentionDays} days.`,
+        title: `You're on ${plans[plan].name} until ${untilDate(endsAt)}`,
+      });
+    } else {
+      toaster.error({ description: problem, title: "That code didn't work" });
+    }
+    return problem;
+  });
+
+  return { billing, cancel, clear, deliveries, redeem, redeeming, send, sending };
 };
 
 /** A delivery's live state: server status plus whatever this tab is uploading. */

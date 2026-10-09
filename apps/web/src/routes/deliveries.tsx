@@ -1,7 +1,7 @@
 import { Meta, Title } from "@solidjs/meta";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import { clientOnly } from "@solidjs/web";
-import { defaultRetentionDays, PaidPlanId, plans } from "@tranzfer/contracts";
+import { AccessCodeInput, defaultRetentionDays, PaidPlanId, plans } from "@tranzfer/contracts";
 import type { RetentionDays } from "@tranzfer/contracts";
 import * as Schema from "effect/Schema";
 import {
@@ -98,6 +98,7 @@ const DeliveriesPage = () => {
   const runtime = useContext(RuntimeContext);
   const [searchParams, setSearchParams] = useSearchParams<{
     checkout?: string;
+    code?: string;
     d?: string;
     plan?: string;
   }>();
@@ -106,7 +107,8 @@ const DeliveriesPage = () => {
   };
 
   const me = createMemo(() => runEffect(ApiClient.use((api) => api.Me())));
-  const { billing, cancel, clear, deliveries, send, sending } = createDeliveries(runtime);
+  const { billing, cancel, clear, deliveries, redeem, redeeming, send, sending } =
+    createDeliveries(runtime);
   const selected = () => {
     const id = searchParams.d;
     return id === undefined ? undefined : deliveries.find((delivery) => delivery.id === id);
@@ -170,6 +172,16 @@ const DeliveriesPage = () => {
       if (paidPlansOpen) {
         void upgrade(plan.value);
       }
+    }
+  });
+
+  // A beta invite (/sign-in?code=) lands here with its code. Drop it from the
+  // address first so a reload doesn't try it again.
+  onSettled(() => {
+    const code = Schema.decodeUnknownOption(AccessCodeInput)(searchParams.code);
+    if (code._tag === "Some") {
+      setSearchParams({ code: undefined });
+      void redeem(code.value);
     }
   });
 
@@ -320,6 +332,8 @@ const DeliveriesPage = () => {
                 void manage();
               }}
               principal={me()}
+              redeem={redeem}
+              redeeming={redeeming()}
               send={() => {
                 filesInput?.click();
               }}
