@@ -17,6 +17,7 @@ import * as RpcServer from "effect/rpc/RpcServer";
 import { Billing, InvalidWebhook } from "./billing";
 import { Deliveries } from "./deliveries";
 import { LinkTokens } from "./link-tokens";
+import { Plans } from "./plans";
 import { ApiHandlers, AuthenticatedLive } from "./rpc";
 import { SharedLinks } from "./shared-links";
 import { Storage } from "./storage";
@@ -122,6 +123,14 @@ export default ApiWorker.make(
       },
     });
 
+    const codeRedemptions = yield* Cloudflare.RateLimit("CODE_REDEMPTIONS", {
+      namespaceId: 1003,
+      simple: {
+        limit: rateLimits.codeRedemptions.limit,
+        period: rateLimits.codeRedemptions.windowSeconds,
+      },
+    });
+
     const isolate = yield* Layer.build(
       Layer.mergeAll(
         yield* filesStorage,
@@ -136,6 +145,7 @@ export default ApiWorker.make(
     // rebuilt per request (and per cron run) with a fresh memo map.
     const domain = Layer.mergeAll(Transfers.layer, SharedLinks.layer, billing).pipe(
       Layer.provideMerge(Deliveries.layer),
+      Layer.provideMerge(Plans.layer(limiter(codeRedemptions))),
       Layer.provideMerge(Layer.unwrap(Effect.map(handle, Database.fromD1))),
     );
     const perInvocation = <A, E, R>(effect: Effect.Effect<A, E, R>) =>

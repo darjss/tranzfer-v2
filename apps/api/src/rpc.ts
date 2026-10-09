@@ -14,6 +14,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { Billing } from "./billing";
 import { Auth } from "./infrastructure/auth";
 import { Deliveries } from "./deliveries";
+import { Plans } from "./plans";
 import { SharedLinks } from "./shared-links";
 import { Transfers } from "./transfers";
 
@@ -48,6 +49,7 @@ export const ApiHandlers = Api.toLayer(
     const transfers = yield* Transfers;
     const links = yield* SharedLinks;
     const billing = yield* Billing;
+    const userPlans = yield* Plans;
     const sender = Effect.map(CurrentPrincipal, ({ id }) => id);
     return Api.of({
       CancelDelivery: ({ deliveryId }) =>
@@ -62,6 +64,7 @@ export const ApiHandlers = Api.toLayer(
       Me: () => Effect.service(CurrentPrincipal),
       OpenBillingPortal: () => Effect.flatMap(sender, billing.portal),
       OpenLink: ({ token }) => links.open(token),
+      RedeemCode: ({ code }) => Effect.flatMap(sender, (id) => userPlans.redeem(id, code)),
       SignUpload: ({ key, request }) =>
         Effect.flatMap(sender, (id) => transfers.sign(id, key, request)),
       StartCheckout: ({ plan }) =>

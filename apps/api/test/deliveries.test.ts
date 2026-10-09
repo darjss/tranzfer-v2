@@ -14,12 +14,13 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { Billing, verifyWebhook } from "../src/billing";
 import { Deliveries } from "../src/deliveries";
+import { Plans } from "../src/plans";
 import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } from "./support";
 
 const storage = makeMemoryStorage();
 const GB = 1_000_000_000;
 
-const subscribe = (userId: string, plan: "pro" | "starter") =>
+const subscribe = (userId: string, plan: "pro" | "starter" | "studio") =>
   Effect.flatMap(Effect.service(Database), ({ db }) =>
     db.insert(schema.subscription).values({ plan, status: "active", userId }),
   ).pipe(Effect.orDie);
@@ -396,6 +397,142 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
   );
 });
 
+const DAY = 24 * 60 * 60 * 1000;
+
+const addCode = (code: typeof schema.accessCode.$inferInsert) =>
+  Effect.flatMap(Effect.service(Database), ({ db }) =>
+    db.insert(schema.accessCode).values(code),
+  ).pipe(Effect.orDie);
+
+const usesOf = (code: string) =>
+  Effect.flatMap(Effect.service(Database), ({ db }) =>
+    db.query.accessCode.findFirst({ columns: { uses: true }, where: { code } }),
+  ).pipe(Effect.orDie);
+
+layer(domainLayer(storage.layer))("Access codes", (it) => {
+  it.effect("a code gives its plan once per user, and every limit follows it", () =>
+    Effect.gen(function* scenario() {
+      const now = Date.now();
+      yield* TestClock.setTime(now);
+      yield* addUser("ada");
+      yield* addCode({ code: "BETA-PRO", days: 90, maxUses: 30, plan: "pro" });
+      const plans = yield* Plans;
+      const deliveries = yield* Deliveries;
+
+      // Typed in any case, with stray spaces.
+      const grant = yield* plans.redeem("ada", "  beta-pro ");
+      expect(grant).toEqual({ endsAt: new Date(now + 90 * DAY), plan: "pro" });
+      expect(yield* plans.current("ada")).toEqual({ grantEndsAt: grant.endsAt, plan: "pro" });
+      // Pro's retention and space, with no subscription anywhere.
+      const created = yield* deliveries.create(
+        "ada",
+        newDelivery([newFile("big.bin", 500 * GB)], "Fortnight", 14),
+      );
+      expect(created.retentionDays).toBe(14);
+
+      expect(yield* Effect.flip(plans.redeem("ada", "BETA-PRO"))).toMatchObject({
+        _tag: "AccessCodeRefused",
+        reason: "alreadyRedeemed",
+      });
+      expect(yield* usesOf("BETA-PRO")).toEqual({ uses: 1 });
+
+      // The grant ends on its day and the plan falls back to Free.
+      yield* TestClock.adjust(Duration.days(90));
+      expect(yield* plans.current("ada")).toEqual({ grantEndsAt: null, plan: "free" });
+    }),
+  );
+
+  it.effect("refuses an unknown, expired or used up code without using it", () =>
+    Effect.gen(function* scenario() {
+      const now = Date.now();
+      yield* TestClock.setTime(now);
+      yield* addUser("bo");
+      yield* addUser("cy");
+      yield* addCode({
+        code: "OLD",
+        days: 30,
+        expiresAt: new Date(now),
+        maxUses: 5,
+        plan: "pro",
+      });
+      yield* addCode({ code: "ONE", days: 30, maxUses: 1, plan: "starter" });
+      const plans = yield* Plans;
+      const reason = (userId: string, code: string) =>
+        Effect.map(Effect.flip(plans.redeem(userId, code)), (error) =>
+          error._tag === "AccessCodeRefused" ? error.reason : error._tag,
+        );
+
+      expect(yield* reason("bo", "NOPE")).toBe("unknown");
+      expect(yield* reason("bo", "OLD")).toBe("expired");
+      yield* plans.redeem("bo", "ONE");
+      expect(yield* reason("cy", "ONE")).toBe("usedUp");
+      expect(yield* usesOf("OLD")).toEqual({ uses: 0 });
+      expect(yield* usesOf("ONE")).toEqual({ uses: 1 });
+      expect(yield* plans.current("cy")).toEqual({ grantEndsAt: null, plan: "free" });
+    }),
+  );
+
+  it.effect("concurrent redemptions never pass the code's uses", () =>
+    Effect.gen(function* scenario() {
+      const users = ["d1", "d2", "d3", "d4", "d5", "d6"];
+      yield* Effect.forEach(users, (id) => addUser(id));
+      yield* addCode({ code: "RUSH", days: 7, maxUses: 2, plan: "studio" });
+      const plans = yield* Plans;
+      // Every attempt reads the code with uses to spare before any batch lands.
+      const outcomes = yield* Effect.forEach(
+        users,
+        (id) =>
+          plans.redeem(id, "RUSH").pipe(
+            Effect.as("granted"),
+            Effect.catchTag("AccessCodeRefused", (error) => Effect.succeed(error.reason)),
+          ),
+        { concurrency: "unbounded" },
+      );
+      expect(outcomes.toSorted()).toEqual([
+        "granted",
+        "granted",
+        "usedUp",
+        "usedUp",
+        "usedUp",
+        "usedUp",
+      ]);
+      expect(yield* usesOf("RUSH")).toEqual({ uses: 2 });
+    }),
+  );
+
+  it.effect("the higher of a subscription and a grant sets the plan", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("eve");
+      yield* addUser("fay");
+      yield* subscribe("eve", "studio");
+      yield* subscribe("fay", "starter");
+      yield* addCode({ code: "PRO-30", days: 30, maxUses: 10, plan: "pro" });
+      const plans = yield* Plans;
+      yield* plans.redeem("eve", "PRO-30");
+      yield* plans.redeem("fay", "PRO-30");
+      expect(yield* plans.current("eve")).toEqual({ grantEndsAt: null, plan: "studio" });
+      expect(yield* plans.current("fay")).toMatchObject({ plan: "pro" });
+      yield* TestClock.adjust(Duration.days(30));
+      expect(yield* plans.current("fay")).toEqual({ grantEndsAt: null, plan: "starter" });
+    }),
+  );
+
+  it.effect("caps code attempts per user, so codes can't be guessed", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("gus");
+      const plans = yield* Plans;
+      const tries = yield* Effect.forEach(Arr.range(1, rateLimits.codeRedemptions.limit + 1), (n) =>
+        Effect.map(Effect.flip(plans.redeem("gus", `GUESS-${n}`)), (error) => error._tag),
+      );
+      expect(tries.at(-1)).toBe("RateLimited");
+      expect(tries.slice(0, -1)).toEqual(
+        Arr.makeBy(rateLimits.codeRedemptions.limit, () => "AccessCodeRefused"),
+      );
+    }),
+  );
+});
+
 // Polar, faked at fetch: the subscriptions it lists for the customer.
 let polarSubscriptions: readonly {
   readonly cancel_at_period_end?: boolean;
@@ -535,6 +672,17 @@ layer(closedBilling)("Billing before paid plans open", (it) => {
         reason: "disabled",
       });
       expect(yield* billing.summary("pia")).toMatchObject({ plan: "free", status: "none" });
+
+      // A code still works, and the summary says until when.
+      yield* addCode({ code: "BETA-STUDIO", days: 14, maxUses: 1, plan: "studio" });
+      const grant = yield* (yield* Plans).redeem("pia", "beta-studio");
+      expect(yield* billing.summary("pia")).toMatchObject({
+        grantEndsAt: grant.endsAt,
+        limitBytes: 3000 * GB,
+        maxRetentionDays: 14,
+        plan: "studio",
+        status: "none",
+      });
       expect(polarCalls).toEqual([]);
     }),
   );
