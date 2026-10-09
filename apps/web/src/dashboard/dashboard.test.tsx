@@ -28,6 +28,7 @@ import { reportFailure } from "../api/errors";
 import { NotifyMe } from "../landing/Pricing";
 import { RuntimeContext } from "../api/solid-effect";
 import { patchTransfer } from "../uploads/store";
+import { claim, letGo } from "../uploads/tabs";
 import { untilDate } from "./format";
 import { Uploads } from "../uploads/uploads";
 import { Board } from "./Board";
@@ -1017,4 +1018,76 @@ describe("dashboard reactivity", () => {
       expect(String(reported?.get("error.stack"))).not.toMatch(/SECRET|https:/u);
     }),
   );
+
+  it("a file another tab is sending says so, and the list re-reads when that tab lets go", async () => {
+    // jsdom has no Web Locks. This runs each name's requests one after another.
+    const tails = new Map<string, Promise<unknown>>();
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: {
+        request: async (name: string, ...args: [() => Promise<void>] | [object, () => boolean]) => {
+          const run = args.length === 1 ? args[0] : args[1];
+          const before = tails.get(name) ?? Promise.resolve();
+          const mine = (async () => {
+            await before;
+            return await run();
+          })();
+          tails.set(name, mine);
+          return await mine;
+        },
+      },
+    });
+    const shared = delivery("Shared", "open", [60 * MB]);
+    const [transfer] = shared.transfers;
+    if (transfer === undefined) {
+      throw new Error("fixture needs a transfer");
+    }
+    // The other tab holds the lock; this tab's restore marked the transfer.
+    claim(transfer.id);
+    patchTransfer(transfer.id, { confirmed: 20 * MB, phase: "elsewhere" });
+    const server = [shared];
+    const runtime = makeWorld(server);
+    const Harness = () => {
+      const state = createDeliveries(runtime);
+      return (
+        <Board
+          cancel={state.cancel}
+          clear={state.clear}
+          deliveries={state.deliveries}
+          online
+          select={noop}
+          sendAgain={noop}
+        />
+      );
+    };
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Harness />
+        </Loading>
+      </RuntimeContext>
+    ));
+    await screen.findByText("Shared");
+    expect(screen.getByText("Sending in another tab")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        // The other tab finishes: the server says ready, then its lock is freed.
+        server[0] = Struct.evolve(shared, {
+          expiresAt: () => new Date("2026-10-02T08:00:00Z"),
+          status: () => "ready" as const,
+          transfers: (rows) =>
+            rows.map((row) => Struct.evolve(row, { state: () => "complete" as const })),
+        });
+        letGo(transfer.id);
+        await screen.findByRole("heading", { name: /Ready to share/u });
+      },
+      { scenario: "other-tab-finishes" },
+    );
+
+    expect(screen.queryByText("Sending in another tab")).toBeNull();
+    expect(artifact).toHaveNoDiagnostics();
+    await runtime.dispose();
+  });
 });

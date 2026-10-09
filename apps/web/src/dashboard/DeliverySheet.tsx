@@ -47,6 +47,7 @@ const fileKind = {
   Active: "moving",
   Cancelled: "cancelled",
   Complete: "ready",
+  Elsewhere: "elsewhere",
   Failed: "failed",
   Interrupted: "interrupted",
   NeedsFile: "needsFile",

@@ -18,6 +18,7 @@ import { appError } from "../api/errors";
 import { runEffect } from "../api/solid-effect";
 import type { AppServices } from "../api/solid-effect";
 import { transfers } from "../uploads/store";
+import { untilFree } from "../uploads/tabs";
 import { Uploads } from "../uploads/uploads";
 import type { ChosenFile } from "../uploads/uploads";
 import { bytes, kindOf, rollup, totalSize, untilDate } from "./format";
@@ -63,6 +64,30 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
       if (before !== undefined && done > before) {
         void refresh(deliveries);
       }
+    },
+  );
+  // A transfer another tab is sending ends when that tab lets go of its lock,
+  // finished or closed. Read the list again then. The key is the joined ids so
+  // the effect restarts only when the set changes, not on every phase write.
+  createEffect(
+    () =>
+      Object.entries(transfers)
+        .filter(([, progress]) => progress.phase === "elsewhere")
+        .map(([transferId]) => transferId)
+        .join(","),
+    (ids) => {
+      const abort = new AbortController();
+      const readWhenFree = async (transferId: string) => {
+        if (await untilFree(transferId, abort.signal)) {
+          void refresh(deliveries);
+        }
+      };
+      for (const transferId of ids === "" ? [] : ids.split(",")) {
+        void readWhenFree(transferId);
+      }
+      return () => {
+        abort.abort();
+      };
     },
   );
   // A server-side finalizing transfer settles on its own (this tab's lost
