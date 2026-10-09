@@ -10,7 +10,7 @@ import { inkStrokes } from "../landing/notebook";
 import { Button } from "../ui/Button";
 import { upgradeFrom } from "./billing";
 import { paidPlansOpen } from "../ui/support";
-import { bytes } from "./format";
+import { bytes, untilDate } from "./format";
 
 const ghost = css({
   bg: "panel",
@@ -338,6 +338,9 @@ export function SendCard(props: {
             <p>
               {bytes(props.billing.usedBytes)} of {bytes(props.billing.limitBytes)} in use on{" "}
               {plans[props.billing.plan].name}
+              <Show when={props.billing.grantEndsAt}>
+                {(end) => <> until {untilDate(end())}</>}
+              </Show>
               <Show when={paidPlansOpen && upgradeFrom[props.billing.plan]}>
                 {(target) => (
                   <>

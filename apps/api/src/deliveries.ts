@@ -20,6 +20,7 @@ import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 
 import { LinkTokens, newLinkId } from "./link-tokens";
+import { Plans } from "./plans";
 import { Storage, UPLOAD_URL_TTL } from "./storage";
 
 // D1 caps a statement at 100 bound parameters and a transfer row binds 8.
@@ -110,6 +111,7 @@ export class Deliveries extends Context.Service<
     Deliveries,
     Effect.gen(function* makeDeliveries() {
       const { batch, db } = yield* Database;
+      const userPlans = yield* Plans;
       const tokens = yield* LinkTokens;
       const storage = yield* Storage;
 
@@ -273,11 +275,7 @@ export class Deliveries extends Context.Service<
 
           // Refused before any bytes upload. Two creates racing past the limit
           // both land; the next create sees both, so the overshoot stays bounded.
-          const subscription = yield* db.query.subscription.findFirst({
-            columns: { plan: true },
-            where: { userId: senderId },
-          });
-          const plan = subscription?.plan ?? "free";
+          const { plan } = yield* userPlans.current(senderId);
           if (plan === "free") {
             // Cancelled deliveries count too, so create-and-cancel can't loop.
             const now = yield* Clock.currentTimeMillis;

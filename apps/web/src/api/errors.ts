@@ -1,4 +1,5 @@
 import {
+  AccessCodeRefused,
   AuthenticationUnavailable,
   BillingUnavailable,
   DeliveryConflict,
@@ -32,6 +33,7 @@ import { paidPlansOpen, supportEmail } from "../ui/support";
 export type ApiError = Rpc.Error<RpcGroup.Rpcs<typeof Api>> | RpcClientError;
 
 const ApiErrors = Schema.Union([
+  AccessCodeRefused,
   AuthenticationUnavailable,
   BillingUnavailable,
   DeliveryConflict,
@@ -64,6 +66,7 @@ const planThatFits = (error: OverPlanLimit) =>
 
 const tooMany = {
   authRequests: "Too many sign-in attempts from your network.",
+  codeRedemptions: "Too many code attempts.",
   deliveriesPerDay: "Too many new deliveries in a day.",
   deliveriesPerHour: "Too many new deliveries in an hour.",
   newAccounts: "Too many new accounts from your network today.",
@@ -85,6 +88,14 @@ const wait = (seconds: number) => {
 
 const words = Match.type<ApiError>().pipe(
   Match.tagsExhaustive({
+    AccessCodeRefused: (error) =>
+      Match.value(error.reason).pipe(
+        Match.when("unknown", () => "We don't know that code. Check the spelling and try again."),
+        Match.when("expired", () => "That code has expired."),
+        Match.when("usedUp", () => "That code has run out of uses."),
+        Match.when("alreadyRedeemed", () => "You've already used that code."),
+        Match.exhaustive,
+      ),
     AuthenticationUnavailable: () => "We couldn't check your sign-in. Try again in a moment.",
     // `provider` covers Polar refusing the request and Polar not answering.
     // Neither charges anything.

@@ -48,6 +48,25 @@ To open production once Polar clears verification:
 
 No code changes. Setting the variable back to `false` and redeploying closes it again and deletes the live webhook endpoint; products stay in Polar.
 
+## Access codes
+
+A code gives a paid plan for free for a set number of days, so beta testers get Pro before billing opens. It never touches Polar. While a grant is live the user gets the higher of it and their subscription, and when it ends they drop back to whatever the subscription gives. Codes work the same with paid plans open or closed. `Plans` in `apps/api/src/plans.ts` decides the plan for every limit.
+
+- Each code has a plan, a grant length in days, a number of uses and an optional last day to redeem. Codes ignore case.
+- One user redeems a code once. A use is spent only when the grant lands, and the database refuses a redemption past the code's uses.
+- Send `https://tranzfer.app/sign-in?code=BETA-PRO`. The code survives Google sign-in and redeems on the dashboard. A signed-in user can also type it under "Have a code?" in the account menu.
+
+Create and list codes from the main checkout. The script finds the stage's D1 and runs `wrangler d1 execute --remote` with your `wrangler login`, or with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` when the repo's `.env` sets them. `--stage` defaults to `production`. `--expires` is the last day it can be redeemed, in UTC.
+
+```text
+vp run --filter @tranzfer/api code:create -- --code BETA-PRO --plan pro --days 90 --uses 30
+vp run --filter @tranzfer/api code:create -- --code BETA-PRO --plan pro --days 90 --uses 30 --stage staging --expires 2026-12-31
+vp run --filter @tranzfer/api code:list
+vp run --filter @tranzfer/api code:list -- --stage staging
+```
+
+Each run prints the database name. To stop a code early, run `UPDATE access_code SET expires_at = 0 WHERE code = 'BETA-PRO'` on it with `wrangler d1 execute <name> --remote --command`. Grants already made keep their end date.
+
 ## How capacity works
 
 Capacity is active transfer space. It isn't storage you keep, and it isn't a monthly bandwidth quota. A delivery counts against it from creation until it expires, is cancelled or is purged; then the space is free again. A Pro user can send 5 TB in a month as long as no more than 1 TB is live at once.
@@ -64,8 +83,9 @@ Limits stop one person or bot from flooding sign-up, sign-in or the Free plan. T
 | New accounts            | client IP   | all   | 10 a day              |
 | New deliveries          | sender      | Free  | 20 an hour, 100 a day |
 | Upload signing requests | sender      | Free  | 200 every 10 seconds  |
+| Access code attempts    | user        | all   | 5 a minute            |
 
-Sign-in covers every `/api/auth` request, Google's start and callback and the staging login included. An IPv6 client counts by its /64. Cancelled deliveries count toward the delivery cap, so create-and-cancel can't loop. A part is at least 64 MiB, so 20 signing requests a second is faster than a gigabit line needs. Paid and comp plans have no delivery or signing cap; they pay for what they use.
+Sign-in covers every `/api/auth` request, Google's start and callback and the staging login included. An IPv6 client counts by its /64. Cancelled deliveries count toward the delivery cap, so create-and-cancel can't loop. A part is at least 64 MiB, so 20 signing requests a second is faster than a gigabit line needs. Paid, comp and code-granted plans have no delivery or signing cap. Code attempts count wrong and right codes alike, so nobody can guess codes quickly.
 
 ## Cost guardrail
 

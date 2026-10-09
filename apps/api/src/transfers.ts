@@ -26,6 +26,7 @@ import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 
 import { Deliveries, UPLOAD_WINDOW } from "./deliveries";
+import { Plans } from "./plans";
 import { Storage } from "./storage";
 import type { StoredObject } from "./storage";
 
@@ -89,6 +90,7 @@ export class Transfers extends Context.Service<
     Effect.gen(function* makeTransfers() {
       const { db } = yield* Database;
       const deliveries = yield* Deliveries;
+      const plans = yield* Plans;
       const signingRate = yield* SigningRate;
       const storage = yield* Storage;
 
@@ -267,17 +269,14 @@ export class Transfers extends Context.Service<
         ) {
           // Every sender is counted, but only Free is held to it, so the plan
           // is read only once the count runs over.
-          if (!(yield* signingRate.allow(senderId))) {
-            const subscription = yield* db.query.subscription.findFirst({
-              columns: { plan: true },
-              where: { userId: senderId },
+          if (
+            !(yield* signingRate.allow(senderId)) &&
+            (yield* plans.current(senderId)).plan === "free"
+          ) {
+            return yield* new RateLimited({
+              limit: "uploadSigning",
+              retryAfterSeconds: rateLimits.uploadSigning.windowSeconds,
             });
-            if (subscription === undefined || subscription.plan === "free") {
-              return yield* new RateLimited({
-                limit: "uploadSigning",
-                retryAfterSeconds: rateLimits.uploadSigning.windowSeconds,
-              });
-            }
           }
           const transfer = yield* owned(senderId, { objectKey: key });
           if (transfer === undefined) {

@@ -4,10 +4,13 @@ import * as RpcGroup from "effect/rpc/RpcGroup";
 
 import { Authenticated, Principal, Unauthorized } from "./auth";
 import {
+  AccessCodeInput,
+  AccessCodeRefused,
   BillingSummary,
   BillingUnavailable,
   OverPlanLimit,
   PaidPlanId,
+  PlanGrant,
   RateLimited,
   RetentionNotInPlan,
 } from "./billing";
@@ -72,6 +75,11 @@ export class Api extends RpcGroup.make(
   Rpc.make("OpenBillingPortal", {
     error: BillingUnavailable,
     success: Schema.Struct({ url: Schema.String }),
+  }).middleware(Authenticated),
+  Rpc.make("RedeemCode", {
+    error: Schema.Union([AccessCodeRefused, RateLimited]),
+    payload: Schema.Struct({ code: AccessCodeInput }),
+    success: PlanGrant,
   }).middleware(Authenticated),
   Rpc.make("OpenLink", {
     error: Schema.Union([LinkExpired, LinkNotFound, LinkNotReady]),

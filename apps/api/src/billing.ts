@@ -26,6 +26,7 @@ import * as Stream from "effect/Stream";
 import { Deliveries } from "./deliveries";
 import { polarClient } from "./infrastructure/polar";
 import type { polarAccess } from "./infrastructure/polar";
+import { Plans } from "./plans";
 
 /** The delivery is not from Polar: a missing header, a stale timestamp or a bad signature. */
 export class InvalidWebhook extends Data.TaggedError("InvalidWebhook")<{
@@ -148,6 +149,7 @@ export class Billing extends Context.Service<
       Effect.gen(function* makeBilling() {
         const { db } = yield* Database;
         const deliveries = yield* Deliveries;
+        const userPlans = yield* Plans;
         const polarContext = yield* Effect.transposeOption(
           Option.map(options.polar, ({ access }) => Layer.build(polarClient(access))),
         );
@@ -308,9 +310,10 @@ export class Billing extends Context.Service<
               yield* Effect.ignore(reconcile(userId));
             }
             const current = yield* row(userId);
-            const plan = current?.plan ?? "free";
+            const { grantEndsAt, plan } = yield* userPlans.current(userId);
             return {
               cancelsAtPeriodEnd: current?.cancelAtPeriodEnd ?? false,
+              grantEndsAt,
               limitBytes: plans[plan].activeBytes,
               maxRetentionDays: plans[plan].maxRetentionDays,
               periodEnd: current?.currentPeriodEnd ?? null,
