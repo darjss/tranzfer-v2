@@ -18,11 +18,13 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
 import * as Struct from "effect/Struct";
+import * as Tracer from "effect/Tracer";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as RpcTest from "effect/rpc/RpcTest";
 import { createSignal, Errored, flush, Loading, onSettled, Show } from "solid-js";
 
 import { ApiClient } from "../api/client";
+import { reportFailure } from "../api/errors";
 import { NotifyMe } from "../landing/Pricing";
 import { RuntimeContext } from "../api/solid-effect";
 import { patchTransfer } from "../uploads/store";
@@ -992,4 +994,27 @@ describe("dashboard reactivity", () => {
     expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
   });
+
+  it.effect("the boundary report keeps the real error and drops URLs and query strings", () =>
+    Effect.gen(function* reportsTheError() {
+      const attributes: Map<string, unknown>[] = [];
+      const tracer = Tracer.make({
+        span: (options) =>
+          new (class extends Tracer.NativeSpan {
+            override end(...args: Parameters<Tracer.NativeSpan["end"]>) {
+              super.end(...args);
+              attributes.push(this.attributes);
+            }
+          })(options),
+      });
+      const failure = new TypeError("could not read https://tranzfer.app/rpc?code=SECRET twice");
+      yield* reportFailure(failure, ["DeliveriesPage", "Board"]).pipe(Effect.withTracer(tracer));
+
+      const [reported] = attributes;
+      expect(reported?.get("error.type")).toBe("TypeError");
+      expect(reported?.get("error.message")).toBe("could not read /rpc twice");
+      expect(reported?.get("owner.path")).toBe("DeliveriesPage > Board");
+      expect(String(reported?.get("error.stack"))).not.toMatch(/SECRET|https:/u);
+    }),
+  );
 });
