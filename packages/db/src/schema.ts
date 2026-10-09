@@ -17,25 +17,31 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-export const user = sqliteTable(
-  "user",
+export const user = sqliteTable("user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
+  image: text("image"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+// One row per account creation a client IP was allowed, for the
+// new-accounts cap. The sign-up hook adds a row only while the IP is under the
+// cap, in the same statement that counts, so concurrent sign-ups can't pass it.
+export const signup = sqliteTable(
+  "signup",
   {
-    id: text("id").primaryKey(),
-    name: text("name").notNull(),
-    email: text("email").notNull().unique(),
-    emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
-    image: text("image"),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .$onUpdate(() => new Date())
-      .notNull(),
-    // The client IP that created the account, for the new-accounts-per-IP cap.
-    signupIp: text("signup_ip"),
+    ip: text("ip").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [index("user_signupIp_createdAt_idx").on(table.signupIp, table.createdAt)],
+  (table) => [index("signup_ip_createdAt_idx").on(table.ip, table.createdAt)],
 );
 
 export const session = sqliteTable(

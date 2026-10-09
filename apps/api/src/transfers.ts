@@ -302,40 +302,40 @@ export class Transfers extends Context.Service<
           if (now - transfer.delivery.createdAt.getTime() > Duration.toMillis(UPLOAD_WINDOW)) {
             return yield* new UploadClosed();
           }
-          const allowed = Match.value(transfer.state).pipe(
-            Match.when("uploading", () => true),
-            // Finalizing still signs parts on the existing upload id: a lost
-            // Complete can hide missing parts, and NotUploaded sends transport
-            // back to fill them. Create stays closed, since no new upload id
-            // may start once Complete was signed. Safe because a completed or
-            // aborted upload id rejects new parts, and finalize's seal aborts
-            // every other open upload before recording the object. The
-            // empty-file Put is safe to sign again: If-None-Match makes a
-            // second write fail, and a lost response must not strand the
-            // transfer.
-            Match.when("finalizing", () => request._tag !== "Create"),
-            Match.orElse(() => false),
-          );
-          if (!allowed) {
+          if (transfer.state !== "uploading" && transfer.state !== "finalizing") {
             return yield* new UploadClosed();
           }
           // An empty file is a single guarded PUT; anything else is multipart.
-          if ((request._tag === "Put") !== (transfer.size === 0)) {
-            return yield* new InvalidUpload();
-          }
-          if (request._tag === "Part" && request.partNumber > partCount(transfer.size)) {
-            return yield* new InvalidUpload();
-          }
-          // From here the object may land without the browser living to say so;
-          // `finalizing` is what the sweeper looks for.
-          if (request._tag === "Put" || request._tag === "Complete") {
-            yield* db
-              .update(schema.transfer)
-              .set({ state: "finalizing" })
-              .where(
-                and(eq(schema.transfer.id, transfer.id), eq(schema.transfer.state, "uploading")),
-              );
-          }
+          const multipart = transfer.size > 0;
+          const invalid = Effect.fail(new InvalidUpload());
+          // From here the object may land without the browser living to say
+          // so; `finalizing` is what the sweeper looks for.
+          const markFinalizing = db
+            .update(schema.transfer)
+            .set({ state: "finalizing" })
+            .where(and(eq(schema.transfer.id, transfer.id), eq(schema.transfer.state, "uploading")))
+            .pipe(Effect.asVoid);
+          // Finalizing still signs parts on the existing upload id: a lost
+          // Complete can hide missing parts, and NotUploaded sends transport
+          // back to fill them. Create stays closed, since no new upload id may
+          // start once Complete was signed. Safe because a completed or
+          // aborted upload id rejects new parts, and finalize's seal aborts
+          // every other open upload before recording the object. The
+          // empty-file Put is safe to sign again: If-None-Match makes a second
+          // write fail, and a lost response must not strand the transfer.
+          yield* Match.valueTags(request, {
+            Complete: () => (multipart ? markFinalizing : invalid),
+            Create: () => {
+              if (transfer.state === "finalizing") {
+                return Effect.fail(new UploadClosed());
+              }
+              return multipart ? Effect.void : invalid;
+            },
+            List: () => (multipart ? Effect.void : invalid),
+            Part: ({ partNumber }) =>
+              multipart && partNumber <= partCount(transfer.size) ? Effect.void : invalid,
+            Put: () => (multipart ? invalid : markFinalizing),
+          });
           return yield* storage.signUpload(key, request);
         }, dieOnDatabaseError),
       });

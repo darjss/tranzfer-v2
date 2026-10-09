@@ -1,13 +1,16 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import { BetterAuth, Database as AuthDatabase } from "@alchemy.run/better-auth";
 import type { BetterAuthProps, DatabaseService } from "@alchemy.run/better-auth";
-import { schema } from "@tranzfer/db";
+import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { RateLimited, rateLimits } from "@tranzfer/contracts";
 import type { Principal } from "@tranzfer/contracts";
 import { RuntimeContext } from "alchemy";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, getIP } from "better-auth/api";
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
+import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -36,7 +39,7 @@ export class Auth extends Context.Service<
     readonly fetch: Effect.Effect<
       HttpServerResponse.HttpServerResponse,
       HttpServerError.HttpServerError | HttpBody.HttpBodyError,
-      HttpServerRequest.HttpServerRequest | Scope.Scope
+      Database | HttpServerRequest.HttpServerRequest | Scope.Scope
     >;
     readonly session: (
       headers: Headers,
@@ -50,6 +53,75 @@ export class Auth extends Context.Service<
 // Cloudflare sets this on every request at the edge; a client can't forge it,
 // and the web Worker forwards the original headers over the service binding.
 const ipAddress = { ipAddressHeaders: ["cf-connecting-ip"] };
+
+// Better Auth calls hooks and plugin endpoints as Promise callbacks. Each auth
+// request runs Better Auth inside its own store, so a callback reaches the
+// services and abort signal of the request that triggered it.
+const authRequests = new AsyncLocalStorage<{
+  readonly context: Context.Context<Database>;
+  readonly signal: AbortSignal;
+}>();
+
+/**
+ * Runs an Effect from a Better Auth callback (a database hook, a plugin
+ * endpoint) with the services and abort signal of the auth request that
+ * triggered it. To make Better Auth answer with an error, fail with its
+ * `APIError`; any other failure rejects as a defect.
+ */
+export const runAuthCallback = async <A, E>(effect: Effect.Effect<A, E, Database>) => {
+  const current = authRequests.getStore();
+  if (current === undefined) {
+    throw new APIError("SERVICE_UNAVAILABLE", {
+      message: "Auth callbacks run only inside an auth request",
+    });
+  }
+  return await Effect.runPromiseWith(current.context)(effect, { signal: current.signal });
+};
+
+/**
+ * Counts one new account for a client IP, or fails with how long until the
+ * IP has room under `rateLimits.newAccounts`. The statement that counts the
+ * IP's recent sign-ups is the one that adds this one, so concurrent sign-ups
+ * can't pass the cap.
+ */
+export const admitSignup = Effect.fn("Auth.admitSignup")(function* admitSignup(ip: string) {
+  const { db } = yield* Database;
+  const { newAccounts } = rateLimits;
+  const now = yield* Clock.currentTimeMillis;
+  const since = new Date(now - newAccounts.windowSeconds * 1000);
+  const recent = and(eq(schema.signup.ip, ip), gt(schema.signup.createdAt, since));
+  const [admitted] = yield* db
+    .insert(schema.signup)
+    .select((qb) =>
+      qb
+        .select({
+          createdAt: sql<Date>`${now}`.as("created_at"),
+          ip: sql<string>`${ip}`.as("ip"),
+        })
+        .from(sql`(select 1)`)
+        .where(lt(sql`(select count(*) from ${schema.signup} where ${recent})`, newAccounts.limit)),
+    )
+    .returning();
+  if (admitted !== undefined) {
+    return admitted;
+  }
+  const newestFirst = yield* db
+    .select({ createdAt: schema.signup.createdAt })
+    .from(schema.signup)
+    .where(recent)
+    .orderBy(desc(schema.signup.createdAt))
+    .limit(newAccounts.limit);
+  return yield* new RateLimited({
+    limit: "newAccounts",
+    // The insert just found the window full, so the wait is always there.
+    retryAfterSeconds:
+      secondsUntilRoom(
+        newestFirst.map((row) => row.createdAt),
+        newAccounts,
+        now,
+      ) ?? newAccounts.windowSeconds,
+  });
+}, dieOnDatabaseError);
 
 const SigningSecret = Schema.Redacted(Schema.String.check(Schema.isMinLength(32)));
 
@@ -115,9 +187,6 @@ export const makeAuth = (
 ) =>
   Effect.gen(function* auth() {
     const configured = yield* providers(stage, d1);
-    // Better Auth's hooks are plain async callbacks; they reach D1 through
-    // the services this Effect runs with.
-    const services = yield* Effect.context();
     const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
 
     // Our snake_case, integer-ms columns rule out the plugin's Kysely D1 layer.
@@ -139,37 +208,23 @@ export const makeAuth = (
             // New accounts per client IP. A creation outside a request has no
             // IP and is not counted. The OAuth callback turns this error into
             // a redirect to the error URL with the code and description.
-            before: async (user, context) => {
+            before: async (_user, context) => {
               const headers = context?.headers;
               const ip = headers === undefined ? null : getIP(headers, { advanced: { ipAddress } });
-              if (ip === null) {
-                return { data: user };
-              }
-              const { newAccounts } = rateLimits;
-              const now = Date.now();
-              const recent = await drizzle(await Effect.runPromiseWith(services)(d1))
-                .select({ createdAt: schema.user.createdAt })
-                .from(schema.user)
-                .where(
-                  and(
-                    eq(schema.user.signupIp, ip),
-                    gt(schema.user.createdAt, new Date(now - newAccounts.windowSeconds * 1000)),
+              if (ip !== null) {
+                await runAuthCallback(
+                  admitSignup(ip).pipe(
+                    Effect.catchTag("RateLimited", ({ retryAfterSeconds }) =>
+                      Effect.fail(
+                        new APIError("TOO_MANY_REQUESTS", {
+                          code: "RateLimited",
+                          message: String(retryAfterSeconds),
+                        }),
+                      ),
+                    ),
                   ),
-                )
-                .orderBy(desc(schema.user.createdAt))
-                .limit(newAccounts.limit);
-              const retryAfterSeconds = secondsUntilRoom(
-                recent.map((row) => row.createdAt),
-                newAccounts,
-                now,
-              );
-              if (retryAfterSeconds !== undefined) {
-                throw new APIError("TOO_MANY_REQUESTS", {
-                  code: "RateLimited",
-                  message: String(retryAfterSeconds),
-                });
+                );
               }
-              return { data: { ...user, signupIp: ip } };
             },
           },
         },
@@ -186,11 +241,6 @@ export const makeAuth = (
       // Its stores are per isolate or per path; allowRequest limits instead.
       rateLimit: { enabled: false },
       trustedOrigins: [origin],
-      user: {
-        additionalFields: {
-          signupIp: { input: false, required: false, returned: false, type: "string" },
-        },
-      },
     }).pipe(Effect.provide(authDatabase));
 
     return Auth.of({
@@ -204,7 +254,15 @@ export const makeAuth = (
             { headers: { "retry-after": String(windowSeconds) }, status: 429 },
           );
         }
-        return yield* instance.fetch.pipe(Effect.provide(RuntimeContext.phantom));
+        const native = yield* instance.auth.pipe(Effect.provide(RuntimeContext.phantom));
+        const web = yield* HttpServerRequest.toWeb(request).pipe(Effect.orDie);
+        const context = yield* Effect.context<Database>();
+        // Better Auth answers API errors as responses; it rejects only on defects.
+        const response = yield* Effect.promise(
+          async (signal) =>
+            await authRequests.run({ context, signal }, async () => await native.handler(web)),
+        );
+        return HttpServerResponse.fromWeb(response);
       }).pipe(Effect.withSpan("Auth.fetch")),
       session: Effect.fn("Auth.session")(function* session(headers: Headers) {
         const native = yield* instance.auth.pipe(Effect.provide(RuntimeContext.phantom));
