@@ -66,9 +66,10 @@ interface TransferMeta extends Meta {
 // start), so it never feeds speed or time left.
 const SPEED_WINDOW_MS = 30_000;
 // R2's S3 endpoint is HTTP/1.1, so Chromium opens at most 6 connections to
-// it; one part stream tops out near 20 MB/s. Four parts at once is rclone's
-// default and leaves room for a second file.
-const PART_CONCURRENCY = 4;
+// it, and each part stream tops out near 18 MiB/s. Six parts fill those
+// connections: 92 MiB/s against 62 at four (bench/upload, 10 GiB on staging).
+// A second big file's parts wait a few seconds for a free connection.
+const PART_CONCURRENCY = 6;
 
 /** Bytes of the given parts; only the last part is short. */
 const partBytes = (parts: ReadonlySet<number>, size: number) => {
