@@ -1,6 +1,7 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createProjection, createSignal } from "solid-js";
 import { css, cx } from "styled-system/css";
 import { checked, quote } from "./prices";
+import type { Quote } from "./prices";
 import { eyebrow } from "../landing/styles";
 
 // Drag the size and how often; every service's monthly price moves with it.
@@ -52,12 +53,14 @@ export default function PriceCalculator() {
   const [count, setCount] = createSignal(4, { name: "calculator-count" });
   const [live, setLive] = createSignal(1, { name: "calculator-live" });
   const size = () => sizes[sizeIndex()] ?? 1;
-  const quotes = createMemo(() => quote(size(), count(), live()), {
+  // A projection reconciles each drag's fresh quotes by id, so rows keep
+  // their identity and only the fields that changed update.
+  const quotes = createProjection<Quote[]>(() => [...quote(size(), count(), live())], [], {
     name: "calculator-quotes",
   });
-  const most = () => Math.max(1, ...quotes().map((q) => q.price ?? 0));
+  const most = () => Math.max(1, ...quotes.map((q) => q.price ?? 0));
   const cheapest = () =>
-    Math.min(...quotes().flatMap((q) => (q.price === undefined ? [] : [q.price])));
+    Math.min(...quotes.flatMap((q) => (q.price === undefined ? [] : [q.price])));
 
   return (
     <section
@@ -148,7 +151,7 @@ export default function PriceCalculator() {
       </p>
 
       <div class={css({ display: "grid", gap: "3", mt: "8" })} aria-live="polite">
-        <For each={quotes()}>
+        <For each={quotes}>
           {(q) => (
             <div
               class={cx(
