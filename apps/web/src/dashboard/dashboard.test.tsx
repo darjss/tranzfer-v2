@@ -113,6 +113,7 @@ const makeWorld = (
           Deliveries: () => Effect.sync(() => [...server]),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.sync(() => billing),
+          JoinInterest: () => Effect.die("unused"),
           Me: () => Effect.service(CurrentPrincipal),
           OpenBillingPortal: () => Effect.die("unused"),
           OpenLink: () => Effect.die("unused"),

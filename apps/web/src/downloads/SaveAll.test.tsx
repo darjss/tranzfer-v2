@@ -87,6 +87,7 @@ const makeWorld = () => {
           Deliveries: () => Effect.die("unused"),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.die("unused"),
+          JoinInterest: () => Effect.die("unused"),
           Me: () => Effect.die("unused"),
           OpenBillingPortal: () => Effect.die("unused"),
           OpenLink: () => Effect.succeed(delivery),
