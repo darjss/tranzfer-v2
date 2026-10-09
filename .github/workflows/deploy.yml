@@ -23,6 +23,9 @@ jobs:
       url: ${{ github.ref_name == 'main' && 'https://tranzfer.app' || 'https://staging.tranzfer.app' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history so the sitemap's lastmod is the last page change, not this commit.
+          fetch-depth: 0
       - uses: voidzero-dev/setup-vp@d5616419e3a9637febec6da1475cee9d07a317fd # v1.20.0
         with:
           node-version: "24"

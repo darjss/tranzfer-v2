@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { fileRoutes } from "filesystem-routing/vite";
 import { sitemap } from "prerender-crawler";
@@ -26,6 +27,14 @@ const staticPages = [
   ),
   "/llms.txt",
 ];
+
+// Sitemap lastmod: when the page sources last changed, not when the build ran.
+// The production deploy checks out full history so this stays accurate there.
+const lastmod = execFileSync(
+  "git",
+  ["log", "-1", "--format=%cI", "--", "src", "../../packages/contracts/src"],
+  { cwd: import.meta.dirname, encoding: "utf-8" },
+).trim();
 
 const envFlag = (value: string | undefined) => value !== undefined && value !== "";
 
@@ -69,7 +78,7 @@ export default defineConfig({
       autoSubfolderIndex: false,
       crawlLinks: false,
       emitPages: (p) => staticPages.includes(p),
-      integrations: [sitemap({ hostname: "https://tranzfer.app" })],
+      integrations: [sitemap({ entry: () => ({ lastmod }), hostname: "https://tranzfer.app" })],
       mode: "hybrid",
       pages: staticPages,
     }),
