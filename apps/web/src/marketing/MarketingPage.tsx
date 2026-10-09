@@ -468,7 +468,9 @@ export default function MarketingPage(props: {
                 rowGap: "2",
               })}
             >
-              <For each={props.related}>
+              {/* The route builds fresh link objects on every visit; key by href so
+                  moving between pages keeps the rows that stay. */}
+              <For each={props.related} keyed={(link) => link.href}>
                 {(link) => (
                   <li>
                     <a
@@ -478,9 +480,9 @@ export default function MarketingPage(props: {
                         textDecorationColor: "line",
                         textUnderlineOffset: "[4px]",
                       })}
-                      href={link.href}
+                      href={link().href}
                     >
-                      {link.label}
+                      {link().label}
                     </a>
                   </li>
                 )}
