@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "test": "vp test",
-    "code:create": "node scripts/codes.ts create",
-    "code:list": "node scripts/codes.ts list"
+    "code:create": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/codes.ts create",
+    "code:list": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/codes.ts list",
+    "code:revoke": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/codes.ts revoke"
   },
   "dependencies": {
     "@alchemy.run/better-auth": "2.0.0-beta.81",
@@ -22,10 +23,10 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
+    "@effect/platform-node": "catalog:",
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "wrangler": "4.147.0"
+    "vitest": "catalog:"
   }
 }

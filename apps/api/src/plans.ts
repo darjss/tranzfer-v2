@@ -28,7 +28,7 @@ const databaseNow = sql`cast(unixepoch('subsecond') * 1000 as integer)`;
 const latest = (now: number) => sql`max(${now}, ${databaseNow})`;
 
 /** A calendar day like 2026-12-31, as its UTC midnight. A day that doesn't exist fails. */
-const Day = Schema.String.check(
+export const AccessCodeDay = Schema.String.check(
   Schema.makeFilter(
     (day: string) => {
       const time = Date.parse(`${day}T00:00:00Z`);
@@ -70,7 +70,7 @@ export const NewAccessCode = Schema.Struct({
   // Up to ten years, so every grant ends on a real date.
   days: Schema.Int.check(Schema.isBetween({ maximum: 3650, minimum: 1 })),
   // The last day it can be redeemed, in UTC; it stops at the next midnight.
-  lastDay: Schema.optional(Day),
+  lastDay: Schema.optional(AccessCodeDay),
   maxUses: Schema.Int.check(Schema.isBetween({ maximum: 1_000_000, minimum: 1 })),
   plan: PaidPlanId,
 });

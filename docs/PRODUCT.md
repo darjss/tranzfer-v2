@@ -53,19 +53,20 @@ No code changes. Setting the variable back to `false` and redeploying closes it 
 A code gives a paid plan for free for a set number of days, so beta testers get Pro before billing opens. It never touches Polar. While a grant is live the user gets the higher of it and their subscription, and when it ends they drop back to whatever the subscription gives. Codes work the same with paid plans open or closed. `Plans` in `apps/api/src/plans.ts` decides the plan for every limit.
 
 - Each code has a plan, a grant length in days, a number of uses and an optional last day to redeem. Codes ignore case.
-- One user redeems a code once. A use is spent only when the grant lands, and the database refuses a redemption past the code's uses.
+- One user redeems a code once. A use is spent only when the grant lands. The redemption's write checks the code again, so a code that ran out of uses, expired or was revoked after the redemption read it grants nothing.
 - Send `https://tranzfer.app/sign-in?code=BETA-PRO`. The code survives Google sign-in and redeems on the dashboard. A signed-in user can also type it under "Have a code?" in the account menu.
 
-Create and list codes from the main checkout. The script finds the stage's D1 and runs `wrangler d1 execute --remote` with your `wrangler login`, or with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` when the repo's `.env` sets them. `--stage` defaults to `production`. `--expires` is the last day it can be redeemed, in UTC.
+Create, list and revoke codes with `scripts/codes.ts` in `apps/api`. Alchemy finds the stage's D1 in the stack's state and queries it with your Alchemy profile's Cloudflare credentials, the same ones `alchemy plan` uses. `--stage` defaults to `production`. `--days` is 1 to 3650. `--expires` is the last day it can be redeemed, in UTC, and must be a real date.
 
 ```text
 vp run --filter @tranzfer/api code:create -- --code BETA-PRO --plan pro --days 90 --uses 30
 vp run --filter @tranzfer/api code:create -- --code BETA-PRO --plan pro --days 90 --uses 30 --stage staging --expires 2026-12-31
 vp run --filter @tranzfer/api code:list
 vp run --filter @tranzfer/api code:list -- --stage staging
+vp run --filter @tranzfer/api code:revoke -- --code BETA-PRO
 ```
 
-Each run prints the database name. To stop a code early, run `UPDATE access_code SET expires_at = 0 WHERE code = 'BETA-PRO'` on it with `wrangler d1 execute <name> --remote --command`. Grants already made keep their end date.
+`code:revoke` ends a code now by setting its `expires_at` to the database's clock. Grants already made keep their end date.
 
 ## How capacity works
 
