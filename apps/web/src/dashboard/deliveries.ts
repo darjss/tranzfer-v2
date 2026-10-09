@@ -19,7 +19,7 @@ import { runEffect } from "../api/solid-effect";
 import type { AppServices } from "../api/solid-effect";
 import { transfers } from "../uploads/store";
 import { untilFree } from "../uploads/tabs";
-import { Uploads } from "../uploads/uploads";
+import { retryTransport, Uploads } from "../uploads/uploads";
 import type { ChosenFile } from "../uploads/uploads";
 import { bytes, kindOf, rollup, totalSize, untilDate } from "./format";
 
@@ -47,7 +47,9 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     () =>
       runEffect(
         ApiClient.use((api) =>
-          api.Deliveries().pipe(
+          // A dropped read right after a big upload used to swap the whole
+          // page for the error card; transport failures retry first.
+          retryTransport(api.Deliveries()).pipe(
             // Every read rebuilds what this tab can still recover.
             Effect.tap((list) => Uploads.use((uploads) => uploads.restore(list))),
             Effect.map((list) => [...list]),
