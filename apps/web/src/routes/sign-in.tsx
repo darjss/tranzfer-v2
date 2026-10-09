@@ -276,7 +276,7 @@ export default function SignIn() {
         <div class={css({ lg: { visibility: "hidden" } })}>
           <Brand />
         </div>
-        <div class={css({ marginBlock: "auto", maxW: "narrow", py: "16" })}>
+        <div class={css({ marginBlock: { base: "0", lg: "auto" }, maxW: "narrow", py: "16" })}>
           <h1
             class={css({
               fontSize: "40",
