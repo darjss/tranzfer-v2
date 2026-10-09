@@ -178,6 +178,7 @@ export function NotifyMe(props: { plan: PaidPlanId; hot: boolean }) {
 export default function Pricing(props: { heading?: "h1" }) {
   const runtime = useContext(RuntimeContext);
   const Heading = dynamic(() => props.heading ?? "h2");
+  const PlanHeading = dynamic(() => (props.heading === "h1" ? "h2" : "h3"));
 
   // The checkout call needs a session. A signed-out visitor signs in first and
   // the dashboard carries on to checkout for this plan.
@@ -269,7 +270,7 @@ export default function Pricing(props: { heading?: "h1" }) {
                     for regular big sends
                   </span>
                 </Show>
-                <h3
+                <PlanHeading
                   class={css({
                     color: hot ? "[#a9a79e]" : "mut",
                     fontSize: "13",
@@ -277,7 +278,7 @@ export default function Pricing(props: { heading?: "h1" }) {
                   })}
                 >
                   {plans[id].name}
-                </h3>
+                </PlanHeading>
                 <div
                   class={css({
                     fontFamily: "mono",
