@@ -30,6 +30,24 @@ Huge transfers that recover instead of restart. A 100 to 500 GB project survives
 
 Every plan gets the whole product: large uploads, resume, folders, links, progress and history. Paid plans buy capacity and retention, nothing else. Don't promise teams, branding, request links or enterprise features before they exist.
 
+## When paid plans open
+
+Production doesn't sell paid plans yet. Polar is still verifying the live organization's identity for payouts, and until that clears production runs with paid plans closed. One switch decides it per stage: `PAID_PLANS_OPEN`, read by `paidPlansOpen` in `apps/api/src/infrastructure/polar.ts`. It defaults to `false` on production and `true` on every sandbox stage (staging, previews, local).
+
+A closed stage:
+
+- declares no Polar products or webhook endpoint and never reads `POLAR_ACCESS_TOKEN`
+- fails checkout and the billing portal with `BillingUnavailable` reason `notOpen`, and rejects Polar webhooks
+- builds the web with `VITE_PAID_PLANS_OPEN=false`: pricing keeps the prices and each paid plan offers a "Tell me when it opens" email, the dashboard shows no upgrade or Manage billing, and a `?plan=` from sign-in doesn't start a checkout
+
+To open production once Polar clears verification:
+
+1. Check the production environment's `POLAR_ACCESS_TOKEN` secret is a live-organization token with the scopes in `.env.example`.
+2. Set the GitHub variable `PAID_PLANS_OPEN` to `true` in the production environment.
+3. Re-run the deploy workflow on `main`. It creates the three live products and the webhook endpoint, then ships the web with checkout buttons.
+
+No code changes. Setting the variable back to `false` and redeploying closes it again and deletes the live webhook endpoint; products stay in Polar.
+
 ## How capacity works
 
 Capacity is active transfer space. It isn't storage you keep, and it isn't a monthly bandwidth quota. A delivery counts against it from creation until it expires, is cancelled or is purged; then the space is free again. A Pro user can send 5 TB in a month as long as no more than 1 TB is live at once.
