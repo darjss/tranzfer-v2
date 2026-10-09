@@ -59,9 +59,9 @@ export default function ComparePage(props: {
   const url = () => `https://tranzfer.app${props.path}`;
   return (
     <SitePage>
-      <Title>{props.title} · Tranzfer</Title>
+      <Title>{`Tranzfer vs ${props.them} for large file delivery`}</Title>
       <Meta name="description" content={props.description} />
-      <Meta property="og:title" content={`${props.title} · Tranzfer`} />
+      <Meta property="og:title" content={`Tranzfer vs ${props.them}: ${props.title}`} />
       <Meta property="og:description" content={props.description} />
       <Meta property="og:url" content={url()} />
       <Link rel="canonical" href={url()} />

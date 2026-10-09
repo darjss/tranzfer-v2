@@ -32,14 +32,17 @@ const prose = css({
   textWrap: "pretty",
 });
 
+const description =
+  "Every big upload dies at 63%. We built Tranzfer so that night ends with a delivered file instead of a restart, and we put resume on every plan, free included.";
+
 export default function About() {
   return (
     <SitePage>
       <Title>Why we built it · Tranzfer</Title>
-      <Meta
-        name="description"
-        content="Every big upload dies at 63%. Tranzfer exists so that night ends with a delivered file instead of a restart."
-      />
+      <Meta name="description" content={description} />
+      <Meta property="og:description" content={description} />
+      <Meta property="og:title" content="Why we built it · Tranzfer" />
+      <Meta property="og:url" content="https://tranzfer.app/about" />
       <Link rel="canonical" href="https://tranzfer.app/about" />
       <main id="content" class={css({ py: { base: "14", lg: "24" } })}>
         <p class={eyebrow}>Why we built it</p>

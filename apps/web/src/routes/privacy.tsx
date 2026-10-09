@@ -6,7 +6,7 @@ export default function Privacy() {
     <LegalArticle
       path="/privacy"
       title="Privacy policy"
-      description="What Tranzfer stores about you and your files, who processes it, and how long it lives."
+      description="What Tranzfer stores about you and your files, which companies process it for us, how long each piece is kept, and how to get a copy or have it deleted."
       updated="8 October 2026"
     >
       <p>

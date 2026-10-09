@@ -33,7 +33,7 @@ export interface Page {
 export const features: readonly Page[] = [
   {
     description:
-      "Send hundreds of gigabytes from your browser. No app, no size anxiety, no splitting files.",
+      "Send hundreds of gigabytes from your browser as one link. Nothing to install, nothing to zip or split, and the upload resumes if the connection drops.",
     eyebrow: "Send huge files",
     image: videoEdit,
     lede: "Drag in a whole shoot and hit send. Tranzfer moves hundreds of gigabytes straight from your browser. Nothing to install, nothing to zip, no splitting a project into polite little pieces.",
@@ -58,7 +58,7 @@ export const features: readonly Page[] = [
   },
   {
     description:
-      "Wi-Fi drops, laptop sleeps, browser crashes: Tranzfer keeps what arrived and sends only what's missing.",
+      "When the Wi-Fi drops, the laptop sleeps or the browser crashes, Tranzfer keeps every part that arrived and sends only what's missing. On every plan.",
     eyebrow: "Resume anything",
     image: wrong1,
     lede: "Uploads die at the worst moment. Tranzfer keeps every piece that already arrived, so a dropped connection, a sleeping laptop or a crashed browser never sends you back to zero.",
@@ -83,7 +83,7 @@ export const features: readonly Page[] = [
   },
   {
     description:
-      "Send a whole folder with its subfolders. Recipients on desktop Chrome or Edge save it all into one folder.",
+      "Send a whole folder with its subfolders and file names. Recipients on desktop Chrome or Edge save it all into one folder; other browsers get a file list.",
     eyebrow: "Send whole folders",
     image: loftPacking,
     lede: "Pick a folder and everything inside goes, subfolders and file names included. On desktop Chrome or Edge, your recipient picks a destination folder once and everything lands there. Other browsers download the files one by one.",
@@ -108,7 +108,7 @@ export const features: readonly Page[] = [
   },
   {
     description:
-      "Every delivery is one link. Recipients download without an account, and links end when you say.",
+      "Every delivery is one link. Recipients download without an account or an app, and the link ends after 1, 3, 7 or 14 days, up to your plan's limit.",
     eyebrow: "One link, no account",
     image: filmmaker,
     lede: "Every delivery becomes one link. Your editor clicks it and downloads. They don't sign up, they don't install anything, and they don't email you asking how.",
@@ -133,7 +133,7 @@ export const features: readonly Page[] = [
   },
   {
     description:
-      "See every delivery in one place: what's moving, what's ready, what got interrupted, and how much space you're using.",
+      "See every delivery in one place: what's moving, what's ready to share, what got interrupted and needs the files again, and how much of your plan is in use.",
     eyebrow: "Your delivery desk",
     image: mountainStudio,
     lede: "Every delivery lives on one dashboard: what's moving, what's ready to share, what got interrupted and needs the files again. Plus how much of your plan you're using.",
@@ -158,7 +158,7 @@ export const features: readonly Page[] = [
   },
   {
     description:
-      "Files are encrypted, links are private, and everything is deleted when the link ends. No ads, no tracking.",
+      "Files are encrypted in transit and at rest, only people with the link can download them, and everything is deleted when the link ends. No ads, no tracking.",
     eyebrow: "Private by default",
     image: wrong6,
     lede: "Your footage is your business. Files are encrypted on the way and while stored, only people with the link can download them, and they're deleted the moment the link ends.",
@@ -186,7 +186,7 @@ export const features: readonly Page[] = [
 export const audiences: readonly Page[] = [
   {
     description:
-      "Send raw footage, dailies and whole camera cards to your editor, without babysitting the upload.",
+      "Send raw footage, dailies and whole camera cards to your editor from the browser. The upload survives hotel Wi-Fi and a sleeping laptop, so nobody babysits it.",
     eyebrow: "For videographers",
     faq: [
       {
@@ -269,7 +269,7 @@ export const audiences: readonly Page[] = [
   },
   {
     description:
-      "Deliver full-resolution shoots, raw files and selects to clients without splitting galleries.",
+      "Deliver full-resolution shoots, raw files and selects to clients as one link, without splitting galleries or zipping folders. No account needed to download.",
     eyebrow: "For photographers",
     faq: [
       {
@@ -346,7 +346,8 @@ export const audiences: readonly Page[] = [
     title: ["The whole shoot.", "One link."],
   },
   {
-    description: "Get footage from shooters without walking anyone through an upload portal.",
+    description:
+      "Get footage from shooters as one link to the whole card. No upload portal to walk anyone through, no account to create and nothing to install.",
     eyebrow: "For editors",
     faq: [
       {
@@ -424,7 +425,7 @@ export const audiences: readonly Page[] = [
   },
   {
     description:
-      "Hand off raw recordings and project files to your editor, even from a laptop on the road.",
+      "Hand off raw recordings and project files to your editor, even from a laptop on the road. A dropped connection or a sleeping laptop loses nothing that arrived.",
     eyebrow: "For creators",
     faq: [
       {
@@ -496,7 +497,7 @@ export const audiences: readonly Page[] = [
   },
   {
     description:
-      "Move productions between shooters, editors, colorists and clients on flat monthly plans.",
+      "Move productions between shooters, editors, colorists and clients on flat monthly plans with up to 3 TB of live deliveries. No per-gigabyte bill in heavy weeks.",
     eyebrow: "For studios",
     faq: [
       {
@@ -571,7 +572,8 @@ export const audiences: readonly Page[] = [
     title: ["Heavy weeks.", "Flat bills."],
   },
   {
-    description: "Send multitrack sessions, stems and masters without bouncing them down to fit.",
+    description:
+      "Send multitrack sessions, stems and masters as one link without bouncing them down to fit. Whole project folders go as they are, and recipients need no account.",
     eyebrow: "For music & audio",
     faq: [
       {

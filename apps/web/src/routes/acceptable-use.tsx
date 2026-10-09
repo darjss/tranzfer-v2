@@ -6,7 +6,7 @@ export default function AcceptableUse() {
     <LegalArticle
       path="/acceptable-use"
       title="Acceptable use"
-      description="What you can't send with Tranzfer, and how to report a link that breaks the rules."
+      description="What you can't send with Tranzfer, what happens to deliveries and accounts that break the rules, and how to report a link to support@tranzfer.app."
       updated="8 October 2026"
     >
       <p>

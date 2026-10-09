@@ -6,7 +6,7 @@ export default function Terms() {
     <LegalArticle
       path="/terms"
       title="Terms of service"
-      description="The rules for using Tranzfer to send large files: accounts, plans, links, your files and ours."
+      description="The rules for using Tranzfer to send large files by link: your account, paid plans sold through Polar, how long links last, and what happens to your files."
       updated="8 October 2026"
     >
       <p>
