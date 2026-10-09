@@ -8,7 +8,6 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 import { createMemo, createSignal, Errored, For, Loading, Show, useContext } from "solid-js";
-import type { JSX } from "@solidjs/web";
 import { css, cx } from "styled-system/css";
 
 import PhClockBold from "~icons/ph/clock-bold";
@@ -26,59 +25,7 @@ import { SaveAll } from "../../downloads/SaveAll";
 import { Unlock } from "../../downloads/Unlock";
 import Brand from "../../landing/Brand";
 import Loader, { linkQuips } from "../../ui/Loader";
-
-const ghost = css({
-  bg: "panel",
-  borderRadius: "card",
-  inset: "0",
-  pos: "absolute",
-  shadow: "paperGhost",
-});
-
-const title = css({
-  fontSize: { base: "26", sm: "40" },
-  fontWeight: "semibold",
-  letterSpacing: "title",
-  lineHeight: "compact",
-  overflowWrap: "anywhere",
-  textWrap: "balance",
-});
-
-const from = css({ color: "mut", fontFamily: "mono", fontSize: "13" });
-
-/** A stack of paper, the landing's card language, holding one delivery. */
-const Paper = (props: { children: JSX.Element }) => (
-  <div class={css({ marginInline: "auto", maxW: "[680px]", pos: "relative" })}>
-    <div class={cx(ghost, css({ transform: "[rotate(-2.5deg) translate(-10px,12px)]" }))} />
-    <div class={cx(ghost, css({ transform: "[rotate(2deg) translate(10px,8px)]" }))} />
-    <div
-      class={css({
-        bg: "panel",
-        borderRadius: "card",
-        p: { base: "5", sm: "8" },
-        pos: "relative",
-        rotate: { base: "[0deg]", sm: "[-0.6deg]" },
-        shadow: "paper",
-      })}
-    >
-      {props.children}
-    </div>
-  </div>
-);
-
-const StateIcon = (props: { children: JSX.Element; tone: "blue" | "mut" | "rust" }) => (
-  <span
-    aria-hidden="true"
-    class={cx(
-      css({ borderRadius: "full", boxSize: "11", display: "grid", mb: "5", placeItems: "center" }),
-      props.tone === "blue" && css({ bg: "blue/10", color: "blue" }),
-      props.tone === "mut" && css({ bg: "ink/6", color: "mut" }),
-      props.tone === "rust" && css({ bg: "rust/10", color: "rust" }),
-    )}
-  >
-    {props.children}
-  </span>
-);
+import { Paper, paperFrom as from, paperTitle as title, StateIcon } from "../../ui/Paper";
 
 const iconSize = css({ boxSize: "5" });
 

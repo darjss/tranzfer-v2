@@ -243,6 +243,7 @@ const makeWorld = (
           server[index] = cancelled;
           return cancelled;
         }),
+      recoverRequest: () => Effect.succeed([]),
       restore: () => Effect.void,
       // Reports some of the stored bytes checked, then holds like cancel does.
       resume: (_delivery, _files, onChecking) =>
@@ -265,6 +266,7 @@ const makeWorld = (
           server.unshift(created);
           return created;
         }),
+      sendToRequest: () => Effect.die("unused"),
     }),
   );
   // The server-side Authenticated middleware reads the incoming request.

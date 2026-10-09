@@ -163,10 +163,12 @@ const makeWorld = (options: { locked?: boolean } = {}) => {
     Uploads,
     Uploads.of({
       cancel: () => Effect.die("unused"),
+      recoverRequest: () => Effect.succeed([]),
       restore: () => Effect.void,
       resume: () => Effect.succeed([]),
       retry: () => Effect.die("unused"),
       send: () => Effect.die("unused"),
+      sendToRequest: () => Effect.die("unused"),
     }),
   );
   const request = Layer.succeed(
