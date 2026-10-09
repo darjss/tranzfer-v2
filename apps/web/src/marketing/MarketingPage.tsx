@@ -2,7 +2,6 @@ import { Link, Meta, Title } from "@solidjs/meta";
 import { PlanId, plans } from "@tranzfer/contracts";
 import { For, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
-import { audiences, features } from "./content";
 import type { Page } from "./content";
 import { Crumbs } from "./Crumbs";
 import { bytes } from "../dashboard/format";
@@ -18,7 +17,7 @@ import { SitePage } from "../ui/Site";
 // and what it replaces. Below the hero each section is a notebook row: a
 // handwritten label in the margin, the content beside it.
 
-const row = css({
+export const noteRow = css({
   borderColor: "line",
   borderTopWidth: "1px",
   columnGap: "10",
@@ -28,7 +27,7 @@ const row = css({
   rowGap: "4",
 });
 
-const label = css({
+export const noteLabel = css({
   color: "blue",
   fontFamily: "hand",
   fontSize: "26",
@@ -36,22 +35,6 @@ const label = css({
   lineHeight: "compact",
   rotate: "[-2deg]",
   transformOrigin: "left",
-});
-
-const links = css({ display: "flex", flexWrap: "wrap", gap: "2", listStyle: "none" });
-
-const chip = css({
-  _hover: { bg: "white", color: "ink" },
-  bg: "panel",
-  borderRadius: "full",
-  color: "[#3a3b40]",
-  display: "block",
-  fontSize: "15",
-  px: "4",
-  py: "1.5",
-  shadow: "ring",
-  transitionDuration: "fast",
-  transitionProperty: "[background-color,color]",
 });
 
 const body = css({ color: "mut", fontSize: "15", mt: "1", textWrap: "pretty" });
@@ -209,8 +192,8 @@ export default function MarketingPage(props: {
 
           <Show when={props.page.steps}>
             {(steps) => (
-              <section class={row}>
-                <h2 class={label}>How a send goes</h2>
+              <section class={noteRow}>
+                <h2 class={noteLabel}>How a send goes</h2>
                 <div
                   class={css({
                     alignItems: "start",
@@ -289,18 +272,24 @@ export default function MarketingPage(props: {
                           class={css({
                             columnGap: "6",
                             columns: "2",
-                            fontFamily: "mono",
-                            fontSize: "13",
-                            lineHeight: "[2]",
+                            fontSize: "15",
                             listStyle: "none",
                             mt: "3",
                           })}
                         >
                           <For each={files()}>
                             {(file) => (
-                              <li class={css({ breakInside: "avoid" })}>
+                              <li
+                                class={css({
+                                  breakInside: "avoid",
+                                  display: "flex",
+                                  gap: "2",
+                                  lineHeight: "snug",
+                                  py: "1",
+                                })}
+                              >
                                 <span aria-hidden="true" class={css({ color: "blue" })}>
-                                  ✓{" "}
+                                  ✓
                                 </span>
                                 {file}
                               </li>
@@ -317,8 +306,8 @@ export default function MarketingPage(props: {
 
           <Show when={props.page.instead}>
             {(instead) => (
-              <section class={row}>
-                <h2 class={label}>What it replaces</h2>
+              <section class={noteRow}>
+                <h2 class={noteLabel}>What it replaces</h2>
                 <ul class={css({ listStyle: "none" })}>
                   <For each={instead()}>
                     {(item) => (
@@ -356,7 +345,7 @@ export default function MarketingPage(props: {
 
           <Show when={props.page.faq}>
             {(faq) => (
-              <section class={row}>
+              <section class={noteRow}>
                 <script type="application/ld+json">
                   {JSON.stringify({
                     "@context": "https://schema.org",
@@ -368,7 +357,7 @@ export default function MarketingPage(props: {
                     })),
                   })}
                 </script>
-                <h2 class={label}>Questions</h2>
+                <h2 class={noteLabel}>Questions</h2>
                 <div
                   class={css({ borderBottomWidth: "1px", borderColor: "line", maxW: "[720px]" })}
                 >
@@ -422,8 +411,8 @@ export default function MarketingPage(props: {
             )}
           </Show>
 
-          <section class={row}>
-            <h2 class={label}>What it costs</h2>
+          <section class={noteRow}>
+            <h2 class={noteLabel}>What it costs</h2>
             <div>
               <dl
                 class={css({
@@ -467,32 +456,36 @@ export default function MarketingPage(props: {
             </div>
           </section>
 
-          <nav aria-label="Related pages" class={row}>
-            <h2 class={label}>Keep reading</h2>
-            <div class={css({ display: "grid", gap: "3" })}>
-              <ul class={links}>
-                <For each={props.related}>
-                  {(link) => (
-                    <li>
-                      <a class={chip} href={link.href}>
-                        {link.label}
-                      </a>
-                    </li>
-                  )}
-                </For>
-              </ul>
-              <ul class={links}>
-                <For each={useCase() ? features : audiences}>
-                  {(other) => (
-                    <li>
-                      <a class={chip} href={`${useCase() ? "/features" : "/for"}/${other.slug}`}>
-                        {other.menu}
-                      </a>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </div>
+          <nav aria-label="Related pages" class={noteRow}>
+            <h2 class={noteLabel}>{useCase() ? "More use cases" : "More features"}</h2>
+            <ul
+              class={css({
+                columnGap: "6",
+                display: "flex",
+                flexWrap: "wrap",
+                fontSize: "15",
+                listStyle: "none",
+                rowGap: "2",
+              })}
+            >
+              <For each={props.related}>
+                {(link) => (
+                  <li>
+                    <a
+                      class={css({
+                        _hover: { color: "blue", textDecorationColor: "blue" },
+                        textDecoration: "underline",
+                        textDecorationColor: "line",
+                        textUnderlineOffset: "[4px]",
+                      })}
+                      href={link.href}
+                    >
+                      {link.label}
+                    </a>
+                  </li>
+                )}
+              </For>
+            </ul>
           </nav>
         </main>
       </Reveal>

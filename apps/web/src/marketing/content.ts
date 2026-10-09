@@ -79,7 +79,7 @@ export const features: readonly Page[] = [
   },
   {
     description:
-      "Wi-Fi drops, laptop sleeps, browser crashes: Tranzfer keeps what arrived and sends only what's missing.",
+      "When the Wi-Fi drops, the laptop sleeps or the browser crashes, Tranzfer keeps what arrived and sends only what's missing.",
     eyebrow: "Resume anything",
     faq: [
       {
@@ -297,7 +297,7 @@ export const audiences: readonly Page[] = [
         q: "Does my editor need an account?",
       },
       {
-        a: "That's what it's built for: hundreds of gigabytes from a browser, on a connection that won't behave. There's an honest side-by-side on the Tranzfer vs WeTransfer page.",
+        a: "Yes. It's built for hundreds of gigabytes sent from a browser over a connection that won't behave. The Tranzfer vs WeTransfer page compares the two line by line, with sources.",
         q: "Is Tranzfer a WeTransfer alternative for big shoots?",
       },
     ],
