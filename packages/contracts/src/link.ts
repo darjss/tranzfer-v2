@@ -16,6 +16,10 @@ export const SharedDelivery = Schema.Struct({
 });
 export interface SharedDelivery extends Schema.Schema.Type<typeof SharedDelivery> {}
 
+/** A download the recipient's browser reports. The server cannot see bytes move, so it only hears this. */
+export const DownloadEvent = Schema.Literals(["started", "saved"]);
+export type DownloadEvent = typeof DownloadEvent.Type;
+
 /** Unknown, revoked, cancelled and bad-signature links all look the same. */
 export class LinkNotFound extends Schema.TaggedError<LinkNotFound>()("LinkNotFound", {}) {}
 

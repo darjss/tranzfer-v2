@@ -8,7 +8,13 @@ import {
   rateLimits,
   RetentionNotInPlan,
 } from "@tranzfer/contracts";
-import type { DeliveryId, NewDelivery, PlanId, RetentionDays } from "@tranzfer/contracts";
+import type {
+  DeliveryDownload,
+  DeliveryId,
+  NewDelivery,
+  PlanId,
+  RetentionDays,
+} from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
@@ -129,7 +135,36 @@ export class Deliveries extends Context.Service<
         });
       type Row = NonNullable<Effect.Success<ReturnType<typeof load>>>;
 
-      const toView = Effect.fn("Deliveries.toView")(function* toView(row: Row) {
+      // What recipients reported, per delivery; one with no reports has no entry.
+      const downloadsOf = Effect.fn("Deliveries.downloads")(function* downloadsOf(
+        ids: readonly DeliveryId[],
+      ) {
+        const rows = yield* db
+          .select({
+            deliveryId: schema.download.deliveryId,
+            filesSaved: sql<number>`count(${schema.download.savedAt})`,
+            lastAt: sql<number>`max(${schema.download.lastAt})`,
+            startedAt: sql<number>`min(${schema.download.startedAt})`,
+          })
+          .from(schema.download)
+          .where(inArray(schema.download.deliveryId, ids))
+          .groupBy(schema.download.deliveryId);
+        return new Map(
+          rows.map((row) => [
+            row.deliveryId,
+            {
+              filesSaved: row.filesSaved,
+              lastAt: new Date(row.lastAt),
+              startedAt: new Date(row.startedAt),
+            } satisfies DeliveryDownload,
+          ]),
+        );
+      });
+
+      const toView = Effect.fn("Deliveries.toView")(function* toView(
+        row: Row,
+        download: DeliveryDownload | null,
+      ) {
         if (row.link === null) {
           // The link is inserted in the delivery's own batch.
           return yield* Effect.die(new Error(`Delivery ${row.id} has no link`));
@@ -137,6 +172,7 @@ export class Deliveries extends Context.Service<
         const now = yield* Clock.currentTimeMillis;
         return Delivery.make({
           createdAt: row.createdAt,
+          download,
           expiresAt: row.expiresAt,
           id: row.id,
           link: `/d/${yield* tokens.issue(row.link.id)}`,
@@ -172,13 +208,18 @@ export class Deliveries extends Context.Service<
           ),
         );
 
+      const viewRow = Effect.fn("Deliveries.viewRow")(function* viewRow(row: Row) {
+        const downloads = yield* downloadsOf([row.id]);
+        return yield* toView(row, downloads.get(row.id) ?? null);
+      });
+
       const view = Effect.fn("Deliveries.view")(function* view(deliveryId: DeliveryId) {
         yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
         const row = yield* load(deliveryId);
         if (row === undefined) {
           return yield* Effect.die(new Error(`Delivery ${deliveryId} vanished`));
         }
-        return yield* toView(row);
+        return yield* viewRow(row);
       }, dieOnDatabaseError);
 
       const activeBytesAt = (senderId: string, now: number) =>
@@ -338,7 +379,7 @@ export class Deliveries extends Context.Service<
           if (existing !== undefined) {
             yield* Effect.annotateCurrentSpan("delivery.replayed", true);
             return sameDelivery(senderId, input, existing)
-              ? yield* toView(existing)
+              ? yield* viewRow(existing)
               : yield* new DeliveryConflict();
           }
 
@@ -437,7 +478,8 @@ export class Deliveries extends Context.Service<
             with: { link: true, transfers: { orderBy: { path: "asc" } } },
           });
           yield* Effect.annotateCurrentSpan("delivery.count", rows.length);
-          return yield* Effect.forEach(rows, toView);
+          const downloads = yield* downloadsOf(rows.map((row) => row.id));
+          return yield* Effect.forEach(rows, (row) => toView(row, downloads.get(row.id) ?? null));
         }, dieOnDatabaseError),
 
         purgeEnded: Effect.gen(function* purgeEnded() {

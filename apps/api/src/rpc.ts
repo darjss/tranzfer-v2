@@ -86,6 +86,7 @@ export const ApiHandlers = Api.toLayer(
       OpenBillingPortal: () => Effect.flatMap(sender, billing.portal),
       OpenLink: ({ token }) => links.open(token),
       RedeemCode: ({ code }) => Effect.flatMap(sender, (id) => userPlans.redeem(id, code)),
+      ReportDownload: ({ event, path, token }) => links.report(token, path, event),
       SignUpload: ({ key, request }) =>
         Effect.flatMap(sender, (id) => transfers.sign(id, key, request)),
       StartCheckout: ({ plan }) =>

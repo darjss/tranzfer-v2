@@ -1,6 +1,7 @@
 import { LinkExpired, LinkNotFound, LinkNotReady } from "@tranzfer/contracts";
-import type { SharedDelivery } from "@tranzfer/contracts";
-import { Database, dieOnDatabaseError } from "@tranzfer/db";
+import type { DownloadEvent, SharedDelivery } from "@tranzfer/contracts";
+import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -19,13 +20,15 @@ const DOWNLOAD_URL_TTL = Duration.days(7);
 
 const basename = (path: string) => path.split("/").at(-1) ?? path;
 
-/** What anyone holding a link can do: open it. */
+/** What anyone holding a link can do: open it, and tell the sender what they downloaded. */
 export class SharedLinks extends Context.Service<
   SharedLinks,
   {
     readonly open: (
       token: string,
     ) => Effect.Effect<SharedDelivery, LinkExpired | LinkNotFound | LinkNotReady>;
+    /** Best effort: a bad, revoked or ended link, or an unknown path, records nothing. */
+    readonly report: (token: string, path: string, event: DownloadEvent) => Effect.Effect<void>;
   }
 >()("tranzfer/SharedLinks") {
   static readonly layer = Layer.effect(
@@ -85,6 +88,54 @@ export class SharedLinks extends Context.Service<
             senderName: delivery.sender.name,
             title: delivery.title,
           };
+        }, dieOnDatabaseError),
+
+        // One upsert per file. "started" sets the first time and bumps the
+        // last one; "saved" also stamps the file once and keeps that stamp.
+        report: Effect.fn("SharedLinks.report")(function* report(
+          token: string,
+          path: string,
+          event: DownloadEvent,
+        ) {
+          yield* Effect.annotateCurrentSpan("download.event", event);
+          const linkId = yield* tokens.verify(token);
+          if (Option.isNone(linkId)) {
+            return;
+          }
+          const now = new Date(yield* Clock.currentTimeMillis);
+          yield* db
+            .insert(schema.download)
+            .select((qb) =>
+              qb
+                .select({
+                  deliveryId: schema.transfer.deliveryId,
+                  lastAt: sql<Date>`${now.getTime()}`.as("last_at"),
+                  savedAt: sql<Date | null>`${event === "saved" ? now.getTime() : null}`.as(
+                    "saved_at",
+                  ),
+                  startedAt: sql<Date>`${now.getTime()}`.as("started_at"),
+                  transferId: schema.transfer.id,
+                })
+                .from(schema.link)
+                .innerJoin(schema.delivery, eq(schema.delivery.id, schema.link.deliveryId))
+                .innerJoin(schema.transfer, eq(schema.transfer.deliveryId, schema.delivery.id))
+                .where(
+                  and(
+                    eq(schema.link.id, linkId.value),
+                    isNull(schema.link.revokedAt),
+                    eq(schema.delivery.status, "ready"),
+                    gt(schema.delivery.expiresAt, now),
+                    eq(schema.transfer.path, path),
+                  ),
+                ),
+            )
+            .onConflictDoUpdate({
+              set: {
+                lastAt: sql`excluded.last_at`,
+                savedAt: sql`coalesce(${schema.download.savedAt}, excluded.saved_at)`,
+              },
+              target: schema.download.transferId,
+            });
         }, dieOnDatabaseError),
       });
     }),

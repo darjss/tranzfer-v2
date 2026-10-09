@@ -1,4 +1,5 @@
 import { expect, layer } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -59,6 +60,58 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
       yield* deliveries.cancel("tom", created.id);
       const cancelled = yield* Effect.flip(links.open(token));
       expect(cancelled._tag).toBe("LinkNotFound");
+    }),
+  );
+
+  it.effect("reports downloads to the owner, once per file, and ignores what it can't place", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("dee");
+      yield* addUser("eve");
+      const deliveries = yield* Deliveries;
+      const transfers = yield* Transfers;
+      const links = yield* SharedLinks;
+      const created = yield* deliveries.create(
+        "dee",
+        newDelivery([newFile("a.mov", 3), newFile("b.mov", 4)], "Two"),
+      );
+      const token = tokenOf(created.link);
+      for (const file of created.transfers) {
+        storage.objects.set(file.objectKey, { etag: "m", size: file.size });
+        yield* transfers.finalize("dee", file.id);
+      }
+      expect(
+        (yield* deliveries.list("dee")).find((row) => row.id === created.id)?.download,
+      ).toBeNull();
+
+      // Opening the link is not a download.
+      yield* links.open(token);
+      expect((yield* deliveries.view(created.id)).download).toBeNull();
+
+      const startedAt = new Date(yield* Clock.currentTimeMillis);
+      yield* links.report(token, "a.mov", "started");
+      yield* TestClock.adjust("1 minute");
+      yield* links.report(token, "a.mov", "saved");
+      yield* TestClock.adjust("1 minute");
+      // Replays and resumes converge on the same row and the first save stamp.
+      yield* links.report(token, "a.mov", "saved");
+      yield* links.report(token, "a.mov", "started");
+      const lastAt = new Date(yield* Clock.currentTimeMillis);
+      // Nothing to place: wrong path, tampered token, another sender's view.
+      yield* links.report(token, "nope.mov", "saved");
+      yield* links.report(`${token}x`, "b.mov", "saved");
+
+      const [row] = yield* deliveries.list("dee");
+      expect(row?.download).toEqual({ filesSaved: 1, lastAt, startedAt });
+      expect((yield* deliveries.list("eve")).length).toBe(0);
+
+      yield* links.report(token, "b.mov", "saved");
+      expect((yield* deliveries.view(created.id)).download?.filesSaved).toBe(2);
+
+      // A link that ended takes no more reports.
+      yield* TestClock.adjust("4 days");
+      yield* links.report(token, "a.mov", "started");
+      expect((yield* deliveries.view(created.id)).download?.lastAt).toEqual(lastAt);
     }),
   );
 });

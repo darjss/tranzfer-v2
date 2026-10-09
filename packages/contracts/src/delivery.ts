@@ -82,8 +82,21 @@ export const Transfer = Schema.Struct({
 });
 export interface Transfer extends Schema.Schema.Type<typeof Transfer> {}
 
+/**
+ * What the recipient's browser has reported, for the sender only. Bytes go
+ * from storage straight to the recipient, so the server never sees a download;
+ * only the folder save reports a finished file. Anything else stays "started".
+ */
+export const DeliveryDownload = Schema.Struct({
+  filesSaved: Schema.Int,
+  lastAt: Schema.DateFromString,
+  startedAt: Schema.DateFromString,
+});
+export interface DeliveryDownload extends Schema.Schema.Type<typeof DeliveryDownload> {}
+
 export const Delivery = Schema.Struct({
   createdAt: Schema.DateFromString,
+  download: Schema.NullOr(DeliveryDownload),
   expiresAt: Schema.NullOr(Schema.DateFromString),
   id: DeliveryId,
   link: Schema.String,
