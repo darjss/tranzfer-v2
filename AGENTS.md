@@ -1,5 +1,11 @@
 # Agent guide
 
+- NEVER write unit tests after you write code.
+- Highly prefer E2E tests as the sole testing mechanism. Use them to verify complex features work. At the end of E2E tests, produce a verifiable and repeatable artifact.
+- If you must test a system in isolation, FIRST write all the ways it could fail, THEN write the code.
+
+Unit tests written after the code restate it: they always pass, catch almost nothing and break on every refactor.
+
 Make the smallest direct change. Use inferred types and named exports. New abstractions, helpers and test files need user approval. Keep `any` and casting wrappers out of application code.
 
 ## Read for the task
@@ -19,7 +25,7 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 ## Change and verify
 
 - Use `vp` for package and project commands. After changes run `vp check`, `vp run test`, and the relevant `vp run build`. Report missing tests or blocked checks as such.
-- Reactivity changes (components, memos, stores, actions): dev builds run with Solid diagnostics on (`diagnostics: true` in `apps/web/vite.config.ts`). Treat every code as a defect and never allowlist one you haven't understood. Prove the change with a `captureArtifact` test from `@solidjs/diagnostics` next to the component (see `apps/web/src/dashboard/dashboard.test.tsx` and [docs/TESTING.md](docs/TESTING.md)): `toHaveNoDiagnostics()` plus a re-run budget. Full repair guide: `apps/web/node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md` (about 6k tokens, search it by code). Loop guide: `apps/web/node_modules/@solidjs/diagnostics/skills/agent-loops/SKILL.md`. Most codes come down to:
+- Reactivity changes (components, memos, stores, actions): dev builds run with Solid diagnostics on (`diagnostics: true` in `apps/web/vite.config.ts`). Treat every code as a defect and never allowlist one you haven't understood. Read the codes the dev server reports while you exercise the change; don't add a component test to prove it. Full repair guide: `apps/web/node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md` (about 6k tokens, search it by code). Loop guide: `apps/web/node_modules/@solidjs/diagnostics/skills/agent-loops/SKILL.md`. Most codes come down to:
   - `STRICT_READ_UNTRACKED`, `PENDING_ASYNC_UNTRACKED_READ`: a reactive read outside a tracking scope (destructured props, component body). Read it in JSX, a memo or an effect's compute half; `untrack()` if a one-time snapshot is the intent.
   - `REACTIVE_WRITE_IN_OWNED_SCOPE`, `ACTION_CALLED_IN_OWNED_SCOPE`: a write, `refresh()` or action call during a component body or memo. Move it to an event handler or effect callback.
   - `FLUSH_IN_ACTION`, `FLUSH_IN_EFFECT_CALLBACK`: delete the `flush()`. In tests, call `flush()` before reading the DOM.
