@@ -2,6 +2,7 @@ import type {
   DeliveryId,
   PaidPlanId,
   PlanId,
+  RequestId,
   RetentionDays,
   SubscriptionStatus,
   TransferId,
@@ -113,6 +114,35 @@ export const verification = sqliteTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
+// A link a signed-in user hands to someone without an account, who then
+// uploads straight into the owner's space (docs/PRODUCT.md, file requests). The
+// id is the token's payload. Closing sets closedAt; the token then reads as
+// unknown. expiresAt is when it stops accepting uploads.
+export const fileRequest = sqliteTable(
+  "file_request",
+  {
+    id: text("id").$type<RequestId>().primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id),
+    title: text("title").notNull(),
+    // Plain text for the uploader. Empty means none.
+    instructions: text("instructions").default("").notNull(),
+    // How long the request accepts uploads, and how long each upload is kept
+    // once it finishes.
+    retentionDays: integer("retention_days").$type<RetentionDays>().notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    // Total bytes the request may receive across its uploads. Null means only
+    // the owner's space limits it.
+    maxBytes: integer("max_bytes"),
+    closedAt: integer("closed_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [index("file_request_ownerId_createdAt_idx").on(table.ownerId, table.createdAt)],
+);
+
 export const delivery = sqliteTable(
   "delivery",
   {
@@ -124,6 +154,13 @@ export const delivery = sqliteTable(
     title: text("title").notNull(),
     // What the sender tells the recipient, as plain text. Empty means no note.
     note: text("note").default("").notNull(),
+    // Set when someone without an account sent this through a file request.
+    // senderId is then the request's owner, who holds the space it uses.
+    requestId: text("request_id")
+      .$type<RequestId>()
+      .references(() => fileRequest.id),
+    uploaderName: text("uploader_name"),
+    uploaderEmail: text("uploader_email"),
     status: text("status", { enum: ["open", "ready", "cancelled"] })
       .default("open")
       .notNull(),
@@ -142,7 +179,10 @@ export const delivery = sqliteTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => [index("delivery_senderId_createdAt_idx").on(table.senderId, table.createdAt)],
+  (table) => [
+    index("delivery_senderId_createdAt_idx").on(table.senderId, table.createdAt),
+    index("delivery_requestId_idx").on(table.requestId),
+  ],
 );
 
 export const transfer = sqliteTable(

@@ -4,4 +4,5 @@ export * from "./billing";
 export * from "./delivery";
 export * from "./interest";
 export * from "./link";
+export * from "./request";
 export * from "./upload";

@@ -1,5 +1,5 @@
 import { expect, layer } from "@effect/vitest";
-import { partSize, rateLimits } from "@tranzfer/contracts";
+import { DeliveryId, partSize, rateLimits } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
 import * as Arr from "effect/Array";
@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 
 import { Deliveries } from "../src/deliveries";
+import { FileRequests } from "../src/file-requests";
 import { Transfers } from "../src/transfers";
 import {
   addUser,
@@ -273,6 +274,120 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       yield* TestClock.adjust("2 days");
       const late = yield* Effect.flip(transfers.sign("ivy", objectKey, { _tag: "Create" }));
       expect(late._tag).toBe("UploadClosed");
+    }),
+  );
+  it.effect("an uploader signs and finalizes through their request and nowhere else", () =>
+    Effect.gen(function* scenario() {
+      yield* atWallClock;
+      const start = yield* Clock.currentTimeMillis;
+      yield* addUser("rex");
+      const requests = yield* FileRequests;
+      const deliveries = yield* Deliveries;
+      const open = (title: string) =>
+        requests.create("rex", { instructions: "", maxBytes: null, retentionDays: 3, title });
+      const token = (yield* open("Dailies")).link.slice("/r/".length);
+      const otherToken = (yield* open("Other")).link.slice("/r/".length);
+      const ip = "192.0.2.1";
+      const sent = yield* requests.receive(
+        {
+          email: null,
+          files: [newFile("a.mov", 4), newFile("b.mov", 6)],
+          id: DeliveryId.make(crypto.randomUUID()),
+          name: "Jo",
+          token,
+        },
+        ip,
+      );
+      const [a, b] = firstTwo(sent.transfers);
+      const own = first(
+        (yield* deliveries.create("rex", newDelivery([newFile("own.txt", 1)]))).transfers,
+      );
+
+      const signed = yield* requests.sign(token, ip, a.objectKey, { _tag: "Put" });
+      expect(signed.url).toBe(`memory://Put/${a.objectKey}`);
+      // The owner's own delivery and another request's file are out of reach.
+      const reachable = yield* Effect.all([
+        Effect.flip(requests.sign(token, ip, own.objectKey, { _tag: "Put" })),
+        Effect.flip(requests.sign(otherToken, ip, a.objectKey, { _tag: "Put" })),
+        Effect.flip(requests.finalize(otherToken, ip, a.id)),
+        Effect.flip(requests.finalize(token, ip, own.id)),
+      ]);
+      expect(reachable.map((error) => error._tag)).toEqual(Arr.replicate("DeliveryNotFound", 4));
+
+      storage.objects.set(a.objectKey, { etag: "a", size: 4 });
+      expect((yield* requests.finalize(token, ip, a.id)).status).toBe("open");
+      storage.objects.set(b.objectKey, { etag: "b", size: 6 });
+      const done = yield* requests.finalize(token, ip, b.id);
+      expect(done.status).toBe("ready");
+      expect((yield* deliveries.view(sent.id)).expiresAt?.getTime()).toBe(start + 3 * DAY_MS);
+    }),
+  );
+
+  it.effect("an uploader's signing spends the portal budget and not the owner's", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("sue");
+      const requests = yield* FileRequests;
+      const transfers = yield* Transfers;
+      const made = yield* requests.create("sue", {
+        instructions: "",
+        maxBytes: null,
+        retentionDays: 3,
+        title: "Dailies",
+      });
+      const token = made.link.slice("/r/".length);
+      const sent = yield* requests.receive(
+        {
+          email: null,
+          files: [newFile("a.mov", 4)],
+          id: DeliveryId.make(crypto.randomUUID()),
+          name: "Jo",
+          token,
+        },
+        "192.0.2.2",
+      );
+      const { objectKey } = first(sent.transfers);
+      yield* Effect.forEach(
+        Arr.range(1, rateLimits.uploadSigning.limit + 1),
+        () => requests.sign(token, "192.0.2.2", objectKey, { _tag: "Put" }),
+        { discard: true },
+      );
+      // The owner's own count is untouched; their next upload still signs.
+      yield* transfers.sign("sue", objectKey, { _tag: "Put" });
+    }),
+  );
+
+  it.effect("the sweeper finishes an upload whose request closed after the bytes landed", () =>
+    Effect.gen(function* scenario() {
+      yield* atWallClock;
+      yield* addUser("tim");
+      const requests = yield* FileRequests;
+      const transfers = yield* Transfers;
+      const deliveries = yield* Deliveries;
+      const made = yield* requests.create("tim", {
+        instructions: "",
+        maxBytes: null,
+        retentionDays: 3,
+        title: "Dailies",
+      });
+      const token = made.link.slice("/r/".length);
+      const sent = yield* requests.receive(
+        {
+          email: null,
+          files: [newFile("a.mov", 4)],
+          id: DeliveryId.make(crypto.randomUUID()),
+          name: "Jo",
+          token,
+        },
+        "192.0.2.3",
+      );
+      const { objectKey } = first(sent.transfers);
+      yield* requests.sign(token, "192.0.2.3", objectKey, { _tag: "Put" });
+      storage.objects.set(objectKey, { etag: "a", size: 4 });
+      yield* requests.close("tim", made.id);
+
+      yield* TestClock.adjust("3 minutes");
+      expect(yield* transfers.recoverFinalizing).toBe(1);
+      expect((yield* deliveries.view(sent.id)).status).toBe("ready");
     }),
   );
 });

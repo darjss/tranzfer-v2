@@ -14,6 +14,8 @@ import {
   PaidPlanId,
   plans,
   RateLimited,
+  RequestFull,
+  RequestNotFound,
   RetentionNotInPlan,
   StorageUnavailable,
   Unauthorized,
@@ -49,6 +51,8 @@ const ApiErrors = Schema.Union([
   NotUploaded,
   OverPlanLimit,
   RateLimited,
+  RequestFull,
+  RequestNotFound,
   RetentionNotInPlan,
   RpcClientError,
   StorageUnavailable,
@@ -75,6 +79,9 @@ const tooMany = {
   deliveriesPerHour: "Too many new deliveries in an hour.",
   interestSignups: "Too many sign-ups from your network.",
   newAccounts: "Too many new accounts from your network today.",
+  portalCallsPerIp: "Too many requests from your network.",
+  portalCallsPerRequest: "This link is getting too many requests at once.",
+  portalUploadsPerIp: "Too many uploads started from your network.",
   uploadSigning: "Too many upload requests at once.",
 } satisfies Record<RateLimitName, string>;
 
@@ -153,6 +160,10 @@ const words = Match.type<ApiError>().pipe(
     },
     RateLimited: (error) =>
       `${tooMany[error.limit]} Try again in ${wait(error.retryAfterSeconds)}.`,
+    RequestFull: () =>
+      "There isn't room for these files in this request right now. Try fewer or smaller files, or ask the person who sent you the link.",
+    RequestNotFound: () =>
+      "This link doesn't work. It may have expired or been closed. Ask the person who sent it for a new one.",
     RetentionNotInPlan: (error) =>
       `${plans[error.plan].name} links last up to ${error.maxRetentionDays} days. Choose a shorter time${paidPlansOpen ? ", or upgrade" : ""}.`,
     RpcClientError: () => "We couldn't reach Tranzfer. Check your connection and try again.",

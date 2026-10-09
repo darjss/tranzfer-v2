@@ -1,5 +1,6 @@
 import { expect, layer, vi } from "@effect/vitest";
 import { DeliveryId, DeliveryNote, DeliveryTitle, rateLimits } from "@tranzfer/contracts";
+import type { NewFileRequest } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
 import * as Arr from "effect/Array";
@@ -16,6 +17,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { Billing, verifyWebhook } from "../src/billing";
 import { Deliveries } from "../src/deliveries";
 import { Emails, queueOpenings, sendWelcome } from "../src/emails";
+import { FileRequests } from "../src/file-requests";
 import { Mail, MailError } from "../src/infrastructure/email";
 import { admitSignup } from "../src/infrastructure/auth";
 import {
@@ -830,6 +832,301 @@ layer(domainLayer(storage.layer))("Accounts", (it) => {
       yield* TestClock.adjust(Duration.seconds(refused.retryAfterSeconds));
       yield* admitSignup("203.0.113.7");
     }),
+  );
+});
+
+const ownerRequest = (ownerId: string, edit: Partial<NewFileRequest> = {}) =>
+  Effect.flatMap(FileRequests, (requests) =>
+    requests.create(ownerId, {
+      instructions: "",
+      maxBytes: null,
+      retentionDays: 3,
+      title: "Footage",
+      ...edit,
+    }),
+  );
+const tokenOf = (link: string) => link.slice("/r/".length);
+const upload = (token: string, files: ReturnType<typeof newFile>[], name = "Jane") => ({
+  email: null,
+  files,
+  id: DeliveryId.make(crypto.randomUUID()),
+  name,
+  token,
+});
+
+layer(domainLayer(storage.layer))("File requests", (it) => {
+  it.effect("an owner makes a request and the uploader opens it with the owner's name", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("rita", "Rita");
+      const requests = yield* FileRequests;
+      const made = yield* ownerRequest("rita", {
+        instructions: "Raw clips, please",
+        title: "Day 3",
+      });
+      expect(made).toMatchObject({
+        instructions: "Raw clips, please",
+        maxBytes: null,
+        receivedBytes: 0,
+        status: "open",
+        title: "Day 3",
+        uploads: 0,
+      });
+      expect(made.link).toMatch(/^\/r\/.+\..+$/u);
+      expect(made.expiresAt.getTime()).toBe(
+        (yield* Clock.currentTimeMillis) + 3 * 24 * 60 * 60 * 1000,
+      );
+
+      const opened = yield* requests.open(tokenOf(made.link), "198.51.100.1");
+      expect(opened).toEqual({
+        expiresAt: made.expiresAt,
+        instructions: "Raw clips, please",
+        ownerName: "Rita",
+        title: "Day 3",
+      });
+      for (const bad of [`${tokenOf(made.link)}x`, "nope", "a.b.c", ""]) {
+        const error = yield* Effect.flip(requests.open(bad, "198.51.100.1"));
+        expect(error._tag).toBe("RequestNotFound");
+      }
+      expect(yield* requests.list("rita")).toEqual([made]);
+      expect(yield* requests.list("someone")).toEqual([]);
+    }),
+  );
+
+  it.effect("holds a request's lifetime to the owner's plan", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("stan");
+      const refused = yield* Effect.flip(ownerRequest("stan", { retentionDays: 14 }));
+      expect(refused).toMatchObject({
+        _tag: "RetentionNotInPlan",
+        maxRetentionDays: 3,
+        requestedDays: 14,
+      });
+      yield* subscribe("stan", "pro");
+      yield* ownerRequest("stan", { retentionDays: 14 });
+    }),
+  );
+
+  it.effect(
+    "an upload is the owner's delivery, titled with the uploader, and shows them no link",
+    () =>
+      Effect.gen(function* scenario() {
+        yield* addUser("tess", "Tess");
+        const requests = yield* FileRequests;
+        const deliveries = yield* Deliveries;
+        const made = yield* ownerRequest("tess", { title: "Footage" });
+        const token = tokenOf(made.link);
+
+        const input = {
+          ...upload(token, [newFile("clips/a.mov", 40)]),
+          email: "jane@example.com",
+        };
+        const received = yield* requests.receive(input, "198.51.100.2");
+        expect(received).toMatchObject({
+          id: input.id,
+          status: "open",
+          title: "Footage from Jane",
+        });
+        expect(Object.keys(received).toSorted()).toEqual(["id", "status", "title", "transfers"]);
+
+        const [row] = yield* deliveries.list("tess");
+        expect(row).toMatchObject({
+          id: input.id,
+          title: "Footage from Jane",
+          uploader: { email: "jane@example.com", name: "Jane" },
+        });
+        expect(row?.link).toMatch(/^\/d\//u);
+        expect(yield* deliveries.activeBytes("tess")).toBe(40);
+        expect(yield* requests.list("tess")).toMatchObject([{ receivedBytes: 40, uploads: 1 }]);
+
+        // A lost response replays; a changed one conflicts.
+        expect(yield* requests.receive(input, "198.51.100.2")).toEqual(received);
+        const renamed = yield* Effect.flip(
+          requests.receive({ ...input, name: "Janet" }, "198.51.100.2"),
+        );
+        expect(renamed._tag).toBe("DeliveryConflict");
+        const noEmail = yield* Effect.flip(
+          requests.receive({ ...input, email: null }, "198.51.100.2"),
+        );
+        expect(noEmail._tag).toBe("DeliveryConflict");
+        const refused = yield* Effect.flip(
+          requests.receive(upload(token, [newFile("../x", 1)]), "198.51.100.2"),
+        );
+        expect(refused._tag).toBe("DeliveryRefused");
+      }),
+  );
+
+  it.effect("an uploader reaches only the uploads of their request, by id", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("uma");
+      const requests = yield* FileRequests;
+      const deliveries = yield* Deliveries;
+      const one = yield* ownerRequest("uma", { title: "One" });
+      const two = yield* ownerRequest("uma", { title: "Two" });
+      const mine = yield* requests.receive(
+        upload(tokenOf(one.link), [newFile("a", 1)]),
+        "198.51.100.3",
+      );
+      const other = yield* requests.receive(
+        upload(tokenOf(two.link), [newFile("b", 1)]),
+        "198.51.100.3",
+      );
+      const own = yield* deliveries.create("uma", newDelivery([newFile("own", 1)]));
+
+      const seen = yield* requests.uploads(tokenOf(one.link), "198.51.100.3", [
+        mine.id,
+        other.id,
+        own.id,
+      ]);
+      expect(seen.map((found) => found.id)).toEqual([mine.id]);
+      expect(yield* requests.uploads(tokenOf(one.link), "198.51.100.3", [])).toEqual([]);
+    }),
+  );
+
+  it.effect("concurrent uploads never pass the owner's plan space", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("vic");
+      const requests = yield* FileRequests;
+      const deliveries = yield* Deliveries;
+      const token = tokenOf((yield* ownerRequest("vic")).link);
+      const outcomes = yield* Effect.forEach(
+        Arr.range(1, 3),
+        (n) =>
+          requests
+            .receive(upload(token, [newFile("big.bin", 8 * GB)]), `198.51.100.${10 + n}`)
+            .pipe(
+              Effect.as("created"),
+              Effect.catchTag("RequestFull", (error) => Effect.succeed(error._tag)),
+            ),
+        { concurrency: "unbounded" },
+      );
+      expect(outcomes.toSorted()).toEqual(["RequestFull", "created", "created"]);
+      expect(yield* deliveries.activeBytes("vic")).toBe(16 * GB);
+    }),
+  );
+
+  it.effect(
+    "concurrent uploads never pass the request's own size cap, and a cancelled one frees it",
+    () =>
+      Effect.gen(function* scenario() {
+        yield* addUser("walt");
+        const requests = yield* FileRequests;
+        const deliveries = yield* Deliveries;
+        const made = yield* ownerRequest("walt", { maxBytes: 10 });
+        const token = tokenOf(made.link);
+        const outcomes = yield* Effect.forEach(
+          Arr.range(1, 2),
+          (n) =>
+            requests.receive(upload(token, [newFile("six", 6)]), `198.51.100.${20 + n}`).pipe(
+              Effect.map((received) => received.id),
+              Effect.catchTag("RequestFull", (error) => Effect.succeed(error._tag)),
+            ),
+          { concurrency: "unbounded" },
+        );
+        expect(outcomes.filter((outcome) => outcome === "RequestFull")).toHaveLength(1);
+        const created = outcomes.filter((outcome) => outcome !== "RequestFull");
+        expect(created).toHaveLength(1);
+        expect((yield* requests.list("walt"))[0]?.receivedBytes).toBe(6);
+
+        yield* deliveries.cancel("walt", DeliveryId.make(created.join(",")));
+        expect((yield* requests.list("walt"))[0]).toMatchObject({ receivedBytes: 0, uploads: 0 });
+        yield* requests.receive(upload(token, [newFile("six", 6)]), "198.51.100.30");
+      }),
+  );
+
+  it.effect(
+    "closing a request ends its token for every call, and closing again changes nothing",
+    () =>
+      Effect.gen(function* scenario() {
+        yield* addUser("xena");
+        yield* addUser("yuri");
+        const requests = yield* FileRequests;
+        const deliveries = yield* Deliveries;
+        const made = yield* ownerRequest("xena");
+        const token = tokenOf(made.link);
+        const sent = yield* requests.receive(upload(token, [newFile("a", 1)]), "198.51.100.40");
+        const target = first(sent.transfers);
+
+        const foreign = yield* Effect.flip(requests.close("yuri", made.id));
+        expect(foreign._tag).toBe("RequestNotFound");
+        expect((yield* requests.open(token, "198.51.100.40")).title).toBe("Footage");
+
+        const closed = yield* requests.close("xena", made.id);
+        expect(closed.status).toBe("closed");
+        expect(yield* requests.close("xena", made.id)).toEqual(closed);
+
+        const errors = yield* Effect.all([
+          Effect.flip(requests.open(token, "198.51.100.41")),
+          Effect.flip(requests.receive(upload(token, [newFile("b", 1)]), "198.51.100.41")),
+          Effect.flip(requests.sign(token, "198.51.100.41", target.objectKey, { _tag: "Put" })),
+          Effect.flip(requests.finalize(token, "198.51.100.41", target.id)),
+          Effect.flip(requests.uploads(token, "198.51.100.41", [sent.id])),
+        ]);
+        expect(errors.map((error) => error._tag)).toEqual(Arr.replicate("RequestNotFound", 5));
+        // What already arrived stays the owner's.
+        expect((yield* deliveries.list("xena")).map((row) => row.id)).toEqual([sent.id]);
+      }),
+  );
+
+  it.effect("an expired request ends its token", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("zane");
+      const requests = yield* FileRequests;
+      const made = yield* ownerRequest("zane", { retentionDays: 1 });
+      yield* requests.open(tokenOf(made.link), "198.51.100.50");
+      yield* TestClock.adjust("25 hours");
+      const expired = yield* Effect.flip(requests.open(tokenOf(made.link), "198.51.100.50"));
+      expect(expired._tag).toBe("RequestNotFound");
+      expect((yield* requests.list("zane"))[0]?.status).toBe("expired");
+    }),
+  );
+
+  it.effect("counts uploader calls per IP, bad tokens included, and new uploads per IP", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("alma");
+      const requests = yield* FileRequests;
+      const token = tokenOf((yield* ownerRequest("alma")).link);
+
+      // Bad tokens count too, so guessing is limited before any lookup.
+      yield* Effect.forEach(
+        Arr.range(1, rateLimits.portalCallsPerIp.limit),
+        () => Effect.flip(requests.open("nope", "203.0.113.60")),
+        { discard: true },
+      );
+      const perIp = yield* Effect.flip(requests.open(token, "203.0.113.60"));
+      expect(perIp).toMatchObject({ _tag: "RateLimited", limit: "portalCallsPerIp" });
+      yield* requests.open(token, "203.0.113.61");
+
+      yield* Effect.forEach(
+        Arr.range(1, rateLimits.portalUploadsPerIp.limit),
+        () => requests.receive(upload(token, [newFile("a", 1)]), "203.0.113.63"),
+        { discard: true },
+      );
+      const tooMany = yield* Effect.flip(
+        requests.receive(upload(token, [newFile("a", 1)]), "203.0.113.63"),
+      );
+      expect(tooMany).toMatchObject({ _tag: "RateLimited", limit: "portalUploadsPerIp" });
+      yield* requests.receive(upload(token, [newFile("a", 1)]), "203.0.113.64");
+    }),
+  );
+
+  it.effect(
+    "counts every IP's calls against the request's own budget",
+    () =>
+      Effect.gen(function* scenario() {
+        yield* addUser("bert");
+        const requests = yield* FileRequests;
+        const token = tokenOf((yield* ownerRequest("bert")).link);
+        yield* Effect.forEach(
+          Arr.range(1, rateLimits.portalCallsPerRequest.limit),
+          (n) => requests.open(token, `10.1.${n}.1`),
+          { discard: true },
+        );
+        const perRequest = yield* Effect.flip(requests.open(token, "203.0.113.70"));
+        expect(perRequest).toMatchObject({ _tag: "RateLimited", limit: "portalCallsPerRequest" });
+      }),
+    30_000,
   );
 });
 

@@ -44,6 +44,12 @@ export type UploadRequest = typeof UploadRequest.Type;
 export const SignUploadPayload = Schema.Struct({ key: Schema.String, request: UploadRequest });
 export interface SignUploadPayload extends Schema.Schema.Type<typeof SignUploadPayload> {}
 
+/** The same, from an uploader with no account: the request's token is the credential. */
+export const SignRequestUploadPayload = Schema.Struct({
+  ...SignUploadPayload.fields,
+  token: Schema.String,
+});
+
 /** `headers` are part of the signature; the request must send them as given. */
 export const SignedUrl = Schema.Struct({
   expiresAt: Schema.DateFromString,

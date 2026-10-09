@@ -12,6 +12,7 @@ import {
 import type {
   Delivery,
   DeliveryId,
+  RequestId,
   SignedUrl,
   TransferId,
   UploadRequest,
@@ -70,14 +71,20 @@ export class SigningRate extends Context.Service<
 export class Transfers extends Context.Service<
   Transfers,
   {
+    /**
+     * With `requestId`, only transfers of deliveries that came in through that
+     * file request sign, and the owner's own signing rate is not spent.
+     */
     readonly sign: (
       senderId: string,
       key: string,
       request: UploadRequest,
+      requestId?: RequestId,
     ) => Effect.Effect<SignedUrl, DeliveryNotFound | InvalidUpload | RateLimited | UploadClosed>;
     readonly finalize: (
       senderId: string,
       transferId: TransferId,
+      requestId?: RequestId,
     ) => Effect.Effect<
       Delivery,
       DeliveryNotFound | InvalidUpload | NotUploaded | StorageUnavailable | UploadClosed
@@ -95,9 +102,16 @@ export class Transfers extends Context.Service<
       const signingRate = yield* SigningRate;
       const storage = yield* Storage;
 
-      const owned = (senderId: string, where: { id: TransferId } | { objectKey: string }) =>
+      const owned = (
+        senderId: string,
+        where: { id: TransferId } | { objectKey: string },
+        requestId?: RequestId,
+      ) =>
         db.query.transfer.findFirst({
-          where: { ...where, delivery: { senderId } },
+          where: {
+            ...where,
+            delivery: requestId === undefined ? { senderId } : { requestId, senderId },
+          },
           with: { delivery: true },
         });
 
@@ -189,9 +203,10 @@ export class Transfers extends Context.Service<
         finalize: Effect.fn("Transfers.finalize")(function* finalize(
           senderId: string,
           transferId: TransferId,
+          requestId?: RequestId,
         ) {
           yield* Effect.annotateCurrentSpan("transfer.id", transferId);
-          const transfer = yield* owned(senderId, { id: transferId });
+          const transfer = yield* owned(senderId, { id: transferId }, requestId);
           if (transfer === undefined) {
             return yield* new DeliveryNotFound();
           }
@@ -267,10 +282,13 @@ export class Transfers extends Context.Service<
           senderId: string,
           key: string,
           request: UploadRequest,
+          requestId?: RequestId,
         ) {
           // Every sender is counted, but only Free is held to it, so the plan
-          // is read only once the count runs over.
+          // is read only once the count runs over. An uploader through a file
+          // request is held to the portal limits instead (FileRequests).
           if (
+            requestId === undefined &&
             !(yield* signingRate.allow(senderId)) &&
             (yield* plans.current(senderId)).plan === "free"
           ) {
@@ -279,7 +297,7 @@ export class Transfers extends Context.Service<
               retryAfterSeconds: rateLimits.uploadSigning.windowSeconds,
             });
           }
-          const transfer = yield* owned(senderId, { objectKey: key });
+          const transfer = yield* owned(senderId, { objectKey: key }, requestId);
           if (transfer === undefined) {
             return yield* new DeliveryNotFound();
           }

@@ -268,7 +268,10 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
 };
 
 /** A delivery's live state: server status plus whatever this tab is uploading. */
-export const liveDelivery = (source: { readonly delivery: Delivery; readonly online: boolean }) => {
+export const liveDelivery = (source: {
+  readonly delivery: Pick<Delivery, "status" | "transfers">;
+  readonly online: boolean;
+}) => {
   const roll = createMemo(() => rollup(source.delivery, (id) => transfers[id]), {
     name: "Row.roll",
   });

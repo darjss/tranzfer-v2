@@ -16,6 +16,9 @@ const relations = defineRelations(schema, (r) => ({
     sender: r.one.user({ from: r.delivery.senderId, optional: false, to: r.user.id }),
     transfers: r.many.transfer(),
   },
+  fileRequest: {
+    owner: r.one.user({ from: r.fileRequest.ownerId, optional: false, to: r.user.id }),
+  },
   link: {
     delivery: r.one.delivery({ from: r.link.deliveryId, optional: false, to: r.delivery.id }),
   },

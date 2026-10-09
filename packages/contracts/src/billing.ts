@@ -27,6 +27,9 @@ export const RateLimitName = Schema.Literals([
   "deliveriesPerHour",
   "interestSignups",
   "newAccounts",
+  "portalCallsPerIp",
+  "portalCallsPerRequest",
+  "portalUploadsPerIp",
   "uploadSigning",
 ]);
 export type RateLimitName = typeof RateLimitName.Type;
@@ -34,7 +37,8 @@ export type RateLimitName = typeof RateLimitName.Type;
 /**
  * Rate limits, per rolling window. docs/PRODUCT.md is the spec. The auth and
  * interest-list limits count per client IP and access code attempts per user,
- * on every plan; the rest count per sender on the Free plan only, and paid or
+ * on every plan; the portal limits (file requests) count per client IP and per
+ * request, whoever the owner is; the rest count per sender on the Free plan only, and paid or
  * comp plans have none. Cloudflare's rate-limit binding enforces the 10 and 60
  * second windows, the only periods it offers.
  */
@@ -45,6 +49,9 @@ export const rateLimits = {
   deliveriesPerHour: { limit: 20, windowSeconds: 60 * 60 },
   interestSignups: { limit: 10, windowSeconds: 60 },
   newAccounts: { limit: 10, windowSeconds: 24 * 60 * 60 },
+  portalCallsPerIp: { limit: 600, windowSeconds: 60 },
+  portalCallsPerRequest: { limit: 1200, windowSeconds: 60 },
+  portalUploadsPerIp: { limit: 10, windowSeconds: 60 },
   uploadSigning: { limit: 200, windowSeconds: 10 },
 } as const satisfies Record<
   RateLimitName,
