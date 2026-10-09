@@ -181,6 +181,38 @@ const Delivery = (props: {
           )}
         </Show>
       </p>
+      {/* The note is the sender's own text. Solid sets it as a text node, so
+          markup in it shows as typed. */}
+      <Show when={props.delivery.note}>
+        {(note) => (
+          <div class={css({ mt: "5" })}>
+            <p
+              class={css({
+                color: "blue",
+                fontFamily: "hand",
+                fontSize: "22",
+                fontWeight: "semibold",
+                lineHeight: "compact",
+              })}
+            >
+              {props.delivery.senderName} says
+            </p>
+            <p
+              class={css({
+                bg: "paper",
+                borderRadius: "xl",
+                mt: "1",
+                overflowWrap: "anywhere",
+                px: "4",
+                py: "3",
+                whiteSpace: "pre-wrap",
+              })}
+            >
+              {note()}
+            </p>
+          </div>
+        )}
+      </Show>
       <Show when={props.delivery.files.length > 1}>
         <SaveAll delivery={props.delivery} token={props.token} />
       </Show>

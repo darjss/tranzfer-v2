@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "@effect/vitest";
 import { assertBudget, captureArtifact } from "@solidjs/diagnostics";
 import "@solidjs/diagnostics/vitest";
-import { cleanup, render, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, within } from "@solidjs/testing-library";
 import {
   AccessCodeRefused,
   Api,
@@ -26,9 +26,11 @@ import { ApiClient } from "../api/client";
 import { NotifyMe } from "../landing/Pricing";
 import { RuntimeContext } from "../api/solid-effect";
 import { patchTransfer } from "../uploads/store";
+import { untilDate } from "./format";
 import { Uploads } from "../uploads/uploads";
 import { Board } from "./Board";
 import { SendCard } from "./SendCard";
+import { SendDoneList } from "./SendDone";
 import { TopBar } from "./TopBar";
 import { createDeliveries } from "./deliveries";
 import { DeliverySheet } from "./DeliverySheet";
@@ -54,6 +56,7 @@ const delivery = (
   expiresAt: status === "ready" ? new Date("2026-10-02T08:00:00Z") : null,
   id: DeliveryId.make(crypto.randomUUID()),
   link: `/d/${title}`,
+  note: "",
   retentionDays: 3,
   status,
   title,
@@ -134,6 +137,17 @@ const makeWorld = (
           ReportDownload: () => Effect.die("unused"),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
+          UpdateDelivery: ({ deliveryId, note, title }) =>
+            Effect.gen(function* fakeUpdate() {
+              const index = server.findIndex((row) => row.id === deliveryId);
+              const row = server[index];
+              if (row === undefined) {
+                return yield* Effect.die(new Error("unknown delivery"));
+              }
+              const updated = Struct.evolve(row, { note: () => note, title: () => title });
+              server[index] = updated;
+              return updated;
+            }),
         }),
       ),
     ),
@@ -181,7 +195,17 @@ const makeWorld = (
       restore: () => Effect.void,
       resume: () => Effect.succeed([]),
       retry: () => Effect.die("unused"),
-      send: () => Effect.die("unused"),
+      // The server has the delivery, open, with one transfer per file.
+      send: (chosen) =>
+        Effect.sync(() => {
+          const created = delivery(
+            "Episode 14",
+            "open",
+            chosen.map(({ file }) => file.size),
+          );
+          server.unshift(created);
+          return created;
+        }),
     }),
   );
   // The server-side Authenticated middleware reads the incoming request.
@@ -720,6 +744,149 @@ describe("dashboard reactivity", () => {
     // Two calls, two state changes (button to form, form to the note) and the
     // pending flag on each; nothing recomputes without changing.
     assertBudget(artifact, { allow: ["OPTIMISTIC_REVERTED"], maxReruns: 15, maxWastedRuns: 0 });
+    await runtime.dispose();
+  });
+
+  it("a sent delivery gets its finished card when the server says ready, and never again", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const writeText = vi.fn(async () => {
+      await Promise.resolve();
+    });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const server: Delivery[] = [];
+    const runtime = makeWorld(server);
+    let state: ReturnType<typeof createDeliveries> | undefined;
+    const Harness = () => {
+      state = createDeliveries(runtime);
+      return (
+        <>
+          <SendDoneList
+            deliveries={state.deliveries}
+            dismiss={state.dismiss}
+            finished={state.finished()}
+            update={state.update}
+          />
+          <Board
+            cancel={state.cancel}
+            clear={state.clear}
+            deliveries={state.deliveries}
+            online
+            select={noop}
+            sendAgain={noop}
+          />
+        </>
+      );
+    };
+    const mount = () => {
+      render(() => (
+        <RuntimeContext value={runtime}>
+          <Loading fallback={<p>loading</p>}>
+            <Harness />
+          </Loading>
+        </RuntimeContext>
+      ));
+    };
+    mount();
+    await vi.waitFor(() => {
+      expect(screen.queryByText("loading")).toBeNull();
+    });
+
+    // 5 MB goes up while the server still says open: every byte is sent, but
+    // finalize hasn't answered, so there is no card yet.
+    await state?.send(
+      [{ file: new File([new Uint8Array(5 * MB)], "cut.mov"), path: "cut.mov" }],
+      3,
+    );
+    flush();
+    const [transfer] = server[0]?.transfers ?? [];
+    if (transfer === undefined) {
+      throw new Error("the fake send makes one transfer");
+    }
+    patchTransfer(transfer.id, { confirmed: 5 * MB, phase: "finalizing", uploaded: true });
+    flush();
+    expect(screen.queryByText("Your files are ready")).toBeNull();
+
+    // Four minutes twelve later finalize lands: the server flips to ready and
+    // this tab's transfer reads done.
+    clock.mockReturnValue(1_000_000 + 252_000);
+    const readyAt = new Date("2026-10-23T09:00:00Z");
+    const { artifact } = await captureArtifact(
+      async () => {
+        const [open] = server;
+        if (open === undefined) {
+          throw new Error("the fake send added the delivery");
+        }
+        server[0] = Struct.evolve(open, {
+          expiresAt: () => readyAt,
+          status: () => "ready" as const,
+          transfers: (rows) =>
+            rows.map((row) => Struct.evolve(row, { state: () => "complete" as const })),
+        });
+        patchTransfer(transfer.id, { phase: "done" });
+        await screen.findByText("Your files are ready");
+      },
+      { scenario: "send-finished" },
+    );
+    flush();
+
+    const link = `${location.origin}/d/Episode 14`;
+    const card = within(screen.getByRole("region", { name: "Your files are ready" }));
+    expect(card.getByText("Episode 14")).toBeInTheDocument();
+    expect(card.getByText("1 file · 5 MB")).toBeInTheDocument();
+    expect(card.getByText("took 4 min 12 s")).toBeInTheDocument();
+    expect(card.getByText(`link works until ${untilDate(readyAt)}`)).toBeInTheDocument();
+    const open = card.getByRole("link", { name: /Open recipient page/u });
+    expect(open).toHaveAttribute("href", "/d/Episode 14");
+    expect(open).toHaveAttribute("target", "_blank");
+    card.getByRole("button", { name: "Copy link" }).click();
+    await vi.waitFor(() => {
+      expect(writeText).toHaveBeenLastCalledWith(link);
+    });
+    card.getByRole("button", { name: "Copy message" }).click();
+    await vi.waitFor(() => {
+      expect(writeText).toHaveBeenLastCalledWith(
+        `Episode 14 is ready: ${link} Download before ${untilDate(readyAt)}.`,
+      );
+    });
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    // One state change on a whole list: the row leaves Moving for Ready, the
+    // new card mounts and the copy buttons settle. Nothing recomputes for
+    // nothing. The re-read's optimistic overlay reverts by design.
+    assertBudget(artifact, { allow: ["OPTIMISTIC_REVERTED"], maxReruns: 55, maxWastedRuns: 0 });
+
+    // The sender renames it and adds a note. Markup in the note stays text.
+    screen.getByRole("button", { name: "Rename or add a note" }).click();
+    flush();
+    fireEvent.input(screen.getByRole("textbox", { name: "Title" }), {
+      target: { value: "  Episode 14, final  " },
+    });
+    fireEvent.input(screen.getByRole("textbox", { name: /Note for the recipient/u }), {
+      target: { value: "Colour is locked.\n<b>Use the LUT</b>" },
+    });
+    flush();
+    screen.getByRole("button", { name: "Save" }).click();
+    await vi.waitFor(() => {
+      expect(server[0]).toMatchObject({
+        note: "Colour is locked.\n<b>Use the LUT</b>",
+        title: "Episode 14, final",
+      });
+    });
+    const note = await screen.findByText(/Use the LUT/u);
+    expect(note.textContent).toBe("Colour is locked.\n<b>Use the LUT</b>");
+    expect(note.querySelector("b")).toBeNull();
+
+    // Dismissing settles it into its Ready row.
+    screen.getByRole("button", { name: "Dismiss" }).click();
+    flush();
+    expect(screen.queryByText("Your files are ready")).toBeNull();
+    expect(readyCount()).toContain("1");
+
+    // A reload starts empty: the delivery is ready, but this page didn't send it.
+    cleanup();
+    mount();
+    await screen.findByText("Episode 14, final");
+    expect(screen.queryByText("Your files are ready")).toBeNull();
+    clock.mockRestore();
     await runtime.dispose();
   });
 });

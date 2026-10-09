@@ -117,6 +117,12 @@ export class Deliveries extends Context.Service<
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
     /** Takes the sender's ended deliveries among these off their list; live ones stay. */
     readonly clear: (senderId: string, deliveryIds: readonly DeliveryId[]) => Effect.Effect<void>;
+    /** Replaces the title and note of the sender's own delivery, whatever its status. */
+    readonly update: (
+      senderId: string,
+      deliveryId: DeliveryId,
+      details: { readonly note: string; readonly title: string },
+    ) => Effect.Effect<Delivery, DeliveryNotFound>;
     readonly view: (deliveryId: DeliveryId) => Effect.Effect<Delivery>;
     /** Removes the objects of cancelled and expired deliveries. Returns how many it purged. */
     readonly purgeEnded: Effect.Effect<number>;
@@ -178,6 +184,7 @@ export class Deliveries extends Context.Service<
           expiresAt: row.expiresAt,
           id: row.id,
           link: `/d/${yield* tokens.issue(row.link.id)}`,
+          note: row.note,
           retentionDays: row.retentionDays,
           status: row.status === "ready" && isExpired(row.expiresAt, now) ? "expired" : row.status,
           title: row.title,
@@ -550,6 +557,25 @@ export class Deliveries extends Context.Service<
           yield* Effect.annotateCurrentSpan({ "sweep.ended": ended.length, "sweep.purged": total });
           return total;
         }).pipe(Effect.withSpan("Deliveries.purgeEnded"), dieOnDatabaseError),
+
+        update: Effect.fn("Deliveries.update")(function* update(
+          senderId: string,
+          deliveryId: DeliveryId,
+          details: { readonly note: string; readonly title: string },
+        ) {
+          yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
+          // The sender check is part of the statement, so a foreign or missing
+          // id updates nothing and reads the same.
+          const updated = yield* db
+            .update(schema.delivery)
+            .set({ note: details.note, title: details.title })
+            .where(and(eq(schema.delivery.id, deliveryId), eq(schema.delivery.senderId, senderId)))
+            .returning({ id: schema.delivery.id });
+          if (updated.length === 0) {
+            return yield* new DeliveryNotFound();
+          }
+          return yield* view(deliveryId);
+        }, dieOnDatabaseError),
 
         view,
       });

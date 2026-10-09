@@ -18,8 +18,10 @@ import {
   Delivery,
   DeliveryConflict,
   DeliveryId,
+  DeliveryNote,
   DeliveryNotFound,
   DeliveryRefused,
+  DeliveryTitle,
   NewDelivery,
   TransferId,
 } from "./delivery";
@@ -57,6 +59,12 @@ export class Api extends RpcGroup.make(
   // The dashboard lists at most 50, so one call never needs more.
   Rpc.make("ClearDeliveries", {
     payload: Schema.Struct({ deliveryIds: Schema.Array(DeliveryId).check(Schema.isMaxLength(50)) }),
+  }).middleware(Authenticated),
+  // Owner only. Both fields are replaced; an empty note removes it.
+  Rpc.make("UpdateDelivery", {
+    error: DeliveryNotFound,
+    payload: Schema.Struct({ deliveryId: DeliveryId, note: DeliveryNote, title: DeliveryTitle }),
+    success: Delivery,
   }).middleware(Authenticated),
   Rpc.make("SignUpload", {
     error: Schema.Union([DeliveryNotFound, InvalidUpload, RateLimited, UploadClosed]),

@@ -39,6 +39,12 @@ const byteLength = (text: string) => {
   return total;
 };
 
+/** What the sender calls a delivery; the recipient sees it as the page heading. */
+export const DeliveryTitle = Schema.Trim.check(Schema.isBetweenLength(1, maxTitleLength));
+
+/** A short message for the recipient, shown as plain text. Empty means none. */
+export const DeliveryNote = Schema.Trim.check(Schema.isMaxLength(500));
+
 export const NewFile = Schema.Struct({
   contentType: Schema.NullOr(Schema.String.check(Schema.isMaxLength(255))),
   id: TransferId,
@@ -64,7 +70,7 @@ export const NewDelivery = Schema.Struct({
   ),
   id: DeliveryId,
   retentionDays: RetentionDays,
-  title: Schema.Trim.check(Schema.isBetweenLength(1, maxTitleLength)),
+  title: DeliveryTitle,
 });
 export interface NewDelivery extends Schema.Schema.Type<typeof NewDelivery> {}
 
@@ -101,6 +107,7 @@ export const Delivery = Schema.Struct({
   expiresAt: Schema.NullOr(Schema.DateFromString),
   id: DeliveryId,
   link: Schema.String,
+  note: Schema.String,
   retentionDays: RetentionDays,
   status: DeliveryStatus,
   title: Schema.String,

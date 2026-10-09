@@ -85,6 +85,7 @@ export class SharedLinks extends Context.Service<
           return {
             expiresAt: delivery.expiresAt,
             files,
+            note: delivery.note,
             senderName: delivery.sender.name,
             title: delivery.title,
           };
