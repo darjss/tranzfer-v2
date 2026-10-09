@@ -105,6 +105,7 @@ export const Delivery = Schema.Struct({
   createdAt: Schema.DateFromString,
   download: Schema.NullOr(DeliveryDownload),
   expiresAt: Schema.NullOr(Schema.DateFromString),
+  hasPassword: Schema.Boolean,
   id: DeliveryId,
   link: Schema.String,
   note: Schema.String,

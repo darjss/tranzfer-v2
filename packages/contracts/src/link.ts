@@ -33,3 +33,20 @@ export class LinkExpired extends Schema.TaggedError<LinkExpired>()("LinkExpired"
   expiredAt: Schema.DateFromString,
   title: Schema.String,
 }) {}
+
+/** A link password. Spaces count, so the length is the only rule. */
+export const LinkPassword = Schema.String.check(Schema.isBetweenLength(8, 128));
+
+/** The link has a password and the request carried no valid unlock. Names the sender, never the files. */
+export class LinkLocked extends Schema.TaggedError<LinkLocked>()("LinkLocked", {
+  senderName: Schema.String,
+}) {}
+
+export class WrongPassword extends Schema.TaggedError<WrongPassword>()("WrongPassword", {}) {}
+
+/** Proof of a right password, scoped to one link and good until `expiresAt`. */
+export const Unlocked = Schema.Struct({
+  expiresAt: Schema.DateFromString,
+  unlock: Schema.String,
+});
+export interface Unlocked extends Schema.Schema.Type<typeof Unlocked> {}

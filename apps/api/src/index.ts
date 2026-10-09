@@ -149,6 +149,22 @@ export default ApiWorker.make(
       },
     });
 
+    const passwordAttemptsPerIp = yield* Cloudflare.RateLimit("PASSWORD_ATTEMPTS_IP", {
+      namespaceId: 1006,
+      simple: {
+        limit: rateLimits.passwordAttemptsPerIp.limit,
+        period: rateLimits.passwordAttemptsPerIp.windowSeconds,
+      },
+    });
+
+    const passwordAttemptsPerLink = yield* Cloudflare.RateLimit("PASSWORD_ATTEMPTS_LINK", {
+      namespaceId: 1007,
+      simple: {
+        limit: rateLimits.passwordAttemptsPerLink.limit,
+        period: rateLimits.passwordAttemptsPerLink.windowSeconds,
+      },
+    });
+
     // Sends through Cloudflare Email Sending as hello@tranzfer.app. The
     // domain is onboarded on the account, so any recipient is allowed.
     const email = yield* Cloudflare.Email.Send(yield* Cloudflare.Email.SendEmail("EMAIL"));
@@ -171,7 +187,10 @@ export default ApiWorker.make(
     const database = Layer.unwrap(Effect.map(handle, Database.fromD1));
     const domain = Layer.mergeAll(
       Transfers.layer,
-      SharedLinks.layer,
+      SharedLinks.layer({
+        allowIp: limiter(passwordAttemptsPerIp),
+        allowLink: limiter(passwordAttemptsPerLink),
+      }),
       billing,
       Emails.layer({
         allowDeliveryEmail: limiter(emailRequests),

@@ -186,6 +186,9 @@ export const link = sqliteTable(
       .notNull()
       .references(() => delivery.id),
     revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+    // The recipient's password, as `pbkdf2-sha256$<iterations>$<salt>$<hash>`
+    // (apps/api/src/passwords.ts). Null means anyone with the link gets in.
+    passwordHash: text("password_hash"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

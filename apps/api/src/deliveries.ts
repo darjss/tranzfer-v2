@@ -28,6 +28,7 @@ import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 
 import { LinkTokens, newLinkId } from "./link-tokens";
+import { hashPassword } from "./passwords";
 import { Plans } from "./plans";
 import { Storage, UPLOAD_URL_TTL } from "./storage";
 
@@ -128,6 +129,12 @@ export class Deliveries extends Context.Service<
       deliveryId: DeliveryId,
       details: { readonly note: string; readonly title: string },
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
+    /** Sets, replaces or (with null) removes the password on the sender's own delivery's link. */
+    readonly setPassword: (
+      senderId: string,
+      deliveryId: DeliveryId,
+      password: string | null,
+    ) => Effect.Effect<Delivery, DeliveryNotFound>;
     readonly view: (deliveryId: DeliveryId) => Effect.Effect<Delivery>;
     /** Removes the objects of cancelled and expired deliveries. Returns how many it purged. */
     readonly purgeEnded: Effect.Effect<number>;
@@ -187,6 +194,7 @@ export class Deliveries extends Context.Service<
           createdAt: row.createdAt,
           download,
           expiresAt: row.expiresAt,
+          hasPassword: row.link.passwordHash !== null,
           id: row.id,
           link: `/d/${yield* tokens.issue(row.link.id)}`,
           note: row.note,
@@ -353,7 +361,6 @@ export class Deliveries extends Context.Service<
           );
           return yield* view(deliveryId);
         }, dieOnDatabaseError),
-
         clear: Effect.fn("Deliveries.clear")(function* clear(
           senderId: string,
           deliveryIds: readonly DeliveryId[],
@@ -378,7 +385,6 @@ export class Deliveries extends Context.Service<
               ),
             );
         }, dieOnDatabaseError),
-
         create: Effect.fn("Deliveries.create")(function* create(
           senderId: string,
           input: NewDelivery,
@@ -484,7 +490,6 @@ export class Deliveries extends Context.Service<
             ),
           );
         }, dieOnDatabaseError),
-
         list: Effect.fn("Deliveries.list")(function* list(senderId: string) {
           const rows = yield* db.query.delivery.findMany({
             limit: 50,
@@ -573,7 +578,29 @@ export class Deliveries extends Context.Service<
           yield* Effect.annotateCurrentSpan({ "sweep.ended": ended.length, "sweep.purged": total });
           return total;
         }).pipe(Effect.withSpan("Deliveries.purgeEnded"), dieOnDatabaseError),
-
+        setPassword: Effect.fn("Deliveries.setPassword")(function* setPassword(
+          senderId: string,
+          deliveryId: DeliveryId,
+          password: string | null,
+        ) {
+          yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
+          const passwordHash = password === null ? null : yield* hashPassword(password);
+          // The sender check is part of the statement, as in `update`.
+          const changed = yield* db
+            .update(schema.link)
+            .set({ passwordHash })
+            .where(
+              and(
+                eq(schema.link.deliveryId, deliveryId),
+                sql`EXISTS (SELECT 1 FROM delivery WHERE delivery.id = link.delivery_id AND delivery.sender_id = ${senderId})`,
+              ),
+            )
+            .returning({ id: schema.link.id });
+          if (changed.length === 0) {
+            return yield* new DeliveryNotFound();
+          }
+          return yield* view(deliveryId);
+        }, dieOnDatabaseError),
         update: Effect.fn("Deliveries.update")(function* update(
           senderId: string,
           deliveryId: DeliveryId,
@@ -592,7 +619,6 @@ export class Deliveries extends Context.Service<
           }
           return yield* view(deliveryId);
         }, dieOnDatabaseError),
-
         view,
       });
     }),
