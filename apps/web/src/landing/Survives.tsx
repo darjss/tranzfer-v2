@@ -1,7 +1,8 @@
 import { For } from "solid-js";
 import { css, cx } from "styled-system/css";
-import { Hand, Ink, Ring } from "./notebook";
-import { eyebrow, lede, section, sectionHead, sectionTitle } from "./styles";
+import { Hand, Ink } from "./notebook";
+import { Receipt } from "./Receipts";
+import { eyebrow, lede, section, sideTitle } from "./styles";
 import wrong1 from "./assets/wrong-01-cafe-wifi.webp";
 import wrong2 from "./assets/wrong-02-train-sleep.webp";
 import wrong3 from "./assets/wrong-03-refreshed-tab.webp";
@@ -35,9 +36,9 @@ const disasters = [
     src: wrong2,
   },
   {
-    at: "50% · asleep all night",
-    h: "You fell asleep on it.",
-    p: "Hours later, it picks up like nothing happened. Nothing you already sent gets thrown away.",
+    at: "50% · frozen 20 min",
+    h: "Your laptop went to sleep.",
+    p: "Wake it up and it carries on. Nothing that already arrived gets thrown away. We froze one for 20 minutes mid-upload to check.",
     rot: 2.5,
     src: wrong4,
   },
@@ -62,12 +63,12 @@ const stamp = css({
   borderRadius: "md",
   borderWidth: "2px",
   display: "inline-block",
+  flexShrink: 0,
   fontFamily: "mono",
   fontSize: "11",
   fontWeight: "medium",
   letterSpacing: "widest",
-  mt: "3.5",
-  mx: "1.5",
+  mt: "0.5",
   opacity: 0.85,
   px: "2",
   py: "0.5",
@@ -77,47 +78,74 @@ const stamp = css({
 
 export default function Survives() {
   return (
-    <section id="survives" class={section}>
-      <Ring style="left:60%;top:2%;width:120px;height:120px" />
-      <Ink tone="red" style="left:34%;top:9%;width:120px;height:60px" viewBox="0 0 120 60">
-        <path d="M4 50 C 30 10, 70 10, 112 30" style="--len:200" />
-        <path d="M96 18 116 30 100 44" style="--len:60;--d:.9s" />
-      </Ink>
-      <Hand tone="red" style="left:45%;top:2%;--r:5deg;--d:1s">
+    <section
+      id="survives"
+      class={cx(
+        section,
+        css({
+          columnGap: "16",
+          display: "grid",
+          gridTemplateColumns: { base: "1fr", lg: "minmax(0,5fr) minmax(0,6fr)" },
+          rowGap: "10",
+        }),
+      )}
+    >
+      <Hand tone="red" style="left:28%;top:5%;--r:5deg;--d:1s">
         it's never 12%.
         <br />
         it's always 63%.
       </Hand>
-      <Hand style="right:-2%;top:12%;--r:-7deg;--d:.6s;text-align:right">
-        sent twice:
-        <br />
-        zero bytes.
-      </Hand>
-      <div class={sectionHead}>
-        <p class={eyebrow}>What it survives</p>
-        <h2 class={cx("rv", sectionTitle)}>
-          It's 3am. You're at 63%.
-          <br />
-          <i>The Wi-Fi just died.</i>
-        </h2>
-        <p class={cx("rv", lede)} style="--d:80ms">
-          Other tools make you start over. Tranzfer keeps every piece that already arrived and only
-          sends what's missing. We did all six of these to one 100 GB upload, on purpose, and it
-          still finished with the exact same file.
-        </p>
+
+      {/* On phones the receipt drops below the notes, so the column dissolves. */}
+      <div class={css({ display: { base: "contents", lg: "flex" }, flexDir: "column" })}>
+        <div>
+          <p class={eyebrow}>What it survives</p>
+          <h2 class={cx("rv", sideTitle)}>
+            It's 3am.
+            <br />
+            You're at 63%.
+            <br />
+            <i>The Wi-Fi just died.</i>
+          </h2>
+          <p class={cx("rv", lede)} style="--d:80ms">
+            Other tools make you start over. Tranzfer keeps every piece that already arrived and
+            only sends what's missing. Before anyone else touched it, we sent 100 GiB through it and
+            wrecked the upload eight different ways. It finished with the exact same file.
+          </p>
+        </div>
+        <div
+          class={css({
+            alignSelf: "center",
+            justifySelf: "center",
+            order: { base: 2, lg: 0 },
+            pos: "relative",
+            pt: { lg: "16" },
+            w: "[min(100%,340px)]",
+          })}
+        >
+          <Hand tone="blue" style="left:-6%;top:1%;--r:-6deg;--d:.6s">
+            we broke it on purpose.
+            <br />
+            it didn't care.
+          </Hand>
+          <Ink tone="blue" style="left:62%;top:2%;width:70px;height:60px" viewBox="0 0 70 60">
+            <path d="M4 6 C 40 4, 60 20, 58 52" style="--len:90;--d:.9s" />
+            <path d="M46 42 58 54 66 40" style="--len:40;--d:1.4s" />
+          </Ink>
+          <Receipt />
+        </div>
       </div>
+
       <div
         class={cx(
           "desk",
           css({
+            "& > :nth-child(even)": { lg: { top: "12" } },
+            alignItems: "start",
             columnGap: "6",
             display: "grid",
-            gridTemplateColumns: {
-              base: "1fr",
-              lg: "repeat(3,minmax(0,1fr))",
-              md: "repeat(2,minmax(0,1fr))",
-            },
-            p: "3",
+            gridTemplateColumns: { base: "1fr", md: "repeat(2,minmax(0,1fr))" },
+            pt: { lg: "3" },
             rowGap: "7",
           }),
         )}
@@ -131,7 +159,7 @@ export default function Survives() {
                 css({
                   bg: "white",
                   borderRadius: "md",
-                  paddingBottom: "5",
+                  paddingBottom: "4",
                   pos: "relative",
                   pt: "2.5",
                   px: "2.5",
@@ -139,14 +167,14 @@ export default function Survives() {
                   shadow: "[0 34px 60px -36px rgba(23,24,28,.5),0 0 0 1px rgba(0,0,0,.06)]",
                 }),
               )}
-              style={`--r:${d.rot}deg;--d:${i() * 80}ms`}
+              style={`--r:${d.rot}deg;--d:${(i() % 2) * 90}ms`}
             >
               <span class="tape" />
               <div
                 class={cx(
                   "ph",
                   css({
-                    aspectRatio: "landscape",
+                    aspectRatio: "[16/9]",
                     borderRadius: "photo",
                     overflow: "hidden",
                     pos: "relative",
@@ -161,28 +189,44 @@ export default function Survives() {
                   loading="lazy"
                 />
               </div>
-              <h3
+              <div
                 class={css({
-                  fontWeight: "semibold",
-                  letterSpacing: "snug",
-                  lineHeight: "compact",
-                  mb: "1.5",
-                  mt: "4",
+                  alignItems: "start",
+                  display: "flex",
+                  gap: "3",
+                  justifyContent: "space-between",
+                  mt: "3.5",
                   mx: "1.5",
-                  textStyle: "xl",
-                  textWrap: "balance",
                 })}
               >
-                {d.h}
-              </h3>
-              <p class={css({ color: "mut", mx: "1.5", textStyle: "sm", textWrap: "pretty" })}>
+                <h3
+                  class={css({
+                    fontSize: "[19px]",
+                    fontWeight: "semibold",
+                    letterSpacing: "snug",
+                    lineHeight: "compact",
+                    textWrap: "balance",
+                  })}
+                >
+                  {d.h}
+                </h3>
+                <span
+                  class={cx(stamp, d.done === true ? css({ color: "blue" }) : css({ color: "ok" }))}
+                >
+                  {d.done === true ? "Done" : "Survived"}
+                </span>
+              </div>
+              <p
+                class={css({
+                  color: "mut",
+                  mt: "1.5",
+                  mx: "1.5",
+                  textStyle: "sm",
+                  textWrap: "pretty",
+                })}
+              >
                 {d.p}
               </p>
-              <span
-                class={cx(stamp, d.done === true ? css({ color: "blue" }) : css({ color: "ok" }))}
-              >
-                {d.done === true ? "Done" : "Survived"}
-              </span>
             </article>
           )}
         </For>

@@ -112,6 +112,11 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     if (failure === undefined) {
       void refresh(deliveries);
       void refresh(billing);
+      const { toaster } = await import("../ui/Toasts");
+      toaster.success({
+        description: "The link stopped working and the files are being deleted.",
+        title: "Delivery cancelled",
+      });
     }
     return failure;
   });
@@ -126,6 +131,13 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     const failure = Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
     if (failure === undefined) {
       void refresh(deliveries);
+      const { toaster } = await import("../ui/Toasts");
+      toaster.success({
+        title:
+          deliveryIds.length === 1
+            ? "Cleared 1 delivery"
+            : `Cleared ${deliveryIds.length} deliveries`,
+      });
     }
     return failure;
   });

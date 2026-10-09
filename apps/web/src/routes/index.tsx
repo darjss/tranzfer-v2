@@ -3,7 +3,7 @@ import { PlanId, plans } from "@tranzfer/contracts";
 import { bytes } from "../dashboard/format";
 import Landing from "../landing/Landing";
 import { faq } from "../landing/faq";
-import { supportEmail } from "../ui/Site";
+import { supportEmail } from "../ui/support";
 
 const site = "https://tranzfer.app";
 const description =

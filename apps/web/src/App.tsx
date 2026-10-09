@@ -1,4 +1,4 @@
-import { getRequestEvent, isServer } from "@solidjs/web";
+import { clientOnly, getRequestEvent, isServer } from "@solidjs/web";
 import * as Layer from "effect/Layer";
 import { Loading } from "solid-js";
 
@@ -14,6 +14,9 @@ import "@fontsource-variable/caveat/wght.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./App.css";
+
+// Notifications are browser-only; the server renders none.
+const Toasts = clientOnly(async () => await import("./ui/Toasts"));
 
 // The app root. Pages are the modules under src/routes; each owns its own
 // chrome (the landing has its own nav) until there is a signed-in shell.
@@ -37,6 +40,7 @@ export default function App() {
   return (
     <RuntimeContext value={createRuntime(Uploads.layer.pipe(Layer.provideMerge(api)))}>
       <Router>{(props) => <Loading fallback={<main />}>{props.children}</Loading>}</Router>
+      <Toasts />
     </RuntimeContext>
   );
 }

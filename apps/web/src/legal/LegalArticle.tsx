@@ -38,7 +38,7 @@ export default function LegalArticle(
       <Meta property="og:description" content={props.description} />
       <Meta property="og:url" content={`https://tranzfer.app${props.path}`} />
       <Link rel="canonical" href={`https://tranzfer.app${props.path}`} />
-      <main class={css({ py: { base: "14", lg: "20" } })}>
+      <main id="content" class={css({ py: { base: "14", lg: "20" } })}>
         <p
           class={css({
             color: "mut",

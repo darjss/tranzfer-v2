@@ -2,14 +2,7 @@ import { afterEach, describe, expect, it, vi } from "@effect/vitest";
 import { assertBudget, captureArtifact } from "@solidjs/diagnostics";
 import "@solidjs/diagnostics/vitest";
 import { cleanup, render, screen } from "@solidjs/testing-library";
-import {
-  Api,
-  Authenticated,
-  BillingUnavailable,
-  CurrentPrincipal,
-  DeliveryId,
-  TransferId,
-} from "@tranzfer/contracts";
+import { Api, Authenticated, CurrentPrincipal, DeliveryId, TransferId } from "@tranzfer/contracts";
 import type { BillingSummary, Delivery } from "@tranzfer/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -19,10 +12,9 @@ import * as Option from "effect/Option";
 import * as Struct from "effect/Struct";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as RpcTest from "effect/rpc/RpcTest";
-import { createSignal, flush, Loading } from "solid-js";
+import { flush, Loading } from "solid-js";
 
 import { ApiClient } from "../api/client";
-import { appError } from "../api/errors";
 import { RuntimeContext } from "../api/solid-effect";
 import { patchTransfer } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
@@ -39,9 +31,6 @@ HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogEleme
 HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
   this.removeAttribute("open");
 };
-// Nor popovers; the account menu opens itself to show a billing failure.
-const showPopover = vi.fn<() => void>();
-HTMLElement.prototype.showPopover = showPopover;
 
 const MB = 1_000_000;
 
@@ -342,10 +331,8 @@ describe("dashboard reactivity", () => {
         <>
           <TopBar
             billing={state.billing()}
-            dismissProblem={noop}
             manage={noop}
             principal={{ email: "s@test", id: "s", image: null, name: "Sender" }}
-            problem={undefined}
             send={noop}
             upgrade={noop}
           />
@@ -533,38 +520,5 @@ describe("dashboard reactivity", () => {
     expect(screen.getByText("Live")).toBeInTheDocument();
     expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
-  });
-
-  it("a billing failure opens the account menu and says so there", async () => {
-    const [problem, setProblem] = createSignal<string>();
-    render(() => (
-      <TopBar
-        billing={freePlan}
-        dismissProblem={noop}
-        manage={noop}
-        principal={{ email: "s@test", id: "s", image: null, name: "Sender" }}
-        problem={problem()}
-        send={noop}
-        upgrade={noop}
-      />
-    ));
-    flush();
-    showPopover.mockClear();
-
-    const { message } = appError(new BillingUnavailable());
-    const { artifact } = await captureArtifact(
-      () => {
-        setProblem(message);
-        flush();
-      },
-      { scenario: "billing-problem" },
-    );
-
-    expect(showPopover).toHaveBeenCalledOnce();
-    expect(screen.getByRole("alert", { hidden: true })).toHaveTextContent(message);
-    expect(message).toContain("turned this down or didn't answer");
-    expect(artifact).toHaveNoDiagnostics();
-    // The effect that opens the menu, plus the alert appearing; nothing else.
-    assertBudget(artifact, { allow: [], maxReruns: 5, maxWastedRuns: 0 });
   });
 });

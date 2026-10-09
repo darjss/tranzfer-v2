@@ -3,6 +3,8 @@ import type { JSX } from "@solidjs/web";
 import { For } from "solid-js";
 import { css, cx } from "styled-system/css";
 import { ArrowIcon } from "../landing/notebook";
+import { Crumbs } from "../marketing/Crumbs";
+import { noteLabel, noteRow } from "../marketing/MarketingPage";
 import { button } from "../ui/Button";
 import { SitePage } from "../ui/Site";
 
@@ -59,22 +61,23 @@ export default function ComparePage(props: {
   const url = () => `https://tranzfer.app${props.path}`;
   return (
     <SitePage>
-      <Title>{props.title} · Tranzfer</Title>
+      <Title>{`Tranzfer vs ${props.them} for large file delivery`}</Title>
       <Meta name="description" content={props.description} />
-      <Meta property="og:title" content={`${props.title} · Tranzfer`} />
+      <Meta property="og:title" content={`Tranzfer vs ${props.them}: ${props.title}`} />
       <Meta property="og:description" content={props.description} />
       <Meta property="og:url" content={url()} />
       <Link rel="canonical" href={url()} />
-      <main class={css({ py: { base: "14", lg: "20" } })}>
-        <p class={label}>Tranzfer vs {props.them}</p>
+      <main id="content">
+        <Crumbs name={`Tranzfer vs ${props.them}`} path={props.path} section="Compare" />
+        <p class={cx(label, css({ mt: { base: "8", lg: "10" } }))}>Tranzfer vs {props.them}</p>
         <h1
           class={css({
-            fontSize: "[clamp(36px,4.6vw,56px)]",
+            fontSize: "[clamp(34px,4.2vw,52px)]",
             fontWeight: "semibold",
             letterSpacing: "[-0.04em]",
             lineHeight: "none",
-            maxW: "[18ch]",
-            mt: "3.5",
+            maxW: "[20ch]",
+            mt: "3",
             textWrap: "balance",
           })}
         >
@@ -83,17 +86,17 @@ export default function ComparePage(props: {
         <div
           class={css({
             color: "[#3a3b40]",
-            fontSize: "[19px]",
+            fontSize: "17",
             lineHeight: "[1.6]",
             maxW: "[62ch]",
-            mt: "6",
+            mt: "5",
             textWrap: "pretty",
           })}
         >
           {props.intro}
         </div>
 
-        <div class={css({ mt: "12" })}>
+        <div class={css({ mt: "10" })}>
           <table
             class={css({
               borderCollapse: "collapse",
@@ -146,40 +149,45 @@ export default function ComparePage(props: {
             </tbody>
           </table>
         </div>
-        <p class={css({ color: "mut", mt: "4", textStyle: "sm" })}>
+        <p class={css({ color: "mut", fontSize: "13", mb: "8", mt: "3" })}>
           {props.them} facts come from {props.them}'s own pages, checked {props.checked}. Plans
           change; follow the links for the current version.
         </p>
 
-        <h2
-          class={css({
-            fontSize: "22",
-            fontWeight: "semibold",
-            letterSpacing: "tight",
-            mt: "14",
-          })}
-        >
-          When {props.them} is the better pick
-        </h2>
-        <ul
-          class={css({
-            color: "[#3a3b40]",
-            fontSize: "17",
-            listStyleType: "disc",
-            maxW: "[62ch]",
-            mt: "3",
-            pl: "5",
-          })}
-        >
-          <For each={props.theyFit}>{(reason) => <li class={css({ mt: "1.5" })}>{reason}</li>}</For>
-        </ul>
+        <section class={noteRow}>
+          <h2 class={noteLabel}>When {props.them} fits better</h2>
+          <ul
+            class={css({
+              color: "[#3a3b40]",
+              fontSize: "15",
+              listStyleType: "disc",
+              maxW: "[62ch]",
+              pl: "5",
+            })}
+          >
+            <For each={props.theyFit}>
+              {(reason) => <li class={css({ _first: { mt: "0" }, mt: "1.5" })}>{reason}</li>}
+            </For>
+          </ul>
+        </section>
 
-        <div class={css({ alignItems: "center", display: "flex", gap: "4", mt: "14" })}>
-          <a class={button()} href="/sign-in">
-            Start free <ArrowIcon />
-          </a>
-          <span class={css({ color: "mut", textStyle: "sm" })}>20 GB free, no card.</span>
-        </div>
+        <section class={noteRow}>
+          <h2 class={noteLabel}>Try it</h2>
+          <div class={css({ alignItems: "center", display: "flex", flexWrap: "wrap", gap: "5" })}>
+            <a class={button()} href="/sign-in">
+              Start free <ArrowIcon />
+            </a>
+            <span class={css({ color: "mut", fontSize: "15" })}>
+              20 GB free, no card.{" "}
+              <a
+                class={css({ _hover: { color: "ink" }, color: "blue", fontWeight: "semibold" })}
+                href="/pricing"
+              >
+                Compare prices
+              </a>
+            </span>
+          </div>
+        </section>
       </main>
     </SitePage>
   );

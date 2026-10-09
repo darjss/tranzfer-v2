@@ -84,3 +84,65 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   mix-blend-mode: multiply;
 }
+
+/* Rows spring in when they mount, which is also when a delivery moves to a
+   new section, so a finished upload lands in Ready with a little bounce. */
+.row-in {
+  animation: row-in 0.45s var(--easings-spring) both;
+}
+@keyframes row-in {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+    scale: 0.98;
+  }
+}
+
+/* A delivery that just became ready: the check pops and throws one ring. */
+[data-kind="ready"] {
+  position: relative;
+  animation: ready-pop 0.5s var(--easings-spring) 0.15s both;
+}
+[data-kind="ready"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--colors-ok);
+  opacity: 0;
+  animation: ready-ring 0.8s var(--easings-smooth) 0.2s;
+}
+@keyframes ready-pop {
+  from {
+    scale: 0.6;
+  }
+}
+@keyframes ready-ring {
+  from {
+    opacity: 0.7;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 2.2;
+  }
+}
+
+/* Moving rows breathe, so a long upload never looks frozen. */
+[data-kind="moving"] {
+  animation: breathe 2.4s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% {
+    scale: 1.08;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-in,
+  [data-kind="ready"],
+  [data-kind="ready"]::after,
+  [data-kind="moving"] {
+    animation: none;
+  }
+}

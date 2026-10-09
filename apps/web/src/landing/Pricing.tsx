@@ -1,9 +1,10 @@
 import { PlanId, plans } from "@tranzfer/contracts";
 import type { PaidPlanId, PlanId as Plan } from "@tranzfer/contracts";
-import { For, Show, createSignal, useContext } from "solid-js";
+import { dynamic } from "@solidjs/web";
+import { For, Show, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
 import { Hand, Ink } from "./notebook";
-import { eyebrow, section, sectionHead, sectionTitle } from "./styles";
+import { eyebrow, section, sideTitle } from "./styles";
 import { RuntimeContext } from "../api/solid-effect";
 import { goToCheckout } from "../dashboard/billing";
 import { bytes } from "../dashboard/format";
@@ -46,8 +47,6 @@ const pro = css({
   "@media (hover: hover)": { _hover: { rotate: "[0deg]", translate: "[0 -6px]" } },
   bg: "ink",
   color: "paper",
-  // Stacked on a phone, Pro leads.
-  order: { base: "-1", md: "0" },
   pb: "11",
   pt: "10",
   rotate: { base: "[0deg]", lg: "[-1.5deg]" },
@@ -55,44 +54,59 @@ const pro = css({
   zIndex: 1,
 });
 
-export default function Pricing() {
-  const [problem, setProblem] = createSignal<string>();
+/** On /pricing this section is the page, so its title is the h1. */
+export default function Pricing(props: { heading?: "h1" }) {
   const runtime = useContext(RuntimeContext);
+  const Heading = dynamic(() => props.heading ?? "h2");
 
   // The checkout call needs a session. A signed-out visitor signs in first and
   // the dashboard carries on to checkout for this plan.
   const choose = async (plan: PaidPlanId) => {
-    setProblem(undefined);
     const result = await goToCheckout(runtime, plan);
     if (result?.tag === "Unauthorized") {
       location.assign(`/sign-in?plan=${plan}`);
     } else if (result !== undefined) {
-      setProblem(result.message);
+      const { toaster } = await import("../ui/Toasts");
+      toaster.error({ description: result.message, title: "Checkout didn't open" });
     }
   };
 
   return (
     <section id="pricing" class={section}>
-      <Hand tone="blue" style="left:56%;top:31%;--r:-6deg;--d:.9s">
+      <Hand tone="blue" style="left:38%;top:24%;--r:-6deg;--d:.9s">
         $29. one reshoot
         <br />
         costs more ↓
       </Hand>
-      <Hand style="right:0;top:10%;--r:4deg;--d:.5s">
-        day 3. Marcus has
-        <br />
-        everything. <s>cancel</s>
-      </Hand>
-      <div class={sectionHead}>
-        <p class={eyebrow}>Pricing</p>
-        <h2 class={cx("rv", sectionTitle)}>
-          Pay for the work. <i>Not per gigabyte.</i>
-        </h2>
-        <p class={css({ color: "mut", fontSize: "17", mt: "4", textWrap: "pretty" })}>
-          Every plan resumes after anything, sends whole folders and gives your editor one link, no
-          account needed. Bigger plans hold more at once and keep links longer. Space frees up the
-          moment a delivery ends.
-        </p>
+      <div
+        class={css({
+          alignItems: "end",
+          columnGap: "16",
+          display: "grid",
+          gridTemplateColumns: { base: "1fr", lg: "minmax(0,1fr) minmax(0,1fr)" },
+          mb: { base: "10", lg: "14" },
+          rowGap: "4",
+        })}
+      >
+        <div>
+          <p class={eyebrow}>Pricing</p>
+          <Heading class={cx("rv", sideTitle)}>
+            Pay for the work. <i>Not per gigabyte.</i>
+          </Heading>
+        </div>
+        <div class={css({ pos: "relative" })}>
+          <Hand style="right:0;top:-70%;--r:4deg;--d:.5s">
+            day 3. Marcus has
+            <br />
+            everything. <s>cancel</s>
+          </Hand>
+          <p class={cx("rv", css({ color: "mut", fontSize: "15", textWrap: "pretty" }))}>
+            Every plan picks up after dropped Wi-Fi, reloads and crashes, sends whole folders and
+            gives your editor one link, no account needed. Bigger plans hold more at once and keep
+            links longer. Files count against your space until the link expires or you cancel it.
+            Downloads don't free space.
+          </p>
+        </div>
       </div>
 
       <div
@@ -132,7 +146,7 @@ export default function Pricing() {
                       whiteSpace: "nowrap",
                     })}
                   >
-                    most editors pick this
+                    for regular big sends
                   </span>
                 </Show>
                 <h3
@@ -198,7 +212,7 @@ export default function Pricing() {
                     listStyle: "none",
                   })}
                 >
-                  <li>{bytes(plans[id].activeBytes)} on the go at once</li>
+                  <li>{bytes(plans[id].activeBytes)} across live links</li>
                   <li>Links live up to {plans[id].maxRetentionDays} days</li>
                 </ul>
                 <Show
@@ -227,14 +241,7 @@ export default function Pricing() {
           }}
         </For>
       </div>
-      <Show when={problem()}>
-        {(message) => (
-          <p class={css({ color: "rust", mt: "4", textStyle: "sm" })} role="alert">
-            {message()}
-          </p>
-        )}
-      </Show>
-      <p class={css({ color: "mut", mt: "8", textStyle: "sm" })}>
+      <p class={css({ color: "mut", mt: "6", textStyle: "sm" })}>
         Billed monthly through Polar. Cancel whenever; your plan runs to the end of the month you
         paid for.
       </p>

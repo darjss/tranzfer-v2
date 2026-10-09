@@ -22,6 +22,7 @@ import { runEffect, RuntimeContext } from "../../api/solid-effect";
 import { bytes, files, fromNow, untilDate } from "../../dashboard/format";
 import { SaveAll } from "../../downloads/SaveAll";
 import Brand from "../../landing/Brand";
+import Loader, { linkQuips } from "../../ui/Loader";
 
 const ghost = css({
   bg: "panel",
@@ -257,7 +258,7 @@ const Delivery = (props: {
 
 const Opening = () => (
   <Paper>
-    <p class={css({ color: "mut", textStyle: "sm" })}>Opening the link…</p>
+    <Loader quips={linkQuips} />
   </Paper>
 );
 

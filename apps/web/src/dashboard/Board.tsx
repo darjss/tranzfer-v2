@@ -165,6 +165,7 @@ function Row(
   return (
     <li
       class={cx(
+        "row-in",
         css({
           "&:has([data-open]:focus-visible)": {
             outline: "[2px solid var(--colors-blue)]",

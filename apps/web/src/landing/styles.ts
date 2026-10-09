@@ -13,8 +13,7 @@ export const eyebrow = css({
 
 export const sectionHead = css({ maxW: "[62ch]", mb: "16" });
 
-/** A section heading; an `<i>` inside it turns blue. */
-export const sectionTitle = css({
+const title = css.raw({
   "& i": { color: "blue", fontStyle: "italic" },
   fontSize: "[clamp(34px,4.6vw,60px)]",
   fontWeight: "semibold",
@@ -24,6 +23,15 @@ export const sectionTitle = css({
   textWrap: "balance",
 });
 
+/** A section heading; an `<i>` inside it turns blue. */
+export const sectionTitle = css(title);
+
+/** A heading that shares its row with content, so it can be smaller. */
+export const sideTitle = css(title, { fontSize: "[clamp(32px,3.9vw,50px)]" });
+
+/** For the short sections between the big ones. */
+export const smallTitle = css(title, { fontSize: "[clamp(28px,3vw,40px)]", mt: "2.5" });
+
 export const lede = css({
   color: "mut",
   maxW: "[54ch]",
@@ -32,7 +40,7 @@ export const lede = css({
   textWrap: "pretty",
 });
 
-export const section = css({ pos: "relative", py: { base: "20", lg: "30" } });
+export const section = css({ pos: "relative", py: { base: "12", lg: "16" } });
 
 /** The centered column the landing's sections sit in. */
 export const page = css({ marginInline: "auto", maxW: "page", pos: "relative", px: "7" });

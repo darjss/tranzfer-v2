@@ -34,10 +34,7 @@ export default function Reel() {
     <div
       role="img"
       aria-label="A 463 GB upload loses Wi-Fi at 63%, waits, survives the laptop sleeping, and gets delivered."
-      class={cx(
-        "reel",
-        css({ lg: { justifySelf: "end" }, pos: "relative", w: "[min(100%,500px)]", zIndex: 2 }),
-      )}
+      class={cx("reel", css({ pos: "relative", w: "[min(100%,540px)]", zIndex: 2 }))}
     >
       <div
         aria-hidden="true"
