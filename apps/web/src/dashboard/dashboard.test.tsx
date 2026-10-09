@@ -8,10 +8,18 @@ import {
   Authenticated,
   CurrentPrincipal,
   DeliveryId,
+  RequestId,
+  RequestNotFound,
   TransferId,
   Unauthorized,
 } from "@tranzfer/contracts";
-import type { BillingSummary, Delivery } from "@tranzfer/contracts";
+import type {
+  BillingSummary,
+  Delivery,
+  FileRequest,
+  OpenedRequest,
+  RequestUpload,
+} from "@tranzfer/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -27,11 +35,14 @@ import { ApiClient } from "../api/client";
 import { reportFailure } from "../api/errors";
 import { NotifyMe } from "../landing/Pricing";
 import { RuntimeContext } from "../api/solid-effect";
+import { Portal } from "../portal/Portal";
 import { patchTransfer } from "../uploads/store";
 import { claim, letGo } from "../uploads/tabs";
 import { untilDate } from "./format";
 import { Uploads } from "../uploads/uploads";
 import { Board } from "./Board";
+import { Requests } from "./Requests";
+import { createRequests } from "./requests";
 import { SendCard } from "./SendCard";
 import { SendDoneList } from "./SendDone";
 import { TopBar } from "./TopBar";
@@ -73,6 +84,30 @@ const delivery = (
   uploader: null,
 });
 
+const fileRequest = (title: string, status: FileRequest["status"] = "open"): FileRequest => ({
+  createdAt: new Date("2026-10-09T08:00:00Z"),
+  expiresAt: new Date("2026-10-12T08:00:00Z"),
+  id: RequestId.make(crypto.randomUUID()),
+  instructions: "",
+  link: `/r/${title}.sig`,
+  maxBytes: null,
+  receivedBytes: 0,
+  retentionDays: 3,
+  status,
+  title,
+  uploads: 0,
+});
+
+// What an uploader sees of a delivery: its files and their state, no link.
+const requestUpload = (
+  title: string,
+  status: RequestUpload["status"],
+  sizes: readonly number[],
+): RequestUpload => {
+  const { id, transfers } = delivery(title, status, sizes);
+  return { id, status, title, transfers };
+};
+
 // The API side of the dashboard, in memory: a server list the fake cancel
 // really changes, behind the typed RPC client the page uses.
 const freePlan: BillingSummary = {
@@ -105,7 +140,18 @@ const makeWorld = (
   initialBilling: BillingSummary = freePlan,
   // How many list reads fail before the server answers, like a dropped request.
   listFailures = 0,
+  // File requests: the owner's list, what an uploader opens and has sent, and
+  // what the uploader's browser did.
+  portal: {
+    readonly opened?: OpenedRequest;
+    readonly requests?: FileRequest[];
+    readonly resumedWith?: string[];
+    readonly sends?: { files: string[]; name: string; email: string | null; token: string }[];
+    readonly uploads?: RequestUpload[];
+  } = {},
 ) => {
+  const ownRequests = portal.requests ?? [];
+  const received = portal.uploads ?? [];
   // Redeeming BETA-PRO changes what the next GetBilling answers, like the real API.
   let billing = initialBilling;
   let listsToFail = listFailures;
@@ -123,16 +169,39 @@ const makeWorld = (
                 ...server.filter((row) => !deliveryIds.includes(row.id)),
               );
             }),
-          CloseFileRequest: () => Effect.die("unused"),
+          // Like cancel, the reply is held until the test has looked at the optimistic state.
+          CloseFileRequest: ({ requestId }) =>
+            Effect.gen(function* fakeClose() {
+              if (gate !== undefined) {
+                yield* Deferred.await(gate);
+              }
+              const index = ownRequests.findIndex((row) => row.id === requestId);
+              const row = ownRequests[index];
+              if (row === undefined) {
+                return yield* Effect.die(new Error("unknown request"));
+              }
+              const closed = Struct.evolve(row, { status: () => "closed" as const });
+              ownRequests[index] = closed;
+              return closed;
+            }),
           CreateDelivery: () => Effect.die("unused"),
-          CreateFileRequest: () => Effect.die("unused"),
+          CreateFileRequest: ({ instructions, maxBytes, retentionDays, title }) =>
+            Effect.sync(() => {
+              const created = Struct.evolve(fileRequest(title), {
+                instructions: () => instructions,
+                maxBytes: () => maxBytes,
+                retentionDays: () => retentionDays,
+              });
+              ownRequests.unshift(created);
+              return created;
+            }),
           CreateRequestUpload: () => Effect.die("unused"),
           Deliveries: () =>
             Effect.suspend(() => {
               listsToFail -= 1;
               return listsToFail < 0 ? Effect.succeed([...server]) : Effect.die("list failed");
             }),
-          FileRequests: () => Effect.succeed([]),
+          FileRequests: () => Effect.sync(() => [...ownRequests]),
           FinalizeRequestTransfer: () => Effect.die("unused"),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.sync(() => billing),
@@ -142,7 +211,10 @@ const makeWorld = (
             email === undefined ? Effect.fail(new Unauthorized()) : Effect.succeed({ email }),
           Me: () => Effect.service(CurrentPrincipal),
           OpenBillingPortal: () => Effect.die("unused"),
-          OpenFileRequest: () => Effect.die("unused"),
+          OpenFileRequest: () =>
+            portal.opened === undefined
+              ? Effect.fail(new RequestNotFound())
+              : Effect.succeed(portal.opened),
           OpenLink: () => Effect.die("unused"),
           RedeemCode: ({ code }) =>
             code.trim().toUpperCase() === "BETA-PRO"
@@ -211,11 +283,14 @@ const makeWorld = (
           server[index] = cancelled;
           return cancelled;
         }),
-      recoverRequest: () => Effect.succeed([]),
+      recoverRequest: () => Effect.sync(() => [...received]),
       restore: () => Effect.void,
       // Reports some of the stored bytes checked, then holds like cancel does.
-      resume: (_delivery, _files, onChecking) =>
+      resume: (_delivery, _files, onChecking, token) =>
         Effect.gen(function* fakeResume() {
+          if (token !== undefined) {
+            portal.resumedWith?.push(token);
+          }
           onChecking?.({ checked: 12 * MB, total: 50 * MB });
           if (gate !== undefined) {
             yield* Deferred.await(gate);
@@ -234,7 +309,23 @@ const makeWorld = (
           server.unshift(created);
           return created;
         }),
-      sendToRequest: () => Effect.die("unused"),
+      // The server has the upload, open, with one transfer per file.
+      sendToRequest: (chosen, via) =>
+        Effect.sync(() => {
+          portal.sends?.push({
+            email: via.email,
+            files: chosen.map(({ path }) => path),
+            name: via.name,
+            token: via.token,
+          });
+          const created = requestUpload(
+            `Day 3 from ${via.name}`,
+            "open",
+            chosen.map(({ file }) => file.size),
+          );
+          received.unshift(created);
+          return created;
+        }),
     }),
   );
   // The server-side Authenticated middleware reads the incoming request.
@@ -1099,6 +1190,212 @@ describe("dashboard reactivity", () => {
 
     expect(screen.queryByText("Sending in another tab")).toBeNull();
     expect(artifact).toHaveNoDiagnostics();
+    await runtime.dispose();
+  });
+  it("an owner makes a request link, and closing it reads Closed before the server answers", async () => {
+    const gate = Deferred.makeUnsafe<boolean>();
+    const requests: FileRequest[] = [];
+    const runtime = makeWorld([], gate, freePlan, 0, { requests });
+    const Harness = () => {
+      const state = createRequests(runtime);
+      return (
+        <Requests
+          billing={freePlan}
+          close={state.close}
+          create={state.create}
+          requests={state.requests}
+        />
+      );
+    };
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Harness />
+        </Loading>
+      </RuntimeContext>
+    ));
+    await screen.findByText(/Need files from someone/u);
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        screen.getByRole("button", { name: "Request files" }).click();
+        flush();
+        // Free keeps links 3 days, so longer options are off.
+        expect(screen.getByRole("radio", { name: "7 days" })).toBeDisabled();
+        fireEvent.input(screen.getByRole("textbox", { name: /What are you asking for/u }), {
+          target: { value: "Day 3 footage" },
+        });
+        fireEvent.input(screen.getByRole("spinbutton", { name: /Size limit in GB/u }), {
+          target: { value: "50" },
+        });
+        flush();
+        screen.getByRole("button", { name: "Create link" }).click();
+        await screen.findByText("Day 3 footage");
+        expect(
+          requests.map(({ maxBytes, retentionDays, title }) => ({
+            maxBytes,
+            retentionDays,
+            title,
+          })),
+        ).toEqual([{ maxBytes: 50_000_000_000, retentionDays: 3, title: "Day 3 footage" }]);
+        expect(screen.getByText("no uploads yet")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /Copy link/u })).toBeInTheDocument();
+
+        screen.getByRole("button", { name: "Close" }).click();
+        flush();
+        screen.getByRole("button", { name: "Yes, close it" }).click();
+        flush();
+        // Optimistic: already closed while the server is still holding its reply.
+        expect(await screen.findByText("Closed. The link no longer works.")).toBeInTheDocument();
+        expect(requests.map((row) => row.status)).toEqual(["open"]);
+        expect(screen.queryByRole("button", { name: /Copy link/u })).not.toBeInTheDocument();
+        Deferred.doneUnsafe(gate, Effect.succeed(true));
+        await vi.waitFor(() => {
+          expect(requests.map((row) => row.status)).toEqual(["closed"]);
+        });
+      },
+      { scenario: "request-create-close" },
+    );
+    flush();
+    expect(screen.getByText("Closed. The link no longer works.")).toBeInTheDocument();
+    // The new request shows before the list is read again, and the read
+    // confirms it with the same value: a correct guess, reported as info.
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    await runtime.dispose();
+  });
+
+  it("an uploader names themself, sends through the token, and sees the upload", async () => {
+    const sends: { files: string[]; name: string; email: string | null; token: string }[] = [];
+    const runtime = makeWorld([], undefined, freePlan, 0, {
+      opened: {
+        expiresAt: new Date("2026-10-12T08:00:00Z"),
+        instructions: "Raw clips, please",
+        ownerName: "Rita",
+        title: "Day 3",
+      },
+      sends,
+    });
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Portal token="tok.sig" />
+        </Loading>
+      </RuntimeContext>
+    ));
+    expect(await screen.findByText("Rita asked for files")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Day 3" })).toBeInTheDocument();
+    expect(screen.getByText("Raw clips, please")).toBeInTheDocument();
+    // Nothing to pick until they say who they are.
+    expect(screen.getByRole("button", { name: "Choose files" })).toBeDisabled();
+    expect(screen.queryByText("Your uploads")).not.toBeInTheDocument();
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        const picker = document.querySelector<HTMLInputElement>('input[type="file"][multiple]');
+        if (picker === null) {
+          throw new Error("the page has no file input");
+        }
+        fireEvent.input(screen.getByRole("textbox", { name: "Your name" }), {
+          target: { value: "Jane" },
+        });
+        flush();
+        expect(screen.getByRole("button", { name: "Choose files" })).toBeEnabled();
+
+        // A bad address stops the pick; nothing is created.
+        fireEvent.input(screen.getByRole("textbox", { name: /Your email/u }), {
+          target: { value: "jane@" },
+        });
+        flush();
+        fireEvent.change(picker, { target: { files: [new File(["x"], "a.mov")] } });
+        expect(await screen.findByText(/doesn't look right/u)).toBeInTheDocument();
+        expect(sends).toEqual([]);
+
+        fireEvent.input(screen.getByRole("textbox", { name: /Your email/u }), {
+          target: { value: " jane@example.com " },
+        });
+        flush();
+        fireEvent.change(picker, { target: { files: [new File(["x"], "a.mov")] } });
+        await screen.findByText("Your uploads");
+      },
+      { scenario: "portal-send" },
+    );
+    flush();
+    expect(sends).toEqual([
+      { email: "jane@example.com", files: ["a.mov"], name: "Jane", token: "tok.sig" },
+    ]);
+    expect(screen.getByText(/^1 file · /u)).toBeInTheDocument();
+    // The Setting the upload up… flag is an optimistic write that reverts when
+    // the action settles, by design.
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    await runtime.dispose();
+  });
+
+  it("an unfinished upload asks the uploader for its files and resumes through the token", async () => {
+    const waiting = requestUpload("Day 3 from Jane", "open", [60 * MB]);
+    const [transfer] = waiting.transfers;
+    if (transfer === undefined) {
+      throw new Error("fixture needs a transfer");
+    }
+    patchTransfer(transfer.id, { confirmed: 20 * MB, phase: "needsFile" });
+    const resumedWith: string[] = [];
+    const gate = Deferred.makeUnsafe<boolean>();
+    const runtime = makeWorld([], gate, freePlan, 0, {
+      opened: {
+        expiresAt: new Date("2026-10-12T08:00:00Z"),
+        instructions: "",
+        ownerName: "Rita",
+        title: "Day 3",
+      },
+      resumedWith,
+      uploads: [waiting],
+    });
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Portal token="tok.sig" />
+        </Loading>
+      </RuntimeContext>
+    ));
+    expect(await screen.findByText("20 MB of 60 MB arrived")).toBeInTheDocument();
+    expect(screen.getByText(/We need the original files to continue/u)).toBeInTheDocument();
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        const picker = document.querySelector<HTMLInputElement>('input[type="file"][multiple]');
+        if (picker === null) {
+          throw new Error("the row has no file input");
+        }
+        fireEvent.change(picker, { target: { files: [new File(["x"], "0.bin")] } });
+        expect(
+          await screen.findByText(
+            /Checking the files against what already arrived: 12 MB of 50 MB/u,
+          ),
+        ).toBeInTheDocument();
+        Deferred.doneUnsafe(gate, Effect.succeed(true));
+        await vi.waitFor(() => {
+          expect(screen.queryByText(/Checking the files/u)).not.toBeInTheDocument();
+        });
+      },
+      { scenario: "portal-resume" },
+    );
+    expect(resumedWith).toEqual(["tok.sig"]);
+    expect(artifact).toHaveNoDiagnostics();
+    await runtime.dispose();
+  });
+
+  it("a dead request link says so in words", async () => {
+    // The fake has no request to open, like a closed or mistyped link.
+    const runtime = makeWorld([]);
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Portal token="gone" />
+        </Loading>
+      </RuntimeContext>
+    ));
+    await screen.findByRole("heading", { name: "This link doesn't work." });
+    expect(screen.getByText(/It may have expired or been closed/u)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Choose files" })).not.toBeInTheDocument();
     await runtime.dispose();
   });
 });

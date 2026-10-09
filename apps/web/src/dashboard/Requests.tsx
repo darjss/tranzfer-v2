@@ -263,10 +263,10 @@ function Row(props: {
             {props.request.uploads === 0
               ? "no uploads yet"
               : `${props.request.uploads} ${props.request.uploads === 1 ? "upload" : "uploads"}, ${bytes(props.request.receivedBytes)}`}
-            <Show when={props.request.maxBytes}>
-              {(limit) => <> of {bytes(limit())} allowed</>}
-            </Show>
           </span>
+          <Show when={props.request.maxBytes}>
+            {(limit) => <span>limit {bytes(limit())}</span>}
+          </Show>
         </p>
       </div>
       <Show when={props.request.status === "open"}>
