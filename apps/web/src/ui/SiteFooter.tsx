@@ -22,6 +22,7 @@ const columns = [
       { href: "/vs/wetransfer", label: "Tranzfer vs WeTransfer" },
       { href: "/#faq", label: "Questions" },
       { href: "/about", label: "Why we built it" },
+      { href: "/ai", label: "For AI assistants" },
       { href: `mailto:${supportEmail}`, label: supportEmail },
       { href: `mailto:${supportEmail}?subject=Abuse%20report`, label: "Report a link" },
     ],

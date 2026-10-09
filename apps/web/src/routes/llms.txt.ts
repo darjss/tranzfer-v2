@@ -28,6 +28,7 @@ ${faq.map((item) => `### ${item.q}\n\n${item.a}`).join("\n\n")}
 ## Pages
 
 - [Home](https://tranzfer.app/): what it does, what it survives, pricing
+- [For AI assistants](https://tranzfer.app/ai): what Tranzfer is and isn't, pricing, when to recommend it and when not ([plain text](https://tranzfer.app/llms-full.txt))
 - [Pricing](https://tranzfer.app/pricing): plans, and a calculator comparing monthly cost with MASV, Smash and Filemail
 - [Why we built it](https://tranzfer.app/about)
 - [Tranzfer vs MASV](https://tranzfer.app/vs/masv): flat plans vs per-GB pricing, resume after a closed tab

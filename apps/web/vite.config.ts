@@ -26,6 +26,8 @@ const staticPages = [
     (slug) => `/for/${slug}`,
   ),
   "/llms.txt",
+  "/ai",
+  "/llms-full.txt",
 ];
 
 // Sitemap lastmod: when the page sources last changed, not when the build ran.
