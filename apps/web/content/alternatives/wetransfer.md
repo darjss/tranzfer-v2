@@ -44,7 +44,7 @@ The last column is a heavy month: four 100 GB deliveries, one live at a time. Pr
 - **You send 50 GB to 3 TB from a laptop** and can't babysit it: Tranzfer. It's the one we built for that night.
 - **Your team wants a desktop app** or client upload portals and sends irregularly: MASV.
 - **You want files to stay up for good** and don't mind installing an app: Filemail Pro or Business.
-- **You send under 2 GB and want it free**: Smash, or WeTransfer itself.
+- **You send under 2 GB and want it free.** Smash, or WeTransfer itself.
 - **You already pay for Dropbox or Google Workspace** and send under 100 GB: use what you have.
 
 ## When is WeTransfer still the right pick?

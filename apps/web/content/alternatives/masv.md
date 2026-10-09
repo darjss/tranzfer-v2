@@ -44,10 +44,10 @@ The last column is four 100 GB deliveries in a month, one live at a time. Prices
 ## Which one should you pick?
 
 - **You send big deliveries every week** and want a predictable bill: Tranzfer. Pro is $29 a month for 1 TB live at once, however much passes through it.
-- **You want a desktop app at a flat price**: Filemail Business, which takes any size.
-- **Your files are under 1 TB and recipients know WeTransfer**: WeTransfer Ultimate.
+- **You want a desktop app at a flat price.** Filemail Business, which takes any size.
+- **Your files are under 1 TB and recipients know WeTransfer.** WeTransfer Ultimate.
 - **You want the cheapest flat plan** and can live without documented resume: Smash Pro at $10 a month.
-- **You already pay for Dropbox or Google Workspace**: try what you have before adding anything.
+- **You already pay for Dropbox or Google Workspace.** Try what you have before adding anything.
 
 ## When is MASV still the better pick?
 

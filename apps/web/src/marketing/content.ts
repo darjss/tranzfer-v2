@@ -31,6 +31,8 @@ export interface Page {
   /** What Tranzfer replaces for them. */
   readonly instead?: readonly { readonly h: string; readonly p: string }[];
   readonly faq?: readonly { readonly q: string; readonly a: string }[];
+  /** Guides listed first under "Read next". */
+  readonly guides?: readonly { readonly href: string; readonly label: string }[];
 }
 
 export const features: readonly Page[] = [
@@ -55,6 +57,10 @@ export const features: readonly Page[] = [
         a: "We sent one 100 GB upload and broke it eight ways on purpose, including Wi-Fi off, a reload, a closed tab and a crashed browser. It finished, and the file on the other end matched the original exactly.",
         q: "How was it tested?",
       },
+    ],
+    guides: [
+      { href: "/guides/how-to-send-large-files", label: "How to send large files" },
+      { href: "/guides/send-a-100gb-file", label: "Send a 100 GB file" },
     ],
     image: videoEdit,
     lede: "Drag in a whole shoot and hit send. Tranzfer moves hundreds of gigabytes straight from your browser. Nothing to install, nothing to zip, no splitting a project into polite little pieces.",
@@ -99,6 +105,9 @@ export const features: readonly Page[] = [
         q: "Is resume a paid extra?",
       },
     ],
+    guides: [
+      { href: "/guides/resume-an-interrupted-upload", label: "Resume an interrupted upload" },
+    ],
     image: wrong1,
     lede: "Uploads die at the worst moment. Tranzfer keeps every piece that already arrived, so a dropped connection, a sleeping laptop or a crashed browser never sends you back to zero.",
     menu: "Resume anything",
@@ -136,6 +145,12 @@ export const features: readonly Page[] = [
       {
         a: "They download each file on its own.",
         q: "What about Safari, Firefox or a phone?",
+      },
+    ],
+    guides: [
+      {
+        href: "/guides/send-large-video-files-to-an-editor",
+        label: "Transfer raw footage to your editor",
       },
     ],
     image: loftPacking,
@@ -316,6 +331,14 @@ export const audiences: readonly Page[] = [
       "Drone footage",
       "Whole camera cards",
     ],
+    guides: [
+      {
+        href: "/guides/best-way-to-send-large-video-files",
+        label: "Best way to send large video files",
+      },
+      { href: "/guides/send-300gb-of-video-footage", label: "Send 300 GB of footage" },
+      { href: "/guides/send-prores-files", label: "Send ProRes files" },
+    ],
     image: videoEdit,
     instead: [
       { h: "Shipping a hard drive", p: "No courier, no waiting a day for a drive to land." },
@@ -397,6 +420,13 @@ export const audiences: readonly Page[] = [
       "Capture One sessions",
       "Video clips from the day",
     ],
+    guides: [
+      { href: "/guides/send-raw-photos-to-a-client", label: "Send RAW photos to a client" },
+      {
+        href: "/guides/send-wedding-photos-full-resolution",
+        label: "Send wedding photos at full resolution",
+      },
+    ],
     image: wrong3,
     instead: [
       { h: "Seven zip files", p: "Send the folder as it is. Nothing to compress or split." },
@@ -475,6 +505,17 @@ export const audiences: readonly Page[] = [
       "Music stems",
       "Reference cuts",
     ],
+    guides: [
+      {
+        href: "/guides/send-large-video-files-to-an-editor",
+        label: "Transfer raw footage to your editor",
+      },
+      {
+        href: "/guides/send-4k-footage-to-a-remote-editor",
+        label: "Send 4K footage to a remote editor",
+      },
+      { href: "/guides/send-r3d-files-to-an-editor", label: "Send R3D files" },
+    ],
     image: mountainStudio,
     instead: [
       {
@@ -546,6 +587,10 @@ export const audiences: readonly Page[] = [
       "Thumbnails and PSDs",
       "Premiere and Resolve projects",
       "B-roll folders",
+    ],
+    guides: [
+      { href: "/guides/send-a-100gb-file", label: "Send a 100 GB file" },
+      { href: "/guides/send-braw-footage", label: "Send BRAW footage" },
     ],
     image: wrong4,
     instead: [
@@ -623,6 +668,11 @@ export const audiences: readonly Page[] = [
       "Subtitle files",
       "Client review cuts",
     ],
+    guides: [
+      { href: "/guides/transfer-1tb-of-files", label: "Transfer 1 TB of files" },
+      { href: "/guides/masv-pricing-explained", label: "MASV pricing explained" },
+      { href: "/alternatives/aspera", label: "Aspera alternatives" },
+    ],
     image: wrong5,
     instead: [
       {
@@ -696,6 +746,13 @@ export const audiences: readonly Page[] = [
       "Dolby Atmos ADM BWF",
       "Video for sync",
       "MIDI",
+    ],
+    guides: [
+      { href: "/guides/send-stems-to-a-mixer", label: "Send stems to a mixer" },
+      {
+        href: "/guides/send-pro-tools-or-logic-session",
+        label: "Send a Pro Tools or Logic session",
+      },
     ],
     image: wrong6,
     instead: [

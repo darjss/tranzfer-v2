@@ -118,7 +118,7 @@ export const services = {
     resume: "Desktop app only. Their pages never say a browser upload resumes.",
     sources: [
       { href: "https://www.filemail.com/price-plans-comparison", label: "Filemail plans" },
-      { href: "https://www.filemail.com/apps/desktop", label: "Filemail desktop app" },
+      { href: "https://www.filemail.com/apps/windows-desktop", label: "Filemail desktop app" },
       {
         href: "https://support.filemail.com/en/articles/4103694-free-file-sharing-service",
         label: "Filemail free plan",
