@@ -6,6 +6,8 @@ export type TransferPhase =
   | "uploading"
   | "finalizing"
   | "done"
+  /** Another live tab is sending it; this tab only watches. */
+  | "elsewhere"
   | "failed"
   | "cancelled"
   | "needsFile";

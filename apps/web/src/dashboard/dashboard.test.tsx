@@ -18,14 +18,17 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
 import * as Struct from "effect/Struct";
+import * as Tracer from "effect/Tracer";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as RpcTest from "effect/rpc/RpcTest";
-import { createSignal, flush, Loading, onSettled, Show } from "solid-js";
+import { createSignal, Errored, flush, Loading, onSettled, Show } from "solid-js";
 
 import { ApiClient } from "../api/client";
+import { reportFailure } from "../api/errors";
 import { NotifyMe } from "../landing/Pricing";
 import { RuntimeContext } from "../api/solid-effect";
 import { patchTransfer } from "../uploads/store";
+import { claim, letGo } from "../uploads/tabs";
 import { untilDate } from "./format";
 import { Uploads } from "../uploads/uploads";
 import { Board } from "./Board";
@@ -99,9 +102,12 @@ const makeWorld = (
   server: Delivery[],
   gate?: Deferred.Deferred<boolean>,
   initialBilling: BillingSummary = freePlan,
+  // How many list reads fail before the server answers, like a dropped request.
+  listFailures = 0,
 ) => {
   // Redeeming BETA-PRO changes what the next GetBilling answers, like the real API.
   let billing = initialBilling;
+  let listsToFail = listFailures;
   const api = Layer.effect(ApiClient, RpcTest.makeClient(Api)).pipe(
     Layer.provide(
       Api.toLayer(
@@ -117,7 +123,11 @@ const makeWorld = (
               );
             }),
           CreateDelivery: () => Effect.die("unused"),
-          Deliveries: () => Effect.sync(() => [...server]),
+          Deliveries: () =>
+            Effect.suspend(() => {
+              listsToFail -= 1;
+              return listsToFail < 0 ? Effect.succeed([...server]) : Effect.die("list failed");
+            }),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.sync(() => billing),
           // Like the real one: without an address it needs a session, and
@@ -936,6 +946,148 @@ describe("dashboard reactivity", () => {
     await screen.findByText("Episode 14, final");
     expect(screen.queryByText("Your files are ready")).toBeNull();
     clock.mockRestore();
+    await runtime.dispose();
+  });
+
+  it("Try again re-reads a list that failed to load and the board comes back", async () => {
+    const server = [delivery("Live", "ready", [MB])];
+    // The first read of the list fails, which is what the user sees on a dropped request.
+    const runtime = makeWorld(server, undefined, freePlan, 1);
+    const Harness = () => {
+      const state = createDeliveries(runtime);
+      return (
+        <Errored
+          fallback={(_error, retry) => (
+            <button onClick={retry} type="button">
+              Try again
+            </button>
+          )}
+        >
+          <Board
+            cancel={state.cancel}
+            clear={state.clear}
+            deliveries={state.deliveries}
+            online
+            select={noop}
+            sendAgain={noop}
+          />
+        </Errored>
+      );
+    };
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Harness />
+        </Loading>
+      </RuntimeContext>
+    ));
+    const tryAgain = await screen.findByRole("button", { name: "Try again" });
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        tryAgain.click();
+        await screen.findByText("Live");
+      },
+      { scenario: "try-again" },
+    );
+
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(artifact).toHaveNoDiagnostics();
+    await runtime.dispose();
+  });
+
+  it.effect("the boundary report keeps the real error and drops URLs and query strings", () =>
+    Effect.gen(function* reportsTheError() {
+      const attributes: Map<string, unknown>[] = [];
+      const tracer = Tracer.make({
+        span: (options) =>
+          new (class extends Tracer.NativeSpan {
+            override end(...args: Parameters<Tracer.NativeSpan["end"]>) {
+              super.end(...args);
+              attributes.push(this.attributes);
+            }
+          })(options),
+      });
+      const failure = new TypeError("could not read https://tranzfer.app/rpc?code=SECRET twice");
+      yield* reportFailure(failure, ["DeliveriesPage", "Board"]).pipe(Effect.withTracer(tracer));
+
+      const [reported] = attributes;
+      expect(reported?.get("error.type")).toBe("TypeError");
+      expect(reported?.get("error.message")).toBe("could not read /rpc twice");
+      expect(reported?.get("owner.path")).toBe("DeliveriesPage > Board");
+      expect(String(reported?.get("error.stack"))).not.toMatch(/SECRET|https:/u);
+    }),
+  );
+
+  it("a file another tab is sending says so, and the list re-reads when that tab lets go", async () => {
+    // jsdom has no Web Locks. This runs each name's requests one after another.
+    const tails = new Map<string, Promise<unknown>>();
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: {
+        request: async (name: string, ...args: [() => Promise<void>] | [object, () => boolean]) => {
+          const run = args.length === 1 ? args[0] : args[1];
+          const before = tails.get(name) ?? Promise.resolve();
+          const mine = (async () => {
+            await before;
+            return await run();
+          })();
+          tails.set(name, mine);
+          return await mine;
+        },
+      },
+    });
+    const shared = delivery("Shared", "open", [60 * MB]);
+    const [transfer] = shared.transfers;
+    if (transfer === undefined) {
+      throw new Error("fixture needs a transfer");
+    }
+    // The other tab holds the lock; this tab's restore marked the transfer.
+    claim(transfer.id);
+    patchTransfer(transfer.id, { confirmed: 20 * MB, phase: "elsewhere" });
+    const server = [shared];
+    const runtime = makeWorld(server);
+    const Harness = () => {
+      const state = createDeliveries(runtime);
+      return (
+        <Board
+          cancel={state.cancel}
+          clear={state.clear}
+          deliveries={state.deliveries}
+          online
+          select={noop}
+          sendAgain={noop}
+        />
+      );
+    };
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Harness />
+        </Loading>
+      </RuntimeContext>
+    ));
+    await screen.findByText("Shared");
+    expect(screen.getByText("Sending in another tab")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        // The other tab finishes: the server says ready, then its lock is freed.
+        server[0] = Struct.evolve(shared, {
+          expiresAt: () => new Date("2026-10-02T08:00:00Z"),
+          status: () => "ready" as const,
+          transfers: (rows) =>
+            rows.map((row) => Struct.evolve(row, { state: () => "complete" as const })),
+        });
+        letGo(transfer.id);
+        await screen.findByRole("heading", { name: /Ready to share/u });
+      },
+      { scenario: "other-tab-finishes" },
+    );
+
+    expect(screen.queryByText("Sending in another tab")).toBeNull();
+    expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
   });
 });

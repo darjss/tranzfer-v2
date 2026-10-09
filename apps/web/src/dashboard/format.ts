@@ -109,6 +109,7 @@ type TransferStatus =
   | { readonly _tag: "Active"; readonly progress: TransferProgress }
   | { readonly _tag: "Cancelled" }
   | { readonly _tag: "Complete" }
+  | { readonly _tag: "Elsewhere"; readonly progress: TransferProgress }
   | { readonly _tag: "Failed"; readonly progress: TransferProgress }
   | { readonly _tag: "Interrupted" }
   | { readonly _tag: "NeedsFile"; readonly progress: TransferProgress };
@@ -119,6 +120,10 @@ export const transferStatus = (transfer: Transfer, local: TransferProgress | und
     Match.when({ state: "complete" }, () => ({ _tag: "Complete" })),
     Match.when({ state: "cancelled" }, () => ({ _tag: "Cancelled" })),
     Match.when({ progress: { phase: "failed" } }, ({ progress }) => ({ _tag: "Failed", progress })),
+    Match.when({ progress: { phase: "elsewhere" } }, ({ progress }) => ({
+      _tag: "Elsewhere",
+      progress,
+    })),
     Match.when({ progress: { phase: "needsFile" } }, ({ progress }) => ({
       _tag: "NeedsFile",
       progress,
@@ -129,6 +134,7 @@ export const transferStatus = (transfer: Transfer, local: TransferProgress | und
 
 const idle = {
   confirmed: 0,
+  elsewhere: false,
   failed: false,
   inFlight: 0,
   interrupted: false,
@@ -152,6 +158,12 @@ const addTransfer = (roll: Rollup, transfer: Transfer, local: TransferProgress |
     Active: ({ progress }) => withProgress(roll, progress),
     Cancelled: () => roll,
     Complete: () => ({ ...roll, confirmed: roll.confirmed + transfer.size }),
+    // What the other tab sent when this one last looked; it only grows.
+    Elsewhere: ({ progress }) => ({
+      ...roll,
+      confirmed: roll.confirmed + progress.confirmed,
+      elsewhere: true,
+    }),
     Failed: ({ progress }) => ({ ...withProgress(roll, progress), failed: true }),
     Interrupted: () => ({ ...roll, interrupted: true }),
     NeedsFile: ({ progress }) => ({
@@ -175,6 +187,7 @@ export const rollup = (
 /** One state per delivery. It picks the board group, the icon and the words. */
 export type Kind =
   | "cancelled"
+  | "elsewhere"
   | "expired"
   | "failed"
   | "finishing"
@@ -200,6 +213,7 @@ export const kindOf = (status: Delivery["status"], roll: Rollup, online: boolean
     Match.when({ online: false, uploading: true }, () => "paused"),
     Match.when({ speed: (speed) => speed <= 0, uploading: true }, () => "starting"),
     Match.when({ uploading: true }, () => "moving"),
+    Match.when({ elsewhere: true }, () => "elsewhere"),
     Match.orElse(() => "finishing"),
   );
 
@@ -217,6 +231,10 @@ export const groupOf = (kind: Kind) =>
 /** What a person should know, and do next, in each state (RELIABILITY: what the user sees). */
 export const kindWords: Record<Kind, { readonly label: string; readonly detail: string }> = {
   cancelled: { detail: "Cancelled. The link no longer works.", label: "Cancelled" },
+  elsewhere: {
+    detail: "Another tab is uploading these files. This one updates when it finishes.",
+    label: "Sending in another tab",
+  },
   expired: { detail: "Expired. The files are deleted.", label: "Expired" },
   failed: {
     detail: "Something stopped the upload. Retry to keep going.",

@@ -43,6 +43,7 @@ import {
 import type { RecoveryRecord } from "./recovery";
 import { makeUploadSpans } from "./spans";
 import { patchTransfer, transfers, wireWindow } from "./store";
+import { claim, letGo, sendingElsewhere } from "./tabs";
 import type { ListedPart, VerifyReply, VerifyRequest } from "./verify";
 
 type SignRequest = Extract<
@@ -417,6 +418,7 @@ const make = Effect.gen(function* makeUploads() {
       doneParts.delete(transferId);
       uppy.removeFile(fileId);
       yield* forget([transferId]);
+      letGo(transferId);
     });
 
   // Once the bytes are in R2, finishing is the FinalizeTransfer retry loop.
@@ -689,6 +691,7 @@ const make = Effect.gen(function* makeUploads() {
           continue;
         }
         patchTransfer(transfer.id, { phase: "queued" });
+        claim(transfer.id);
         keys.set(transfer.objectKey, transfer.id);
         const fileId = uppy.addFile({
           data: file,
@@ -714,6 +717,7 @@ const make = Effect.gen(function* makeUploads() {
             completeSigned.delete(transfer.id);
             autoRetries.delete(transfer.id);
             patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
+            letGo(transfer.id);
           }
           yield* forget(delivery.transfers.map((transfer) => transfer.id));
           yield* spans.abandon(delivery.id, "files could not be queued");
@@ -795,6 +799,7 @@ const make = Effect.gen(function* makeUploads() {
       completeSigned.delete(transfer.id);
       autoRetries.delete(transfer.id);
       patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
+      letGo(transfer.id);
       yield* spans.endFile(transfer.id, "cancelled");
     }
     yield* forget(cancelled.transfers.map((transfer) => transfer.id));
@@ -810,10 +815,12 @@ const make = Effect.gen(function* makeUploads() {
    * the server still sees as uploading becomes needsFile: the bytes are
    * there, but the resume needs the file picked again. Finalizing gets one
    * finalize attempt; any failure also lands on needsFile, since only a
-   * reselected file can push the missing parts.
+   * reselected file can push the missing parts. One that another live tab
+   * holds the lock for becomes elsewhere and is left to that tab.
    */
   const restore = Effect.fn("Uploads.restore")(function* restore(deliveries: readonly Delivery[]) {
     const records = yield* readAll();
+    const elsewhere = yield* sendingElsewhere();
     const byTransfer = new Map(
       deliveries.flatMap((delivery) =>
         delivery.transfers.map((transfer) => [transfer.id, transfer] as const),
@@ -829,11 +836,15 @@ const make = Effect.gen(function* makeUploads() {
         continue;
       }
       // A transfer already in the store belongs to this tab; leave it alone.
-      if (transfers[transfer.id] !== undefined) {
+      // One marked elsewhere is only waiting for the other tab to let go.
+      const local = transfers[transfer.id];
+      if (local !== undefined && local.phase !== "elsewhere") {
         continue;
       }
       if (transfer.state === "complete" || transfer.state === "cancelled") {
         forgotten.push(transfer.id);
+      } else if (elsewhere.has(transfer.id)) {
+        patchTransfer(transfer.id, { confirmed: record.confirmed, phase: "elsewhere" });
       } else if (transfer.state === "finalizing") {
         patchTransfer(transfer.id, { confirmed: record.confirmed, phase: "finalizing" });
         runFork(
@@ -998,6 +1009,7 @@ const make = Effect.gen(function* makeUploads() {
         error: undefined,
         phase: "queued",
       });
+      claim(transfer.id);
       yield* spans.beginFile(delivery.id, transfer, true);
       yield* spans.note(transfer.id, "resume.verified", {
         bytes: partBytes(done, transfer.size),

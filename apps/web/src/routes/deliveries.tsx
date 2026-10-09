@@ -5,6 +5,7 @@ import { AccessCodeInput, defaultRetentionDays, PaidPlanId, plans } from "@tranz
 import type { RetentionDays } from "@tranzfer/contracts";
 import * as Schema from "effect/Schema";
 import {
+  configureClientErrors,
   createEffect,
   createMemo,
   createSignal,
@@ -18,7 +19,7 @@ import {
 import { css, cx } from "styled-system/css";
 
 import { ApiClient } from "../api/client";
-import { appError } from "../api/errors";
+import { appError, reportFailure } from "../api/errors";
 import { runEffect, RuntimeContext } from "../api/solid-effect";
 import { Board } from "../dashboard/Board";
 import { goToCheckout, goToPortal } from "../dashboard/billing";
@@ -106,6 +107,19 @@ const DeliveriesPage = () => {
   const select = (id?: string) => {
     setSearchParams({ d: id });
   };
+
+  // The fallback below only says "didn't load". Solid hands the boundary's
+  // real error to this hook once, with the owner path of whatever threw.
+  onSettled(() => {
+    configureClientErrors({
+      onError: (error, { ownerPath }) => {
+        runtime.runFork(reportFailure(error, ownerPath));
+      },
+    });
+    return () => {
+      configureClientErrors({});
+    };
+  });
 
   const me = createMemo(() => runEffect(ApiClient.use((api) => api.Me())));
   const {

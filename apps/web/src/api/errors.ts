@@ -21,7 +21,9 @@ import {
 } from "@tranzfer/contracts";
 import type { Api, RateLimitName } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
 import * as Match from "effect/Match";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import type * as Rpc from "effect/rpc/Rpc";
 import { RpcClientError } from "effect/rpc/RpcClientError";
@@ -170,4 +172,29 @@ export const appError = (cause: unknown) => {
   return isApiError(error)
     ? { message: words(error), tag: error._tag }
     : { message: "Something went wrong. Try again.", tag: "Unknown" as const };
+};
+
+// Origins and query strings go, so a stack or message never carries a URL, a
+// sign-in code or a link token into a trace (AGENTS.md: no URLs in spans).
+const withoutUrls = (text: string) =>
+  text.replaceAll(/https?:\/\/[^/\s)]+/gu, "").replaceAll(/\?[^\s):]*/gu, "");
+
+/**
+ * The one trace for a failure an error boundary caught. The fallback shows
+ * words only, so this is where the real error goes: its type, message and
+ * stack with URLs removed, and the owner path of what threw.
+ */
+export const reportFailure = (cause: unknown, ownerPath: readonly string[] = []) => {
+  const thrown = Predicate.isError(cause) ? cause : undefined;
+  return Effect.logError("error boundary caught a failure").pipe(
+    Effect.withSpan("Web.errorBoundary", {
+      attributes: {
+        "error.message": withoutUrls(thrown?.message ?? String(cause)),
+        "error.stack": withoutUrls(thrown?.stack ?? ""),
+        "error.tag": appError(cause).tag,
+        "error.type": thrown?.name ?? "NotAnError",
+        "owner.path": ownerPath.join(" > "),
+      },
+    }),
+  );
 };

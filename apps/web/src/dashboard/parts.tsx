@@ -3,6 +3,7 @@ import type { JSX } from "@solidjs/web";
 import { css, cx } from "styled-system/css";
 
 import PhArrowUpBold from "~icons/ph/arrow-up-bold";
+import PhBrowsersBold from "~icons/ph/browsers-bold";
 import PhCheckBold from "~icons/ph/check-bold";
 import PhCircleNotchBold from "~icons/ph/circle-notch-bold";
 import PhClockBold from "~icons/ph/clock-bold";
@@ -20,6 +21,7 @@ type Tone = "amber" | "blue" | "mut" | "ok" | "rust";
 
 const toneOf: Record<Kind, Tone> = {
   cancelled: "mut",
+  elsewhere: "blue",
   expired: "mut",
   failed: "rust",
   finishing: "blue",
@@ -61,6 +63,7 @@ const icon = css({ boxSize: "[14px]" });
 
 const glyphs: Record<Kind, () => JSX.Element> = {
   cancelled: () => <PhXBold class={icon} />,
+  elsewhere: () => <PhBrowsersBold class={icon} />,
   expired: () => <PhClockBold class={icon} />,
   failed: () => <PhWarningBold class={icon} />,
   finishing: () => <PhHourglassMediumBold class={icon} />,
