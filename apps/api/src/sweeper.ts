@@ -11,16 +11,17 @@ export const sweep = Effect.gen(function* sweep() {
   const transfers = yield* Transfers;
   const billing = yield* Billing;
   const emails = yield* Emails;
-  const [recovered, purged, reconciled, announced] = yield* Effect.all(
+  const [recovered, purged, reconciled, announced, lost] = yield* Effect.all(
     [
       transfers.recoverFinalizing,
       deliveries.purgeEnded,
       billing.reconcileStale,
       emails.sendOpenings,
+      emails.failLost,
     ],
     { concurrency: 4 },
   );
-  if (recovered + purged + reconciled + announced > 0) {
-    yield* Effect.logInfo("sweep", { announced, purged, reconciled, recovered });
+  if (recovered + purged + reconciled + announced + lost > 0) {
+    yield* Effect.logInfo("sweep", { announced, lost, purged, reconciled, recovered });
   }
 }).pipe(Effect.withSpan("sweep"));

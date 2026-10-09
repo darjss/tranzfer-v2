@@ -33,6 +33,7 @@ import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 
 import { LinkTokens, newLinkId } from "./link-tokens";
+import { hashPassword } from "./passwords";
 import { Plans } from "./plans";
 import { Storage, UPLOAD_URL_TTL } from "./storage";
 
@@ -146,6 +147,11 @@ export class Deliveries extends Context.Service<
       senderId: string,
       deliveryId: DeliveryId,
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
+    /** The sender's own delivery as the dashboard shows it, whatever its status. */
+    readonly owned: (
+      senderId: string,
+      deliveryId: DeliveryId,
+    ) => Effect.Effect<Delivery, DeliveryNotFound>;
     /** Takes the sender's ended deliveries among these off their list; live ones stay. */
     readonly clear: (senderId: string, deliveryIds: readonly DeliveryId[]) => Effect.Effect<void>;
     /** Replaces the title and note of the sender's own delivery, whatever its status. */
@@ -173,6 +179,12 @@ export class Deliveries extends Context.Service<
       requestId: RequestId,
       deliveryIds: readonly DeliveryId[],
     ) => Effect.Effect<readonly Delivery[]>;
+    /** Sets, replaces or (with null) removes the password on the sender's own delivery's link. */
+    readonly setPassword: (
+      senderId: string,
+      deliveryId: DeliveryId,
+      password: string | null,
+    ) => Effect.Effect<Delivery, DeliveryNotFound>;
     readonly view: (deliveryId: DeliveryId) => Effect.Effect<Delivery>;
     /** Removes the objects of cancelled and expired deliveries. Returns how many it purged. */
     readonly purgeEnded: Effect.Effect<number>;
@@ -232,6 +244,7 @@ export class Deliveries extends Context.Service<
           createdAt: row.createdAt,
           download,
           expiresAt: row.expiresAt,
+          hasPassword: row.link.passwordHash !== null,
           id: row.id,
           link: `/d/${yield* tokens.issue(row.link.id)}`,
           note: row.note,
@@ -539,7 +552,6 @@ export class Deliveries extends Context.Service<
           );
           return yield* view(deliveryId);
         }, dieOnDatabaseError),
-
         clear: Effect.fn("Deliveries.clear")(function* clear(
           senderId: string,
           deliveryIds: readonly DeliveryId[],
@@ -564,7 +576,6 @@ export class Deliveries extends Context.Service<
               ),
             );
         }, dieOnDatabaseError),
-
         create: Effect.fn("Deliveries.create")(function* create(
           senderId: string,
           input: NewDelivery,
@@ -591,7 +602,6 @@ export class Deliveries extends Context.Service<
           }
           return yield* place(senderId, plan, input);
         }, dieOnDatabaseError),
-
         list: Effect.fn("Deliveries.list")(function* list(senderId: string) {
           const rows = yield* db.query.delivery.findMany({
             limit: 50,
@@ -616,6 +626,17 @@ export class Deliveries extends Context.Service<
             with: { link: true, transfers: { orderBy: { path: "asc" } } },
           });
           return yield* Effect.forEach(rows, (row) => toView(row, null));
+        }, dieOnDatabaseError),
+
+        owned: Effect.fn("Deliveries.owned")(function* owned(
+          senderId: string,
+          deliveryId: DeliveryId,
+        ) {
+          const row = yield* load(deliveryId);
+          if (row === undefined || row.senderId !== senderId) {
+            return yield* new DeliveryNotFound();
+          }
+          return yield* viewRow(row);
         }, dieOnDatabaseError),
 
         purgeEnded: Effect.gen(function* purgeEnded() {
@@ -737,6 +758,29 @@ export class Deliveries extends Context.Service<
           );
         }, dieOnDatabaseError),
 
+        setPassword: Effect.fn("Deliveries.setPassword")(function* setPassword(
+          senderId: string,
+          deliveryId: DeliveryId,
+          password: string | null,
+        ) {
+          yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
+          const passwordHash = password === null ? null : yield* hashPassword(password);
+          // The sender check is part of the statement, as in `update`.
+          const changed = yield* db
+            .update(schema.link)
+            .set({ passwordHash })
+            .where(
+              and(
+                eq(schema.link.deliveryId, deliveryId),
+                sql`EXISTS (SELECT 1 FROM delivery WHERE delivery.id = link.delivery_id AND delivery.sender_id = ${senderId})`,
+              ),
+            )
+            .returning({ id: schema.link.id });
+          if (changed.length === 0) {
+            return yield* new DeliveryNotFound();
+          }
+          return yield* view(deliveryId);
+        }, dieOnDatabaseError),
         update: Effect.fn("Deliveries.update")(function* update(
           senderId: string,
           deliveryId: DeliveryId,
@@ -755,7 +799,6 @@ export class Deliveries extends Context.Service<
           }
           return yield* view(deliveryId);
         }, dieOnDatabaseError),
-
         view,
       });
     }),

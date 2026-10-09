@@ -132,11 +132,15 @@ const DeliveriesPage = () => {
     clear,
     deliveries,
     dismiss,
+    email,
+    emailed,
+    emailing,
     finished,
     redeem,
     redeeming,
     send,
     sending,
+    setPassword,
     update,
   } = createDeliveries(runtime);
   const { close: closeRequest, create: createRequest, requests } = createRequests(runtime);
@@ -480,7 +484,11 @@ const DeliveriesPage = () => {
                 <SendDoneList
                   deliveries={deliveries}
                   dismiss={dismiss}
+                  email={email}
+                  emailed={emailed}
+                  emailing={emailing()}
                   finished={finished()}
+                  setPassword={setPassword}
                   update={update}
                 />
                 <Board
@@ -544,6 +552,7 @@ const DeliveriesPage = () => {
             }}
             delivery={selected()}
             online={online()}
+            setPassword={setPassword}
           />
         </Errored>
       </Loading>

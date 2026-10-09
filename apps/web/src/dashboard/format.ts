@@ -1,4 +1,4 @@
-import type { Delivery, Transfer } from "@tranzfer/contracts";
+import type { Delivery, DeliveryEmail, Transfer } from "@tranzfer/contracts";
 import * as Match from "effect/Match";
 
 import type { TransferProgress } from "../uploads/store";
@@ -59,6 +59,44 @@ export const downloadWords = (delivery: Delivery) => {
   return download.filesSaved >= total
     ? `Downloaded, ${total} of ${files(total)}`
     : `${download.filesSaved} of ${files(total)} downloaded, last ${when(download.lastAt)}`;
+};
+
+/** An email this page asked for, with the address it typed. The server keeps none. */
+export interface Emailed extends DeliveryEmail {
+  readonly to: string;
+}
+
+// Cloudflare's code for an address on its list of ones that bounced or complained.
+const bounced = "E_RECIPIENT_SUPPRESSED";
+
+/** What the sender can honestly say. Sent means the mail server took it, not that it reached an inbox. */
+export const emailWords = (row: Emailed) => {
+  if (row.status === "queued") {
+    return "Sending";
+  }
+  if (row.status === "sent") {
+    return "Sent";
+  }
+  if (row.errorCode === bounced) {
+    return "Not sent, this address bounced before";
+  }
+  if (row.errorCode === "held") {
+    return "Not sent, this site only emails approved addresses";
+  }
+  if (row.errorCode === "lost") {
+    return "Not sent, it didn't finish. Try again";
+  }
+  return "Not sent, the mail server refused it";
+};
+
+export const emailSummary = (rows: readonly Emailed[]) => {
+  const sent = rows.filter((row) => row.status === "sent").length;
+  const bounces = rows.filter((row) => row.errorCode === bounced).length;
+  const base = `Sent to ${sent} of ${rows.length}`;
+  if (bounces === 0) {
+    return base;
+  }
+  return `${base}, ${bounces === 1 ? "one address" : `${bounces} addresses`} bounced`;
 };
 
 const untilFormat = new Intl.DateTimeFormat("en-GB", {

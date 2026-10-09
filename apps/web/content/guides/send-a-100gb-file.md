@@ -70,8 +70,7 @@ They open the link. No account, nothing to install. On desktop Chrome and Edge, 
 ## When should you use something else?
 
 - **You want an installed app.** Tranzfer runs in the browser only. MASV's desktop app recovers from most interruptions, reboots included, and [Filemail's desktop app](https://www.filemail.com/apps/desktop) resumes transfers and adds UDP acceleration that its browser upload doesn't have.
-- **You need a password on the link.** We don't have password-protected links. Dropbox Transfer has them on Standard and up.
-- **You need review and comments.** Tranzfer has no previews or playback. [Frame.io](https://frame.io/) is built for feedback on the work itself.
+- **You need review and comments.** Tranzfer has no comments or review. [Frame.io](https://frame.io/) is built for feedback on the work itself.
 - **You send 100 GB once a year.** MASV's per-GB price can beat any monthly plan for a single delivery.
 
 If 100 GB is one shoot of many, the [300 GB footage guide](/guides/send-300gb-of-video-footage) covers the next size up, and the [guide to sending large files](/guides/how-to-send-large-files) covers the rest.

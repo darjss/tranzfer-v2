@@ -72,6 +72,6 @@ Free holds 20 GB live at once, Starter 300 GB, Pro 1 TB and Studio 3 TB. Three h
 ## When should you use something else?
 
 - **More than 3 TB in one go.** Split it by day, or ship a drive.
-- **You need playback, review or comments.** Tranzfer has none of those.
+- **You need review or comments.** Tranzfer has neither, and it can't play R3D.
 - **You want a desktop app or accelerated UDP transfer.** We don't have either. [MASV](https://masv.io/pricing) has a desktop app and charges $0.25 per GB after the first 15 GB a month.
 - **The files need to stay up for months.** Our links last 14 days at most, then the files are deleted.

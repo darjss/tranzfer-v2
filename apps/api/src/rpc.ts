@@ -68,6 +68,8 @@ export const ApiHandlers = Api.toLayer(
       CreateRequestUpload: (input, { headers }) =>
         requests.receive(input, clientIp(new Headers(headers))),
       Deliveries: () => Effect.flatMap(sender, deliveries.list),
+      DeliveryEmails: ({ deliveryId }) =>
+        Effect.flatMap(sender, (id) => emails.deliveryEmails(id, deliveryId)),
       FileRequests: () => Effect.flatMap(sender, requests.list),
       FinalizeRequestTransfer: ({ token, transferId }, { headers }) =>
         requests.finalize(token, clientIp(new Headers(headers)), transferId),
@@ -96,17 +98,25 @@ export const ApiHandlers = Api.toLayer(
       OpenBillingPortal: () => Effect.flatMap(sender, billing.portal),
       OpenFileRequest: ({ token }, { headers }) =>
         requests.open(token, clientIp(new Headers(headers))),
-      OpenLink: ({ token }) => links.open(token),
+      OpenLink: ({ token, unlock }) => links.open(token, unlock),
       RedeemCode: ({ code }) => Effect.flatMap(sender, (id) => userPlans.redeem(id, code)),
-      ReportDownload: ({ event, path, token }) => links.report(token, path, event),
+      ReportDownload: ({ event, path, token, unlock }) => links.report(token, path, event, unlock),
       RequestUploads: ({ deliveryIds, token }, { headers }) =>
         requests.uploads(token, clientIp(new Headers(headers)), deliveryIds),
+      SendDeliveryEmail: (input) =>
+        Effect.flatMap(Effect.service(CurrentPrincipal), (user) =>
+          emails.sendDelivery(user, input),
+        ),
+      SetLinkPassword: ({ deliveryId, password }) =>
+        Effect.flatMap(sender, (id) => deliveries.setPassword(id, deliveryId, password)),
       SignRequestUpload: ({ key, request, token }, { headers }) =>
         requests.sign(token, clientIp(new Headers(headers)), key, request),
       SignUpload: ({ key, request }) =>
         Effect.flatMap(sender, (id) => transfers.sign(id, key, request)),
       StartCheckout: ({ plan }) =>
         Effect.flatMap(Effect.service(CurrentPrincipal), (user) => billing.checkout(user, plan)),
+      UnlockLink: ({ password, token }, { headers }) =>
+        links.unlock(token, password, clientIp(new Headers(headers))),
       UpdateDelivery: ({ deliveryId, note, title }) =>
         Effect.flatMap(sender, (id) => deliveries.update(id, deliveryId, { note, title })),
     });

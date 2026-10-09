@@ -16,6 +16,7 @@ import {
 import type {
   BillingSummary,
   Delivery,
+  DeliveryEmail,
   FileRequest,
   OpenedRequest,
   RequestUpload,
@@ -68,6 +69,7 @@ const delivery = (
   createdAt: new Date("2026-09-29T08:00:00Z"),
   download,
   expiresAt: status === "ready" ? new Date("2026-10-02T08:00:00Z") : null,
+  hasPassword: false,
   id: DeliveryId.make(crypto.randomUUID()),
   link: `/d/${title}`,
   note: "",
@@ -133,6 +135,11 @@ const betaPro: BillingSummary = {
   status: "none",
   usedBytes: 3200 * MB,
 };
+
+// What the fake API holds for emails: each request, and a row per address that
+// a test settles the way the real background send would.
+const emailRequests: (readonly string[])[] = [];
+const emailRows: DeliveryEmail[] = [];
 
 const makeWorld = (
   server: Delivery[],
@@ -201,6 +208,7 @@ const makeWorld = (
               listsToFail -= 1;
               return listsToFail < 0 ? Effect.succeed([...server]) : Effect.die("list failed");
             }),
+          DeliveryEmails: () => Effect.sync(() => emailRows.toReversed()),
           FileRequests: () => Effect.sync(() => [...ownRequests]),
           FinalizeRequestTransfer: () => Effect.die("unused"),
           FinalizeTransfer: () => Effect.die("unused"),
@@ -225,9 +233,34 @@ const makeWorld = (
               : Effect.fail(new AccessCodeRefused({ reason: "unknown" })),
           ReportDownload: () => Effect.die("unused"),
           RequestUploads: () => Effect.die("unused"),
+          SendDeliveryEmail: ({ recipients }) =>
+            Effect.sync(() => {
+              emailRequests.push(recipients);
+              return recipients.map(() => {
+                const row = {
+                  errorCode: null,
+                  id: emailRows.length + 1,
+                  status: "queued" as const,
+                };
+                emailRows.push(row);
+                return row;
+              });
+            }),
+          SetLinkPassword: ({ deliveryId, password }) =>
+            Effect.gen(function* fakeSetPassword() {
+              const index = server.findIndex((row) => row.id === deliveryId);
+              const row = server[index];
+              if (row === undefined) {
+                return yield* Effect.die(new Error("unknown delivery"));
+              }
+              const updated = Struct.evolve(row, { hasPassword: () => password !== null });
+              server[index] = updated;
+              return updated;
+            }),
           SignRequestUpload: () => Effect.die("unused"),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
+          UnlockLink: () => Effect.die("unused"),
           UpdateDelivery: ({ deliveryId, note, title }) =>
             Effect.gen(function* fakeUpdate() {
               const index = server.findIndex((row) => row.id === deliveryId);
@@ -347,6 +380,9 @@ const Landing = (props: { redeem: (code: string) => Promise<string | undefined> 
   });
   return null;
 };
+
+// The sheet is a modal dialog, which testing-library treats as hidden.
+const button = (name: string) => screen.getByRole("button", { hidden: true, name });
 
 const readyCount = () => screen.getByRole("heading", { name: /Ready to share/u }).textContent;
 
@@ -503,7 +539,13 @@ describe("dashboard reactivity", () => {
               select={noop}
               sendAgain={noop}
             />
-            <DeliverySheet cancel={nothingToReport} close={noop} delivery={waiting} online />
+            <DeliverySheet
+              cancel={nothingToReport}
+              close={noop}
+              delivery={waiting}
+              online
+              setPassword={nothingToReport}
+            />
           </RuntimeContext>
         ));
         flush();
@@ -535,7 +577,13 @@ describe("dashboard reactivity", () => {
       async () => {
         render(() => (
           <RuntimeContext value={runtime}>
-            <DeliverySheet cancel={nothingToReport} close={noop} delivery={waiting} online />
+            <DeliverySheet
+              cancel={nothingToReport}
+              close={noop}
+              delivery={waiting}
+              online
+              setPassword={nothingToReport}
+            />
           </RuntimeContext>
         ));
         flush();
@@ -924,7 +972,11 @@ describe("dashboard reactivity", () => {
           <SendDoneList
             deliveries={state.deliveries}
             dismiss={state.dismiss}
+            email={state.email}
+            emailed={state.emailed}
+            emailing={state.emailing()}
             finished={state.finished()}
+            setPassword={state.setPassword}
             update={state.update}
           />
           <Board
@@ -1048,6 +1100,162 @@ describe("dashboard reactivity", () => {
     await screen.findByText("Episode 14, final");
     expect(screen.queryByText("Your files are ready")).toBeNull();
     clock.mockRestore();
+    await runtime.dispose();
+  });
+
+  it("the finished card emails the link and says only what the mail server reported", async () => {
+    emailRequests.length = 0;
+    emailRows.length = 0;
+    const server: Delivery[] = [];
+    const runtime = makeWorld(server);
+    let state: ReturnType<typeof createDeliveries> | undefined;
+    const Harness = () => {
+      state = createDeliveries(runtime);
+      return (
+        <SendDoneList
+          deliveries={state.deliveries}
+          dismiss={state.dismiss}
+          email={state.email}
+          emailed={state.emailed}
+          emailing={state.emailing()}
+          finished={state.finished()}
+          setPassword={state.setPassword}
+          update={state.update}
+        />
+      );
+    };
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Harness />
+        </Loading>
+      </RuntimeContext>
+    ));
+    await vi.waitFor(() => {
+      expect(screen.queryByText("loading")).toBeNull();
+    });
+    await state?.send(
+      [{ file: new File([new Uint8Array(5 * MB)], "cut.mov"), path: "cut.mov" }],
+      3,
+    );
+    flush();
+    const [open] = server;
+    const [transfer] = open?.transfers ?? [];
+    if (open === undefined || transfer === undefined) {
+      throw new Error("the fake send makes one transfer");
+    }
+    patchTransfer(transfer.id, { confirmed: 5 * MB, phase: "finalizing", uploaded: true });
+    server[0] = Struct.evolve(open, {
+      expiresAt: () => new Date("2026-10-23T09:00:00Z"),
+      status: () => "ready" as const,
+      transfers: (rows) =>
+        rows.map((row) => Struct.evolve(row, { state: () => "complete" as const })),
+    });
+    patchTransfer(transfer.id, { phase: "done" });
+    await screen.findByText("Your files are ready");
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        screen.getByRole("button", { name: "Email it" }).click();
+        flush();
+        // A bad address stops at the form; nothing is sent.
+        fireEvent.input(screen.getByRole("textbox", { name: /Email addresses/u }), {
+          target: { value: "ann@example.com, nope" },
+        });
+        flush();
+        screen.getByRole("button", { name: "Send email" }).click();
+        await screen.findByText('"nope" doesn\'t look like an email address.');
+        expect(emailRequests).toEqual([]);
+
+        // Case and repeats don't make a second email.
+        fireEvent.input(screen.getByRole("textbox", { name: /Email addresses/u }), {
+          target: { value: "Ann@Example.com, bob@example.com\nann@example.com" },
+        });
+        flush();
+        screen.getByRole("button", { name: "Send email" }).click();
+        await screen.findByText("bob@example.com");
+        expect(emailRequests).toEqual([["ann@example.com", "bob@example.com"]]);
+        expect(screen.getAllByText("Sending")).toHaveLength(3);
+
+        // The background send ends: one went out, one bounced before.
+        emailRows.splice(
+          0,
+          2,
+          { errorCode: null, id: 1, status: "sent" },
+          { errorCode: "E_RECIPIENT_SUPPRESSED", id: 2, status: "failed" },
+        );
+        await screen.findByText("Sent to 1 of 2, one address bounced", {}, { timeout: 5000 });
+      },
+      { scenario: "email-it" },
+    );
+    flush();
+
+    const card = within(screen.getByRole("region", { name: "Your files are ready" }));
+    expect(card.getByText("Sent")).toBeInTheDocument();
+    expect(card.getByText("Not sent, this address bounced before")).toBeInTheDocument();
+    expect(card.getByText(/We can't see anyone's inbox/u)).toBeInTheDocument();
+    expect(card.getByRole("button", { name: "Email it to more people" })).toBeInTheDocument();
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    assertBudget(artifact, { allow: ["OPTIMISTIC_REVERTED"], maxReruns: 45, maxWastedRuns: 0 });
+    await runtime.dispose();
+  });
+
+  it("the sheet sets, changes and removes a link password and never shows it back", async () => {
+    const server = [delivery("Locked", "ready", [MB])];
+    const runtime = makeWorld(server);
+    const Harness = () => {
+      const state = createDeliveries(runtime);
+      return (
+        <Show when={state.deliveries[0]}>
+          {(row) => (
+            <DeliverySheet
+              cancel={state.cancel}
+              close={noop}
+              delivery={row()}
+              online
+              setPassword={state.setPassword}
+            />
+          )}
+        </Show>
+      );
+    };
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Harness />
+        </Loading>
+      </RuntimeContext>
+    ));
+    await vi.waitFor(() => {
+      expect(screen.queryByText("loading")).toBeNull();
+    });
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        button("Add a password").click();
+        flush();
+        expect(button("Save password")).toBeDisabled();
+        fireEvent.input(
+          screen.getByRole("textbox", { hidden: true, name: /Password for the recipient/u }),
+          { target: { value: "wrap-2026-ep14" } },
+        );
+        flush();
+        button("Save password").click();
+        await screen.findByText("Password set");
+        await vi.waitFor(() => {
+          expect(server[0]?.hasPassword).toBe(true);
+        });
+      },
+      { scenario: "link-password-set" },
+    );
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    expect(document.body.textContent).not.toContain("wrap-2026-ep14");
+
+    button("Remove").click();
+    await screen.findByRole("button", { hidden: true, name: "Add a password" });
+    await vi.waitFor(() => {
+      expect(server[0]?.hasPassword).toBe(false);
+    });
     await runtime.dispose();
   });
 

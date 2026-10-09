@@ -4,9 +4,11 @@ import {
   BillingUnavailable,
   DeliveryConflict,
   DeliveryNotFound,
+  DeliveryNotShareable,
   DeliveryRefused,
   InvalidUpload,
   LinkExpired,
+  LinkLocked,
   LinkNotFound,
   LinkNotReady,
   NotUploaded,
@@ -14,12 +16,14 @@ import {
   PaidPlanId,
   plans,
   RateLimited,
+  rateLimits,
   RequestFull,
   RequestNotFound,
   RetentionNotInPlan,
   StorageUnavailable,
   Unauthorized,
   UploadClosed,
+  WrongPassword,
 } from "@tranzfer/contracts";
 import type { Api, RateLimitName } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
@@ -43,9 +47,11 @@ const ApiErrors = Schema.Union([
   BillingUnavailable,
   DeliveryConflict,
   DeliveryNotFound,
+  DeliveryNotShareable,
   DeliveryRefused,
   InvalidUpload,
   LinkExpired,
+  LinkLocked,
   LinkNotFound,
   LinkNotReady,
   NotUploaded,
@@ -58,6 +64,7 @@ const ApiErrors = Schema.Union([
   StorageUnavailable,
   Unauthorized,
   UploadClosed,
+  WrongPassword,
 ]);
 
 // Typed against ApiError, so a new contract error that is missing here fails
@@ -77,8 +84,13 @@ const tooMany = {
   codeRedemptions: "Too many code attempts.",
   deliveriesPerDay: "Too many new deliveries in a day.",
   deliveriesPerHour: "Too many new deliveries in an hour.",
+  emailRequests: "Too many emails sent at once.",
+  emailsAccountPerDay: "Tranzfer has reached its email limit for today.",
+  emailsPerDay: `You've reached the limit of ${rateLimits.emailsPerDay.limit} emails a day.`,
   interestSignups: "Too many sign-ups from your network.",
   newAccounts: "Too many new accounts from your network today.",
+  passwordAttemptsPerIp: "Too many password attempts from your network.",
+  passwordAttemptsPerLink: "Too many password attempts on this delivery.",
   portalCallsPerIp: "Too many requests from your network.",
   portalCallsPerRequest: "This link is getting too many requests at once.",
   portalUploadsPerIp: "Too many uploads started from your network.",
@@ -144,9 +156,12 @@ const words = Match.type<ApiError>().pipe(
         : `Our payment provider turned this down or didn't answer, so nothing changed and nothing was charged. Try again later, or write to ${supportEmail}.`,
     DeliveryConflict: () => "That delivery already exists. Refresh to see it.",
     DeliveryNotFound: () => "We can't find that delivery anymore.",
+    DeliveryNotShareable: () =>
+      "This delivery isn't ready or its link has ended, so there's nothing to email.",
     DeliveryRefused: (error) => refusal(error.reason),
     InvalidUpload: () => "This file doesn't match what the delivery expects. Send it again.",
     LinkExpired: () => "This link has expired.",
+    LinkLocked: () => "This delivery has a password. Ask the sender for it.",
     LinkNotFound: () => "This link doesn't work. It may have been cancelled.",
     LinkNotReady: () => "Still uploading. The link starts working once every file is finished.",
     NotUploaded: () => "Still finishing up on our end. Retry in a moment.",
@@ -170,6 +185,7 @@ const words = Match.type<ApiError>().pipe(
     StorageUnavailable: () => "Storage didn't answer. Try again in a moment.",
     Unauthorized: () => "Your sign-in expired. Sign in again to continue.",
     UploadClosed: () => "This delivery was cancelled or has already finished.",
+    WrongPassword: () => "That password isn't right.",
   }),
 );
 

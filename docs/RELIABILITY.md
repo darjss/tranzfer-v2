@@ -252,6 +252,16 @@ How the recipient page does it today:
 
 - The sender's row says how far the download got, but the server never sees bytes move: R2 serves them straight to the browser. The recipient page reports `started` when a file's Download is clicked or its folder save begins, and `saved` when a folder save has the whole file on disk (`ReportDownload`, one `download` row per file, upserted). A one-file download in the browser's own manager is never reported finished, so it reads "Download started". A report is a claim by whoever holds the link, and a download proves nothing about the files being opened.
 
+### Link passwords and previews
+
+A sender can put a password on a delivery's link (`SetLinkPassword`, owner only; 8 to 128 characters; null removes it). The API stores `pbkdf2-sha256$<iterations>$<salt>$<hash>` in `link.password_hash`: PBKDF2-SHA256, 100,000 iterations (the most a Worker's WebCrypto allows), a random 16-byte salt, 256 bits out. Passwords are never emailed, logged or sent back.
+
+- Without a valid unlock, `OpenLink` fails with `LinkLocked` (naming only the sender) before it lists a file, a title or a URL, and `ReportDownload` records nothing.
+- `UnlockLink` checks the password and returns an unlock, `<expiresAtMs>.<HMAC of "unlock", linkId, password_hash and expiresAtMs>` under the link secret, good for 24 hours. The MAC covers the link, so it opens no other link, and the stored hash, so a new or removed password ends every unlock issued before.
+- The recipient page keeps the unlock in memory and sends it with `OpenLink` and `ReportDownload`, so Download all, its retries and fresh URLs keep working. A save that outlives the unlock stops with words that say to enter the password again and choose the same folder. A download already handed to the browser's manager resumes from its signed URL, which needs no unlock.
+- Attempts count per client IP and per link, right or wrong (Cloudflare's binding counts calls, not failures). Both limits sit in `rateLimits`.
+- Previews are `img`, `video` and `audio` elements pointing at the same signed URLs. `previewKind` picks them by extension and size: jpg, png, webp, gif and heic up to 25 MB; mp4, m4v, mov, webm, wav, mp3 and m4a up to 1 GB. Anything else, camera raw and ProRes included, gets an icon. Nothing in a preview calls `ReportDownload`.
+
 ## Authorization and abuse
 
 Every create, sign, list, complete, abort and download checks identity, ownership, workspace membership where it applies, entitlement and transfer status. The object key and multipart ID are bound to the authorized transfer. A client-supplied upload ID never grants access to arbitrary storage. Resuming is not a way to read or write someone else's upload.
