@@ -13,8 +13,10 @@ import { Button, button } from "../ui/Button";
 import type { Finished } from "./deliveries";
 import { bytes, emailSummary, emailWords, files, totalSize, untilDate } from "./format";
 import type { Emailed } from "./format";
-import { CopyLink } from "./parts";
+import { CopyLink, field, fieldLabel, LinkPassword } from "./parts";
 import "./dashboard.css";
+
+type SetPassword = (deliveryId: DeliveryId, password: string | null) => Promise<string | undefined>;
 
 type Update = (
   deliveryId: DeliveryId,
@@ -38,24 +40,6 @@ export const tookAt = (ms: number) => {
   const hours = Math.floor(minutes / 60);
   return `${hours} h ${minutes - hours * 60} min`;
 };
-
-const fieldLabel = css({ color: "mut", display: "grid", fontSize: "13", gap: "1" });
-const field = css({
-  _focusVisible: {
-    outlineColor: "blue",
-    outlineOffset: "0.5",
-    outlineStyle: "solid",
-    outlineWidth: "2px",
-  },
-  bg: "white",
-  borderRadius: "xl",
-  color: "ink",
-  fontSize: "[16px]",
-  px: "3",
-  py: "2",
-  shadow: "[inset 0 0 0 1px var(--colors-line)]",
-  w: "full",
-});
 
 /** Copies a ready-to-paste message with the link and the last day it works. */
 function CopyMessage(props: { text: string }) {
@@ -329,6 +313,7 @@ export function SendDone(props: {
   email: Email;
   emailing: boolean;
   sent: readonly Emailed[];
+  setPassword: SetPassword;
   tookMs: number;
   update: Update;
 }) {
@@ -475,7 +460,10 @@ export function SendDone(props: {
         emailing={props.emailing}
         sent={props.sent}
       />
-      <EditDetails delivery={props.delivery} update={props.update} />
+      <div class={css({ alignItems: "start", display: "flex", flexWrap: "wrap", gap: "2.5" })}>
+        <EditDetails delivery={props.delivery} update={props.update} />
+        <LinkPassword delivery={props.delivery} setPassword={props.setPassword} />
+      </div>
     </section>
   );
 }
@@ -488,6 +476,7 @@ export function SendDoneList(props: {
   emailed: Record<string, Emailed[]>;
   emailing: boolean;
   finished: readonly Finished[];
+  setPassword: SetPassword;
   update: Update;
 }) {
   return (
@@ -509,6 +498,7 @@ export function SendDoneList(props: {
                   email={props.email}
                   emailing={props.emailing}
                   sent={props.emailed[done.id] ?? []}
+                  setPassword={props.setPassword}
                   tookMs={done.tookMs}
                   update={props.update}
                 />

@@ -1,5 +1,11 @@
 import { expect, layer, vi } from "@effect/vitest";
-import { DeliveryId, DeliveryNote, DeliveryTitle, rateLimits } from "@tranzfer/contracts";
+import {
+  DeliveryId,
+  DeliveryNote,
+  DeliveryTitle,
+  LinkPassword,
+  rateLimits,
+} from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { eq, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
@@ -197,6 +203,58 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       expect((yield* Effect.exit(title("   ")))._tag).toBe("Failure");
       expect((yield* Effect.exit(title("t".repeat(201))))._tag).toBe("Failure");
       expect((yield* Effect.exit(note("n".repeat(501))))._tag).toBe("Failure");
+    }),
+  );
+
+  it.effect("lets only the owner set or remove a link password, and stores only its hash", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("pwowner");
+      yield* addUser("pwother");
+      const deliveries = yield* Deliveries;
+      const { db } = yield* Database;
+      const created = yield* deliveries.create("pwowner", newDelivery([newFile("a.mov", 3)]));
+      expect(created.hasPassword).toBe(false);
+      const stored = () =>
+        db.query.link
+          .findFirst({ columns: { passwordHash: true }, where: { deliveryId: created.id } })
+          .pipe(Effect.map((link) => link?.passwordHash));
+
+      const foreign = yield* Effect.flip(
+        deliveries.setPassword("pwother", created.id, "hunter2hunter2"),
+      );
+      expect(foreign._tag).toBe("DeliveryNotFound");
+      const missing = yield* Effect.flip(
+        deliveries.setPassword("pwowner", DeliveryId.make(crypto.randomUUID()), "hunter2hunter2"),
+      );
+      expect(missing._tag).toBe("DeliveryNotFound");
+      expect(yield* stored()).toBeNull();
+
+      const locked = yield* deliveries.setPassword("pwowner", created.id, "hunter2hunter2");
+      expect(locked.hasPassword).toBe(true);
+      expect((yield* deliveries.list("pwowner")).map((row) => row.hasPassword)).toEqual([true]);
+      // Slow, salted and nothing like the password.
+      const hash = yield* stored();
+      expect(hash).toMatch(/^pbkdf2-sha256\$100000\$[\w-]{22}\$[\w-]{43}$/u);
+      expect(hash).not.toContain("hunter2");
+      yield* deliveries.setPassword("pwowner", created.id, "hunter2hunter2");
+      expect(yield* stored()).not.toBe(hash);
+
+      // A foreign sender can't clear it either.
+      yield* Effect.flip(deliveries.setPassword("pwother", created.id, null));
+      expect((yield* deliveries.view(created.id)).hasPassword).toBe(true);
+      const cleared = yield* deliveries.setPassword("pwowner", created.id, null);
+      expect(cleared.hasPassword).toBe(false);
+      expect(yield* stored()).toBeNull();
+    }),
+  );
+
+  it.effect("holds link passwords to 8 to 128 characters", () =>
+    Effect.gen(function* scenario() {
+      const password = Schema.decodeUnknownEffect(LinkPassword);
+      expect(yield* password("with a space ")).toBe("with a space ");
+      expect(yield* password("p".repeat(128))).toHaveLength(128);
+      expect((yield* Effect.exit(password("short")))._tag).toBe("Failure");
+      expect((yield* Effect.exit(password("p".repeat(129))))._tag).toBe("Failure");
     }),
   );
 

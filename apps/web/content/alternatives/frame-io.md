@@ -70,12 +70,12 @@ MASV can also [forward files from a portal into Frame.io](https://help.massive.i
 
 ## When is Frame.io still the better pick?
 
-For anything that involves feedback, honestly. Tranzfer has no previews, no playback, no comments and no review.
+For anything that involves feedback, honestly. Tranzfer shows thumbnails and plays small clips, but has no comments and no review.
 
 - Comments pinned to the frame, inside Premiere and Final Cut Pro. Frame.io's pricing page lists both integrations.
 - Camera to Cloud, which Frame.io's pricing page lists on Free. Takes upload from set as soon as the director calls cut.
 - Files kept for the life of the project. Tranzfer links last 14 days at most.
 - Single files up to 5 TB, by Adobe's [upload guide](https://help.frame.io/en/articles/9101026-uploading-your-media). Tranzfer's ceiling is 3 TB live at once.
-- Passphrases and expiry dates on share links, from Pro up. Tranzfer has no password-protected links.
+- Passphrases and expiry dates on share links, from Pro up. Tranzfer links can have a password and always expire, on every plan.
 
 If you're the one receiving footage, our guide to [sending large video files to an editor](/guides/send-large-video-files-to-an-editor) covers how to get it prepared before it ships.

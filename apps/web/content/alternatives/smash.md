@@ -56,7 +56,6 @@ Plug your own sizes into the [price calculator](/pricing) to see what a month co
 
 - You want the cheapest flat plan. Smash Pro is $10 a month. Tranzfer Starter is $15.
 - Your transfers are under 2 GB. Smash Free sends them at full priority, for nothing.
-- You want previews. Smash's pricing page lists file previews on download pages for images, video and audio. Tranzfer has no previews or playback.
 - You want branded pages. Smash Pro adds your logo and background to the send, receive and download pages.
 - You want links that last up to 30 days on a paid plan. Tranzfer links last 14 days at most.
 - You want an app. Smash has [a Mac app and phone apps](https://fromsmash.com/essential/smash-for-mobile) on the App Store and Google Play. Tranzfer runs only in the browser.

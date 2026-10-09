@@ -72,6 +72,5 @@ Dropbox is the better pick when:
 
 - The files should live in Dropbox afterwards. Tranzfer deletes them when the link ends, after 14 days at most.
 - You want a desktop app syncing in the background. Tranzfer has no desktop app.
-- You need password-protected links, which Dropbox Transfer offers on Standard and up. Tranzfer doesn't.
 
 Google Drive has its own version of this problem, covered in [Google Drive upload keeps failing](/guides/google-drive-upload-failing-large-files). For tool choice by size, see [how to send large files](/guides/how-to-send-large-files).

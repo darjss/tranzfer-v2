@@ -86,17 +86,21 @@ export const ApiHandlers = Api.toLayer(
         }),
       Me: () => Effect.service(CurrentPrincipal),
       OpenBillingPortal: () => Effect.flatMap(sender, billing.portal),
-      OpenLink: ({ token }) => links.open(token),
+      OpenLink: ({ token, unlock }) => links.open(token, unlock),
       RedeemCode: ({ code }) => Effect.flatMap(sender, (id) => userPlans.redeem(id, code)),
-      ReportDownload: ({ event, path, token }) => links.report(token, path, event),
+      ReportDownload: ({ event, path, token, unlock }) => links.report(token, path, event, unlock),
       SendDeliveryEmail: (input) =>
         Effect.flatMap(Effect.service(CurrentPrincipal), (user) =>
           emails.sendDelivery(user, input),
         ),
+      SetLinkPassword: ({ deliveryId, password }) =>
+        Effect.flatMap(sender, (id) => deliveries.setPassword(id, deliveryId, password)),
       SignUpload: ({ key, request }) =>
         Effect.flatMap(sender, (id) => transfers.sign(id, key, request)),
       StartCheckout: ({ plan }) =>
         Effect.flatMap(Effect.service(CurrentPrincipal), (user) => billing.checkout(user, plan)),
+      UnlockLink: ({ password, token }, { headers }) =>
+        links.unlock(token, password, clientIp(new Headers(headers))),
       UpdateDelivery: ({ deliveryId, note, title }) =>
         Effect.flatMap(sender, (id) => deliveries.update(id, deliveryId, { note, title })),
     });

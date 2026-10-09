@@ -8,6 +8,7 @@ import {
   DeliveryRefused,
   InvalidUpload,
   LinkExpired,
+  LinkLocked,
   LinkNotFound,
   LinkNotReady,
   NotUploaded,
@@ -20,6 +21,7 @@ import {
   StorageUnavailable,
   Unauthorized,
   UploadClosed,
+  WrongPassword,
 } from "@tranzfer/contracts";
 import type { Api, RateLimitName } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
@@ -47,6 +49,7 @@ const ApiErrors = Schema.Union([
   DeliveryRefused,
   InvalidUpload,
   LinkExpired,
+  LinkLocked,
   LinkNotFound,
   LinkNotReady,
   NotUploaded,
@@ -57,6 +60,7 @@ const ApiErrors = Schema.Union([
   StorageUnavailable,
   Unauthorized,
   UploadClosed,
+  WrongPassword,
 ]);
 
 // Typed against ApiError, so a new contract error that is missing here fails
@@ -81,6 +85,8 @@ const tooMany = {
   emailsPerDay: `You've reached the limit of ${rateLimits.emailsPerDay.limit} emails a day.`,
   interestSignups: "Too many sign-ups from your network.",
   newAccounts: "Too many new accounts from your network today.",
+  passwordAttemptsPerIp: "Too many password attempts from your network.",
+  passwordAttemptsPerLink: "Too many password attempts on this delivery.",
   uploadSigning: "Too many upload requests at once.",
 } satisfies Record<RateLimitName, string>;
 
@@ -148,6 +154,7 @@ const words = Match.type<ApiError>().pipe(
     DeliveryRefused: (error) => refusal(error.reason),
     InvalidUpload: () => "This file doesn't match what the delivery expects. Send it again.",
     LinkExpired: () => "This link has expired.",
+    LinkLocked: () => "This delivery has a password. Ask the sender for it.",
     LinkNotFound: () => "This link doesn't work. It may have been cancelled.",
     LinkNotReady: () => "Still uploading. The link starts working once every file is finished.",
     NotUploaded: () => "Still finishing up on our end. Retry in a moment.",
@@ -167,6 +174,7 @@ const words = Match.type<ApiError>().pipe(
     StorageUnavailable: () => "Storage didn't answer. Try again in a moment.",
     Unauthorized: () => "Your sign-in expired. Sign in again to continue.",
     UploadClosed: () => "This delivery was cancelled or has already finished.",
+    WrongPassword: () => "That password isn't right.",
   }),
 );
 

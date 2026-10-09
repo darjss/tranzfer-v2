@@ -1,7 +1,7 @@
 import { Meta, Title } from "@solidjs/meta";
 import { useParams } from "@solidjs/router";
 import { clientOnly, getRequestEvent, isServer } from "@solidjs/web";
-import { LinkExpired, LinkNotReady } from "@tranzfer/contracts";
+import { LinkExpired, LinkLocked, LinkNotReady } from "@tranzfer/contracts";
 import type { SharedDelivery } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -21,7 +21,9 @@ import { ApiClient } from "../../api/client";
 import { appError } from "../../api/errors";
 import { runEffect, RuntimeContext } from "../../api/solid-effect";
 import { bytes, files, fromNow, untilDate } from "../../dashboard/format";
+import { Previews } from "../../downloads/Previews";
 import { SaveAll } from "../../downloads/SaveAll";
+import { Unlock } from "../../downloads/Unlock";
 import Brand from "../../landing/Brand";
 import Loader, { linkQuips } from "../../ui/Loader";
 
@@ -144,6 +146,7 @@ const Delivery = (props: {
   delivery: SharedDelivery;
   download: (path: string) => void;
   token: string;
+  unlock: string | undefined;
 }) => {
   const total = () => props.delivery.files.reduce((sum, file) => sum + file.size, 0);
   return (
@@ -214,8 +217,9 @@ const Delivery = (props: {
         )}
       </Show>
       <Show when={props.delivery.files.length > 1}>
-        <SaveAll delivery={props.delivery} token={props.token} />
+        <SaveAll delivery={props.delivery} token={props.token} unlock={props.unlock} />
       </Show>
+      <Previews files={props.delivery.files} />
 
       <ul class={css({ borderColor: "line", borderTopWidth: "1px", listStyle: "none", mt: "6" })}>
         <For each={props.delivery.files}>
@@ -295,22 +299,42 @@ const Opening = () => (
   </Paper>
 );
 
-const LinkPage = () => {
-  const params = useParams<{ token: string }>();
+export const LinkPage = (props: { token: string }) => {
   const runtime = useContext(RuntimeContext);
-  const delivery = createMemo(() =>
-    runEffect(ApiClient.use((api) => api.OpenLink({ token: params.token }))),
-  );
+  // What UnlockLink returned. It lives in this page only, so a reload asks
+  // for the password again, and it stops working after a day.
+  const [unlock, setUnlock] = createSignal<string>();
+  const opened = createMemo(() => {
+    // Read here so a new unlock re-opens the link; the effect runs untracked.
+    const current = unlock();
+    const { token } = props;
+    return runEffect(
+      ApiClient.use((api) =>
+        api.OpenLink({ token, unlock: current }).pipe(
+          Effect.map((shared) => ({ locked: undefined, shared })),
+          Effect.catchTag("LinkLocked", (locked) => Effect.succeed({ locked, shared: undefined })),
+        ),
+      ),
+    );
+  });
 
   // Rendered URLs expire, so a click re-opens the link for a fresh one and
   // surfaces a dead link the same way the load-time boundary does.
   const [linkError, setLinkError] = createSignal<unknown>();
   const download = async (path: string) => {
+    const current = unlock();
+    const { token } = props;
     const exit = await runtime.runPromiseExit(
-      ApiClient.use((api) => api.OpenLink({ token: params.token })),
+      ApiClient.use((api) => api.OpenLink({ token, unlock: current })),
     );
     if (Exit.isFailure(exit)) {
-      setLinkError(Cause.squash(exit.cause));
+      const error = Cause.squash(exit.cause);
+      if (Schema.is(LinkLocked)(error)) {
+        // The unlock ran out; clearing it opens the password form again.
+        setUnlock(undefined);
+      } else {
+        setLinkError(error);
+      }
       return;
     }
     const file = exit.value.files.find((candidate) => candidate.path === path);
@@ -318,7 +342,7 @@ const LinkPage = () => {
       // Only the click is known; the browser's download manager takes it from here.
       runtime.runFork(
         ApiClient.use((api) =>
-          api.ReportDownload({ event: "started", path, token: params.token }),
+          api.ReportDownload({ event: "started", path, token, unlock: current }),
         ).pipe(Effect.ignore),
       );
       location.assign(file.url);
@@ -331,13 +355,35 @@ const LinkPage = () => {
         <Show
           when={linkError()}
           fallback={
-            <Delivery
-              delivery={delivery()}
-              download={(path) => {
-                void download(path);
-              }}
-              token={params.token}
-            />
+            <Show
+              when={opened().shared}
+              fallback={
+                <Show when={opened().locked}>
+                  {(locked) => (
+                    <Paper>
+                      <Unlock
+                        onUnlock={(next) => {
+                          setUnlock(next);
+                        }}
+                        senderName={locked().senderName}
+                        token={props.token}
+                      />
+                    </Paper>
+                  )}
+                </Show>
+              }
+            >
+              {(shared) => (
+                <Delivery
+                  delivery={shared()}
+                  download={(path) => {
+                    void download(path);
+                  }}
+                  token={props.token}
+                  unlock={unlock()}
+                />
+              )}
+            </Show>
           }
         >
           {(error) => <LinkError error={error()} />}
@@ -354,6 +400,7 @@ const LinkPage = () => {
 const LazyLink = clientOnly(async () => await Promise.resolve({ default: LinkPage }));
 
 export default function PublicDelivery() {
+  const params = useParams<{ token: string }>();
   // Signed URLs reach the page, so it must never be cached.
   if (isServer) {
     getRequestEvent()?.response.headers.set("cache-control", "no-store");
@@ -382,7 +429,7 @@ export default function PublicDelivery() {
         <Brand />
       </nav>
       <main class={css({ pt: { base: "10", sm: "16" } })}>
-        <LazyLink fallback={<Opening />} />
+        <LazyLink fallback={<Opening />} token={params.token} />
       </main>
     </div>
   );

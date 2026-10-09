@@ -212,6 +212,27 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     return failure;
   });
 
+  /** Resolves to a problem to show, or undefined once the password is set (or removed with null). */
+  const setPassword = action(async function* setPassword(
+    deliveryId: DeliveryId,
+    password: string | null,
+  ) {
+    setDeliveries((list) => {
+      // Object.assign because the contract types are readonly.
+      const row = list.find((delivery) => delivery.id === deliveryId);
+      if (row !== undefined) {
+        Object.assign(row, { hasPassword: password !== null });
+      }
+    });
+    const exit = await runtime.runPromiseExit(
+      ApiClient.use((api) => api.SetLinkPassword({ deliveryId, password })),
+    );
+    yield;
+    const failure = Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
+    await refresh(deliveries);
+    return failure;
+  });
+
   /** Takes ended deliveries off the list at once; resolves to a problem to show, if any. */
   const clear = action(async function* clear(deliveryIds: readonly DeliveryId[]) {
     setDeliveries((list) => list.filter((delivery) => !deliveryIds.includes(delivery.id)));
@@ -352,6 +373,7 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     redeeming,
     send,
     sending,
+    setPassword,
     update,
   };
 };

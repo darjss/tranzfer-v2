@@ -23,7 +23,7 @@ faq:
   - q: Which Tranzfer plan fits a day of 4K?
     a: Two hours of UHD ProRes 422 HQ is about 636 GB, plus proxies. That fits Pro, which holds 1 TB live at once for $29 a month. Bigger shoots fit Studio, which holds 3 TB.
   - q: Can my editor give feedback on the footage in Tranzfer?
-    a: No. Tranzfer has no playback, previews or comments. Use a review tool for cuts and Tranzfer for moving the files.
+    a: No. Tranzfer plays small clips but has no comments. Use a review tool for cuts and Tranzfer for moving the files.
 ---
 
 ## How much 4K are you sending?
@@ -81,7 +81,7 @@ One link per delivery. No account and nothing to install. On desktop Chrome or E
 
 ## When should you use something else?
 
-- **The editor wants to review cuts with the director.** We have no playback or comments. [Frame.io](https://frame.io/) is built for frame-accurate feedback. Its V4 [doesn't support DaVinci Resolve](https://help.frame.io/en/articles/9893008-what-to-expect-when-updating-to-v4-a-comprehensive-guide-for-enterprise-customers), so check what your editor cuts in.
+- **The editor wants to review cuts with the director.** We have no comments or review. [Frame.io](https://frame.io/) is built for frame-accurate feedback. Its V4 [doesn't support DaVinci Resolve](https://help.frame.io/en/articles/9893008-what-to-expect-when-updating-to-v4-a-comprehensive-guide-for-enterprise-customers), so check what your editor cuts in.
 - **Clients or crew upload to you.** We don't have request links. MASV's portals take uploads and can [forward them to Frame.io or S3](https://help.massive.io/en/how-to-use-a-portal-to-send-files-to-integrations).
 - **You shoot for a week on a slow line.** Two terabytes at 20 Mbps is over 9 days of uploading at full speed. Send proxies online and ship the originals on a drive.
 

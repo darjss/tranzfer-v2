@@ -28,11 +28,18 @@ const stoppedWords = (error: ApiError | SaveStopped) => {
       ? `Couldn't save ${error.path}. Check the folder has space, then resume.`
       : "We lost the connection. Resume when you're back online.";
   }
-  return appError(error).message;
+  // The page's unlock lasts a day; a save that outlives it has to unlock again.
+  return error._tag === "LinkLocked"
+    ? "The password unlock has run out. Reload this page and enter the password again, then choose the same folder to carry on."
+    : appError(error).message;
 };
 
 /** Saves every file into one picked folder, subfolders included. Chromium only. */
-export const SaveAll = (props: { delivery: SharedDelivery; token: string }) => {
+export const SaveAll = (props: {
+  delivery: SharedDelivery;
+  token: string;
+  unlock: string | undefined;
+}) => {
   const runtime = useContext(RuntimeContext);
   const total = () => props.delivery.files.reduce((sum, file) => sum + file.size, 0);
   const [status, setStatus] = createSignal<"done" | "idle" | "saving">("idle");
@@ -65,7 +72,7 @@ export const SaveAll = (props: { delivery: SharedDelivery; token: string }) => {
     });
     stop = new AbortController();
     const exit = await runtime.runPromiseExit(
-      saveFolder(root, props.token, (next) => {
+      saveFolder(root, { token: props.token, unlock: props.unlock }, (next) => {
         setProgress((draft) => {
           draft.bytes = next.bytes;
           draft.current = next.current;

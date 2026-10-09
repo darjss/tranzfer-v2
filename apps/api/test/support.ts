@@ -61,7 +61,15 @@ const counting = (limit: number) => {
 
 /** The domain over a fresh migrated local D1 and the given storage. */
 export const domainLayer = (storage: Layer.Layer<Storage>) =>
-  Layer.mergeAll(Transfers.layer, SharedLinks.layer).pipe(
+  Layer.mergeAll(
+    Transfers.layer,
+    Layer.suspend(() =>
+      SharedLinks.layer({
+        allowIp: counting(rateLimits.passwordAttemptsPerIp.limit),
+        allowLink: counting(rateLimits.passwordAttemptsPerLink.limit),
+      }),
+    ),
+  ).pipe(
     Layer.provideMerge(
       Layer.sync(SigningRate, () =>
         SigningRate.of({ allow: counting(rateLimits.uploadSigning.limit) }),

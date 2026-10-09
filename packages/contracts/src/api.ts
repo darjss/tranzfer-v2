@@ -27,7 +27,17 @@ import {
 } from "./delivery";
 import { DeliveryEmail, DeliveryNotShareable, SendDeliveryEmailPayload } from "./email";
 import { InterestJoined, JoinInterestPayload } from "./interest";
-import { DownloadEvent, LinkExpired, LinkNotFound, LinkNotReady, SharedDelivery } from "./link";
+import {
+  DownloadEvent,
+  LinkExpired,
+  LinkLocked,
+  LinkNotFound,
+  LinkNotReady,
+  LinkPassword,
+  SharedDelivery,
+  Unlocked,
+  WrongPassword,
+} from "./link";
 import {
   InvalidUpload,
   NotUploaded,
@@ -65,6 +75,13 @@ export class Api extends RpcGroup.make(
   Rpc.make("UpdateDelivery", {
     error: DeliveryNotFound,
     payload: Schema.Struct({ deliveryId: DeliveryId, note: DeliveryNote, title: DeliveryTitle }),
+    success: Delivery,
+  }).middleware(Authenticated),
+  // Owner only. A password replaces the old one; null removes it. Unlocks
+  // issued under the old password stop working.
+  Rpc.make("SetLinkPassword", {
+    error: DeliveryNotFound,
+    payload: Schema.Struct({ deliveryId: DeliveryId, password: Schema.NullOr(LinkPassword) }),
     success: Delivery,
   }).middleware(Authenticated),
   // Owner only; the delivery must be ready and unexpired. Answers at once with
@@ -118,13 +135,30 @@ export class Api extends RpcGroup.make(
     payload: JoinInterestPayload,
     success: InterestJoined,
   }),
+  // `unlock` is what UnlockLink returned; a link with a password needs it to
+  // show its files or sign their URLs.
   Rpc.make("OpenLink", {
-    error: Schema.Union([LinkExpired, LinkNotFound, LinkNotReady]),
-    payload: Schema.Struct({ token: Schema.String }),
+    error: Schema.Union([LinkExpired, LinkLocked, LinkNotFound, LinkNotReady]),
+    payload: Schema.Struct({ token: Schema.String, unlock: Schema.optional(Schema.String) }),
     success: SharedDelivery,
   }),
-  // Public and best effort: a bad or dead link records nothing and says nothing.
+  // Public. Counted per client IP and per link, right and wrong passwords alike.
+  Rpc.make("UnlockLink", {
+    error: Schema.Union([LinkNotFound, RateLimited, WrongPassword]),
+    payload: Schema.Struct({
+      password: Schema.String.check(Schema.isMaxLength(128)),
+      token: Schema.String,
+    }),
+    success: Unlocked,
+  }),
+  // Public and best effort: a bad or dead link, or a locked one without its
+  // unlock, records nothing and says nothing.
   Rpc.make("ReportDownload", {
-    payload: Schema.Struct({ event: DownloadEvent, path: Schema.String, token: Schema.String }),
+    payload: Schema.Struct({
+      event: DownloadEvent,
+      path: Schema.String,
+      token: Schema.String,
+      unlock: Schema.optional(Schema.String),
+    }),
   }),
 ) {}

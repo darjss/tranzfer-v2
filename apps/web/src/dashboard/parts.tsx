@@ -12,9 +12,13 @@ import PhFileArrowUpBold from "~icons/ph/file-arrow-up-bold";
 import PhHourglassMediumBold from "~icons/ph/hourglass-medium-bold";
 import PhLinkBreakBold from "~icons/ph/link-break-bold";
 import PhWarningBold from "~icons/ph/warning-bold";
+import PhLockBold from "~icons/ph/lock-bold";
 import PhWifiSlashBold from "~icons/ph/wifi-slash-bold";
 import PhXBold from "~icons/ph/x-bold";
 
+import type { Delivery, DeliveryId } from "@tranzfer/contracts";
+
+import { Button } from "../ui/Button";
 import type { Kind } from "./format";
 
 type Tone = "amber" | "blue" | "mut" | "ok" | "rust";
@@ -256,6 +260,155 @@ export function CopyLink(props: {
         <span class={css({ color: "rust", textStyle: "xs" })} role="alert">
           Couldn't copy. Open the delivery and copy the link by hand.
         </span>
+      </Show>
+    </>
+  );
+}
+
+export const fieldLabel = css({ color: "mut", display: "grid", fontSize: "13", gap: "1" });
+export const field = css({
+  _focusVisible: {
+    outlineColor: "blue",
+    outlineOffset: "0.5",
+    outlineStyle: "solid",
+    outlineWidth: "2px",
+  },
+  bg: "white",
+  borderRadius: "xl",
+  color: "ink",
+  fontSize: "[16px]",
+  px: "3",
+  py: "2",
+  shadow: "[inset 0 0 0 1px var(--colors-line)]",
+  w: "full",
+});
+
+/**
+ * Sets, changes or removes the password on a delivery's link. The password is
+ * typed in the open so the sender can read it back and send it by another
+ * route; once saved, only the fact that one is set comes back.
+ */
+export function LinkPassword(props: {
+  delivery: Delivery;
+  setPassword: (deliveryId: DeliveryId, password: string | null) => Promise<string | undefined>;
+}) {
+  const [editing, setEditing] = createSignal(false);
+  const [password, setPassword] = createSignal("");
+  const [problem, setProblem] = createSignal<string>();
+  const change = async (next: string | null) => {
+    setProblem(undefined);
+    const failure = await props.setPassword(props.delivery.id, next);
+    if (failure === undefined) {
+      setPassword("");
+      setEditing(false);
+    } else {
+      setProblem(failure);
+    }
+  };
+  return (
+    <>
+      <Show
+        when={editing()}
+        fallback={
+          <div class={css({ alignItems: "center", display: "flex", flexWrap: "wrap", gap: "2.5" })}>
+            <Show
+              when={props.delivery.hasPassword}
+              fallback={
+                <Button
+                  onClick={() => {
+                    setPassword("");
+                    setEditing(true);
+                  }}
+                  size="xs"
+                  variant="outline"
+                >
+                  Add a password
+                </Button>
+              }
+            >
+              <span
+                class={css({
+                  alignItems: "center",
+                  display: "inline-flex",
+                  gap: "1.5",
+                  textStyle: "sm",
+                })}
+              >
+                <PhLockBold aria-hidden="true" class={css({ boxSize: "4" })} />
+                Password set
+              </span>
+              <Button
+                onClick={() => {
+                  setPassword("");
+                  setEditing(true);
+                }}
+                size="xs"
+                variant="outline"
+              >
+                Change
+              </Button>
+              <Button
+                onClick={() => {
+                  void change(null);
+                }}
+                size="xs"
+                variant="outline"
+              >
+                Remove
+              </Button>
+            </Show>
+          </div>
+        }
+      >
+        <form
+          class={css({ display: "grid", gap: "3", maxW: "[460px]", w: "full" })}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void change(password());
+          }}
+        >
+          <label class={fieldLabel}>
+            Password for the recipient, 8 to 128 characters
+            <input
+              autocomplete="off"
+              class={field}
+              maxlength={128}
+              minlength={8}
+              name="password"
+              onInput={(event) => {
+                setPassword(event.currentTarget.value);
+              }}
+              required
+              spellcheck="false"
+              value={password()}
+            />
+          </label>
+          <p class={css({ color: "mut", textStyle: "sm" })}>
+            They type it before they see any file names. Send it to them yourself, not in the link
+            message.
+          </p>
+          <div class={css({ display: "flex", gap: "2" })}>
+            <Button disabled={password().length < 8} size="xs" type="submit">
+              Save password
+            </Button>
+            <Button
+              onClick={() => {
+                setEditing(false);
+              }}
+              size="xs"
+              variant="outline"
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Show>
+      <Show when={problem()}>
+        {(message) => (
+          <p class={css({ color: "rust", textStyle: "sm" })} role="alert">
+            {message()}
+          </p>
+        )}
       </Show>
     </>
   );
