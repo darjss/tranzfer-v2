@@ -318,6 +318,7 @@ export default function MarketingPage(props: {
                           display: "grid",
                           gridTemplateColumns: { base: "1fr", md: "minmax(0,1fr) minmax(0,1fr)" },
                           py: "2",
+                          rowGap: "1",
                         })}
                       >
                         <s
