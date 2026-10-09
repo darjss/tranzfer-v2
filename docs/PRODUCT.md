@@ -87,11 +87,20 @@ A new delivery that would push active space past the plan's limit is refused bef
 
 ## Email
 
-Tranzfer sends three emails, all from `Tranzfer <hello@tranzfer.app>` with replies to support@tranzfer.app, as plain text with a simple HTML copy:
+Tranzfer sends four emails, all from `Tranzfer <hello@tranzfer.app>`, as plain text with a simple HTML copy. Replies go to support@tranzfer.app, except on the last one:
 
 - A welcome when an account is created, with what Free gives and how to send the first file. Better Auth's user-created hook hands it to the request's `waitUntil`, so sign-up never waits on it, and a failed send is logged and dropped.
 - "You're on the list" when someone joins a plan's interest list.
 - "Pro is open" (or Starter, Studio) once per person, queued by `interest:notify` above.
+- A sender's own delivery link, from "Email it" on the finished-send card. The subject is "<sender name> sent you <title>" and Reply-To is the sender's account email. The body has the note, file count, size, the expiry in UTC and the link. No tracking pixel, and the sender's text is escaped in the HTML.
+
+### Emailing a delivery
+
+`SendDeliveryEmail` takes a ready, unexpired delivery you own and 1 to 10 addresses, and sends one email per distinct address. It answers at once with a `queued` row per address. The mail goes out in the Worker's `waitUntil`, and each row settles to `sent` or `failed`. `DeliveryEmails` reads them back, and the page polls every 2 seconds until none is queued.
+
+`sent` means Cloudflare took the message. Nothing says it reached an inbox, and the card says so. The card says "bounced" only for `E_RECIPIENT_SUPPRESSED`, Cloudflare's code for an address it has on its bounce list. Staging and previews report an address off the allowlist as `failed` with code `held`.
+
+`delivery_email` holds delivery id, status, error code and the times. It does not hold the address, because the send runs with the address in memory and the sender's page already knows what it typed. A row still `queued` after 10 minutes lost its isolate, and the sweep marks it `failed` with code `lost`.
 
 The API Worker sends through Cloudflare Email Sending's `send_email` binding. `tranzfer.app` is the onboarded sending domain, so any recipient works; the account quota is 1,000 a day. Logs and spans carry Cloudflare's error code, never an address.
 
@@ -109,8 +118,11 @@ Limits stop one person or bot from flooding sign-up, sign-in or the Free plan. T
 | Upload signing requests | sender      | Free  | 200 every 10 seconds  |
 | Access code attempts    | user        | all   | 5 a minute            |
 | Interest list sign-ups  | client IP   | all   | 10 a minute           |
+| Delivery email requests | sender      | all   | 10 a minute           |
+| Delivery emails         | sender      | all   | 50 a day              |
+| Delivery emails         | all senders | all   | 800 a day             |
 
-Sign-in covers every `/api/auth` request, Google's start and callback and the staging login included. An IPv6 client counts by its /64. Cancelled deliveries count toward the delivery cap, so create-and-cancel can't loop. A part is at least 64 MiB, so 20 signing requests a second is faster than a gigabit line needs. Paid, comp and code-granted plans have no delivery or signing cap. Code attempts count wrong and right codes alike, so nobody can guess codes quickly.
+Sign-in covers every `/api/auth` request, Google's start and callback and the staging login included. An IPv6 client counts by its /64. Cancelled deliveries count toward the delivery cap, so create-and-cancel can't loop. A part is at least 64 MiB, so 20 signing requests a second is faster than a gigabit line needs. Paid, comp and code-granted plans have no delivery or signing cap. Code attempts count wrong and right codes alike, so nobody can guess codes quickly. A delivery email counts per address, failed ones included, and a send needing more room than is left is refused whole. The account-wide 800 a day keeps delivery emails under Cloudflare's 1,000 a day quota and leaves room for the welcome and interest emails.
 
 ## Cost guardrail
 
