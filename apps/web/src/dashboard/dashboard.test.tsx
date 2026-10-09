@@ -71,6 +71,7 @@ const delivery = (
     size,
     state: status === "ready" ? "complete" : "uploading",
   })),
+  uploader: null,
 });
 
 // The API side of the dashboard, in memory: a server list the fake cancel
@@ -128,13 +129,18 @@ const makeWorld = (
                 ...server.filter((row) => !deliveryIds.includes(row.id)),
               );
             }),
+          CloseFileRequest: () => Effect.die("unused"),
           CreateDelivery: () => Effect.die("unused"),
+          CreateFileRequest: () => Effect.die("unused"),
+          CreateRequestUpload: () => Effect.die("unused"),
           Deliveries: () =>
             Effect.suspend(() => {
               listsToFail -= 1;
               return listsToFail < 0 ? Effect.succeed([...server]) : Effect.die("list failed");
             }),
           DeliveryEmails: () => Effect.sync(() => emailRows.toReversed()),
+          FileRequests: () => Effect.succeed([]),
+          FinalizeRequestTransfer: () => Effect.die("unused"),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.sync(() => billing),
           // Like the real one: without an address it needs a session, and
@@ -143,6 +149,7 @@ const makeWorld = (
             email === undefined ? Effect.fail(new Unauthorized()) : Effect.succeed({ email }),
           Me: () => Effect.service(CurrentPrincipal),
           OpenBillingPortal: () => Effect.die("unused"),
+          OpenFileRequest: () => Effect.die("unused"),
           OpenLink: () => Effect.die("unused"),
           RedeemCode: ({ code }) =>
             code.trim().toUpperCase() === "BETA-PRO"
@@ -152,6 +159,7 @@ const makeWorld = (
                 })
               : Effect.fail(new AccessCodeRefused({ reason: "unknown" })),
           ReportDownload: () => Effect.die("unused"),
+          RequestUploads: () => Effect.die("unused"),
           SendDeliveryEmail: ({ recipients }) =>
             Effect.sync(() => {
               emailRequests.push(recipients);
@@ -176,6 +184,7 @@ const makeWorld = (
               server[index] = updated;
               return updated;
             }),
+          SignRequestUpload: () => Effect.die("unused"),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
           UnlockLink: () => Effect.die("unused"),

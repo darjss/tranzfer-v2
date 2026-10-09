@@ -39,9 +39,22 @@ import {
   WrongPassword,
 } from "./link";
 import {
+  FileRequest,
+  NewFileRequest,
+  NewRequestUpload,
+  OpenedRequest,
+  RequestFull,
+  RequestId,
+  RequestNotFound,
+  RequestTransferPayload,
+  RequestUpload,
+  RequestUploadsPayload,
+} from "./request";
+import {
   InvalidUpload,
   NotUploaded,
   SignedUrl,
+  SignRequestUploadPayload,
   SignUploadPayload,
   StorageUnavailable,
   UploadClosed,
@@ -114,6 +127,66 @@ export class Api extends RpcGroup.make(
     payload: Schema.Struct({ transferId: TransferId }),
     success: Delivery,
   }).middleware(Authenticated),
+  // File requests: links the owner hands to people without an account.
+  Rpc.make("FileRequests", { success: Schema.Array(FileRequest) }).middleware(Authenticated),
+  Rpc.make("CreateFileRequest", {
+    error: RetentionNotInPlan,
+    payload: NewFileRequest,
+    success: FileRequest,
+  }).middleware(Authenticated),
+  // Closing is idempotent. The link stops working at once.
+  Rpc.make("CloseFileRequest", {
+    error: RequestNotFound,
+    payload: Schema.Struct({ requestId: RequestId }),
+    success: FileRequest,
+  }).middleware(Authenticated),
+  // The uploader's side is public: the token is the credential. Each call
+  // counts against the caller's IP and the request.
+  Rpc.make("OpenFileRequest", {
+    error: Schema.Union([RateLimited, RequestNotFound]),
+    payload: Schema.Struct({ token: Schema.String }),
+    success: OpenedRequest,
+  }),
+  Rpc.make("CreateRequestUpload", {
+    error: Schema.Union([
+      DeliveryConflict,
+      DeliveryRefused,
+      RateLimited,
+      RequestFull,
+      RequestNotFound,
+    ]),
+    payload: NewRequestUpload,
+    success: RequestUpload,
+  }),
+  Rpc.make("SignRequestUpload", {
+    error: Schema.Union([
+      DeliveryNotFound,
+      InvalidUpload,
+      RateLimited,
+      RequestNotFound,
+      UploadClosed,
+    ]),
+    payload: SignRequestUploadPayload,
+    success: SignedUrl,
+  }),
+  Rpc.make("FinalizeRequestTransfer", {
+    error: Schema.Union([
+      DeliveryNotFound,
+      InvalidUpload,
+      NotUploaded,
+      RateLimited,
+      RequestNotFound,
+      StorageUnavailable,
+      UploadClosed,
+    ]),
+    payload: RequestTransferPayload,
+    success: RequestUpload,
+  }),
+  Rpc.make("RequestUploads", {
+    error: Schema.Union([RateLimited, RequestNotFound]),
+    payload: RequestUploadsPayload,
+    success: Schema.Array(RequestUpload),
+  }),
   Rpc.make("GetBilling", { success: BillingSummary }).middleware(Authenticated),
   Rpc.make("StartCheckout", {
     error: BillingUnavailable,

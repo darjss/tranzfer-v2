@@ -102,14 +102,20 @@ const makeWorld = (options: { locked?: boolean } = {}) => {
         Api.of({
           CancelDelivery: () => Effect.die("unused"),
           ClearDeliveries: () => Effect.die("unused"),
+          CloseFileRequest: () => Effect.die("unused"),
           CreateDelivery: () => Effect.die("unused"),
+          CreateFileRequest: () => Effect.die("unused"),
+          CreateRequestUpload: () => Effect.die("unused"),
           Deliveries: () => Effect.die("unused"),
           DeliveryEmails: () => Effect.die("unused"),
+          FileRequests: () => Effect.succeed([]),
+          FinalizeRequestTransfer: () => Effect.die("unused"),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.die("unused"),
           JoinInterest: () => Effect.die("unused"),
           Me: () => Effect.die("unused"),
           OpenBillingPortal: () => Effect.die("unused"),
+          OpenFileRequest: () => Effect.die("unused"),
           OpenLink: ({ unlock }) =>
             Effect.suspend(() => {
               opens.push(unlock);
@@ -123,8 +129,10 @@ const makeWorld = (options: { locked?: boolean } = {}) => {
               reports.push(`${event} ${path}`);
               reportUnlocks.push(unlock);
             }),
+          RequestUploads: () => Effect.die("unused"),
           SendDeliveryEmail: () => Effect.die("unused"),
           SetLinkPassword: () => Effect.die("unused"),
+          SignRequestUpload: () => Effect.die("unused"),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
           UnlockLink: ({ password }) =>

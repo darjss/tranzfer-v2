@@ -32,6 +32,9 @@ export const RateLimitName = Schema.Literals([
   "newAccounts",
   "passwordAttemptsPerIp",
   "passwordAttemptsPerLink",
+  "portalCallsPerIp",
+  "portalCallsPerRequest",
+  "portalUploadsPerIp",
   "uploadSigning",
 ]);
 export type RateLimitName = typeof RateLimitName.Type;
@@ -39,7 +42,9 @@ export type RateLimitName = typeof RateLimitName.Type;
 /**
  * Rate limits, per rolling window. docs/PRODUCT.md is the spec. The auth and
  * interest-list limits count per client IP, link password attempts per client IP and
- * per link, and access code attempts per user, on every plan. Delivery emails count per sender on every plan, except
+ * per link, and access code attempts per user, on every plan. File request
+ * (portal) limits count per client IP and per request, whoever the owner is.
+ * Delivery emails count per sender on every plan, except
  * `emailsAccountPerDay`, which counts every sender together and keeps them
  * under the account's 1,000 a day sending quota with room for the welcome and
  * interest emails. The rest count per sender on the Free plan only, and paid
@@ -58,6 +63,9 @@ export const rateLimits = {
   newAccounts: { limit: 10, windowSeconds: 24 * 60 * 60 },
   passwordAttemptsPerIp: { limit: 10, windowSeconds: 60 },
   passwordAttemptsPerLink: { limit: 5, windowSeconds: 60 },
+  portalCallsPerIp: { limit: 600, windowSeconds: 60 },
+  portalCallsPerRequest: { limit: 1200, windowSeconds: 60 },
+  portalUploadsPerIp: { limit: 10, windowSeconds: 60 },
   uploadSigning: { limit: 200, windowSeconds: 10 },
 } as const satisfies Record<
   RateLimitName,
