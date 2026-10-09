@@ -2,7 +2,9 @@ import { css, cx } from "styled-system/css";
 import { ArrowIcon, Hand, Ink, Still } from "./notebook";
 import { eyebrow, sideTitle } from "./styles";
 import { button } from "../ui/Button";
-import morningPacking from "./assets/morning-packing.webp";
+import { photos } from "./photos";
+
+const morningPacking = photos["./assets/morning-packing.webp"];
 
 /** The sign-off: one taped sheet with the headline and the button on it. */
 export default function FinalCta() {

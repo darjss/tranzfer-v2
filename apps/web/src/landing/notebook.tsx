@@ -109,7 +109,15 @@ export const Blob = (props: { style: string }) => (
   />
 );
 
-export function Still(props: { src: string; label: string; style: string; in?: boolean }) {
+// The stills show at 100 to 200 CSS px, so the 240 and 400 wide variants cover 1x and 2x.
+// Only `priority` loads eagerly; the rest wait until the browser lays them out.
+export function Still(props: {
+  src: ResponsiveImage;
+  label: string;
+  style: string;
+  in?: boolean;
+  priority?: boolean;
+}) {
   return (
     <div
       class={[
@@ -157,8 +165,15 @@ export function Still(props: { src: string; label: string; style: string; in?: b
       style={props.style}
     >
       <img
-        src={props.src}
+        src={props.src.src}
+        srcset={props.src.srcset}
+        sizes="200px"
+        width={props.src.w}
+        height={props.src.h}
         alt=""
+        loading={props.priority === true ? "eager" : "lazy"}
+        fetchpriority={props.priority === true ? "high" : "auto"}
+        decoding="async"
         class={css({
           borderRadius: "photo",
           boxSize: "full",
