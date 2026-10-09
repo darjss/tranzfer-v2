@@ -143,10 +143,11 @@ export default ApiWorker.make(
 
     // A D1 client belongs to one invocation, so the services over it are
     // rebuilt per request (and per cron run) with a fresh memo map.
+    const database = Layer.unwrap(Effect.map(handle, Database.fromD1));
     const domain = Layer.mergeAll(Transfers.layer, SharedLinks.layer, billing).pipe(
       Layer.provideMerge(Deliveries.layer),
       Layer.provideMerge(Plans.layer(limiter(codeRedemptions))),
-      Layer.provideMerge(Layer.unwrap(Effect.map(handle, Database.fromD1))),
+      Layer.provideMerge(database),
     );
     const perInvocation = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(Effect.provide(domain, { local: true }), Effect.provideContext(isolate));
@@ -170,6 +171,7 @@ export default ApiWorker.make(
         "*",
         "/api/auth/*",
         Effect.flatMap(Effect.service(Auth), (auth) => auth.fetch).pipe(
+          Effect.provide(database, { local: true }),
           Effect.provideContext(isolate),
         ),
       ),

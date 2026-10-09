@@ -207,8 +207,8 @@ export class Deliveries extends Context.Service<
       }, dieOnDatabaseError);
 
       // Refused before any bytes upload, with the exact wait or the space in
-      // use. Cancelled deliveries count toward the Free caps, so
-      // create-and-cancel can't loop.
+      // use; else the sender's active bytes. Cancelled deliveries count
+      // toward the Free caps, so create-and-cancel can't loop.
       const admit = Effect.fn("Deliveries.admit")(function* admit(
         senderId: string,
         plan: PlanId,
@@ -235,19 +235,20 @@ export class Deliveries extends Context.Service<
           for (const limit of ["deliveriesPerHour", "deliveriesPerDay"] as const) {
             const retryAfterSeconds = secondsUntilRoom(createdAt, rateLimits[limit], now);
             if (retryAfterSeconds !== undefined) {
-              yield* new RateLimited({ limit, retryAfterSeconds });
+              return yield* new RateLimited({ limit, retryAfterSeconds });
             }
           }
         }
         const usedBytes = yield* activeBytes(senderId);
-        if (usedBytes + requestedBytes > plans[plan].activeBytes) {
-          yield* new OverPlanLimit({
-            limitBytes: plans[plan].activeBytes,
-            plan,
-            requestedBytes,
-            usedBytes,
-          });
+        if (usedBytes + requestedBytes <= plans[plan].activeBytes) {
+          return usedBytes;
         }
+        return yield* new OverPlanLimit({
+          limitBytes: plans[plan].activeBytes,
+          plan,
+          requestedBytes,
+          usedBytes,
+        });
       });
 
       // The same rules as `admit`, checked by the statement that inserts the
