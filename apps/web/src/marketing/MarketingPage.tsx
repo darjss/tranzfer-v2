@@ -1,5 +1,5 @@
 import { Link, Meta, Title } from "@solidjs/meta";
-import { For } from "solid-js";
+import { For, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 import type { Page } from "./content";
 import { ArrowIcon, Hand } from "../landing/notebook";
@@ -10,7 +10,11 @@ import Reveal from "../ui/Reveal";
 import { SitePage } from "../ui/Site";
 
 // One feature or use-case page: a claim, a photo, three plain points and a
-// way in. `related` links to the neighbours in the same menu.
+// way in. Use-case pages add steps, file types, what it replaces and a FAQ.
+// `related` links to the neighbours in the same menu.
+
+const block = css({ borderColor: "line", borderTopWidth: "1px", py: { base: "14", lg: "20" } });
+const blockTitle = cx(sectionTitle, css({ fontSize: "[clamp(30px,3.6vw,48px)]", mt: "2" }));
 
 export default function MarketingPage(props: {
   readonly page: Page;
@@ -142,6 +146,178 @@ export default function MarketingPage(props: {
               )}
             </For>
           </section>
+
+          <Show when={props.page.steps}>
+            {(steps) => (
+              <section class={block}>
+                <p class={eyebrow}>How it goes</p>
+                <h2 class={cx("rv", blockTitle)}>Three steps. Then back to work.</h2>
+                <ol
+                  class={css({
+                    display: "grid",
+                    gap: "8",
+                    gridTemplateColumns: { base: "1fr", md: "repeat(3,minmax(0,1fr))" },
+                    listStyle: "none",
+                    mt: "10",
+                  })}
+                >
+                  <For each={steps()}>
+                    {(step, i) => (
+                      <li
+                        class={cx(
+                          "rv",
+                          css({ bg: "panel", borderRadius: "card", p: "7", shadow: "ring" }),
+                        )}
+                        style={`--d:${i() * 80}ms`}
+                      >
+                        <span
+                          class={css({
+                            color: "blue",
+                            fontFamily: "hand",
+                            fontSize: "[40px]",
+                            lineHeight: "none",
+                          })}
+                        >
+                          {i() + 1}.
+                        </span>
+                        <h3 class={css({ fontSize: "[19px]", fontWeight: "semibold", mt: "3" })}>
+                          {step.h}
+                        </h3>
+                        <p
+                          class={css({ color: "mut", fontSize: "17", mt: "2", textWrap: "pretty" })}
+                        >
+                          {step.p}
+                        </p>
+                      </li>
+                    )}
+                  </For>
+                </ol>
+              </section>
+            )}
+          </Show>
+
+          <Show when={props.page.files}>
+            {(files) => (
+              <section class={block}>
+                <p class={eyebrow}>What you can send</p>
+                <h2 class={cx("rv", blockTitle)}>
+                  Any file type. <i>Including these.</i>
+                </h2>
+                <ul
+                  class={css({
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "2.5",
+                    listStyle: "none",
+                    mt: "8",
+                  })}
+                >
+                  <For each={files()}>
+                    {(file, i) => (
+                      <li
+                        class={cx(
+                          "rv",
+                          css({
+                            bg: "white",
+                            borderRadius: "full",
+                            fontFamily: "mono",
+                            fontSize: "15",
+                            px: "4",
+                            py: "2",
+                            shadow: "ring",
+                          }),
+                        )}
+                        style={`--d:${i() * 30}ms`}
+                      >
+                        {file}
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </section>
+            )}
+          </Show>
+
+          <Show when={props.page.instead}>
+            {(instead) => (
+              <section class={block}>
+                <p class={eyebrow}>Instead of</p>
+                <h2 class={cx("rv", blockTitle)}>What you get to stop doing.</h2>
+                <div
+                  class={css({
+                    display: "grid",
+                    gap: "8",
+                    gridTemplateColumns: { base: "1fr", md: "repeat(3,minmax(0,1fr))" },
+                    mt: "10",
+                  })}
+                >
+                  <For each={instead()}>
+                    {(item, i) => (
+                      <div class="rv" style={`--d:${i() * 80}ms`}>
+                        <s
+                          class={css({
+                            fontSize: "[19px]",
+                            fontWeight: "semibold",
+                            textDecorationColor: "[#c8412b]",
+                            textDecorationThickness: "[2px]",
+                          })}
+                        >
+                          {item.h}
+                        </s>
+                        <p
+                          class={css({ color: "mut", fontSize: "17", mt: "2", textWrap: "pretty" })}
+                        >
+                          {item.p}
+                        </p>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </section>
+            )}
+          </Show>
+
+          <Show when={props.page.faq}>
+            {(faq) => (
+              <section class={block}>
+                <script type="application/ld+json">
+                  {JSON.stringify({
+                    "@context": "https://schema.org",
+                    "@type": "FAQPage",
+                    mainEntity: faq().map((item) => ({
+                      "@type": "Question",
+                      acceptedAnswer: { "@type": "Answer", text: item.a },
+                      name: item.q,
+                    })),
+                  })}
+                </script>
+                <p class={eyebrow}>Questions</p>
+                <h2 class={cx("rv", blockTitle)}>Asked by people like you.</h2>
+                <div class={css({ maxW: "[760px]", mt: "8" })}>
+                  <For each={faq()}>
+                    {(item) => (
+                      <details class={css({ borderColor: "line", borderTopWidth: "1px", py: "5" })}>
+                        <summary
+                          class={css({
+                            cursor: "pointer",
+                            fontSize: "[18px]",
+                            fontWeight: "semibold",
+                          })}
+                        >
+                          {item.q}
+                        </summary>
+                        <p
+                          class={css({ color: "mut", fontSize: "17", mt: "3", textWrap: "pretty" })}
+                        >
+                          {item.a}
+                        </p>
+                      </details>
+                    )}
+                  </For>
+                </div>
+              </section>
+            )}
+          </Show>
 
           <section
             class={css({
