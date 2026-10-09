@@ -8,6 +8,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import { Base64 } from "effect/encoding";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -405,11 +406,13 @@ let polarSubscriptions: readonly {
 const polarCalls: string[] = [];
 
 const billingLayer = Billing.layer({
-  access: { apiBaseUrl: "https://sandbox-api.polar.sh", apiKey: Redacted.make("token") },
   appUrl: "https://app.test",
-  products: Effect.succeed({ pro: "prod_pro", starter: "prod_starter", studio: "prod_studio" }),
-  reconcileOnRead: false,
-  webhookSecret: Effect.succeed(webhookSecret("billing webhook key")),
+  polar: Option.some({
+    access: { apiBaseUrl: "https://sandbox-api.polar.sh", apiKey: Redacted.make("token") },
+    products: Effect.succeed({ pro: "prod_pro", starter: "prod_starter", studio: "prod_studio" }),
+    reconcileOnRead: false,
+    webhookSecret: Effect.succeed(webhookSecret("billing webhook key")),
+  }),
 }).pipe(Layer.provideMerge(domainLayer(storage.layer)));
 
 const polarPage = () =>
@@ -508,6 +511,31 @@ layer(billingLayer)("Billing reconcile", (it) => {
       expect(yield* billing.reconcileStale).toBe(0);
       // A webhook for a comp user cannot take the grant away.
       expect(yield* reconcileAs("comp")).toMatchObject({ plan: "studio", status: "comp" });
+    }),
+  );
+});
+
+const closedBilling = Billing.layer({ appUrl: "https://app.test", polar: Option.none() }).pipe(
+  Layer.provideMerge(domainLayer(storage.layer)),
+);
+
+layer(closedBilling)("Billing before paid plans open", (it) => {
+  it.effect("refuses checkout, the portal and webhooks without calling Polar", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("pia");
+      const billing = yield* Billing;
+      const pia = { email: "pia@test", id: "pia", image: null, name: "Pia" };
+      asPolar([]);
+      polarCalls.length = 0;
+      expect(yield* Effect.flip(billing.checkout(pia, "pro"))).toMatchObject({
+        reason: "notOpen",
+      });
+      expect(yield* Effect.flip(billing.portal("pia"))).toMatchObject({ reason: "notOpen" });
+      expect(yield* Effect.flip(billing.webhook({}, "{}"))).toMatchObject({
+        reason: "disabled",
+      });
+      expect(yield* billing.summary("pia")).toMatchObject({ plan: "free", status: "none" });
+      expect(polarCalls).toEqual([]);
     }),
   );
 });

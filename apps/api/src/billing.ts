@@ -127,31 +127,49 @@ export class Billing extends Context.Service<
   }
 >()("tranzfer/Billing") {
   static readonly layer = (options: {
-    readonly access: Effect.Success<typeof polarAccess>;
     readonly appUrl: string;
-    /** Polar product ids by plan; binding values, so read per call. */
-    readonly products: Effect.Effect<Readonly<Record<PaidPlanId, string>>>;
-    /** Fails with `disabled` on stages that have no webhook endpoint. */
-    readonly webhookSecret: Effect.Effect<Redacted.Redacted, InvalidWebhook>;
-    /** Stages without a webhook read Polar whenever the summary is read. */
-    readonly reconcileOnRead: boolean;
+    /**
+     * Polar for this stage. None where paid plans are not open (see
+     * `paidPlansOpen`): nothing calls Polar, checkout and the portal fail
+     * with `notOpen` and webhooks with `disabled`.
+     */
+    readonly polar: Option.Option<{
+      readonly access: Effect.Success<typeof polarAccess>;
+      /** Polar product ids by plan; binding values, so read per call. */
+      readonly products: Effect.Effect<Readonly<Record<PaidPlanId, string>>>;
+      /** Fails with `disabled` on stages that have no webhook endpoint. */
+      readonly webhookSecret: Effect.Effect<Redacted.Redacted, InvalidWebhook>;
+      /** Stages without a webhook read Polar whenever the summary is read. */
+      readonly reconcileOnRead: boolean;
+    }>;
   }) =>
     Layer.effect(
       Billing,
       Effect.gen(function* makeBilling() {
         const { db } = yield* Database;
         const deliveries = yield* Deliveries;
-        const polarContext = yield* Effect.context<Polar.PolarOpContext>();
+        const polarContext = yield* Effect.transposeOption(
+          Option.map(options.polar, ({ access }) => Layer.build(polarClient(access))),
+        );
+        const notOpen = Effect.fail(new BillingUnavailable({ reason: "notOpen" }));
 
         // Polar answers with its own error classes; callers get one typed failure.
         const viaPolar = <A, E extends { readonly _tag: string }>(
           effect: Effect.Effect<A, E, Polar.PolarOpContext>,
         ) =>
-          effect.pipe(
-            Effect.provideContext(polarContext),
-            Effect.tapError((error) => Effect.logError("polar request failed", error._tag)),
-            Effect.mapError(() => new BillingUnavailable()),
-          );
+          Option.match(polarContext, {
+            onNone: () => notOpen,
+            onSome: (context) =>
+              effect.pipe(
+                Effect.provideContext(context),
+                Effect.tapError((error) => Effect.logError("polar request failed", error._tag)),
+                Effect.mapError(() => new BillingUnavailable({ reason: "provider" })),
+              ),
+          });
+        const products = Option.match(options.polar, {
+          onNone: () => notOpen,
+          onSome: (polar) => polar.products,
+        });
 
         const row = (userId: string) => db.query.subscription.findFirst({ where: { userId } });
 
@@ -178,7 +196,7 @@ export class Billing extends Context.Service<
           if (current?.status === "comp") {
             return;
           }
-          const products = yield* options.products;
+          const ids = yield* products;
           const subscriptions = yield* viaPolar(
             Polar.subscriptionsList
               .items({ external_customer_id: userId, limit: 100 })
@@ -198,7 +216,7 @@ export class Billing extends Context.Service<
             );
           const owned = highestFirst.flatMap((plan) =>
             subscriptions.flatMap((subscription) =>
-              subscription.product_id === products[plan]
+              subscription.product_id === ids[plan]
                 ? Option.match(granted(subscription), {
                     onNone: () => [],
                     onSome: (status) => [{ plan, status, subscription }],
@@ -268,12 +286,12 @@ export class Billing extends Context.Service<
             if (current !== undefined && current.plan !== "free") {
               return yield* portal(user.id);
             }
-            const products = yield* options.products;
+            const ids = yield* products;
             const created = yield* viaPolar(
               Polar.checkoutsCreate({
                 customer_email: user.email,
                 external_customer_id: user.id,
-                products: [products[plan]],
+                products: [ids[plan]],
                 return_url: `${options.appUrl}/`,
                 success_url: `${options.appUrl}/deliveries?checkout=success`,
               }),
@@ -286,7 +304,7 @@ export class Billing extends Context.Service<
           reconcileStale: reconcileStale(),
 
           summary: Effect.fn("Billing.summary")(function* summary(userId: string) {
-            if (options.reconcileOnRead) {
+            if (Option.exists(options.polar, (polar) => polar.reconcileOnRead)) {
               yield* Effect.ignore(reconcile(userId));
             }
             const current = yield* row(userId);
@@ -306,7 +324,11 @@ export class Billing extends Context.Service<
             headers: Readonly<Record<string, string | undefined>>,
             body: string,
           ) {
-            yield* verifyWebhook(yield* options.webhookSecret, headers, body);
+            const secret = yield* Option.match(options.polar, {
+              onNone: () => Effect.fail(new InvalidWebhook({ reason: "disabled" })),
+              onSome: (polar) => polar.webhookSecret,
+            });
+            yield* verifyWebhook(secret, headers, body);
             const event = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(WebhookEvent))(
               body,
             ).pipe(Effect.mapError(() => new InvalidWebhook({ reason: "payload" })));
@@ -325,5 +347,5 @@ export class Billing extends Context.Service<
           }),
         });
       }),
-    ).pipe(Layer.provide(polarClient(options.access)));
+    );
 }

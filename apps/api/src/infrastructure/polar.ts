@@ -19,6 +19,18 @@ export const polarAccess = Effect.gen(function* polarAccess() {
   return { apiBaseUrl: live ? "https://api.polar.sh" : "https://sandbox-api.polar.sh", apiKey };
 }).pipe(Effect.orDie);
 
+/**
+ * Whether this stage sells paid plans: the one switch for billing. Sandbox
+ * stages default to open. Production defaults to closed while Polar verifies
+ * the live organization's identity for payouts; set PAID_PLANS_OPEN=true on
+ * its deploy to open it (docs/PRODUCT.md). A closed stage declares no Polar
+ * product or webhook and never reads a Polar token.
+ */
+export const paidPlansOpen = Effect.gen(function* paidPlansOpen() {
+  const sandbox = (yield* deployStage) !== "production";
+  return yield* Config.Boolean("PAID_PLANS_OPEN").pipe(Config.withDefault(sandbox));
+}).pipe(Effect.orDie);
+
 export const polarClient = (access: Effect.Success<typeof polarAccess>) =>
   Layer.mergeAll(
     FetchHttpClient.layer,

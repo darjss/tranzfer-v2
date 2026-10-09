@@ -23,7 +23,7 @@ import { Storage } from "./storage";
 import { sweep } from "./sweeper";
 import { SigningRate, Transfers } from "./transfers";
 import { Auth, makeAuth } from "./infrastructure/auth";
-import { PolarProduct, PolarWebhook, polarAccess } from "./infrastructure/polar";
+import { PolarProduct, PolarWebhook, paidPlansOpen, polarAccess } from "./infrastructure/polar";
 import { filesStorage, lazy } from "./infrastructure/r2";
 import { deployStage, stageName } from "./infrastructure/stage";
 import { relayConfig, relayTraces, telemetry } from "./infrastructure/telemetry";
@@ -49,46 +49,51 @@ export default ApiWorker.make(
     const handle = d1.raw.pipe(Effect.provide(RuntimeContext.phantom));
     const linkSecret = yield* Random("LinkSecret");
 
+    const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
+    const stage = yield* deployStage;
     // One product per paid plan and one webhook endpoint per stage, created at
     // deploy time by the Polar providers in infra/. Ids and the signing secret
-    // reach the Worker as bindings and resolve per invocation.
-    const products = {
-      pro: yield* PolarProduct("Polar-pro", productProps("pro")).pipe(retain()),
-      starter: yield* PolarProduct("Polar-starter", productProps("starter")).pipe(retain()),
-      studio: yield* PolarProduct("Polar-studio", productProps("studio")).pipe(retain()),
-    };
-    const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
-    // Local stages have no URL Polar can reach, so they get no endpoint and
-    // read Polar directly instead.
-    const stage = yield* deployStage;
-    const webhookSecret =
-      stage === "dev"
-        ? Effect.fail(new InvalidWebhook({ reason: "disabled" }))
-        : lazy(
-            yield* (yield* PolarWebhook("PolarWebhook", {
-              events: [
-                "subscription.created",
-                "subscription.active",
-                "subscription.updated",
-                "subscription.canceled",
-                "subscription.uncanceled",
-                "subscription.revoked",
-                "subscription.past_due",
-              ],
-              url: `${origin}/api/polar/webhook`,
-            })).secret,
-          );
-    const billing = Billing.layer({
-      access: yield* polarAccess,
-      appUrl: origin,
-      products: Effect.all({
-        pro: lazy(yield* products.pro.id),
-        starter: lazy(yield* products.starter.id),
-        studio: lazy(yield* products.studio.id),
+    // reach the Worker as bindings and resolve per invocation. A stage whose
+    // paid plans are closed declares none of them.
+    const polar = yield* Effect.when(
+      Effect.gen(function* polarBilling() {
+        const products = {
+          pro: yield* PolarProduct("Polar-pro", productProps("pro")).pipe(retain()),
+          starter: yield* PolarProduct("Polar-starter", productProps("starter")).pipe(retain()),
+          studio: yield* PolarProduct("Polar-studio", productProps("studio")).pipe(retain()),
+        };
+        return {
+          access: yield* polarAccess,
+          products: Effect.all({
+            pro: lazy(yield* products.pro.id),
+            starter: lazy(yield* products.starter.id),
+            studio: lazy(yield* products.studio.id),
+          }),
+          // Local stages have no URL Polar can reach, so they get no endpoint
+          // and read Polar directly instead.
+          reconcileOnRead: stage === "dev",
+          webhookSecret:
+            stage === "dev"
+              ? Effect.fail(new InvalidWebhook({ reason: "disabled" }))
+              : lazy(
+                  yield* (yield* PolarWebhook("PolarWebhook", {
+                    events: [
+                      "subscription.created",
+                      "subscription.active",
+                      "subscription.updated",
+                      "subscription.canceled",
+                      "subscription.uncanceled",
+                      "subscription.revoked",
+                      "subscription.past_due",
+                    ],
+                    url: `${origin}/api/polar/webhook`,
+                  })).secret,
+                ),
+        };
       }),
-      reconcileOnRead: stage === "dev",
-      webhookSecret,
-    });
+      paidPlansOpen,
+    );
+    const billing = Billing.layer({ appUrl: origin, polar });
 
     // Rate-limit namespaces are account-wide, so every stage shares the
     // counters and the key carries the stage name.
