@@ -2,3 +2,8 @@
 # so staging and PR previews mark them here; App.tsx does the same for SSR.
 https://:sub.tranzfer.app/*
   X-Robots-Tag: noindex
+
+# Build output under /assets carries a content hash in each filename, so a
+# changed file gets a new URL and the old one can stay cached for a year.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

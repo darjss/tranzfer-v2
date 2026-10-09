@@ -3,12 +3,14 @@ import { css, cx } from "styled-system/css";
 import { Hand, Ink } from "./notebook";
 import { Receipt } from "./Receipts";
 import { eyebrow, lede, section, sideTitle } from "./styles";
-import wrong1 from "./assets/wrong-01-cafe-wifi.webp";
-import wrong2 from "./assets/wrong-02-train-sleep.webp";
-import wrong3 from "./assets/wrong-03-refreshed-tab.webp";
-import wrong4 from "./assets/wrong-04-overnight.webp";
-import wrong5 from "./assets/wrong-05-damaged-piece.webp";
-import wrong6 from "./assets/wrong-06-delivered.webp";
+import { photos } from "./photos";
+
+const wrong1 = photos["./assets/wrong-01-cafe-wifi.webp"];
+const wrong2 = photos["./assets/wrong-02-train-sleep.webp"];
+const wrong3 = photos["./assets/wrong-03-refreshed-tab.webp"];
+const wrong4 = photos["./assets/wrong-04-overnight.webp"];
+const wrong5 = photos["./assets/wrong-05-damaged-piece.webp"];
+const wrong6 = photos["./assets/wrong-06-delivered.webp"];
 
 // Each card is something the 100 GB test upload lives through
 // (docs/BENCHMARKS.md). Say what happens in plain words, never more than the
@@ -184,9 +186,14 @@ export default function Survives() {
               >
                 <img
                   class={css({ boxSize: "full", filter: "[saturate(.85)]", objectFit: "cover" })}
-                  src={d.src}
+                  src={d.src.src}
+                  srcset={d.src.srcset}
+                  sizes="(min-width: 768px) 320px, 100vw"
+                  width={d.src.w}
+                  height={d.src.h}
                   alt=""
                   loading="lazy"
+                  decoding="async"
                 />
               </div>
               <div
