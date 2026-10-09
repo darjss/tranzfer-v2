@@ -640,9 +640,13 @@ export const audiences: readonly Page[] = [
 ];
 
 export const resources = [
+  { href: "/guides", menu: "Guides" },
+  { href: "/tools/upload-time-calculator", menu: "Upload time calculator" },
   { href: "/pricing", menu: "Pricing calculator" },
   { href: "/vs/masv", menu: "Tranzfer vs MASV" },
   { href: "/vs/wetransfer", menu: "Tranzfer vs WeTransfer" },
+  { href: "/alternatives/masv", menu: "MASV alternatives" },
+  { href: "/alternatives/wetransfer", menu: "WeTransfer alternatives" },
   { href: "/#faq", menu: "Questions" },
   { href: "/about", menu: "Why we built it" },
   { href: "mailto:support@tranzfer.app", menu: "Help" },

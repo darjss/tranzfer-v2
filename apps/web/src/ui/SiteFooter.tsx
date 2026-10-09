@@ -18,8 +18,12 @@ const columns = [
   },
   {
     links: [
+      { href: "/guides", label: "Guides" },
+      { href: "/tools/upload-time-calculator", label: "Upload time calculator" },
       { href: "/vs/masv", label: "Tranzfer vs MASV" },
       { href: "/vs/wetransfer", label: "Tranzfer vs WeTransfer" },
+      { href: "/alternatives/masv", label: "MASV alternatives" },
+      { href: "/alternatives/wetransfer", label: "WeTransfer alternatives" },
       { href: "/#faq", label: "Questions" },
       { href: "/about", label: "Why we built it" },
       { href: `mailto:${supportEmail}`, label: supportEmail },
