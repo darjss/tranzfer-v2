@@ -358,6 +358,55 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
     }),
   );
 
+  it.effect("concurrent creates at the hourly cap land only up to it", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("pam");
+      const deliveries = yield* Deliveries;
+      const { limit } = rateLimits.deliveriesPerHour;
+      yield* Effect.forEach(Arr.range(1, limit - 1), () =>
+        deliveries.create("pam", newDelivery([newFile("a", 1)])),
+      );
+      // Every create reads one slot left before any of them inserts.
+      const outcomes = yield* Effect.forEach(
+        Arr.range(1, 5),
+        () =>
+          deliveries.create("pam", newDelivery([newFile("a", 1)])).pipe(
+            Effect.as("created"),
+            Effect.catchTag("RateLimited", (error) => Effect.succeed(error.limit)),
+          ),
+        { concurrency: "unbounded" },
+      );
+      expect(outcomes.toSorted()).toEqual([
+        "created",
+        "deliveriesPerHour",
+        "deliveriesPerHour",
+        "deliveriesPerHour",
+        "deliveriesPerHour",
+      ]);
+      expect(yield* deliveries.list("pam")).toHaveLength(limit);
+    }),
+  );
+
+  it.effect("concurrent creates never pass the plan's active space", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("quinn");
+      yield* subscribe("quinn", "pro");
+      const deliveries = yield* Deliveries;
+      const outcomes = yield* Effect.forEach(
+        Arr.range(1, 3),
+        () =>
+          deliveries.create("quinn", newDelivery([newFile("half.bin", 400 * GB)])).pipe(
+            Effect.as("created"),
+            Effect.catchTag("OverPlanLimit", (error) => Effect.succeed(error._tag)),
+          ),
+        { concurrency: "unbounded" },
+      );
+      expect(outcomes.toSorted()).toEqual(["OverPlanLimit", "created", "created"]);
+      expect(yield* deliveries.activeBytes("quinn")).toBe(800 * GB);
+    }),
+  );
+
   it.effect("accepts only a Polar delivery that is signed, fresh and intact", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(1_800_000_000_000);
