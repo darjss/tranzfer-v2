@@ -193,7 +193,15 @@ const makeWorld = (
           return cancelled;
         }),
       restore: () => Effect.void,
-      resume: () => Effect.succeed([]),
+      // Reports some of the stored bytes checked, then holds like cancel does.
+      resume: (_delivery, _files, onChecking) =>
+        Effect.gen(function* fakeResume() {
+          onChecking?.({ checked: 12 * MB, total: 50 * MB });
+          if (gate !== undefined) {
+            yield* Deferred.await(gate);
+          }
+          return [];
+        }),
       retry: () => Effect.die("unused"),
       // The server has the delivery, open, with one transfer per file.
       send: (chosen) =>
@@ -402,6 +410,47 @@ describe("dashboard reactivity", () => {
     assertBudget(artifact, { allow: [], maxReruns: 5, maxWastedRuns: 2 });
     await runtime.dispose();
   });
+  it("a re-pick shows how much of the stored data is checked, then lets go", async () => {
+    const waiting = delivery("Checking", "open", [60 * MB]);
+    const [transfer] = waiting.transfers;
+    if (transfer === undefined) {
+      throw new Error("fixture needs a transfer");
+    }
+    patchTransfer(transfer.id, { confirmed: 20 * MB, phase: "needsFile" });
+    const gate = Deferred.makeUnsafe<boolean>();
+    const runtime = makeWorld([waiting], gate);
+    const { artifact } = await captureArtifact(
+      async () => {
+        render(() => (
+          <RuntimeContext value={runtime}>
+            <DeliverySheet cancel={nothingToReport} close={noop} delivery={waiting} online />
+          </RuntimeContext>
+        ));
+        flush();
+
+        const picker = document.querySelector<HTMLInputElement>('input[type="file"]');
+        if (picker === null) {
+          throw new Error("the sheet has no file input");
+        }
+        fireEvent.change(picker, { target: { files: [new File(["x"], "0.bin")] } });
+        expect(
+          await screen.findByText("Checking 12 MB of 50 MB you already sent"),
+        ).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Choose files" })).toBeDisabled();
+
+        Deferred.doneUnsafe(gate, Effect.succeed(true));
+        await vi.waitFor(() => {
+          expect(screen.getByRole("button", { name: "Choose files" })).toBeEnabled();
+        });
+        expect(screen.queryByText(/you already sent/u)).not.toBeInTheDocument();
+      },
+      { scenario: "re-pick-check" },
+    );
+    expect(artifact).toHaveNoDiagnostics();
+    assertBudget(artifact, { allow: [], maxReruns: 20, maxWastedRuns: 5 });
+    await runtime.dispose();
+  });
+
   it.each([
     {
       billing: freePlan,

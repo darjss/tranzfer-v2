@@ -1,6 +1,7 @@
 import {
   DeliveryNotFound,
   InvalidUpload,
+  isSinglePut,
   NotUploaded,
   partCount,
   RateLimited,
@@ -305,7 +306,9 @@ export class Transfers extends Context.Service<
           if (transfer.state !== "uploading" && transfer.state !== "finalizing") {
             return yield* new UploadClosed();
           }
-          // An empty file is a single guarded PUT; anything else is multipart.
+          // A file of one part or less may be one guarded PUT; any non-empty
+          // file may be multipart, since transfers created before single PUTs
+          // can still resume theirs.
           const multipart = transfer.size > 0;
           const invalid = Effect.fail(new InvalidUpload());
           // From here the object may land without the browser living to say
@@ -334,7 +337,7 @@ export class Transfers extends Context.Service<
             List: () => (multipart ? Effect.void : invalid),
             Part: ({ partNumber }) =>
               multipart && partNumber <= partCount(transfer.size) ? Effect.void : invalid,
-            Put: () => (multipart ? invalid : markFinalizing),
+            Put: () => (isSinglePut(transfer.size) ? markFinalizing : invalid),
           });
           return yield* storage.signUpload(key, request);
         }, dieOnDatabaseError),

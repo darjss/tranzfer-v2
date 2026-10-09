@@ -2,7 +2,14 @@ import type { AwsS3Options } from "@uppy/aws-s3";
 import AwsS3 from "@uppy/aws-s3";
 import { Uppy } from "@uppy/core";
 import type { Body, Meta } from "@uppy/core/utils";
-import { checkFiles, DeliveryId, maxTitleLength, partSize, TransferId } from "@tranzfer/contracts";
+import {
+  checkFiles,
+  DeliveryId,
+  isSinglePut,
+  maxTitleLength,
+  partSize,
+  TransferId,
+} from "@tranzfer/contracts";
 import type {
   Delivery,
   DeliveryConflict,
@@ -182,7 +189,8 @@ export const untilOnline: Effect.Effect<void> = Effect.suspend(() =>
       }),
 );
 
-// Transport failures retry; typed refusals (UploadClosed, InvalidUpload,
+// Transport failures retry, and so does a signing rate limit, which clears
+// within its window; other typed refusals (UploadClosed, InvalidUpload,
 // Unauthorized) are the server's answer and stand.
 export const retryTransport = <A, E extends { readonly _tag: string }, R>(
   effect: Effect.Effect<A, E, R>,
@@ -193,7 +201,7 @@ export const retryTransport = <A, E extends { readonly _tag: string }, R>(
         Schedule.modifyDelay(({ duration }) => Effect.succeed(Duration.min(duration, RETRY_CAP))),
       ),
       times: MAX_TRANSPORT_RETRIES,
-      while: (error) => error._tag === "RpcClientError",
+      while: (error) => error._tag === "RpcClientError" || error._tag === "RateLimited",
     }),
   );
 
@@ -220,6 +228,11 @@ export const isTransientUploadError = (error: Error) => {
     error.status === 403 || error.status === 408 || error.status === 429 || error.status >= 500
   );
 };
+
+// A single PUT is signed with If-None-Match: *, so 412 means the object is
+// already there: an earlier PUT landed and its response was lost, or the tab
+// died after it. That reconciles through FinalizeTransfer like a lost Complete.
+export const putAlreadyLanded = (error: Error) => Schema.is(s3Error)(error) && error.status === 412;
 
 const basename = (path: string) => path.split("/").pop() ?? path;
 
@@ -443,9 +456,11 @@ const make = Effect.gen(function* makeUploads() {
         generateObjectKey: (file) => file.meta.objectKey,
         getChunkSize: ({ size }) => partSize(size),
         partConcurrency: PART_CONCURRENCY,
-        // Every file is multipart so finalize can seal its key (see
-        // RELIABILITY.md). Uppy still sends an empty file as a single PUT.
-        shouldUseMultipart: () => true,
+        // A file bigger than one part is multipart so finalize can seal its
+        // key (see RELIABILITY.md). A smaller one is a single guarded PUT:
+        // one sign and one request instead of three of each. A resumed file
+        // that already has an upload id stays multipart, whatever its size.
+        shouldUseMultipart: (file) => !isSinglePut(file.size ?? 0),
         // A part is signed once per 64 MiB or more, so a span (and a propagated
         // trace) per part would bury the file's own. The API still traces them.
         signRequest: async (request) =>
@@ -513,9 +528,10 @@ const make = Effect.gen(function* makeUploads() {
         const { transferId } = file.meta;
         // A retry measures speed afresh from its own first bytes.
         acks.delete(transferId);
-        // Complete was already signed, so the object may exist; reconcile
-        // through FinalizeTransfer instead of starting transport again.
-        if (completeSigned.has(transferId)) {
+        // Complete was already signed, or the guarded PUT found its object, so
+        // the object may exist; reconcile through FinalizeTransfer instead of
+        // starting transport again.
+        if (completeSigned.has(transferId) || putAlreadyLanded(error)) {
           patchTransfer(transferId, { bytesPerSecond: 0, inFlight: 0, phase: "finalizing" });
           runFork(finish(uppy, file.id, transferId));
           return;

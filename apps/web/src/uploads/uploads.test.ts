@@ -5,6 +5,7 @@ import {
   maxTitleLength,
   InvalidUpload,
   NotUploaded,
+  RateLimited,
   TransferId,
 } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
@@ -23,6 +24,7 @@ import {
   chosenFiles,
   deliveryTitle,
   isTransientUploadError,
+  putAlreadyLanded,
   retryTransport,
   retryWhileNotUploaded,
   toUploadRequest,
@@ -103,6 +105,22 @@ describe("transport", () => {
     }),
   );
 
+  it.effect("signing_rate_limits_wait_out_their_window_and_retry", () =>
+    Effect.gen(function* waitsOutTheLimit() {
+      let attempts = 0;
+      const call = Effect.suspend(() => {
+        attempts += 1;
+        return attempts <= 1
+          ? Effect.fail(new RateLimited({ limit: "uploadSigning", retryAfterSeconds: 10 }))
+          : Effect.succeed("signed");
+      });
+      const fiber = yield* Effect.forkChild(retryTransport(call));
+      yield* TestClock.adjust("1 second");
+      expect(yield* Fiber.join(fiber)).toBe("signed");
+      expect(attempts).toBe(2);
+    }),
+  );
+
   it.effect("typed_refusals_never_retry", () =>
     Effect.gen(function* noRetry() {
       let attempts = 0;
@@ -154,6 +172,12 @@ describe("isTransientUploadError", () => {
     for (const status of [403, 408, 429, 500, 503]) {
       expect(isTransientUploadError(s3ServiceError(status))).toBe(true);
     }
+  });
+
+  it("an_existing_object_under_a_guarded_put_is_a_412_to_reconcile", () => {
+    expect(putAlreadyLanded(s3ServiceError(412))).toBe(true);
+    expect(putAlreadyLanded(s3ServiceError(403))).toBe(false);
+    expect(putAlreadyLanded(new Error("plain"))).toBe(false);
   });
 
   it("remote_gone_and_refusals_stay_final", () => {

@@ -9,11 +9,18 @@ export const partSize = (size: number) =>
 export const partCount = (size: number) => Math.ceil(size / partSize(size));
 
 /**
- * The S3 requests Uppy asks the API to sign. Every non-empty file is a
+ * A file of one part or less is one guarded PUT. Its one part is as resumable
+ * as that PUT is (a failure resends the whole file either way), and it saves
+ * the Create and Complete round trips that dominate a folder of small files.
+ */
+export const isSinglePut = (size: number) => partCount(size) <= 1;
+
+/**
+ * The S3 requests Uppy asks the API to sign. A file bigger than one part is a
  * multipart upload, so finalize can close the key: a completed or aborted
- * upload id accepts no more writes. An empty file has no part to send, so it
- * is a single `Put`, signed to only create the object, never replace it.
- * Aborts are not here: cancel is server-side.
+ * upload id accepts no more writes. A file of one part or less (see
+ * `isSinglePut`) is a single `Put`, signed to only create the object, never
+ * replace it. Aborts are not here: cancel is server-side.
  */
 export const UploadRequest = Schema.Union([
   Schema.TaggedStruct("Put", {}),

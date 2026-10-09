@@ -16,7 +16,7 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 - Auth: `@alchemy.run/better-auth` on the Drizzle adapter, over the lazy D1 handle.
 - Upload transport: Uppy, straight from the browser to private R2 multipart. A pnpm patch makes its `ListParts` follow pagination.
 - Browser recovery metadata: idb-keyval.
-- Part hashing for resume verification: hash-wasm MD5.
+- Part hashing for resume verification: hash-wasm MD5, in a module worker.
 - Multipart signing: the `Storage` service signs Distilled S3 requests against the R2 endpoint, using a bucket-scoped API token Alchemy mints per stage.
 - Billing: Polar through `@distilled.cloud/polar`. The plan catalog is `packages/contracts/src/billing.ts`. The D1 `subscription` row caches Polar's subscription list and is rebuilt from Polar on every webhook and by the sweeper for rows past their period end; no row means Free. A past-due subscription keeps its plan while Polar retries. The staging test login gets a `comp` Studio row that Polar never overwrites. Production bills the live organization, every other stage the sandbox one. `PAID_PLANS_OPEN` keeps a stage off Polar entirely until billing opens; production waits on it ([PRODUCT.md](PRODUCT.md#when-paid-plans-open)). Alchemy providers in `infra/polar-provider.ts` create the products (shared by all sandbox stages) and each stage's webhook endpoint (PR #85).
 - Infrastructure: Alchemy v2 in `infra/alchemy.run.ts`, on the app's Effect version.
