@@ -9,6 +9,7 @@ import {
   CurrentPrincipal,
   DeliveryId,
   TransferId,
+  Unauthorized,
 } from "@tranzfer/contracts";
 import type { BillingSummary, Delivery } from "@tranzfer/contracts";
 import * as Deferred from "effect/Deferred";
@@ -22,6 +23,7 @@ import * as RpcTest from "effect/rpc/RpcTest";
 import { createSignal, flush, Loading, onSettled, Show } from "solid-js";
 
 import { ApiClient } from "../api/client";
+import { NotifyMe } from "../landing/Pricing";
 import { RuntimeContext } from "../api/solid-effect";
 import { patchTransfer } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
@@ -113,7 +115,10 @@ const makeWorld = (
           Deliveries: () => Effect.sync(() => [...server]),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.sync(() => billing),
-          JoinInterest: () => Effect.die("unused"),
+          // Like the real one: without an address it needs a session, and
+          // this page plays a signed-out visitor.
+          JoinInterest: ({ email }) =>
+            email === undefined ? Effect.fail(new Unauthorized()) : Effect.succeed({ email }),
           Me: () => Effect.service(CurrentPrincipal),
           OpenBillingPortal: () => Effect.die("unused"),
           OpenLink: () => Effect.die("unused"),
@@ -642,6 +647,45 @@ describe("dashboard reactivity", () => {
 
     expect(screen.getByText("Live")).toBeInTheDocument();
     expect(artifact).toHaveNoDiagnostics();
+    await runtime.dispose();
+  });
+
+  it("a signed-out visitor joins a closed plan's list from its card", async () => {
+    const runtime = makeWorld([]);
+    // What each paid pricing card shows while paid plans are closed.
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <NotifyMe hot plan="pro" />
+        <NotifyMe hot={false} plan="studio" />
+      </RuntimeContext>
+    ));
+    const [pro] = screen.getAllByRole("button", { name: "Tell me when it opens" });
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        pro?.click();
+        const input = await screen.findByRole("textbox", { name: "Your email" });
+        expect(screen.getByText("We'll email you once, the day Pro opens.")).toBeInTheDocument();
+        if (!(input instanceof HTMLInputElement)) {
+          throw new Error("expected the email input");
+        }
+        input.value = "ana@example.com";
+        screen.getByRole("button", { name: "Notify me" }).click();
+        await screen.findByRole("status");
+      },
+      { scenario: "interest-signup" },
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "You're on the list. We'll email ana@example.com once, the day Pro opens.",
+    );
+    // The other card is untouched.
+    expect(screen.getAllByRole("button", { name: "Tell me when it opens" })).toHaveLength(1);
+    // The pending flag is an optimistic true that each of the two calls ends.
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    // Two calls, two state changes (button to form, form to the note) and the
+    // pending flag on each; nothing recomputes without changing.
+    assertBudget(artifact, { allow: ["OPTIMISTIC_REVERTED"], maxReruns: 15, maxWastedRuns: 0 });
     await runtime.dispose();
   });
 });
