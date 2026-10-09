@@ -32,6 +32,7 @@ export const ServiceId = Schema.Literals([
   "smash",
   "dropbox",
   "drive",
+  "frameio",
 ]);
 export type ServiceId = typeof ServiceId.Type;
 
@@ -40,44 +41,60 @@ export const services = {
     bestFor: "Files that should stay put, shared with people already on Google",
     cons: [
       "It's storage, so files stay and count against your space until you delete them",
-      "Workspace accounts can upload 750 GB a day",
-      "Google doesn't document what a browser upload does after a closed tab",
+      "Workspace accounts can upload 750 GB a day; Google gives personal accounts a daily limit without a number",
+      "Google doesn't document what a browser upload does after a closed tab or a dropped connection",
+      "A file many people download from one public link can hit a download quota for up to 24 hours",
     ],
-    expiry: "Links don't expire unless you set it up. Files stay until you delete them.",
-    limit: "Files up to 5 TB. 15 GB of free storage per Google account.",
+    expiry:
+      "Links don't expire. Work and school accounts can set an end date for people added by name.",
+    limit:
+      "Files up to 5 TB. 15 GB of free storage per Google account, shared with Gmail and Photos.",
     month: "Depends on your storage plan",
     name: "Google Drive",
     price: "15 GB free. More through Google One or Workspace; check Google's pricing.",
-    pros: ["Most people already have an account", "Handles single files up to 5 TB"],
-    resume: "Not documented for browser uploads",
+    pros: [
+      "Most people already have an account",
+      "Handles single files up to 5 TB",
+      "Anyone with the link can download without signing in",
+    ],
+    resume: "Not documented for browser uploads. Drive for desktop retries files later.",
     sources: [
       { href: "https://support.google.com/drive/answer/37603", label: "Drive file limits" },
       {
-        href: "https://developers.google.com/drive/api/guides/limits",
-        label: "Drive upload limits",
+        href: "https://knowledge.workspace.google.com/admin/drive/storage-and-upload-limits-for-google-workspace",
+        label: "Workspace upload limits",
       },
+      {
+        href: "https://support.google.com/drive/answer/2565956",
+        label: "Drive sync and upload errors",
+      },
+      { href: "https://support.google.com/drive/answer/2494822", label: "Drive sharing" },
+      { href: "https://support.google.com/drive/answer/2423534", label: "Drive download quota" },
       { href: "https://one.google.com/about/plans", label: "Google One plans" },
     ],
   },
   dropbox: {
-    bestFor: "Sending up to 100 GB when you already pay for Dropbox",
+    bestFor: "Sending up to 100 or 250 GB when you already pay for Dropbox",
     cons: [
       "Basic tops out at 2 GB and Plus at 50 GB a transfer",
-      "Their Transfer help page doesn't say what happens to an interrupted upload",
+      "Dropbox warns that browser uploads over 375 GB may time out and points you to the desktop app",
+      "Their help pages don't say what happens to an interrupted Transfer upload",
     ],
-    expiry: "7 days on Basic and Plus. Essentials and Business pick a date, 30 days by default.",
+    expiry: "7 days on Basic, Family and Plus. Other plans pick a date, 30 days by default.",
     limit:
-      "2 GB on Basic, 50 GB on Plus, 100 GB on Essentials and Business, 250 GB with the Replay add-on",
+      "2 GB on Basic, 50 GB on Plus, 100 GB on Essentials and Business, 250 GB on Business Plus or with the Replay add-on",
     month: "Fits Essentials or Business; see their plans",
     name: "Dropbox Transfer",
     price: "Comes with Dropbox plans. Check their plans page for the current price.",
     pros: [
       "Already there if your team lives in Dropbox",
       "Recipients don't need a Dropbox account",
+      "Passwords and download counts on the business plans",
     ],
-    resume: "Not stated on their Transfer help page",
+    resume: "Not stated on their Transfer help pages",
     sources: [
       { href: "https://help.dropbox.com/share/dropbox-transfer", label: "Dropbox Transfer help" },
+      { href: "https://help.dropbox.com/sync/upload-limitations", label: "Dropbox upload limits" },
       { href: "https://www.dropbox.com/plans", label: "Dropbox plans" },
     ],
   },
@@ -85,9 +102,10 @@ export const services = {
     bestFor: "People happy to install a desktop app who want files kept for good",
     cons: [
       "Resume is listed as a desktop app feature, not a browser one",
-      "Personal stops at 5 GB a transfer and Pro at 250 GB",
+      "Free allows 2 transfers a day of up to 5 GB; Personal also stops at 5 GB a transfer and Pro at 250 GB",
+      "Sending a folder from the browser needs Chrome or Opera",
     ],
-    expiry: "30 days on Personal. Permanent on Pro and Business.",
+    expiry: "7 days on Free, 30 days on Personal. Permanent on Pro, set by you on Business.",
     limit: "5 GB a transfer on Free and Personal, 250 GB on Pro, any size on Business",
     month: monthCost("filemail"),
     name: "Filemail",
@@ -97,11 +115,51 @@ export const services = {
       "Desktop app that resumes interrupted transfers",
       "Files can stay up permanently on Pro",
     ],
-    resume: "Listed as a desktop app feature on paid plans",
+    resume: "Desktop app only. Their pages never say a browser upload resumes.",
     sources: [
+      { href: "https://www.filemail.com/price-plans-comparison", label: "Filemail plans" },
+      { href: "https://www.filemail.com/apps/desktop", label: "Filemail desktop app" },
       {
-        href: "https://www.filemail.com/price-plans-comparison",
-        label: "Filemail plans",
+        href: "https://support.filemail.com/en/articles/4103694-free-file-sharing-service",
+        label: "Filemail free plan",
+      },
+    ],
+  },
+  frameio: {
+    bestFor:
+      "Review and approval: frame-accurate comments on cuts, with the files kept in one place",
+    cons: [
+      "Priced per member, and storage fills up because files stay until you delete them",
+      "Free has 2 GB of storage",
+      "Adobe doesn't say what a browser upload does after a closed tab; its desktop apps resume",
+      "Frame.io V4 doesn't support DaVinci Resolve",
+    ],
+    expiry:
+      "Files stay until deleted. Pro and Team can set an expiry date and passphrase on share links.",
+    limit:
+      "Files up to 5 TB. Storage is 2 GB on Free, 2 TB on Pro and 3 TB on Team, plus 2 TB per extra member.",
+    month: "$15 on Pro for one member, and the 400 GB stays in your 2 TB until you delete it",
+    name: "Frame.io",
+    price: "Free for 2 GB, then Pro $15 and Team $25 per member a month",
+    pros: [
+      "Comments pinned to the frame, inside Premiere",
+      "Share links work without an account and can offer the original file",
+      "Files up to 5 TB",
+    ],
+    resume: "Not stated for the browser. Frame.io Drive and the Mac app resume.",
+    sources: [
+      { href: "https://frame.io/pricing", label: "Frame.io pricing" },
+      {
+        href: "https://help.frame.io/en/articles/9101026-uploading-your-media",
+        label: "Frame.io uploads",
+      },
+      {
+        href: "https://help.frame.io/en/articles/9105232-shares-in-frame-io",
+        label: "Frame.io shares",
+      },
+      {
+        href: "https://help.frame.io/en/articles/14501692-how-to-transfer-upload-download-in-frame-io-drive",
+        label: "Frame.io Drive",
       },
     ],
   },
@@ -131,23 +189,47 @@ export const services = {
         href: "https://help.massive.io/en/what-happens-if-my-connection-is-interrupted-during-upload",
         label: "MASV on interrupted uploads",
       },
-      { href: "https://masv.io/feature/file-portals", label: "MASV Portals" },
+      {
+        href: "https://help.massive.io/en/how-to-use-a-portal-to-send-files-to-integrations",
+        label: "MASV Portals",
+      },
     ],
   },
   smash: {
-    bestFor: "Free sends a bit bigger than WeTransfer's, with week-long links",
+    bestFor: "Free sends a bit bigger than WeTransfer's, with password links on every plan",
     cons: [
       "On Free, anything over 2 GB waits in a queue behind Pro transfers",
-      "Their site doesn't say what happens to an interrupted upload",
+      "Their help says a stuck upload can't be restarted; you send it again from the start",
+      "Their pricing page says Pro has no size limit, but their help center says 250 GB a transfer",
     ],
-    expiry: "7 days on Free, 30 days on Pro",
-    limit: "2 GB at full priority on Free; bigger transfers queue. No size limit on Pro.",
+    expiry:
+      "Up to 7 days on Free by their pricing page, 14 by their help center. Up to 30 days paid.",
+    limit:
+      "2 GB at full priority on Free; bigger transfers queue. Pro: unlimited or 250 GB, see above.",
     month: monthCost("smash"),
     name: "Smash",
-    price: "Free, then Pro at $10 a month",
-    pros: ["No hard size cap, even on Free", "Cheap Pro plan with 30-day links"],
-    resume: "Not stated on their site",
-    sources: [{ href: "https://fromsmash.com/pricing", label: "Smash pricing" }],
+    price: "Free, then Pro at $10 a month, or Team at $25 a month for 10 people",
+    pros: [
+      "No hard size cap, even on Free",
+      "Password protection on Free",
+      "Recipients never need an account",
+    ],
+    resume: "Starts over. Their help says there's no way to restart a stuck upload.",
+    sources: [
+      { href: "https://fromsmash.com/pricing", label: "Smash pricing" },
+      {
+        href: "https://fromsmash.com/help/articles/13885610-what-is-the-file-size-limit-on-smash",
+        label: "Smash size limits",
+      },
+      {
+        href: "https://fromsmash.com/help/articles/12985104-my-transfer-gets-stuck-at-100",
+        label: "Smash on stuck uploads",
+      },
+      {
+        href: "https://fromsmash.com/help/articles/12952074-how-can-i-change-the-availability-period-of-my-transfer",
+        label: "Smash link expiry",
+      },
+    ],
   },
   tranzfer: {
     bestFor: "Hundreds of gigabytes from a browser, on a connection you don't trust",
@@ -177,22 +259,28 @@ export const services = {
   wetransfer: {
     bestFor: "A few gigabytes to someone who already expects a WeTransfer link",
     cons: [
-      "Free allows 10 transfers or 3 GB in 30 days",
-      "Starter allows 300 GB in 30 days",
-      "Their troubleshooting page asks you to keep the device awake; resuming isn't mentioned",
+      "Free allows 10 transfers or 3 GB in 30 days, Starter 10 transfers or 300 GB",
+      "Free and Starter links last 3 days at most",
+      "Their troubleshooting page says sleep mode cancels an upload; resuming isn't mentioned",
+      "Senders need an account; prices are only shown after you sign in",
     ],
-    expiry: "Up to 3 days on Free. Ultimate lets you set your own.",
+    expiry: "Up to 3 days on Free and Starter. Ultimate keeps transfers up as long as you like.",
     limit:
-      "Free: 10 transfers or 3 GB per 30 days. Starter: 300 GB per 30 days. Ultimate: up to 1 TB a transfer.",
+      "Free: 10 transfers or 3 GB per 30 days. Starter: 10 transfers or 300 GB per 30 days. Ultimate: up to 1 TB a transfer by their help center.",
     month: "Over Starter's 300 GB, so Ultimate; see their pricing",
     name: "WeTransfer",
-    price: "Free, then Starter, Ultimate and Teams. Check their pricing page for current prices.",
+    price: "Free, then Starter, Ultimate and Teams. Prices show after you sign in.",
     pros: ["Everyone knows the name", "Ultimate takes up to 1 TB in one transfer"],
-    resume: "Not mentioned; their help asks for a stable connection and no sleep mode",
+    resume:
+      "Not mentioned. Their help asks for a stable connection and says sleep mode cancels the upload.",
     sources: [
       {
         href: "https://wetransfer.com/help-center/subscriptions/plan-limits",
         label: "WeTransfer plan limits",
+      },
+      {
+        href: "https://wetransfer.com/help-center/how-to/transfer-availability",
+        label: "WeTransfer link expiry",
       },
       {
         href: "https://wetransfer.com/help-center/troubleshooting/upload-fails-error",

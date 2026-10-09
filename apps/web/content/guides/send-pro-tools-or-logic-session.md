@@ -3,6 +3,7 @@ title: How to send a Pro Tools or Logic session
 description: "How to send a Pro Tools session or Logic Pro project to a mixer: collect every audio file, handle plugins, add notes, and send the folder without bouncing or splitting it."
 summary: Collect every audio file into the session folder first, then send the whole folder. What to include so your mixer can open it.
 answer: To send a Pro Tools session, use Save Copy In with all audio files included and send the whole session folder. To send a Logic project, consolidate it so the audio sits inside the project, then compress the .logicx and send that. Either way, add a note with the sample rate, tempo and plugins.
+section: basics
 order: 4
 updated: 2026-10-09
 related:

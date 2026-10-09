@@ -1,7 +1,7 @@
 import { Link, Meta, Title } from "@solidjs/meta";
 import { For } from "solid-js";
 import { css, cx } from "styled-system/css";
-import { alternatives, guides } from "../../guides/pages";
+import { alternatives, comparisons, guides } from "../../guides/pages";
 import { eyebrow, lede, sectionTitle } from "../../landing/styles";
 import "../../landing/landing.css";
 import Reveal from "../../ui/Reveal";
@@ -9,26 +9,43 @@ import { SitePage } from "../../ui/Site";
 
 const site = "https://tranzfer.app";
 const description =
-  "Plain answers about sending large files: video to an editor, RAW photos to a client, audio sessions to a mixer, and how long a 100 GB upload takes.";
+  "Plain answers about sending large files: video to an editor, RAW photos to a client, audio sessions to a mixer, failed uploads, upload times, and how the other tools compare.";
 
-const list = guides.map((g) => ({ href: `/guides/${g.slug}`, summary: g.summary, title: g.title }));
+const pages = [
+  ...guides.map((page) => ({ ...page, href: `/guides/${page.slug}` })),
+  ...alternatives.map((page) => ({ ...page, href: `/alternatives/${page.slug}` })),
+  ...comparisons.map((page) => ({ ...page, href: `/compare/${page.slug}` })),
+];
 
-const more = [
+// The hub's groups, in order. Each Markdown page names its group.
+const titles = {
+  basics: "Sending",
+  comparisons: "Alternatives and comparisons",
+  formats: "By file type",
+  problems: "When an upload fails",
+  sizes: "Sizes and upload times",
+} satisfies Record<(typeof pages)[number]["section"], string>;
+
+const tools = [
   {
     href: "/tools/upload-time-calculator",
     summary: "File size and upload speed in, time out. Runs in your browser.",
     title: "Upload time calculator",
   },
-  ...alternatives.map((a) => ({
-    href: `/alternatives/${a.slug}`,
-    summary: a.summary,
-    title: a.title,
-  })),
   {
     href: "/pricing",
     summary: "What the same month of deliveries costs on Tranzfer, MASV, Smash and Filemail.",
     title: "Price calculator",
   },
+];
+
+const sections = [
+  ...Object.entries(titles).map(([id, title]) => ({
+    id,
+    items: pages.filter((page) => page.section === id),
+    title,
+  })),
+  { id: "tools", items: tools, title: "Tools" },
 ];
 
 const structuredData = {
@@ -37,12 +54,14 @@ const structuredData = {
   description,
   mainEntity: {
     "@type": "ItemList",
-    itemListElement: [...list, ...more].map((item, i) => ({
-      "@type": "ListItem",
-      name: item.title,
-      position: i + 1,
-      url: `${site}${item.href}`,
-    })),
+    itemListElement: sections
+      .flatMap((section) => section.items)
+      .map((item, i) => ({
+        "@type": "ListItem",
+        name: item.title,
+        position: i + 1,
+        url: `${site}${item.href}`,
+      })),
   },
   name: "Guides to sending large files",
   url: `${site}/guides`,
@@ -117,15 +136,14 @@ export default function Guides() {
             an honest word on when another tool fits better.
           </p>
 
-          <section class={css({ mt: "14" })}>
-            <h2 class={eyebrow}>Questions</h2>
-            <Cards items={list} />
-          </section>
-
-          <section class={css({ mt: "14" })}>
-            <h2 class={eyebrow}>Tools and comparisons</h2>
-            <Cards items={more} />
-          </section>
+          <For each={sections}>
+            {(section) => (
+              <section class={css({ mt: "14", scrollMarginTop: "[96px]" })} id={section.id}>
+                <h2 class={eyebrow}>{section.title}</h2>
+                <Cards items={section.items} />
+              </section>
+            )}
+          </For>
         </main>
       </Reveal>
     </SitePage>

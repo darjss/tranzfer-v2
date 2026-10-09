@@ -1,6 +1,6 @@
 import { PlanId, plans } from "@tranzfer/contracts";
 import { bytes } from "../dashboard/format";
-import { alternatives, guides } from "../guides/pages";
+import { alternatives, comparisons, guides } from "../guides/pages";
 import { faq } from "../landing/faq";
 import { supportEmail } from "../ui/support";
 
@@ -35,6 +35,7 @@ ${faq.map((item) => `### ${item.q}\n\n${item.a}`).join("\n\n")}
 - [Tranzfer vs MASV](https://tranzfer.app/vs/masv): flat plans vs per-GB pricing, resume after a closed tab
 - [Tranzfer vs WeTransfer](https://tranzfer.app/vs/wetransfer): free plan limits, surviving dropped Wi-Fi
 ${alternatives.map((a) => `- [${a.title}](https://tranzfer.app/alternatives/${a.slug}): ${a.summary}`).join("\n")}
+${comparisons.map((c) => `- [${c.title}](https://tranzfer.app/compare/${c.slug}): ${c.summary}`).join("\n")}
 - [Upload time calculator](https://tranzfer.app/tools/upload-time-calculator): file size and upload speed in, time out
 - [Guides](https://tranzfer.app/guides): one question about sending large files per page
 ${guides.map((g) => `- [${g.title}](https://tranzfer.app/guides/${g.slug}): ${g.summary}`).join("\n")}

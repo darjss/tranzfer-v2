@@ -1,8 +1,9 @@
 ---
-title: How to send large video files to an editor
-description: "How to send large video files to an editor: prepare the card folders, pick a transfer that resumes, and hand over one link. With real file sizes for ProRes and 4K."
+title: How to transfer raw footage to your editor
+description: How to transfer raw footage to your editor. Prepare the card folders, pick a transfer that resumes, and hand over one link, with real sizes for ProRes and 4K.
 summary: Send the whole card folder, untouched, through a transfer that resumes. How to prepare it so your editor can start cutting.
-answer: Send footage to an editor by uploading the whole shoot folder, exactly as it came off the cards, to a transfer service that resumes interrupted uploads, then send them the link. Don't re-export, don't zip, and start the upload before you go to bed.
+answer: To transfer raw footage to your editor, upload the whole shoot folder, exactly as it came off the cards, to a transfer service that resumes interrupted uploads, then send your editor the link. Don't re-export, don't zip, and start the upload before you go to bed.
+section: basics
 order: 2
 updated: 2026-10-09
 related:

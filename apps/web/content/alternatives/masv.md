@@ -3,6 +3,7 @@ title: MASV alternatives for large files
 description: "MASV alternatives for sending large files, ranked: Tranzfer, Filemail, WeTransfer, Smash, Dropbox Transfer and Google Drive. Flat plans vs per-GB pricing, and what happens when an upload breaks."
 summary: Flat plans against per-GB pricing, and who should stay with MASV.
 answer: If MASV's per-GB bill or a browser upload that restarts after a closed tab is the problem, Tranzfer is the closest alternative, with flat monthly plans and resume in the browser on every plan. Filemail is the pick if you want a desktop app at a flat price. Stay with MASV if you rely on its portals or integrations.
+section: comparisons
 order: 2
 updated: 2026-10-09
 related:
@@ -32,7 +33,7 @@ The second is the browser. MASV's own help page says that ["if you close your MA
 
 ## How do the alternatives compare?
 
-The last column is four 100 GB deliveries in a month, one live at a time. Prices are USD on monthly billing, checked 8 October 2026.
+The last column is four 100 GB deliveries in a month, one live at a time. Prices are USD on monthly billing, checked 9 October 2026.
 
 <!-- compare masv tranzfer filemail wetransfer smash dropbox drive -->
 

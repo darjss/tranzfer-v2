@@ -11,7 +11,7 @@ import { webLint } from "../../lint.config";
 import { markdown } from "./markdown";
 import { ogImage } from "./og";
 
-// One page per Markdown file in content/guides and content/alternatives.
+// One page per Markdown file in content/guides, content/alternatives and content/compare.
 const contentPages = (dir: string) =>
   readdirSync(`${import.meta.dirname}/content/${dir}`)
     .filter((file) => file.endsWith(".md"))
@@ -30,6 +30,7 @@ const staticPages = [
   "/guides",
   ...contentPages("guides"),
   ...contentPages("alternatives"),
+  ...contentPages("compare"),
   // One per entry in src/marketing/content.ts.
   ...["send-large-files", "resume", "folders", "share-links", "dashboard", "privacy"].map(
     (slug) => `/features/${slug}`,

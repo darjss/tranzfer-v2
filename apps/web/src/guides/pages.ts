@@ -22,6 +22,8 @@ const Page = Schema.Struct({
   /** Position on the guides page and in the menus. */
   order: Schema.Number,
   related: Schema.Array(Schema.Struct({ href: Schema.String, label: Schema.String })),
+  /** Which group the page sits in on the guides page. */
+  section: Schema.Literals(["basics", "problems", "sizes", "formats", "comparisons"]),
   /** One or two sentences for the guides page and llms.txt. */
   summary: Schema.String,
   title: Schema.String,
@@ -48,6 +50,12 @@ export const guides = load(
 export const alternatives = load(
   Schema.decodeUnknownSync(Pages)(
     import.meta.glob("../../content/alternatives/*.md", { eager: true, import: "default" }),
+  ),
+);
+
+export const comparisons = load(
+  Schema.decodeUnknownSync(Pages)(
+    import.meta.glob("../../content/compare/*.md", { eager: true, import: "default" }),
   ),
 );
 

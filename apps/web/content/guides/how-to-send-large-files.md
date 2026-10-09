@@ -3,6 +3,7 @@ title: How to send large files
 description: "How to send large files, from 1 GB to 1 TB: which tool fits which size, how to prepare the files, and how to keep a long upload from starting over."
 summary: Use a transfer link, not email. Which tool fits which size, and what to do so a 200 GB upload doesn't die at 63%.
 answer: To send a large file, upload it to a file transfer service and send the recipient the download link. Email stops at about 25 MB, most free transfer plans stop between 2 and 5 GB, and past 50 GB the thing that matters most is whether the upload survives an interruption.
+section: basics
 order: 1
 updated: 2026-10-09
 related:
@@ -19,7 +20,7 @@ faq:
   - q: Should I zip large files before sending?
     a: Usually not. Video, photos and audio are already compressed, so a zip barely shrinks them. It also needs as much free disk as the files themselves and adds a long wait before the upload starts. Send the folder as it is.
   - q: What if my upload fails halfway?
-    a: On Tranzfer, no. Every part that arrived is kept. After a dropped connection it retries by itself, after sleep it carries on, and after a crash or closed tab you pick the same files and only the missing parts upload.
+    a: On Tranzfer, you don't start over. Every part that arrived is kept. After a dropped connection it retries by itself, after sleep it carries on, and after a crash or closed tab you pick the same files and only the missing parts upload.
   - q: Does the recipient need an account?
     a: No. On Tranzfer, MASV, WeTransfer and Dropbox Transfer the recipient opens the link and downloads.
 ---

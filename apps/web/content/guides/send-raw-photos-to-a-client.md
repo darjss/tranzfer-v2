@@ -3,6 +3,7 @@ title: How to send RAW photos to a client
 description: "How to send RAW photos to a client: what to put in the folder, how to keep your edits, how big a shoot gets, and how to send it as one link."
 summary: Send the folder of originals as a download link and keep your gallery for proofing. Don't forget the XMP sidecars.
 answer: Send RAW photos by putting the originals in one folder, with their XMP sidecars and a set of full-size JPEGs, and sending that folder as a download link. Keep your gallery for proofing; hand over the originals through a transfer.
+section: basics
 order: 3
 updated: 2026-10-09
 related:

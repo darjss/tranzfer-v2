@@ -3,6 +3,7 @@ title: How long does it take to upload 100 GB?
 description: How long it takes to upload 100 GB at 10 Mbps to 1 Gbps, why real uploads run slower than the math, and how to make a big upload finish sooner.
 summary: About 4 hours 27 minutes at 50 Mbps and 2 hours 13 minutes at 100 Mbps, at full speed. What slows it down and how to plan.
 answer: Uploading 100 GB takes about 4 h 27 min at 50 Mbps, 2 h 13 min at 100 Mbps and 26 min 40 s at 500 Mbps, if your connection holds its full upload speed the whole way. Real uploads run slower, so plan for about a quarter longer.
+section: sizes
 order: 6
 updated: 2026-10-09
 related:
