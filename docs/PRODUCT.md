@@ -53,11 +53,11 @@ No code changes. Setting the variable back to `false` and redeploying closes it 
 Then tell the people who asked. The interest list promises one email the day a plan opens, so send it once per plan, after the deploy is live. From the main checkout, count first, then queue:
 
 ```text
-INTEREST_PLAN=pro INTEREST_DRY_RUN=true vp run --filter @tranzfer/api interest:notify -- --stage production
-INTEREST_PLAN=pro vp run --filter @tranzfer/api interest:notify -- --stage production
+vp run --filter @tranzfer/api interest:notify -- --plan pro --dry-run
+vp run --filter @tranzfer/api interest:notify -- --plan pro
 ```
 
-Repeat for `starter` and `studio`. The command is a small Alchemy stack (`apps/api/scripts/interest-notify.ts`) that finds the stage's D1 through the main stack's state and runs with the same local Cloudflare credentials as a deploy. It prints `waiting` (on the list, not yet emailed) and `queued`. It sends nothing itself: the API Worker's minute sweep sends 20 queued emails a minute and marks each `notified_at`. A send that fails is unqueued, so running the command again retries only those.
+Repeat for `starter` and `studio`. Like the code commands, it finds the stage's D1 through Alchemy state with your Alchemy profile's credentials, and `--stage` defaults to `production`. It prints how many on the list haven't had the email and how many it queued. It sends nothing itself: the API Worker's minute sweep sends 20 queued emails a minute and marks each `notified_at`. A send that fails is unqueued, so running the command again retries only those.
 
 ## Access codes
 
