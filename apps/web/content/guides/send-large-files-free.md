@@ -68,6 +68,5 @@ On Tranzfer, WeTransfer, Smash, Filemail and Dropbox Transfer, just the link. No
 - **A single file over 20 GB, and you won't pay.** Smash Free, if you can wait for the queue.
 - **You both live in Google already** and the files fit in 15 GB. A Drive link is the least friction, though Google only offers [link expiry](https://support.google.com/drive/answer/2494822) on eligible work or school accounts.
 - **One delivery a year, around 100 GB.** MASV's pay as you go costs $21.25 for 100 GB with a card on file, and you don't keep a subscription.
-- **You need a password on the link.** Smash has passwords on its free plan. Tranzfer has none on any plan.
 
 For sizes past what free covers, see [how to send a 100 GB file](/guides/send-a-100gb-file), or compare plans on the [pricing page](/pricing).

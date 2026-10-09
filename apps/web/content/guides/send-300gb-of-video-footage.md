@@ -73,7 +73,7 @@ One link. No account, nothing to install. On desktop Chrome or Edge, Download al
 ## When should you use something else?
 
 - **You're on a 20 Mbps line and shoot every day.** Two days of uploading per 300 GB won't keep up. A drive in a courier's bag does.
-- **The editor needs to leave comments on cuts.** Tranzfer has no playback or review. [Frame.io](https://frame.io/pricing) does that, with 2 TB on Pro at $15 per member a month.
+- **The editor needs to leave comments on cuts.** Tranzfer has no comments or review. [Frame.io](https://frame.io/pricing) does that, with 2 TB on Pro at $15 per member a month.
 - **You want an installed uploader.** We're browser only. MASV and Filemail both have desktop apps.
 
 For the full handover between a shooter and an editor, see [how to send large video files to an editor](/guides/send-large-video-files-to-an-editor). If your shoot is closer to a terabyte, read [how to transfer 1 TB of files](/guides/transfer-1tb-of-files).

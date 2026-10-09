@@ -121,8 +121,10 @@ Limits stop one person or bot from flooding sign-up, sign-in or the Free plan. T
 | Delivery email requests | sender      | all   | 10 a minute           |
 | Delivery emails         | sender      | all   | 50 a day              |
 | Delivery emails         | all senders | all   | 800 a day             |
+| Link password attempts  | client IP   | all   | 10 a minute           |
+| Link password attempts  | link        | all   | 5 a minute            |
 
-Sign-in covers every `/api/auth` request, Google's start and callback and the staging login included. An IPv6 client counts by its /64. Cancelled deliveries count toward the delivery cap, so create-and-cancel can't loop. A part is at least 64 MiB, so 20 signing requests a second is faster than a gigabit line needs. Paid, comp and code-granted plans have no delivery or signing cap. Code attempts count wrong and right codes alike, so nobody can guess codes quickly. A delivery email counts per address, failed ones included, and a send needing more room than is left is refused whole. The account-wide 800 a day keeps delivery emails under Cloudflare's 1,000 a day quota and leaves room for the welcome and interest emails.
+Sign-in covers every `/api/auth` request, Google's start and callback and the staging login included. An IPv6 client counts by its /64. Cancelled deliveries count toward the delivery cap, so create-and-cancel can't loop. A part is at least 64 MiB, so 20 signing requests a second is faster than a gigabit line needs. Paid, comp and code-granted plans have no delivery or signing cap. Code attempts count wrong and right codes alike, so nobody can guess codes quickly. Password attempts count the same way, so a link takes at most 7,200 guesses a day however many networks they come from. A delivery email counts per address, failed ones included, and a send needing more room than is left is refused whole. The account-wide 800 a day keeps delivery emails under Cloudflare's 1,000 a day quota and leaves room for the welcome and interest emails.
 
 ## Cost guardrail
 

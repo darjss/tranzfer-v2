@@ -299,8 +299,7 @@ const Opening = () => (
   </Paper>
 );
 
-const LinkPage = () => {
-  const params = useParams<{ token: string }>();
+export const LinkPage = (props: { token: string }) => {
   const runtime = useContext(RuntimeContext);
   // What UnlockLink returned. It lives in this page only, so a reload asks
   // for the password again, and it stops working after a day.
@@ -308,9 +307,10 @@ const LinkPage = () => {
   const opened = createMemo(() => {
     // Read here so a new unlock re-opens the link; the effect runs untracked.
     const current = unlock();
+    const { token } = props;
     return runEffect(
       ApiClient.use((api) =>
-        api.OpenLink({ token: params.token, unlock: current }).pipe(
+        api.OpenLink({ token, unlock: current }).pipe(
           Effect.map((shared) => ({ locked: undefined, shared })),
           Effect.catchTag("LinkLocked", (locked) => Effect.succeed({ locked, shared: undefined })),
         ),
@@ -323,8 +323,9 @@ const LinkPage = () => {
   const [linkError, setLinkError] = createSignal<unknown>();
   const download = async (path: string) => {
     const current = unlock();
+    const { token } = props;
     const exit = await runtime.runPromiseExit(
-      ApiClient.use((api) => api.OpenLink({ token: params.token, unlock: current })),
+      ApiClient.use((api) => api.OpenLink({ token, unlock: current })),
     );
     if (Exit.isFailure(exit)) {
       const error = Cause.squash(exit.cause);
@@ -341,7 +342,7 @@ const LinkPage = () => {
       // Only the click is known; the browser's download manager takes it from here.
       runtime.runFork(
         ApiClient.use((api) =>
-          api.ReportDownload({ event: "started", path, token: params.token, unlock: current }),
+          api.ReportDownload({ event: "started", path, token, unlock: current }),
         ).pipe(Effect.ignore),
       );
       location.assign(file.url);
@@ -365,7 +366,7 @@ const LinkPage = () => {
                           setUnlock(next);
                         }}
                         senderName={locked().senderName}
-                        token={params.token}
+                        token={props.token}
                       />
                     </Paper>
                   )}
@@ -378,7 +379,7 @@ const LinkPage = () => {
                   download={(path) => {
                     void download(path);
                   }}
-                  token={params.token}
+                  token={props.token}
                   unlock={unlock()}
                 />
               )}
@@ -399,6 +400,7 @@ const LinkPage = () => {
 const LazyLink = clientOnly(async () => await Promise.resolve({ default: LinkPage }));
 
 export default function PublicDelivery() {
+  const params = useParams<{ token: string }>();
   // Signed URLs reach the page, so it must never be cached.
   if (isServer) {
     getRequestEvent()?.response.headers.set("cache-control", "no-store");
@@ -427,7 +429,7 @@ export default function PublicDelivery() {
         <Brand />
       </nav>
       <main class={css({ pt: { base: "10", sm: "16" } })}>
-        <LazyLink fallback={<Opening />} />
+        <LazyLink fallback={<Opening />} token={params.token} />
       </main>
     </div>
   );

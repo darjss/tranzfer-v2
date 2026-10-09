@@ -100,5 +100,5 @@ Tranzfer Free holds 20 GB live at once, which fits about seven songs of 40 stere
 ## When should you use something else?
 
 - **Your mixer works from a shared drive.** If you already share a Dropbox or Google Drive folder, keep using it. Tranzfer links end after 14 days at most.
-- **You want comments on mixes.** Tranzfer has no playback or comments.
+- **You want comments on mixes.** Tranzfer plays a stem in the browser but has no comments.
 - **You need a portal where clients upload to you.** We don't have upload links for clients.

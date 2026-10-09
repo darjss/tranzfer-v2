@@ -68,8 +68,7 @@ Write the expiry date in the message, ask them to download to a computer that da
 
 ## When should you use something else?
 
-- **The couple wants to view, favourite and order prints.** That's what a gallery is for. Tranzfer has no previews and no print store.
+- **The couple wants to view, favourite and order prints.** That's what a gallery is for. Tranzfer shows thumbnails but has no favourites and no print store.
 - **You want the files to stay available for a year.** A shared Google Drive or Dropbox folder keeps them until you delete them, at the cost of your own storage.
-- **You need a password on the link.** Tranzfer doesn't have password-protected links. [Smash](https://fromsmash.com/pricing) offers passwords on free and paid plans.
 
 There's more on plans and delivery for your kind of work on the [page for photographers](/for/photographers).
