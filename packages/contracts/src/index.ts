@@ -5,4 +5,5 @@ export * from "./delivery";
 export * from "./email";
 export * from "./interest";
 export * from "./link";
+export * from "./request";
 export * from "./upload";

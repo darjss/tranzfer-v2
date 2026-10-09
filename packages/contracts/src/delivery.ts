@@ -101,6 +101,12 @@ export const DeliveryDownload = Schema.Struct({
 });
 export interface DeliveryDownload extends Schema.Schema.Type<typeof DeliveryDownload> {}
 
+/** Who sent a delivery that came in through a request link. Email is optional. */
+export const DeliveryUploader = Schema.Struct({
+  email: Schema.NullOr(Schema.String),
+  name: Schema.String,
+});
+
 export const Delivery = Schema.Struct({
   createdAt: Schema.DateFromString,
   download: Schema.NullOr(DeliveryDownload),
@@ -113,6 +119,8 @@ export const Delivery = Schema.Struct({
   status: DeliveryStatus,
   title: Schema.String,
   transfers: Schema.Array(Transfer),
+  /** Null for a delivery the owner sent. */
+  uploader: Schema.NullOr(DeliveryUploader),
 });
 export interface Delivery extends Schema.Schema.Type<typeof Delivery> {}
 

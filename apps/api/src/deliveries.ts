@@ -7,18 +7,22 @@ import {
   plans,
   RateLimited,
   rateLimits,
+  RequestFull,
+  RequestNotFound,
   RetentionNotInPlan,
 } from "@tranzfer/contracts";
 import type {
   DeliveryDownload,
   DeliveryId,
   NewDelivery,
+  NewRequestUpload,
   PlanId,
+  RequestId,
   RetentionDays,
   DeliveryRefused,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -26,6 +30,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
+import * as Option from "effect/Option";
 
 import { LinkTokens, newLinkId } from "./link-tokens";
 import { hashPassword } from "./passwords";
@@ -74,15 +79,41 @@ const createdSince = (senderId: string, since: number) =>
 export const isExpired = (expiresAt: Date | null, now: number) =>
   expiresAt !== null && expiresAt.getTime() <= now;
 
+/** Where a delivery came from: nowhere special, or an uploader through a file request. */
+interface Origin {
+  readonly requestId: RequestId | null;
+  readonly uploaderEmail: string | null;
+  readonly uploaderName: string | null;
+}
+const direct: Origin = { requestId: null, uploaderEmail: null, uploaderName: null };
+
+/**
+ * An upload through a file request. `explain` runs when the delivery's
+ * statement inserted nothing and the owner's own limits do not explain it. It
+ * fails with why the request refused, or succeeds when nothing it can name did.
+ */
+interface Intake<E> {
+  readonly origin: {
+    readonly requestId: RequestId;
+    readonly uploaderEmail: string | null;
+    readonly uploaderName: string;
+  };
+  readonly explain: (requestedBytes: number) => Effect.Effect<void, E>;
+}
+
 // A retried create replays only when every field matches.
 const sameDelivery = (
   senderId: string,
   input: NewDelivery,
+  origin: Origin,
   row: typeof schema.delivery.$inferSelect & {
     readonly transfers: readonly (typeof schema.transfer.$inferSelect)[];
   },
 ) =>
   row.senderId === senderId &&
+  row.requestId === origin.requestId &&
+  row.uploaderName === origin.uploaderName &&
+  row.uploaderEmail === origin.uploaderEmail &&
   row.retentionDays === input.retentionDays &&
   row.title === input.title &&
   row.transfers.length === input.files.length &&
@@ -129,6 +160,25 @@ export class Deliveries extends Context.Service<
       deliveryId: DeliveryId,
       details: { readonly note: string; readonly title: string },
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
+    /**
+     * Creates the delivery for an upload through a file request. It belongs to
+     * the request's owner and counts against their plan, and the request's own
+     * limits are part of the statement that inserts it. The caller has checked
+     * the request is live; `RequestNotFound` here is a close or expiry that
+     * landed in between.
+     */
+    readonly receive: (
+      request: typeof schema.fileRequest.$inferSelect,
+      input: NewRequestUpload,
+    ) => Effect.Effect<
+      Delivery,
+      DeliveryConflict | DeliveryRefused | RateLimited | RequestFull | RequestNotFound
+    >;
+    /** The deliveries among these ids that came in through the request. */
+    readonly ofRequest: (
+      requestId: RequestId,
+      deliveryIds: readonly DeliveryId[],
+    ) => Effect.Effect<readonly Delivery[]>;
     /** Sets, replaces or (with null) removes the password on the sender's own delivery's link. */
     readonly setPassword: (
       senderId: string,
@@ -208,6 +258,8 @@ export class Deliveries extends Context.Service<
             size: transfer.size,
             state: transfer.state,
           })),
+          uploader:
+            row.uploaderName === null ? null : { email: row.uploaderEmail, name: row.uploaderName },
         });
       });
 
@@ -329,6 +381,145 @@ export class Deliveries extends Context.Service<
             : []),
         );
 
+      // A retried create finds its delivery again: the same one back, or a
+      // conflict when the id belongs to different content.
+      const replay = Effect.fn("Deliveries.replay")(function* replay(
+        senderId: string,
+        input: NewDelivery,
+        origin: Origin,
+      ) {
+        const existing = yield* load(input.id);
+        if (existing === undefined) {
+          return Option.none();
+        }
+        yield* Effect.annotateCurrentSpan("delivery.replayed", true);
+        return sameDelivery(senderId, input, origin, existing)
+          ? Option.some(yield* viewRow(existing))
+          : yield* new DeliveryConflict();
+      });
+
+      // Bytes in a request's uploads that were not cancelled, as SQL.
+      const requestBytes = (requestId: RequestId) =>
+        db
+          .select({ total: sql<number>`coalesce(sum(${schema.transfer.size}), 0)` })
+          .from(schema.transfer)
+          .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
+          .where(
+            and(eq(schema.delivery.requestId, requestId), ne(schema.delivery.status, "cancelled")),
+          );
+
+      // The request is open, unexpired and has room for these bytes. Part of
+      // the statement that inserts the delivery, so racing uploads and a close
+      // can't slip past it.
+      const requestAccepts = (requestId: RequestId, requestedBytes: number, now: number) =>
+        sql`exists (select 1 from ${schema.fileRequest} where ${and(
+          eq(schema.fileRequest.id, requestId),
+          isNull(schema.fileRequest.closedAt),
+          gt(schema.fileRequest.expiresAt, new Date(now)),
+          or(
+            isNull(schema.fileRequest.maxBytes),
+            sql`(${requestBytes(requestId)}) + ${requestedBytes} <= ${schema.fileRequest.maxBytes}`,
+          ),
+        )})`;
+
+      // Everything create and receive share once the owner, title and
+      // retention are settled: admit, insert atomically, and name a refusal.
+      const place = <E = never>(
+        senderId: string,
+        plan: PlanId,
+        input: NewDelivery,
+        intake?: Intake<E>,
+      ) =>
+        Effect.gen(function* insertDelivery() {
+          const origin = intake?.origin ?? direct;
+          const now = yield* Clock.currentTimeMillis;
+          const requestedBytes = input.files.reduce((total, file) => total + file.size, 0);
+          yield* admit(senderId, plan, requestedBytes, now);
+
+          const linkId = yield* newLinkId;
+          const inserted = yield* Effect.result(
+            batch([
+              // Inserts the delivery only while the sender is still within
+              // its limits, counted by this statement. When it inserts
+              // nothing, the transfers' and link's foreign keys fail the batch
+              // and nothing lands.
+              db.insert(schema.delivery).select((qb) =>
+                qb
+                  .select({
+                    id: sql<DeliveryId>`${input.id}`.as("id"),
+                    requestId: sql<RequestId | null>`${origin.requestId}`.as("request_id"),
+                    retentionDays: sql<RetentionDays>`${input.retentionDays}`.as("retention_days"),
+                    senderId: schema.user.id,
+                    title: sql<string>`${input.title}`.as("title"),
+                    uploaderEmail: sql<string | null>`${origin.uploaderEmail}`.as("uploader_email"),
+                    uploaderName: sql<string | null>`${origin.uploaderName}`.as("uploader_name"),
+                  })
+                  .from(schema.user)
+                  .where(
+                    and(
+                      eq(schema.user.id, senderId),
+                      withinLimits(senderId, plan, requestedBytes, now),
+                      origin.requestId === null
+                        ? undefined
+                        : requestAccepts(origin.requestId, requestedBytes, now),
+                    ),
+                  ),
+              ),
+              ...Arr.chunksOf(input.files, TRANSFER_ROWS_PER_INSERT).map((files) =>
+                db.insert(schema.transfer).values(
+                  files.map((file) => ({
+                    contentType: file.contentType,
+                    deliveryId: input.id,
+                    id: file.id,
+                    objectKey: `${objectPrefix(input.id)}${file.id}`,
+                    path: file.path,
+                    size: file.size,
+                    sourceModifiedAt: new Date(file.lastModified),
+                  })),
+                ),
+              ),
+              db.insert(schema.link).values({ deliveryId: input.id, id: linkId }),
+            ]),
+          );
+          if (inserted._tag === "Success") {
+            return yield* view(input.id);
+          }
+
+          // The batch lost a race, hit a taken transfer id or found the
+          // sender over a limit: decide from what landed.
+          const landed = yield* load(input.id);
+          // One JSON parameter instead of one per id keeps this under D1's cap.
+          const taken = yield* db
+            .select({ id: schema.transfer.id })
+            .from(schema.transfer)
+            .where(
+              inArray(
+                schema.transfer.id,
+                sql`(select value from json_each(${JSON.stringify(input.files.map((file) => file.id))}))`,
+              ),
+            )
+            .limit(1);
+          return yield* Match.value({ landed, taken: taken.length > 0 }).pipe(
+            Match.when(
+              {
+                landed: (row) => row !== undefined && sameDelivery(senderId, input, origin, row),
+              },
+              () => view(input.id),
+            ),
+            Match.whenOr({ landed: (row) => row !== undefined }, { taken: true }, () =>
+              Effect.fail(new DeliveryConflict()),
+            ),
+            // A limit a concurrent create filled names the refusal; nothing
+            // naming it means the request refused, or a real database fault.
+            Match.orElse(() =>
+              admit(senderId, plan, requestedBytes, now).pipe(
+                Effect.andThen(intake?.explain(requestedBytes) ?? Effect.void),
+                Effect.andThen(Effect.die(inserted.failure)),
+              ),
+            ),
+          );
+        }).pipe(Effect.withSpan("Deliveries.place"));
+
       return Deliveries.of({
         activeBytes,
         cancel: Effect.fn("Deliveries.cancel")(function* cancel(
@@ -395,12 +586,9 @@ export class Deliveries extends Context.Service<
             "delivery.retention_days": input.retentionDays,
             "delivery.total_bytes": input.files.reduce((total, file) => total + file.size, 0),
           });
-          const existing = yield* load(input.id);
-          if (existing !== undefined) {
-            yield* Effect.annotateCurrentSpan("delivery.replayed", true);
-            return sameDelivery(senderId, input, existing)
-              ? yield* viewRow(existing)
-              : yield* new DeliveryConflict();
+          const replayed = yield* replay(senderId, input, direct);
+          if (Option.isSome(replayed)) {
+            return replayed.value;
           }
           yield* checkFiles(input.files);
 
@@ -412,83 +600,7 @@ export class Deliveries extends Context.Service<
               requestedDays: input.retentionDays,
             });
           }
-          const now = yield* Clock.currentTimeMillis;
-          const requestedBytes = input.files.reduce((total, file) => total + file.size, 0);
-          yield* admit(senderId, plan, requestedBytes, now);
-
-          const linkId = yield* newLinkId;
-          const inserted = yield* Effect.result(
-            batch([
-              // Inserts the delivery only while the sender is still within
-              // its limits, counted by this statement. When it inserts
-              // nothing, the transfers' and link's foreign keys fail the batch
-              // and nothing lands.
-              db.insert(schema.delivery).select((qb) =>
-                qb
-                  .select({
-                    id: sql<DeliveryId>`${input.id}`.as("id"),
-                    retentionDays: sql<RetentionDays>`${input.retentionDays}`.as("retention_days"),
-                    senderId: schema.user.id,
-                    title: sql<string>`${input.title}`.as("title"),
-                  })
-                  .from(schema.user)
-                  .where(
-                    and(
-                      eq(schema.user.id, senderId),
-                      withinLimits(senderId, plan, requestedBytes, now),
-                    ),
-                  ),
-              ),
-              ...Arr.chunksOf(input.files, TRANSFER_ROWS_PER_INSERT).map((files) =>
-                db.insert(schema.transfer).values(
-                  files.map((file) => ({
-                    contentType: file.contentType,
-                    deliveryId: input.id,
-                    id: file.id,
-                    objectKey: `${objectPrefix(input.id)}${file.id}`,
-                    path: file.path,
-                    size: file.size,
-                    sourceModifiedAt: new Date(file.lastModified),
-                  })),
-                ),
-              ),
-              db.insert(schema.link).values({ deliveryId: input.id, id: linkId }),
-            ]),
-          );
-          if (inserted._tag === "Success") {
-            return yield* view(input.id);
-          }
-
-          // The batch lost a race, hit a taken transfer id or found the
-          // sender over a limit: decide from what landed.
-          const landed = yield* load(input.id);
-          // One JSON parameter instead of one per id keeps this under D1's cap.
-          const taken = yield* db
-            .select({ id: schema.transfer.id })
-            .from(schema.transfer)
-            .where(
-              inArray(
-                schema.transfer.id,
-                sql`(select value from json_each(${JSON.stringify(input.files.map((file) => file.id))}))`,
-              ),
-            )
-            .limit(1);
-          return yield* Match.value({ landed, taken: taken.length > 0 }).pipe(
-            Match.when(
-              { landed: (row) => row !== undefined && sameDelivery(senderId, input, row) },
-              () => view(input.id),
-            ),
-            Match.whenOr({ landed: (row) => row !== undefined }, { taken: true }, () =>
-              Effect.fail(new DeliveryConflict()),
-            ),
-            // A limit a concurrent create filled names the refusal; nothing
-            // naming it means a real database fault.
-            Match.orElse(() =>
-              admit(senderId, plan, requestedBytes, now).pipe(
-                Effect.andThen(Effect.die(inserted.failure)),
-              ),
-            ),
-          );
+          return yield* place(senderId, plan, input);
         }, dieOnDatabaseError),
         list: Effect.fn("Deliveries.list")(function* list(senderId: string) {
           const rows = yield* db.query.delivery.findMany({
@@ -500,6 +612,20 @@ export class Deliveries extends Context.Service<
           yield* Effect.annotateCurrentSpan("delivery.count", rows.length);
           const downloads = yield* downloadsOf(rows.map((row) => row.id));
           return yield* Effect.forEach(rows, (row) => toView(row, downloads.get(row.id) ?? null));
+        }, dieOnDatabaseError),
+
+        ofRequest: Effect.fn("Deliveries.ofRequest")(function* ofRequest(
+          requestId: RequestId,
+          deliveryIds: readonly DeliveryId[],
+        ) {
+          if (deliveryIds.length === 0) {
+            return [];
+          }
+          const rows = yield* db.query.delivery.findMany({
+            where: { id: { in: [...deliveryIds] }, requestId },
+            with: { link: true, transfers: { orderBy: { path: "asc" } } },
+          });
+          return yield* Effect.forEach(rows, (row) => toView(row, null));
         }, dieOnDatabaseError),
 
         owned: Effect.fn("Deliveries.owned")(function* owned(
@@ -578,6 +704,60 @@ export class Deliveries extends Context.Service<
           yield* Effect.annotateCurrentSpan({ "sweep.ended": ended.length, "sweep.purged": total });
           return total;
         }).pipe(Effect.withSpan("Deliveries.purgeEnded"), dieOnDatabaseError),
+
+        receive: Effect.fn("Deliveries.receive")(function* receive(
+          request: typeof schema.fileRequest.$inferSelect,
+          input: NewRequestUpload,
+        ) {
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": input.files.length,
+            "delivery.id": input.id,
+            "delivery.total_bytes": input.files.reduce((total, file) => total + file.size, 0),
+            "request.id": request.id,
+          });
+          const { ownerId } = request;
+          const { plan } = yield* userPlans.current(ownerId);
+          // The owner's plan may have dropped since the request was made.
+          const retentionDays =
+            request.retentionDays <= plans[plan].maxRetentionDays
+              ? request.retentionDays
+              : plans[plan].maxRetentionDays;
+          const delivery = {
+            files: input.files,
+            id: input.id,
+            retentionDays,
+            title: `${request.title} from ${input.name}`,
+          };
+          const origin = {
+            requestId: request.id,
+            uploaderEmail: input.email,
+            uploaderName: input.name,
+          };
+          const replayed = yield* replay(ownerId, delivery, origin);
+          if (Option.isSome(replayed)) {
+            return replayed.value;
+          }
+          yield* checkFiles(input.files);
+          return yield* place(ownerId, plan, delivery, {
+            explain: Effect.fn("Deliveries.explain")(function* explain(requestedBytes: number) {
+              const row = yield* db.query.fileRequest.findFirst({ where: { id: request.id } });
+              const now = yield* Clock.currentTimeMillis;
+              if (row === undefined || row.closedAt !== null || row.expiresAt.getTime() <= now) {
+                return yield* new RequestNotFound();
+              }
+              const [used] = yield* requestBytes(row.id);
+              if (row.maxBytes !== null && (used?.total ?? 0) + requestedBytes > row.maxBytes) {
+                return yield* new RequestFull();
+              }
+              return yield* Effect.void;
+            }),
+            origin,
+          }).pipe(
+            // The uploader is told there is no room, not how big the owner's plan is.
+            Effect.catchTag("OverPlanLimit", () => Effect.fail(new RequestFull())),
+          );
+        }, dieOnDatabaseError),
+
         setPassword: Effect.fn("Deliveries.setPassword")(function* setPassword(
           senderId: string,
           deliveryId: DeliveryId,
