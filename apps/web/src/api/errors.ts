@@ -4,6 +4,7 @@ import {
   BillingUnavailable,
   DeliveryConflict,
   DeliveryNotFound,
+  DeliveryRefused,
   InvalidUpload,
   LinkExpired,
   LinkNotFound,
@@ -38,6 +39,7 @@ const ApiErrors = Schema.Union([
   BillingUnavailable,
   DeliveryConflict,
   DeliveryNotFound,
+  DeliveryRefused,
   InvalidUpload,
   LinkExpired,
   LinkNotFound,
@@ -87,6 +89,33 @@ const wait = (seconds: number) => {
   return count(Math.ceil(seconds / (60 * 60)), "hour");
 };
 
+const number = (value: number) => value.toLocaleString("en-US");
+
+// A long name stays recognizable without filling the card.
+const quoted = (text: string) => {
+  const letters = text.match(/./gsu) ?? [];
+  return `"${letters.length > 80 ? `${letters.slice(0, 80).join("")}…` : text}"`;
+};
+
+const refusal = Match.type<DeliveryRefused["reason"]>().pipe(
+  Match.tagsExhaustive({
+    DuplicatePath: ({ path }) =>
+      `Two files are called ${quoted(path)} once capitals are ignored, so they would collide on the recipient's computer. Rename one.`,
+    NameTooLong: ({ bytes: size, max, name }) => {
+      const characters = (name.match(/./gsu) ?? []).length;
+      return characters === size
+        ? `${quoted(name)} is ${number(characters)} characters long. Names can be up to ${number(max)}. Shorten it and try again.`
+        : `${quoted(name)} is ${number(characters)} characters and ${number(size)} bytes long. Names can be up to ${number(max)} bytes, which is fewer characters outside plain English letters. Shorten it and try again.`;
+    },
+    PathTooLong: ({ bytes: size, max, path }) =>
+      `${quoted(path)} is ${number(size)} bytes long with its folders. A path can be up to ${number(max)}. Shorten the folder names or move the files up a level.`,
+    PathUnsafe: ({ path }) =>
+      `${quoted(path)} isn't a path we can carry safely. Names can't contain backslashes or control characters, or be empty, "." or "..".`,
+    TooManyFiles: ({ count: total, max }) =>
+      `That's ${number(total)} files. A delivery holds up to ${number(max)}. Send them in two deliveries or zip a folder.`,
+  }),
+);
+
 const words = Match.type<ApiError>().pipe(
   Match.tagsExhaustive({
     AccessCodeRefused: (error) =>
@@ -106,6 +135,7 @@ const words = Match.type<ApiError>().pipe(
         : `Our payment provider turned this down or didn't answer, so nothing changed and nothing was charged. Try again later, or write to ${supportEmail}.`,
     DeliveryConflict: () => "That delivery already exists. Refresh to see it.",
     DeliveryNotFound: () => "We can't find that delivery anymore.",
+    DeliveryRefused: (error) => refusal(error.reason),
     InvalidUpload: () => "This file doesn't match what the delivery expects. Send it again.",
     LinkExpired: () => "This link has expired.",
     LinkNotFound: () => "This link doesn't work. It may have been cancelled.",

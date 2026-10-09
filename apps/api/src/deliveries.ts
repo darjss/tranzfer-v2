@@ -1,4 +1,5 @@
 import {
+  checkFiles,
   Delivery,
   DeliveryConflict,
   DeliveryNotFound,
@@ -14,6 +15,7 @@ import type {
   NewDelivery,
   PlanId,
   RetentionDays,
+  DeliveryRefused,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
@@ -103,7 +105,7 @@ export class Deliveries extends Context.Service<
       input: NewDelivery,
     ) => Effect.Effect<
       Delivery,
-      DeliveryConflict | OverPlanLimit | RateLimited | RetentionNotInPlan
+      DeliveryConflict | DeliveryRefused | OverPlanLimit | RateLimited | RetentionNotInPlan
     >;
     /** Bytes of the sender's deliveries that are open, or ready and not yet expired. */
     readonly activeBytes: (senderId: string) => Effect.Effect<number>;
@@ -382,6 +384,7 @@ export class Deliveries extends Context.Service<
               ? yield* viewRow(existing)
               : yield* new DeliveryConflict();
           }
+          yield* checkFiles(input.files);
 
           const { plan } = yield* userPlans.current(senderId);
           if (input.retentionDays > plans[plan].maxRetentionDays) {

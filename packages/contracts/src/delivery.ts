@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 export const DeliveryId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand("DeliveryId"));
@@ -12,50 +13,50 @@ export const defaultRetentionDays: RetentionDays = 3;
 
 /** The contract's file cap; D1's bound-parameter limit is handled server-side. */
 export const maxFiles = 1000;
+/**
+ * The longest one name in a path, in UTF-8 bytes. ext4, xfs and btrfs stop
+ * there, and the other disks allow at least as much, so any name that fits
+ * lands anywhere. The path never reaches an R2 key (that is `d/<delivery>/<transfer>`).
+ */
+export const maxNameBytes = 255;
+export const maxPathBytes = 1024;
+export const maxTitleLength = 200;
 
-// Recipient-disk safe paths: forward slashes only, no traversal, no control
-// characters, and segments that fit a filename.
-export const RelativePath = Schema.String.check(
-  Schema.isBetweenLength(1, 1024),
-  Schema.makeFilter((value) => {
-    if (value.startsWith("/") || value.includes("\\")) {
-      return "path must use forward slashes and stay relative";
+// This package's lib has no TextEncoder. A lone surrogate counts 3, as its
+// replacement character encodes.
+const byteLength = (text: string) => {
+  let total = 0;
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code < 0x80) {
+      total += 1;
+    } else if (code < 0x8_00) {
+      total += 2;
+    } else {
+      total += code < 0x1_00_00 ? 3 : 4;
     }
-    if (/\p{Cc}/u.test(value)) {
-      return "path must not contain control characters";
-    }
-    for (const segment of value.split("/")) {
-      if (segment.length === 0 || segment === "." || segment === "..") {
-        return "path segments must be non-empty and not . or ..";
-      }
-      if (segment.length > 255) {
-        return "path segments must be at most 255 characters";
-      }
-    }
-    return true;
-  }),
-);
+  }
+  return total;
+};
 
 export const NewFile = Schema.Struct({
   contentType: Schema.NullOr(Schema.String.check(Schema.isMaxLength(255))),
   id: TransferId,
   lastModified: Schema.Int,
-  path: RelativePath,
+  path: Schema.String,
   size: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
 export interface NewFile extends Schema.Schema.Type<typeof NewFile> {}
 
-/** The sender picks every id, so a retried create is a replay rather than a duplicate. */
+/**
+ * The sender picks every id, so a retried create is a replay rather than a
+ * duplicate. What a file count and its paths may be is `checkFiles`, not the
+ * schema, so a refusal reaches the client as `DeliveryRefused` and not as a
+ * decode failure.
+ */
 export const NewDelivery = Schema.Struct({
   files: Schema.Array(NewFile).check(
     Schema.isMinLength(1),
-    Schema.isMaxLength(maxFiles),
-    // Case-variant paths would collide on the recipient's disk.
-    Schema.makeFilter(
-      (files) =>
-        new Set(files.map((file) => file.path.toLowerCase())).size === files.length ||
-        "file paths must be unique case-insensitively",
-    ),
     Schema.makeFilter(
       (files) =>
         new Set(files.map((file) => file.id)).size === files.length || "file ids must be unique",
@@ -63,7 +64,7 @@ export const NewDelivery = Schema.Struct({
   ),
   id: DeliveryId,
   retentionDays: RetentionDays,
-  title: Schema.Trim.check(Schema.isBetweenLength(1, 200)),
+  title: Schema.Trim.check(Schema.isBetweenLength(1, maxTitleLength)),
 });
 export interface NewDelivery extends Schema.Schema.Type<typeof NewDelivery> {}
 
@@ -118,3 +119,56 @@ export class DeliveryNotFound extends Schema.TaggedError<DeliveryNotFound>()(
   "DeliveryNotFound",
   {},
 ) {}
+
+/**
+ * The files can't be sent as picked, and sending again won't change that. The
+ * reason carries the numbers; `checkFiles` is the one place that decides it.
+ * `PathUnsafe`: a backslash, a control character, or an empty, `.` or `..`
+ * folder name. `DuplicatePath`: two paths that differ only by case.
+ */
+export class DeliveryRefused extends Schema.TaggedError<DeliveryRefused>()("DeliveryRefused", {
+  reason: Schema.Union([
+    Schema.TaggedStruct("TooManyFiles", { count: Schema.Int, max: Schema.Int }),
+    Schema.TaggedStruct("NameTooLong", { bytes: Schema.Int, max: Schema.Int, name: Schema.String }),
+    Schema.TaggedStruct("PathTooLong", { bytes: Schema.Int, max: Schema.Int, path: Schema.String }),
+    Schema.TaggedStruct("PathUnsafe", { path: Schema.String }),
+    Schema.TaggedStruct("DuplicatePath", { path: Schema.String }),
+  ]),
+}) {}
+
+const firstRefusal = (files: readonly { readonly path: string }[]) => {
+  if (files.length > maxFiles) {
+    return { _tag: "TooManyFiles", count: files.length, max: maxFiles } as const;
+  }
+  const seen = new Set<string>();
+  for (const { path } of files) {
+    if (path.startsWith("/") || path.includes("\\") || /\p{Cc}/u.test(path)) {
+      return { _tag: "PathUnsafe", path } as const;
+    }
+    for (const name of path.split("/")) {
+      if (name === "" || name === "." || name === "..") {
+        return { _tag: "PathUnsafe", path } as const;
+      }
+      const bytes = byteLength(name);
+      if (bytes > maxNameBytes) {
+        return { _tag: "NameTooLong", bytes, max: maxNameBytes, name } as const;
+      }
+    }
+    const bytes = byteLength(path);
+    if (bytes > maxPathBytes) {
+      return { _tag: "PathTooLong", bytes, max: maxPathBytes, path } as const;
+    }
+    // Case-variant paths would collide on the recipient's disk.
+    if (seen.has(path.toLowerCase())) {
+      return { _tag: "DuplicatePath", path } as const;
+    }
+    seen.add(path.toLowerCase());
+  }
+  return null;
+};
+
+/** The browser runs this before creating anything and the API again on every create. */
+export const checkFiles = (files: readonly { readonly path: string }[]) => {
+  const reason = firstRefusal(files);
+  return reason === null ? Effect.void : Effect.fail(new DeliveryRefused({ reason }));
+};

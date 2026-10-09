@@ -19,6 +19,7 @@ import {
   DeliveryConflict,
   DeliveryId,
   DeliveryNotFound,
+  DeliveryRefused,
   NewDelivery,
   TransferId,
 } from "./delivery";
@@ -36,7 +37,13 @@ import {
 export class Api extends RpcGroup.make(
   Rpc.make("Me", { error: Unauthorized, success: Principal }).middleware(Authenticated),
   Rpc.make("CreateDelivery", {
-    error: Schema.Union([DeliveryConflict, OverPlanLimit, RateLimited, RetentionNotInPlan]),
+    error: Schema.Union([
+      DeliveryConflict,
+      DeliveryRefused,
+      OverPlanLimit,
+      RateLimited,
+      RetentionNotInPlan,
+    ]),
     payload: NewDelivery,
     success: Delivery,
   }).middleware(Authenticated),

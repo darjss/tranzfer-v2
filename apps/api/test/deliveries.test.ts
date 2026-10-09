@@ -128,6 +128,60 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
     }),
   );
 
+  it.effect("carries names up to 255 bytes, ASCII or multibyte, and 1,000 files", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("dana-names");
+      const deliveries = yield* Deliveries;
+      const names = ["a".repeat(255), "é".repeat(127), "日".repeat(85), "😀".repeat(63)];
+      const created = yield* deliveries.create(
+        "dana-names",
+        newDelivery(names.map((name) => newFile(`folder/${name}`, 1))),
+      );
+      expect(created.transfers).toHaveLength(names.length);
+    }),
+  );
+
+  it.effect("refuses what the disk or the contract can't carry, with the numbers", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("erin-refused");
+      const deliveries = yield* Deliveries;
+      const refusal = (paths: readonly string[]) =>
+        Effect.flip(
+          deliveries.create("erin-refused", newDelivery(paths.map((path) => newFile(path, 1)))),
+        );
+      const tooMany = yield* refusal(Array.from({ length: 1001 }, (_, index) => `f/${index}`));
+      expect(tooMany).toMatchObject({
+        _tag: "DeliveryRefused",
+        reason: { _tag: "TooManyFiles", count: 1001, max: 1000 },
+      });
+      const ascii = yield* refusal(["a".repeat(256)]);
+      expect(ascii).toMatchObject({
+        reason: { _tag: "NameTooLong", bytes: 256, max: 255 },
+      });
+      const accents = yield* refusal([`d/${"é".repeat(128)}`]);
+      expect(accents).toMatchObject({
+        reason: { _tag: "NameTooLong", bytes: 256, max: 255 },
+      });
+      const emoji = yield* refusal(["😀".repeat(64)]);
+      expect(emoji).toMatchObject({
+        reason: { _tag: "NameTooLong", bytes: 256, max: 255 },
+      });
+      const deep = yield* refusal([Array.from({ length: 5 }, () => "d".repeat(250)).join("/")]);
+      expect(deep).toMatchObject({
+        reason: { _tag: "PathTooLong", bytes: 1254, max: 1024 },
+      });
+      const unsafe = yield* Effect.all(
+        ["a\\b", "../up", "a//b", "tab\tname"].map((path) => refusal([path])),
+      );
+      expect(unsafe).toMatchObject(
+        Array.from({ length: 4 }, () => ({ reason: { _tag: "PathUnsafe" } })),
+      );
+      const clash = yield* refusal(["Photo.JPG", "photo.jpg"]);
+      expect(clash).toMatchObject({ reason: { _tag: "DuplicatePath", path: "photo.jpg" } });
+      expect(yield* deliveries.list("erin-refused")).toEqual([]);
+    }),
+  );
+
   it.effect("lists only the sender's deliveries, newest first", () =>
     Effect.gen(function* scenario() {
       yield* addUser("erin");
