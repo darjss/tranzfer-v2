@@ -68,10 +68,10 @@ const field = css({
   bg: "white",
   borderRadius: "xl",
   color: "ink",
-  flex: "1",
   fontSize: "[16px]",
   minW: "0",
-  px: "3",
+  px: "4",
+  py: "3",
   shadow: "[inset 0 0 0 1px var(--colors-line)]",
 });
 
@@ -135,31 +135,29 @@ export function NotifyMe(props: { plan: PaidPlanId; hot: boolean }) {
               }
             }}
           >
-            <div class={css({ display: "flex", gap: "2" })}>
-              <input
-                aria-label="Your email"
-                autocomplete="email"
-                class={field}
-                maxlength={254}
-                name="email"
-                placeholder="you@studio.com"
-                ref={(input) => {
-                  // The form replaces the button that had focus.
-                  requestAnimationFrame(() => {
-                    input.focus();
-                  });
-                }}
-                required
-                type="email"
-              />
-              <button
-                class={button({ size: "sm", variant: props.hot ? "fill" : "outline" })}
-                disabled={asking()}
-                type="submit"
-              >
-                {asking() ? "Adding…" : "Notify me"}
-              </button>
-            </div>
+            <input
+              aria-label="Your email"
+              autocomplete="email"
+              class={field}
+              maxlength={254}
+              name="email"
+              placeholder="you@studio.com"
+              ref={(input) => {
+                // The form replaces the button that had focus.
+                requestAnimationFrame(() => {
+                  input.focus();
+                });
+              }}
+              required
+              type="email"
+            />
+            <button
+              class={button({ variant: props.hot ? "fill" : "outline" })}
+              disabled={asking()}
+              type="submit"
+            >
+              {asking() ? "Adding…" : "Notify me"}
+            </button>
             <p class={css({ color: props.hot ? "[#c9c6bc]" : "mut", fontSize: "13" })}>
               We'll email you once, the day {plans[props.plan].name} opens.
             </p>
