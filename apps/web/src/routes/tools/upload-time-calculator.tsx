@@ -33,7 +33,7 @@ const faq = [
 ];
 
 const description =
-  "Free upload time calculator: enter a file size and your upload speed in Mbps to see how long the upload takes, with a realistic estimate for planning.";
+  "Free upload time calculator. Enter a file size and your upload speed in Mbps to see how long the upload takes, with a realistic estimate for planning.";
 
 // The tool itself, for search engines; Article adds the article and FAQ.
 const webApplication = {
@@ -89,7 +89,7 @@ export default function UploadTimeCalculatorPage() {
 
       <h2>How accurate is it?</h2>
       <p>
-        The first number is the floor: your file can't go up faster than the line allows. Real
+        The first number is the floor. Your file can't go up faster than the line allows. Real
         uploads lose a share to protocol overhead, Wi-Fi, other devices and the service at the other
         end, which is why we also show the time at {percent}% of your speed. That's a planning
         figure, not a measurement. If you're on Wi-Fi in a busy house, expect worse.

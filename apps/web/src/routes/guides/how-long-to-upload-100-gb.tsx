@@ -1,4 +1,5 @@
 import { For } from "solid-js";
+import { css } from "styled-system/css";
 import Article, { table, tableWrap } from "../../guides/Article";
 import { guides, updated } from "../../guides/guides";
 import { duration, planningShare, uploadSeconds } from "../../tools/UploadTimeCalculator";
@@ -7,6 +8,7 @@ const page = guides["how-long-to-upload-100-gb"];
 
 const speeds = [10, 20, 50, 100, 200, 500, 1000];
 const hundredGb = 100e9;
+const nowrap = css({ whiteSpace: "nowrap" });
 const at = (mbps: number, gb = 100) => duration(uploadSeconds(gb * 1e9, mbps));
 
 const faq = [
@@ -73,9 +75,9 @@ export default function UploadHundredGb() {
               {(mbps) => (
                 <tr>
                   <th scope="row">{mbps >= 1000 ? `${mbps / 1000} Gbps` : `${mbps} Mbps`}</th>
-                  <td>{at(mbps)}</td>
-                  <td>{duration(uploadSeconds(hundredGb, mbps * planningShare))}</td>
-                  <td>{mbps / 8} MB/s</td>
+                  <td class={nowrap}>{at(mbps)}</td>
+                  <td class={nowrap}>{duration(uploadSeconds(hundredGb, mbps * planningShare))}</td>
+                  <td class={nowrap}>{mbps / 8} MB/s</td>
                 </tr>
               )}
             </For>

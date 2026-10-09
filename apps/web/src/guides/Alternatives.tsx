@@ -10,7 +10,12 @@ import { table, tableWrap } from "./Article";
 // don't say, the copy says so instead of guessing. Prices reuse
 // marketing/prices.ts, so the calculator on /pricing and these pages agree.
 
-const usd = new Intl.NumberFormat("en-US", { currency: "USD", style: "currency" });
+// Cents only when there are any: $15, $96.25.
+const usd = new Intl.NumberFormat("en-US", {
+  currency: "USD",
+  style: "currency",
+  trailingZeroDisplay: "stripIfInteger",
+});
 
 // A typical heavy month: four 100 GB deliveries, one live at a time.
 const month = quote(100, 4);
@@ -92,7 +97,7 @@ export const services = {
   masv: {
     bestFor: "Teams that want a desktop app and only pay when they send",
     cons: [
-      "Per-GB pricing adds up: 1 TB in a month is about $246 pay as you go",
+      "Per-GB pricing adds up. 1 TB in a month is about $246 pay as you go",
       'In the browser, "if you close your MASV browser tab or your computer crashes you will have to start over"',
       "A credit card is needed even for the free 15 GB",
     ],
@@ -192,7 +197,7 @@ export type ServiceId = keyof typeof services;
 export function CompareTable(props: { readonly ids: readonly ServiceId[] }) {
   return (
     <div class={tableWrap}>
-      <table class={table}>
+      <table class={cx(table, css({ minW: "[960px]" }))}>
         <thead>
           <tr>
             <th scope="col">Service</th>

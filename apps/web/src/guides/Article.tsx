@@ -76,7 +76,6 @@ export const table = css({
   borderCollapse: "collapse",
   fontSize: "15",
   lineHeight: "[1.5]",
-  minW: "[640px]",
   w: "full",
 });
 

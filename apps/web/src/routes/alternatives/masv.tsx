@@ -6,14 +6,19 @@ import { checked, quote } from "../../marketing/prices";
 
 const ranked = ["tranzfer", "filemail", "wetransfer", "smash", "dropbox", "drive"] as const;
 
-const usd = new Intl.NumberFormat("en-US", { currency: "USD", style: "currency" });
+// Cents only when there are any: $15, $96.25.
+const usd = new Intl.NumberFormat("en-US", {
+  currency: "USD",
+  style: "currency",
+  trailingZeroDisplay: "stripIfInteger",
+});
 // What MASV's pay-as-you-go costs for a month of sends, from the same rules as /pricing.
 const masvFor = (sizeGb: number, count: number) =>
   usd.format(quote(sizeGb, count).find((q) => q.id === "masv")?.price ?? 0);
 
 const faq = [
   {
-    a: `On MASV's pay-as-you-go plan, about ${masvFor(1000, 1)}: the first 15 GB each month are free, then $0.25 per GB. On Tranzfer it's Pro at $${plans.pro.monthlyUsd} a month if the whole terabyte is live at once, or less if your deliveries don't overlap.`,
+    a: `On MASV's pay-as-you-go plan, ${masvFor(1000, 1)}: the first 15 GB each month are free, then $0.25 per GB. On Tranzfer it's Pro at $${plans.pro.monthlyUsd} a month if the whole terabyte is live at once, or less if your deliveries don't overlap.`,
     q: "How much does it cost to send 1 TB a month with MASV?",
   },
   {
@@ -36,9 +41,9 @@ export default function MasvAlternatives() {
       answer={
         <p>
           If MASV's per-GB bill or a browser upload that restarts after a closed tab is the problem,
-          Tranzfer is the closest alternative: flat monthly plans and resume in the browser on every
-          plan. Filemail is the pick if you want a desktop app at a flat price. Stay with MASV if
-          you rely on its portals or integrations.
+          Tranzfer is the closest alternative, with flat monthly plans and resume in the browser on
+          every plan. Filemail is the pick if you want a desktop app at a flat price. Stay with MASV
+          if you rely on its portals or integrations.
         </p>
       }
       description="MASV alternatives for sending large files, ranked: Tranzfer, Filemail, WeTransfer, Smash, Dropbox Transfer and Google Drive. Flat plans vs per-GB pricing, and what happens when an upload breaks."
@@ -64,7 +69,7 @@ export default function MasvAlternatives() {
       <h2>Why do people look for a MASV alternative?</h2>
       <p>
         Two reasons come up. The first is the bill. MASV charges $0.25 per GB after 15 GB free each
-        month, so four 100 GB deliveries cost {masvFor(100, 4)} and a terabyte costs about{" "}
+        month, so four 100 GB deliveries cost {masvFor(100, 4)} and a terabyte costs{" "}
         {masvFor(1000, 1)}. Annual bundles bring the rate down, starting at $58 a month for 250 GB
         with a 12-month commitment.
       </p>

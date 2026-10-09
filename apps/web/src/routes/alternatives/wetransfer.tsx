@@ -59,7 +59,7 @@ export default function WeTransferAlternatives() {
       <p>
         WeTransfer is fine for a few gigabytes. The free plan stops at 10 transfers or 3 GB in a
         rolling 30 days, and Starter at 300 GB in 30 days. A single day of 4K footage can be more
-        than that. The bigger problem is a 150 GB upload: their troubleshooting page asks for a
+        than that. The bigger problem is a 150 GB upload. Their troubleshooting page asks for a
         stable connection and a device that doesn't go to sleep, and says nothing about resuming. On
         a long upload, that's a lot to ask.
       </p>

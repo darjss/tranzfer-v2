@@ -83,9 +83,9 @@ export default function SendSession() {
           responses you used. Now the project holds everything it needs.
         </li>
         <li>
-          <strong>Check how it's saved.</strong> Logic saves projects as a package by default: one
-          .logicx item that's really a folder inside. If yours is saved as a folder instead, send
-          the whole project folder.
+          <strong>Check how it's saved.</strong> Logic saves projects as a package by default.
+          That\'s one .logicx item that's really a folder inside. If yours is saved as a folder
+          instead, send the whole project folder.
         </li>
         <li>
           <strong>Compress the package.</strong> Right-click the .logicx in Finder and choose
@@ -104,7 +104,7 @@ export default function SendSession() {
         <li>A rough mix bounce, so your mixer hears what you hear.</li>
         <li>References, if you have them, in their own folder.</li>
         <li>
-          Stems as a fallback: every track exported from the same start point, full length. If the
+          Stems as a fallback, every track exported from the same start point, full length. If the
           session won't open, the mix can still start.
         </li>
       </ul>

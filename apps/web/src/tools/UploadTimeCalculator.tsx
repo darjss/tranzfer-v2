@@ -24,12 +24,12 @@ export const duration = (seconds: number) => {
     }
     return s % 60 === 0 ? `${m} min` : `${m} min ${s % 60} s`;
   }
-  const minutes = Math.round(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  if (hours >= 48) {
+  if (seconds >= 48 * 3600) {
+    const hours = Math.round(seconds / 3600);
     return `${Math.floor(hours / 24)} days ${hours % 24} h`;
   }
-  return `${hours} h ${minutes % 60} min`;
+  const minutes = Math.round(seconds / 60);
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 };
 
 const presets = [20, 50, 100, 500].map((mbps) => ({ gb: 100, mbps }));
