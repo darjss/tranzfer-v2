@@ -1,5 +1,5 @@
 import { expect, layer, vi } from "@effect/vitest";
-import { DeliveryId, rateLimits } from "@tranzfer/contracts";
+import { DeliveryId, DeliveryNote, DeliveryTitle, rateLimits } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
 import * as Arr from "effect/Array";
@@ -25,6 +25,7 @@ import {
   Plans,
   revokeAccessCode,
 } from "../src/plans";
+import { SharedLinks } from "../src/shared-links";
 import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } from "./support";
 
 const storage = makeMemoryStorage();
@@ -115,6 +116,67 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       yield* deliveries.create("carol", newDelivery([shared]));
       const reused = yield* Effect.flip(deliveries.create("carol", newDelivery([shared])));
       expect(reused._tag).toBe("DeliveryConflict");
+    }),
+  );
+
+  it.effect("lets only the owner change the title and note, and the recipient reads them", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("nora", "Nora");
+      yield* addUser("oscar");
+      const deliveries = yield* Deliveries;
+      const links = yield* SharedLinks;
+      const created = yield* deliveries.create(
+        "nora",
+        newDelivery([newFile("cut.mov", 3)], "cut.mov"),
+      );
+      expect(created.note).toBe("");
+
+      const foreign = yield* Effect.flip(
+        deliveries.update("oscar", created.id, { note: "mine now", title: "Stolen" }),
+      );
+      expect(foreign._tag).toBe("DeliveryNotFound");
+      const missing = yield* Effect.flip(
+        deliveries.update("nora", DeliveryId.make(crypto.randomUUID()), { note: "", title: "x" }),
+      );
+      expect(missing._tag).toBe("DeliveryNotFound");
+      expect((yield* deliveries.list("nora")).map(({ note, title }) => ({ note, title }))).toEqual([
+        { note: "", title: "cut.mov" },
+      ]);
+
+      const note = "Final cut.\n<script>alert(1)</script> Colour is locked.";
+      const updated = yield* deliveries.update("nora", created.id, { note, title: "Episode 14" });
+      expect({ note: updated.note, title: updated.title }).toEqual({ note, title: "Episode 14" });
+
+      // The recipient's page carries the same words once the delivery is ready.
+      // Ready far out, so later sweeps in this file leave it alone.
+      const { db } = yield* Database;
+      yield* db
+        .update(schema.delivery)
+        .set({ expiresAt: new Date(Date.now() + 30 * 86_400_000), status: "ready" })
+        .where(eq(schema.delivery.id, created.id));
+      const shared = yield* links.open(created.link.slice("/d/".length));
+      expect({ note: shared.note, title: shared.title }).toEqual({ note, title: "Episode 14" });
+
+      // An empty note takes it back off.
+      const cleared = yield* deliveries.update("nora", created.id, {
+        note: "",
+        title: "Episode 14",
+      });
+      expect(cleared.note).toBe("");
+    }),
+  );
+
+  it.effect("holds titles to 1 to 200 characters and notes to 500, trimmed", () =>
+    Effect.gen(function* scenario() {
+      const title = Schema.decodeUnknownEffect(DeliveryTitle);
+      const note = Schema.decodeUnknownEffect(DeliveryNote);
+      expect(yield* title("  Episode 14  ")).toBe("Episode 14");
+      expect(yield* note("   ")).toBe("");
+      expect(yield* note("n".repeat(500))).toHaveLength(500);
+      expect((yield* Effect.exit(title("   ")))._tag).toBe("Failure");
+      expect((yield* Effect.exit(title("t".repeat(201))))._tag).toBe("Failure");
+      expect((yield* Effect.exit(note("n".repeat(501))))._tag).toBe("Failure");
     }),
   );
 

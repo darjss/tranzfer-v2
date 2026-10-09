@@ -91,6 +91,8 @@ export const ApiHandlers = Api.toLayer(
         Effect.flatMap(sender, (id) => transfers.sign(id, key, request)),
       StartCheckout: ({ plan }) =>
         Effect.flatMap(Effect.service(CurrentPrincipal), (user) => billing.checkout(user, plan)),
+      UpdateDelivery: ({ deliveryId, note, title }) =>
+        Effect.flatMap(sender, (id) => deliveries.update(id, deliveryId, { note, title })),
     });
   }),
 );

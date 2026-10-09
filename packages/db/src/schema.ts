@@ -122,6 +122,8 @@ export const delivery = sqliteTable(
       .notNull()
       .references(() => user.id),
     title: text("title").notNull(),
+    // What the sender tells the recipient, as plain text. Empty means no note.
+    note: text("note").default("").notNull(),
     status: text("status", { enum: ["open", "ready", "cancelled"] })
       .default("open")
       .notNull(),

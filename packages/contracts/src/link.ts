@@ -11,6 +11,7 @@ export interface SharedFile extends Schema.Schema.Type<typeof SharedFile> {}
 export const SharedDelivery = Schema.Struct({
   expiresAt: Schema.NullOr(Schema.DateFromString),
   files: Schema.Array(SharedFile),
+  note: Schema.String,
   senderName: Schema.String,
   title: Schema.String,
 });

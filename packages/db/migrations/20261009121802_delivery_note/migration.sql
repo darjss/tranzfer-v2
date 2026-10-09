@@ -1,0 +1,1 @@
+ALTER TABLE `delivery` ADD `note` text DEFAULT '' NOT NULL;
