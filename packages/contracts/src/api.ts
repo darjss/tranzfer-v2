@@ -23,7 +23,7 @@ import {
   TransferId,
 } from "./delivery";
 import { InterestJoined, JoinInterestPayload } from "./interest";
-import { LinkExpired, LinkNotFound, LinkNotReady, SharedDelivery } from "./link";
+import { DownloadEvent, LinkExpired, LinkNotFound, LinkNotReady, SharedDelivery } from "./link";
 import {
   InvalidUpload,
   NotUploaded,
@@ -92,5 +92,9 @@ export class Api extends RpcGroup.make(
     error: Schema.Union([LinkExpired, LinkNotFound, LinkNotReady]),
     payload: Schema.Struct({ token: Schema.String }),
     success: SharedDelivery,
+  }),
+  // Public and best effort: a bad or dead link records nothing and says nothing.
+  Rpc.make("ReportDownload", {
+    payload: Schema.Struct({ event: DownloadEvent, path: Schema.String, token: Schema.String }),
   }),
 ) {}

@@ -191,6 +191,28 @@ export const link = sqliteTable(
   (table) => [index("link_deliveryId_idx").on(table.deliveryId)],
 );
 
+// What a recipient's browser reported about one file of a delivery. Bytes go
+// from R2 to the recipient, so the server only hears these reports. One row per
+// file, upserted, so a retried or resumed download converges on the same row.
+export const download = sqliteTable(
+  "download",
+  {
+    transferId: text("transfer_id")
+      .$type<TransferId>()
+      .primaryKey()
+      .references(() => transfer.id),
+    deliveryId: text("delivery_id")
+      .$type<DeliveryId>()
+      .notNull()
+      .references(() => delivery.id),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+    lastAt: integer("last_at", { mode: "timestamp_ms" }).notNull(),
+    // Set once the folder save has the whole file on disk.
+    savedAt: integer("saved_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [index("download_deliveryId_idx").on(table.deliveryId)],
+);
+
 // No row means the Free plan. Webhooks rebuild a row from Polar's customer
 // state, so it is a cache of Polar and never the source of truth.
 export const subscription = sqliteTable("subscription", {

@@ -77,6 +77,7 @@ const makeDisk = () => {
 };
 
 const makeWorld = () => {
+  const reports: string[] = [];
   const api = Layer.effect(ApiClient, RpcTest.makeClient(Api)).pipe(
     Layer.provide(
       Api.toLayer(
@@ -92,6 +93,10 @@ const makeWorld = () => {
           OpenBillingPortal: () => Effect.die("unused"),
           OpenLink: () => Effect.succeed(delivery),
           RedeemCode: () => Effect.die("unused"),
+          ReportDownload: ({ event, path }) =>
+            Effect.sync(() => {
+              reports.push(`${event} ${path}`);
+            }),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
         }),
@@ -127,7 +132,10 @@ const makeWorld = () => {
     HttpServerRequest.HttpServerRequest,
     HttpServerRequest.fromWeb(new Request("http://test/rpc")),
   );
-  return ManagedRuntime.make(Layer.mergeAll(api, uploads).pipe(Layer.provide(request)));
+  return {
+    reports,
+    runtime: ManagedRuntime.make(Layer.mergeAll(api, uploads).pipe(Layer.provide(request))),
+  };
 };
 
 afterEach(() => {
@@ -153,7 +161,7 @@ describe("SaveAll", () => {
         new Response(bytesOf(path).slice(from), { status: range === null ? 200 : 206 }),
       );
     });
-    const runtime = makeWorld();
+    const { reports, runtime } = makeWorld();
     render(() => (
       <RuntimeContext value={runtime}>
         <SaveAll delivery={delivery} token="token" />
@@ -182,6 +190,12 @@ describe("SaveAll", () => {
       "Card/B002/clip3.mov": null,
       "notes.txt": null,
     });
+    // The sender hears each file start and finish, the skipped one included.
+    await vi.waitFor(() => {
+      expect(reports.toSorted()).toEqual(
+        [...source.keys()].flatMap((path) => [`saved ${path}`, `started ${path}`]).toSorted(),
+      );
+    });
     expect(artifact).toHaveNoDiagnostics();
     // Idle to saving to done flips the three panes' hidden bindings. Every progress report
     // (start and end of each file) re-runs only the counts, the current path
@@ -191,7 +205,7 @@ describe("SaveAll", () => {
   });
 
   it("points browsers without a folder picker to Chrome or Edge", () => {
-    const runtime = makeWorld();
+    const { runtime } = makeWorld();
     render(() => (
       <RuntimeContext value={runtime}>
         <SaveAll delivery={delivery} token="token" />

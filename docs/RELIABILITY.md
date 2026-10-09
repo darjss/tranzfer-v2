@@ -250,6 +250,8 @@ How the recipient page does it today:
 - A network failure waits for `online`, re-opens the link for fresh URLs (or its typed refusal) and retries with the same capped backoff as uploads. A disk failure stops and names the file; Resume reuses the folder.
 - Safari and Firefox have no folder picker. They get the per-file list and a line pointing to Chrome or Edge. A streamed zip through a service worker was rejected: a dropped connection restarts the whole archive, and Safari buffers service-worker downloads. No server-side zip: CRC32 over hundreds of GB does not fit Worker CPU limits.
 
+- The sender's row says how far the download got, but the server never sees bytes move: R2 serves them straight to the browser. The recipient page reports `started` when a file's Download is clicked or its folder save begins, and `saved` when a folder save has the whole file on disk (`ReportDownload`, one `download` row per file, upserted). A one-file download in the browser's own manager is never reported finished, so it reads "Download started". A report is a claim by whoever holds the link, and a download proves nothing about the files being opened.
+
 ## Authorization and abuse
 
 Every create, sign, list, complete, abort and download checks identity, ownership, workspace membership where it applies, entitlement and transfer status. The object key and multipart ID are bound to the authorized transfer. A client-supplied upload ID never grants access to arbitrary storage. Resuming is not a way to read or write someone else's upload.
