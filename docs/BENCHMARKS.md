@@ -97,7 +97,7 @@ After a re-pick, the app lists the parts R2 holds and MD5s each one from the loc
 | 100 GiB | crash, 60%     | 960        | 195.9 s | 314 MiB/s |
 | 100 GiB | impostor, 70%  | 1,120      | 227.9 s | 315 MiB/s |
 
-The rate is flat, so the time grows with progress. Hashing runs one part at a time. At the 350 GiB gate's 85% re-pick that is about 16 minutes before the upload moves, and fixing it comes before that gate ([plan](plan/01-foundation.md)). These numbers come from the FUSE source; a real SSD or a USB drive will differ.
+The rate is flat, so the time grows with progress. These runs hashed on the page thread, one 64 MiB part per ~120 ms wasm call (measured on this host: 120 ms for 64 MiB), which froze the page. Hashing now runs in a worker with progress shown, still one part at a time, so the times above should hold but the page no longer freezes; the next gate run records the new numbers. At the 350 GiB gate's 85% re-pick that is still about 16 minutes before the upload moves ([plan](plan/01-foundation.md)). These numbers come from the FUSE source; a real SSD or a USB drive will differ.
 
 ## Reproduce a number
 
