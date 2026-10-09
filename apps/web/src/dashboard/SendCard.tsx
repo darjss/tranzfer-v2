@@ -22,7 +22,7 @@ const ghost = css({
 
 // The cheapest paid plan whose links last that long. Every retention option is
 // within Studio's, so one always exists.
-const unlockedBy = (days: RetentionDays) =>
+export const unlockedBy = (days: RetentionDays) =>
   PaidPlanId.literals.find((plan) => plans[plan].maxRetentionDays >= days) ?? "studio";
 
 /**
