@@ -3,10 +3,10 @@ import { PlanId, plans } from "@tranzfer/contracts";
 // Monthly cost of sending `count` deliveries of `sizeGb` each, per service,
 // with `live` of them still downloadable at the same time.
 // Competitor numbers are their published USD prices on monthly billing,
-// checked 8 October 2026 (sources below). Pure, so the page and its test share
+// checked 9 October 2026 (sources below). Pure, so the page and its test share
 // one set of rules.
 
-export const checked = "8 October 2026";
+export const checked = "9 October 2026";
 
 export interface Quote {
   readonly id: string;

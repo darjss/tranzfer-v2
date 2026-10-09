@@ -1,5 +1,4 @@
 import Article from "../../guides/Article";
-import { updated } from "../../guides/guides";
 import UploadTimeCalculator, {
   duration,
   planningShare,
@@ -70,7 +69,8 @@ export default function UploadTimeCalculatorPage() {
       ]}
       title="Upload time calculator"
       tool={<UploadTimeCalculator />}
-      updated={updated}
+      section="Tools"
+      updated="2026-10-09"
     >
       <script type="application/ld+json">{JSON.stringify(webApplication)}</script>
       <h2>Mbps or MB/s?</h2>

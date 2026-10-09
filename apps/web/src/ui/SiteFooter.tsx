@@ -1,6 +1,7 @@
 import { For } from "solid-js";
 import { css } from "styled-system/css";
 import Brand from "../landing/Brand";
+import { alternatives, comparisons } from "../guides/pages";
 import { audiences, features } from "../marketing/content";
 import { supportEmail } from "./support";
 
@@ -20,10 +21,6 @@ const columns = [
     links: [
       { href: "/guides", label: "Guides" },
       { href: "/tools/upload-time-calculator", label: "Upload time calculator" },
-      { href: "/vs/masv", label: "Tranzfer vs MASV" },
-      { href: "/vs/wetransfer", label: "Tranzfer vs WeTransfer" },
-      { href: "/alternatives/masv", label: "MASV alternatives" },
-      { href: "/alternatives/wetransfer", label: "WeTransfer alternatives" },
       { href: "/#faq", label: "Questions" },
       { href: "/about", label: "Why we built it" },
       { href: "/ai", label: "For AI assistants" },
@@ -31,6 +28,18 @@ const columns = [
       { href: `mailto:${supportEmail}?subject=Abuse%20report`, label: "Report a link" },
     ],
     title: "Resources",
+  },
+  {
+    links: [
+      { href: "/vs/masv", label: "Tranzfer vs MASV" },
+      { href: "/vs/wetransfer", label: "Tranzfer vs WeTransfer" },
+      ...comparisons.map((page) => ({ href: `/compare/${page.slug}`, label: page.title })),
+      ...alternatives.map((page) => ({
+        href: `/alternatives/${page.slug}`,
+        label: page.title.replace(/ for .*$/u, ""),
+      })),
+    ],
+    title: "Compare",
   },
   {
     links: [
@@ -58,7 +67,7 @@ export function SiteFooter() {
         borderTopWidth: "1px",
         display: "grid",
         gap: "10",
-        gridTemplateColumns: { base: "1fr 1fr", lg: "1.3fr 1fr 1fr 1fr 1fr" },
+        gridTemplateColumns: { base: "1fr 1fr", lg: "1.3fr repeat(5,1fr)" },
         mt: "10",
         paddingBottom: "12",
         pt: "10",

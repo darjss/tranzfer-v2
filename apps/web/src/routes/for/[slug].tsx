@@ -24,9 +24,12 @@ export default function UseCase() {
         <MarketingPage
           page={page()}
           path={`/for/${page().slug}`}
-          related={audiences
-            .filter((other) => other.slug !== page().slug)
-            .map((other) => ({ href: `/for/${other.slug}`, label: other.menu }))}
+          related={[
+            ...(page().guides ?? []),
+            ...audiences
+              .filter((other) => other.slug !== page().slug)
+              .map((other) => ({ href: `/for/${other.slug}`, label: other.menu })),
+          ]}
         />
       )}
     </Show>

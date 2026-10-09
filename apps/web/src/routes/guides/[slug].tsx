@@ -2,11 +2,11 @@ import { useParams } from "@solidjs/router";
 import type { RouteDefinition } from "@solidjs/router";
 import { httpStatus } from "@solidjs/web";
 import { Show } from "solid-js";
-import { features } from "../../marketing/content";
-import MarketingPage from "../../marketing/MarketingPage";
+import { ContentArticle } from "../../guides/Article";
+import { guides } from "../../guides/pages";
 import NotFound from "../[...404]";
 
-const find = (slug: string | undefined) => features.find((page) => page.slug === slug);
+const find = (slug: string | undefined) => guides.find((page) => page.slug === slug);
 
 export const route = {
   preload: ({ params }) => {
@@ -16,20 +16,17 @@ export const route = {
   },
 } satisfies RouteDefinition;
 
-export default function Feature() {
+export default function Guide() {
   const params = useParams<{ slug: string }>();
   return (
     <Show when={find(params.slug)} fallback={<NotFound />}>
       {(page) => (
-        <MarketingPage
+        <ContentArticle
+          eyebrow="Guide"
           page={page()}
-          path={`/features/${page().slug}`}
-          related={[
-            ...(page().guides ?? []),
-            ...features
-              .filter((other) => other.slug !== page().slug)
-              .map((other) => ({ href: `/features/${other.slug}`, label: other.menu })),
-          ]}
+          path={`/guides/${page().slug}`}
+          section="Guides"
+          sectionHref="/guides"
         />
       )}
     </Show>

@@ -80,6 +80,13 @@ export const lintConfig = (
         },
       },
       {
+        files: ["**/src/guides/Article.tsx"],
+        rules: {
+          // Its HTML is our own Markdown from content/, compiled at build time.
+          "solid/no-innerhtml": "off",
+        },
+      },
+      {
         files: paths.effect,
         rules: {
           // Effect's catch/tapError/flatMap/forEach take callbacks and are neither promises nor arrays; these rules match on names.

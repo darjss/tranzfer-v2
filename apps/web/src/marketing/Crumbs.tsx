@@ -1,21 +1,31 @@
+import { Show } from "solid-js";
 import { css } from "styled-system/css";
 import { lastUpdated } from "./content";
 
-// The trail above a marketing page and the date it last changed. The section
-// has no index page yet, so it stays plain text and out of the JSON-LD, which
-// needs a URL for every step but the last.
+// The trail above a marketing page and the date it last changed. A section
+// without an index page stays plain text and out of the JSON-LD, which needs a
+// URL for every step but the last.
 
-const updated = new Intl.DateTimeFormat("en-GB", { dateStyle: "long", timeZone: "UTC" }).format(
-  new Date(lastUpdated),
-);
+const day = new Intl.DateTimeFormat("en-GB", { dateStyle: "long", timeZone: "UTC" });
 
 const mono = css({ color: "mut", fontFamily: "mono", fontSize: "13" });
+
+const link = css({
+  _hover: { color: "ink" },
+  textDecoration: "underline",
+  textDecorationColor: "line",
+  textUnderlineOffset: "[3px]",
+});
 
 export function Crumbs(props: {
   readonly name: string;
   readonly path: string;
   readonly section: string;
+  readonly sectionHref?: string;
+  /** ISO date; the marketing pages' shared date when unset. */
+  readonly updated?: string;
 }) {
+  const updated = () => props.updated ?? lastUpdated;
   return (
     <div
       class={css({
@@ -33,14 +43,12 @@ export function Crumbs(props: {
           "@context": "https://schema.org",
           "@type": "BreadcrumbList",
           itemListElement: [
-            { "@type": "ListItem", item: "https://tranzfer.app/", name: "Home", position: 1 },
-            {
-              "@type": "ListItem",
-              item: `https://tranzfer.app${props.path}`,
-              name: props.name,
-              position: 2,
-            },
-          ],
+            { item: "https://tranzfer.app/", name: "Home" },
+            ...(props.sectionHref === undefined
+              ? []
+              : [{ item: `https://tranzfer.app${props.sectionHref}`, name: props.section }]),
+            { item: `https://tranzfer.app${props.path}`, name: props.name },
+          ].map((step, i) => ({ "@type": "ListItem", ...step, position: i + 1 })),
         })}
       </script>
       <nav aria-label="Breadcrumb" class={mono}>
@@ -53,26 +61,26 @@ export function Crumbs(props: {
           })}
         >
           <li>
-            <a
-              class={css({
-                _hover: { color: "ink" },
-                textDecoration: "underline",
-                textDecorationColor: "line",
-                textUnderlineOffset: "[3px]",
-              })}
-              href="/"
-            >
+            <a class={link} href="/">
               Home
             </a>
           </li>
-          <li>{props.section}</li>
+          <li>
+            <Show when={props.sectionHref} fallback={props.section}>
+              {(href) => (
+                <a class={link} href={href()}>
+                  {props.section}
+                </a>
+              )}
+            </Show>
+          </li>
           <li aria-current="page" class={css({ color: "ink" })}>
             {props.name}
           </li>
         </ol>
       </nav>
       <p class={mono}>
-        Updated <time datetime={lastUpdated}>{updated}</time>
+        Updated <time datetime={updated()}>{day.format(new Date(updated()))}</time>
       </p>
     </div>
   );

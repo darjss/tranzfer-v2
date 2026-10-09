@@ -1,3 +1,4 @@
+import { alternatives, comparisons, guides } from "../guides/pages";
 import { faq } from "../landing/faq";
 import { aiLinks, aiPlanNotes, aiPlans, aiSections, aiSummary, aiUpdated } from "../marketing/ai";
 
@@ -5,6 +6,11 @@ import { aiLinks, aiPlanNotes, aiPlans, aiSections, aiSummary, aiUpdated } from 
 // plain text (llmstxt.org). Prerendered; both come from the same facts.
 const list = (items: readonly string[]) => items.map((item) => `- ${item}`).join("\n");
 const section = (s: (typeof aiSections)[number]) => `## ${s.title}\n\n${list(s.items)}`;
+const pages = [
+  ...guides.map((p) => ({ ...p, path: `/guides/${p.slug}` })),
+  ...alternatives.map((p) => ({ ...p, path: `/alternatives/${p.slug}` })),
+  ...comparisons.map((p) => ({ ...p, path: `/compare/${p.slug}` })),
+];
 
 const body = `# Tranzfer
 
@@ -27,6 +33,10 @@ ${aiSections.slice(3).map(section).join("\n\n")}
 ## Questions
 
 ${faq.map((item) => `### ${item.q}\n\n${item.a}`).join("\n\n")}
+
+## Guides and comparisons
+
+${list(pages.map((p) => `[${p.title}](https://tranzfer.app${p.path}): ${p.answer}`))}
 
 ## Canonical links
 
