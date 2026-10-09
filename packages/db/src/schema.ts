@@ -1,12 +1,21 @@
 import type {
   DeliveryId,
+  PaidPlanId,
   PlanId,
   RetentionDays,
   SubscriptionStatus,
   TransferId,
 } from "@tranzfer/contracts";
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  check,
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 export const user = sqliteTable(
   "user",
@@ -193,3 +202,44 @@ export const subscription = sqliteTable("subscription", {
     .$onUpdate(() => new Date())
     .notNull(),
 });
+
+// A code that gives a paid plan for free, made by hand with `code:create`
+// (docs/PRODUCT.md). Stored upper case. The check makes a redemption past
+// max_uses fail its batch, so concurrent redemptions can't overshoot.
+export const accessCode = sqliteTable(
+  "access_code",
+  {
+    code: text("code").primaryKey(),
+    plan: text("plan").$type<PaidPlanId>().notNull(),
+    // How long each grant lasts from the moment it is redeemed.
+    days: integer("days").notNull(),
+    maxUses: integer("max_uses").notNull(),
+    uses: integer("uses").default(0).notNull(),
+    // Redeemable until then; grants already made keep their own end.
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [check("access_code_uses_within_max", sql`${table.uses} <= ${table.maxUses}`)],
+);
+
+// One row per redeemed code. Polar never sees it; the higher of a grant and a
+// subscription sets the user's plan.
+export const planGrant = sqliteTable(
+  "plan_grant",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    code: text("code")
+      .notNull()
+      .references(() => accessCode.code),
+    plan: text("plan").$type<PaidPlanId>().notNull(),
+    endsAt: integer("ends_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.code] })],
+);
