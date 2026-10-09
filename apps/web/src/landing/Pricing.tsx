@@ -4,7 +4,7 @@ import { dynamic } from "@solidjs/web";
 import { For, Show, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
 import { Hand, Ink } from "./notebook";
-import { eyebrow, section, sectionHead, sectionTitle } from "./styles";
+import { eyebrow, section, sideTitle } from "./styles";
 import { RuntimeContext } from "../api/solid-effect";
 import { goToCheckout } from "../dashboard/billing";
 import { bytes } from "../dashboard/format";
@@ -73,27 +73,40 @@ export default function Pricing(props: { heading?: "h1" }) {
 
   return (
     <section id="pricing" class={section}>
-      <Hand tone="blue" style="left:56%;top:31%;--r:-6deg;--d:.9s">
+      <Hand tone="blue" style="left:38%;top:24%;--r:-6deg;--d:.9s">
         $29. one reshoot
         <br />
         costs more ↓
       </Hand>
-      <Hand style="right:0;top:10%;--r:4deg;--d:.5s">
-        day 3. Marcus has
-        <br />
-        everything. <s>cancel</s>
-      </Hand>
-      <div class={sectionHead}>
-        <p class={eyebrow}>Pricing</p>
-        <Heading class={cx("rv", sectionTitle)}>
-          Pay for the work. <i>Not per gigabyte.</i>
-        </Heading>
-        <p class={css({ color: "mut", fontSize: "17", mt: "4", textWrap: "pretty" })}>
-          Every plan picks up after dropped Wi-Fi, reloads and crashes, sends whole folders and
-          gives your editor one link, no account needed. Bigger plans hold more at once and keep
-          links longer. Files count against your space until the link expires or you cancel it.
-          Downloads don't free space.
-        </p>
+      <div
+        class={css({
+          alignItems: "end",
+          columnGap: "16",
+          display: "grid",
+          gridTemplateColumns: { base: "1fr", lg: "minmax(0,1fr) minmax(0,1fr)" },
+          mb: { base: "10", lg: "14" },
+          rowGap: "4",
+        })}
+      >
+        <div>
+          <p class={eyebrow}>Pricing</p>
+          <Heading class={cx("rv", sideTitle)}>
+            Pay for the work. <i>Not per gigabyte.</i>
+          </Heading>
+        </div>
+        <div class={css({ pos: "relative" })}>
+          <Hand style="right:0;top:-70%;--r:4deg;--d:.5s">
+            day 3. Marcus has
+            <br />
+            everything. <s>cancel</s>
+          </Hand>
+          <p class={cx("rv", css({ color: "mut", fontSize: "15", textWrap: "pretty" }))}>
+            Every plan picks up after dropped Wi-Fi, reloads and crashes, sends whole folders and
+            gives your editor one link, no account needed. Bigger plans hold more at once and keep
+            links longer. Files count against your space until the link expires or you cancel it.
+            Downloads don't free space.
+          </p>
+        </div>
       </div>
 
       <div
@@ -228,7 +241,7 @@ export default function Pricing(props: { heading?: "h1" }) {
           }}
         </For>
       </div>
-      <p class={css({ color: "mut", mt: "8", textStyle: "sm" })}>
+      <p class={css({ color: "mut", mt: "6", textStyle: "sm" })}>
         Billed monthly through Polar. Cancel whenever; your plan runs to the end of the month you
         paid for.
       </p>

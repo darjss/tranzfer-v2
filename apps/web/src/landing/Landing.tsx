@@ -1,10 +1,11 @@
 import { css } from "styled-system/css";
+import Compare from "./Compare";
 import Faq from "./Faq";
 import FinalCta from "./FinalCta";
 import Hero from "./Hero";
 import HowItWorks from "./HowItWorks";
+import MadeFor from "./MadeFor";
 import Pricing from "./Pricing";
-import Receipts from "./Receipts";
 import Survives from "./Survives";
 import Ticker from "./Ticker";
 import { page } from "./styles";
@@ -27,9 +28,10 @@ export default function Landing() {
         <Ticker />
         <div class={page}>
           <Survives />
-          <Receipts />
           <HowItWorks />
+          <MadeFor />
           <Pricing />
+          <Compare />
           <Faq />
           <FinalCta />
         </div>
