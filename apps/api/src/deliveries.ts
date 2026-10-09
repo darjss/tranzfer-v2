@@ -505,7 +505,7 @@ export class Deliveries extends Context.Service<
               ),
             ),
           );
-        });
+        }).pipe(Effect.withSpan("Deliveries.place"));
 
       return Deliveries.of({
         activeBytes,
