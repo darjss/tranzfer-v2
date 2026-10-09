@@ -57,6 +57,7 @@ const delivery = (
   createdAt: new Date("2026-09-29T08:00:00Z"),
   download,
   expiresAt: status === "ready" ? new Date("2026-10-02T08:00:00Z") : null,
+  hasPassword: false,
   id: DeliveryId.make(crypto.randomUUID()),
   link: `/d/${title}`,
   note: "",
@@ -164,8 +165,20 @@ const makeWorld = (
                 return row;
               });
             }),
+          SetLinkPassword: ({ deliveryId, password }) =>
+            Effect.gen(function* fakeSetPassword() {
+              const index = server.findIndex((row) => row.id === deliveryId);
+              const row = server[index];
+              if (row === undefined) {
+                return yield* Effect.die(new Error("unknown delivery"));
+              }
+              const updated = Struct.evolve(row, { hasPassword: () => password !== null });
+              server[index] = updated;
+              return updated;
+            }),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
+          UnlockLink: () => Effect.die("unused"),
           UpdateDelivery: ({ deliveryId, note, title }) =>
             Effect.gen(function* fakeUpdate() {
               const index = server.findIndex((row) => row.id === deliveryId);
@@ -264,6 +277,9 @@ const Landing = (props: { redeem: (code: string) => Promise<string | undefined> 
   });
   return null;
 };
+
+// The sheet is a modal dialog, which testing-library treats as hidden.
+const button = (name: string) => screen.getByRole("button", { hidden: true, name });
 
 const readyCount = () => screen.getByRole("heading", { name: /Ready to share/u }).textContent;
 
@@ -420,7 +436,13 @@ describe("dashboard reactivity", () => {
               select={noop}
               sendAgain={noop}
             />
-            <DeliverySheet cancel={nothingToReport} close={noop} delivery={waiting} online />
+            <DeliverySheet
+              cancel={nothingToReport}
+              close={noop}
+              delivery={waiting}
+              online
+              setPassword={nothingToReport}
+            />
           </RuntimeContext>
         ));
         flush();
@@ -452,7 +474,13 @@ describe("dashboard reactivity", () => {
       async () => {
         render(() => (
           <RuntimeContext value={runtime}>
-            <DeliverySheet cancel={nothingToReport} close={noop} delivery={waiting} online />
+            <DeliverySheet
+              cancel={nothingToReport}
+              close={noop}
+              delivery={waiting}
+              online
+              setPassword={nothingToReport}
+            />
           </RuntimeContext>
         ));
         flush();
@@ -845,6 +873,7 @@ describe("dashboard reactivity", () => {
             emailed={state.emailed}
             emailing={state.emailing()}
             finished={state.finished()}
+            setPassword={state.setPassword}
             update={state.update}
           />
           <Board
@@ -987,6 +1016,7 @@ describe("dashboard reactivity", () => {
           emailed={state.emailed}
           emailing={state.emailing()}
           finished={state.finished()}
+          setPassword={state.setPassword}
           update={state.update}
         />
       );
@@ -1064,6 +1094,65 @@ describe("dashboard reactivity", () => {
     expect(card.getByRole("button", { name: "Email it to more people" })).toBeInTheDocument();
     expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
     assertBudget(artifact, { allow: ["OPTIMISTIC_REVERTED"], maxReruns: 45, maxWastedRuns: 0 });
+    await runtime.dispose();
+  });
+
+  it("the sheet sets, changes and removes a link password and never shows it back", async () => {
+    const server = [delivery("Locked", "ready", [MB])];
+    const runtime = makeWorld(server);
+    const Harness = () => {
+      const state = createDeliveries(runtime);
+      return (
+        <Show when={state.deliveries[0]}>
+          {(row) => (
+            <DeliverySheet
+              cancel={state.cancel}
+              close={noop}
+              delivery={row()}
+              online
+              setPassword={state.setPassword}
+            />
+          )}
+        </Show>
+      );
+    };
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Harness />
+        </Loading>
+      </RuntimeContext>
+    ));
+    await vi.waitFor(() => {
+      expect(screen.queryByText("loading")).toBeNull();
+    });
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        button("Add a password").click();
+        flush();
+        expect(button("Save password")).toBeDisabled();
+        fireEvent.input(
+          screen.getByRole("textbox", { hidden: true, name: /Password for the recipient/u }),
+          { target: { value: "wrap-2026-ep14" } },
+        );
+        flush();
+        button("Save password").click();
+        await screen.findByText("Password set");
+        await vi.waitFor(() => {
+          expect(server[0]?.hasPassword).toBe(true);
+        });
+      },
+      { scenario: "link-password-set" },
+    );
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    expect(document.body.textContent).not.toContain("wrap-2026-ep14");
+
+    button("Remove").click();
+    await screen.findByRole("button", { hidden: true, name: "Add a password" });
+    await vi.waitFor(() => {
+      expect(server[0]?.hasPassword).toBe(false);
+    });
     await runtime.dispose();
   });
 

@@ -32,7 +32,7 @@ import {
   untilDate,
 } from "./format";
 import type { Kind } from "./format";
-import { CopyLink, KindIcon, kindText, Progress } from "./parts";
+import { CopyLink, KindIcon, kindText, LinkPassword, Progress } from "./parts";
 import "./dashboard.css";
 
 const block = css({
@@ -76,6 +76,7 @@ function Details(props: {
   cancel: (deliveryId: DeliveryId) => Promise<string | undefined>;
   delivery: Delivery;
   online: boolean;
+  setPassword: (deliveryId: DeliveryId, password: string | null) => Promise<string | undefined>;
 }) {
   const runtime = useContext(RuntimeContext);
   const live = liveDelivery(props);
@@ -315,6 +316,11 @@ function Details(props: {
             Share it now. It starts working once every file is finished.
           </p>
         </Show>
+        <Show when={shareable()}>
+          <div class={css({ display: "grid", gap: "2.5", mt: "4" })}>
+            <LinkPassword delivery={props.delivery} setPassword={props.setPassword} />
+          </div>
+        </Show>
       </section>
 
       <section class={block}>
@@ -487,6 +493,7 @@ export function DeliverySheet(props: {
   close: () => void;
   delivery: Delivery | undefined;
   online: boolean;
+  setPassword: (deliveryId: DeliveryId, password: string | null) => Promise<string | undefined>;
 }) {
   let dialog: HTMLDialogElement | undefined;
   // Keep the last delivery on screen while the sheet slides away.
@@ -601,7 +608,12 @@ export function DeliverySheet(props: {
                 <PhXBold class={css({ boxSize: "4" })} />
               </button>
             </header>
-            <Details cancel={props.cancel} delivery={delivery()} online={props.online} />
+            <Details
+              cancel={props.cancel}
+              delivery={delivery()}
+              online={props.online}
+              setPassword={props.setPassword}
+            />
           </div>
         )}
       </Show>

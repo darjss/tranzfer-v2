@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from "@effect/vitest";
 import { assertBudget, captureArtifact } from "@solidjs/diagnostics";
 import "@solidjs/diagnostics/vitest";
 import { cleanup, render, screen } from "@solidjs/testing-library";
-import { Api, Authenticated, CurrentPrincipal } from "@tranzfer/contracts";
+import {
+  Api,
+  Authenticated,
+  CurrentPrincipal,
+  LinkLocked,
+  WrongPassword,
+} from "@tranzfer/contracts";
 import type { SharedDelivery } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -77,8 +83,14 @@ const makeDisk = () => {
   return { files, folders, root: folderAt("", "Recipient") };
 };
 
-const makeWorld = () => {
+// A link with a password: the right one trades for this unlock, and only it opens the link.
+const UNLOCK = "unlock-token";
+
+const makeWorld = (options: { locked?: boolean } = {}) => {
   const reports: string[] = [];
+  // The unlock each call carried, in order.
+  const opens: (string | undefined)[] = [];
+  const reportUnlocks: (string | undefined)[] = [];
   const api = Layer.effect(ApiClient, RpcTest.makeClient(Api)).pipe(
     Layer.provide(
       Api.toLayer(
@@ -93,15 +105,27 @@ const makeWorld = () => {
           JoinInterest: () => Effect.die("unused"),
           Me: () => Effect.die("unused"),
           OpenBillingPortal: () => Effect.die("unused"),
-          OpenLink: () => Effect.succeed(delivery),
+          OpenLink: ({ unlock }) =>
+            Effect.suspend(() => {
+              opens.push(unlock);
+              return options.locked === true && unlock !== UNLOCK
+                ? Effect.fail(new LinkLocked({ senderName: "Sender" }))
+                : Effect.succeed(delivery);
+            }),
           RedeemCode: () => Effect.die("unused"),
-          ReportDownload: ({ event, path }) =>
+          ReportDownload: ({ event, path, unlock }) =>
             Effect.sync(() => {
               reports.push(`${event} ${path}`);
+              reportUnlocks.push(unlock);
             }),
           SendDeliveryEmail: () => Effect.die("unused"),
+          SetLinkPassword: () => Effect.die("unused"),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
+          UnlockLink: ({ password }) =>
+            password === "right one"
+              ? Effect.succeed({ expiresAt: new Date("2026-10-13T08:00:00Z"), unlock: UNLOCK })
+              : Effect.fail(new WrongPassword()),
           UpdateDelivery: () => Effect.die("unused"),
         }),
       ),
@@ -137,6 +161,8 @@ const makeWorld = () => {
     HttpServerRequest.fromWeb(new Request("http://test/rpc")),
   );
   return {
+    opens,
+    reportUnlocks,
     reports,
     runtime: ManagedRuntime.make(Layer.mergeAll(api, uploads).pipe(Layer.provide(request))),
   };
@@ -168,7 +194,7 @@ describe("SaveAll", () => {
     const { reports, runtime } = makeWorld();
     render(() => (
       <RuntimeContext value={runtime}>
-        <SaveAll delivery={delivery} token="token" />
+        <SaveAll delivery={delivery} token="token" unlock={undefined} />
       </RuntimeContext>
     ));
 
@@ -212,7 +238,7 @@ describe("SaveAll", () => {
     const { runtime } = makeWorld();
     render(() => (
       <RuntimeContext value={runtime}>
-        <SaveAll delivery={delivery} token="token" />
+        <SaveAll delivery={delivery} token="token" unlock={undefined} />
       </RuntimeContext>
     ));
     flush();

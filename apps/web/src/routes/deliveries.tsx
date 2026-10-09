@@ -136,6 +136,7 @@ const DeliveriesPage = () => {
     redeeming,
     send,
     sending,
+    setPassword,
     update,
   } = createDeliveries(runtime);
   const selected = () => {
@@ -466,6 +467,7 @@ const DeliveriesPage = () => {
                   emailed={emailed}
                   emailing={emailing()}
                   finished={finished()}
+                  setPassword={setPassword}
                   update={update}
                 />
                 <Board
@@ -523,6 +525,7 @@ const DeliveriesPage = () => {
             }}
             delivery={selected()}
             online={online()}
+            setPassword={setPassword}
           />
         </Errored>
       </Loading>

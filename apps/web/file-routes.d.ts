@@ -41,6 +41,30 @@ declare module "virtual:file-routes" {
       $$route: FileRouteEagerRef<typeof import("./src/routes/[...404]")>;
     },
     {
+      path: "/about";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/about")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/acceptable-use";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/acceptable-use")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/ai";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/ai")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/alternatives/:slug";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/alternatives/[slug]")>;
+      $$route: FileRouteEagerRef<typeof import("./src/routes/alternatives/[slug]")>;
+    },
+    {
       path: "/api/auth/*all";
       page: false;
       $GET: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
@@ -61,6 +85,12 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/compare/:slug";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/compare/[slug]")>;
+      $$route: FileRouteEagerRef<typeof import("./src/routes/compare/[slug]")>;
+    },
+    {
       path: "/d/:token";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/d/[token]")>;
@@ -70,6 +100,30 @@ declare module "virtual:file-routes" {
       path: "/deliveries";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/deliveries")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/features/:slug";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/features/[slug]")>;
+      $$route: FileRouteEagerRef<typeof import("./src/routes/features/[slug]")>;
+    },
+    {
+      path: "/for/:slug";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/for/[slug]")>;
+      $$route: FileRouteEagerRef<typeof import("./src/routes/for/[slug]")>;
+    },
+    {
+      path: "/guides/:slug";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/guides/[slug]")>;
+      $$route: FileRouteEagerRef<typeof import("./src/routes/guides/[slug]")>;
+    },
+    {
+      path: "/guides/";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/guides/index")>;
       $$route?: undefined;
     },
     {
@@ -86,6 +140,32 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/llms-full.txt";
+      page: false;
+      $GET: FileRouteEagerRef<typeof import("./src/routes/llms-full.txt")>;
+      $HEAD: FileRouteEagerRef<typeof import("./src/routes/llms-full.txt")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/llms.txt";
+      page: false;
+      $GET: FileRouteEagerRef<typeof import("./src/routes/llms.txt")>;
+      $HEAD: FileRouteEagerRef<typeof import("./src/routes/llms.txt")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/pricing";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/pricing")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/privacy";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/privacy")>;
+      $$route?: undefined;
+    },
+    {
       path: "/rpc";
       page: false;
       $POST: FileRouteEagerRef<typeof import("./src/routes/rpc")>;
@@ -95,6 +175,30 @@ declare module "virtual:file-routes" {
       path: "/sign-in";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/sign-in")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/terms";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/terms")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/tools/upload-time-calculator";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/tools/upload-time-calculator")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/vs/masv";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/vs/masv")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/vs/wetransfer";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/vs/wetransfer")>;
       $$route?: undefined;
     }
   ];
@@ -111,6 +215,14 @@ declare module "virtual:file-routes" {
       children?: undefined;
     },
     {
+      path: "/ai";
+      id: "/ai";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/ai")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
       path: "/*404";
       id: "/*404";
       page: true;
@@ -119,10 +231,58 @@ declare module "virtual:file-routes" {
       children?: undefined;
     },
     {
+      path: "/about";
+      id: "/about";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/about")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/terms";
+      id: "/terms";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/terms")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/guides/";
+      id: "/guides/";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/guides/index")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/pricing";
+      id: "/pricing";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/pricing")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/privacy";
+      id: "/privacy";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/privacy")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
       path: "/sign-in";
       id: "/sign-in";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/sign-in")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/vs/masv";
+      id: "/vs/masv";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/vs/masv")>;
       $$route?: undefined;
       children?: undefined;
     },
@@ -135,10 +295,74 @@ declare module "virtual:file-routes" {
       children?: undefined;
     },
     {
+      path: "/for/:slug";
+      id: "/for/:slug";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/for/[slug]")>;
+      $$route: FileRouteEagerRef<typeof import("./src/routes/for/[slug]")>;
+      children?: undefined;
+    },
+    {
       path: "/deliveries";
       id: "/deliveries";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/deliveries")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/guides/:slug";
+      id: "/guides/:slug";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/guides/[slug]")>;
+      $$route: FileRouteEagerRef<typeof import("./src/routes/guides/[slug]")>;
+      children?: undefined;
+    },
+    {
+      path: "/compare/:slug";
+      id: "/compare/:slug";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/compare/[slug]")>;
+      $$route: FileRouteEagerRef<typeof import("./src/routes/compare/[slug]")>;
+      children?: undefined;
+    },
+    {
+      path: "/vs/wetransfer";
+      id: "/vs/wetransfer";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/vs/wetransfer")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/acceptable-use";
+      id: "/acceptable-use";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/acceptable-use")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/features/:slug";
+      id: "/features/:slug";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/features/[slug]")>;
+      $$route: FileRouteEagerRef<typeof import("./src/routes/features/[slug]")>;
+      children?: undefined;
+    },
+    {
+      path: "/alternatives/:slug";
+      id: "/alternatives/:slug";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/alternatives/[slug]")>;
+      $$route: FileRouteEagerRef<typeof import("./src/routes/alternatives/[slug]")>;
+      children?: undefined;
+    },
+    {
+      path: "/tools/upload-time-calculator";
+      id: "/tools/upload-time-calculator";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/tools/upload-time-calculator")>;
       $$route?: undefined;
       children?: undefined;
     }
