@@ -18,6 +18,18 @@ const staticPages = [
   "/about",
   "/vs/masv",
   "/vs/wetransfer",
+  "/alternatives/wetransfer",
+  "/alternatives/masv",
+  "/tools/upload-time-calculator",
+  "/guides",
+  // One per entry in src/guides/guides.ts.
+  ...[
+    "how-to-send-large-files",
+    "send-large-video-files-to-an-editor",
+    "send-raw-photos-to-a-client",
+    "send-pro-tools-or-logic-session",
+    "how-long-to-upload-100-gb",
+  ].map((slug) => `/guides/${slug}`),
   // One per entry in src/marketing/content.ts.
   ...["send-large-files", "resume", "folders", "share-links", "dashboard", "privacy"].map(
     (slug) => `/features/${slug}`,
