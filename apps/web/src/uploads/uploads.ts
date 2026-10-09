@@ -2,10 +2,11 @@ import type { AwsS3Options } from "@uppy/aws-s3";
 import AwsS3 from "@uppy/aws-s3";
 import { Uppy } from "@uppy/core";
 import type { Body, Meta } from "@uppy/core/utils";
-import { DeliveryId, partSize, RelativePath, TransferId } from "@tranzfer/contracts";
+import { checkFiles, DeliveryId, maxTitleLength, partSize, TransferId } from "@tranzfer/contracts";
 import type {
   Delivery,
   DeliveryConflict,
+  DeliveryRefused,
   OverPlanLimit,
   RateLimited,
   RetentionDays,
@@ -97,8 +98,12 @@ export const chosenFiles = (files: Iterable<File>) => {
   return chosen;
 };
 
-export const invalidPaths = (files: readonly ChosenFile[]) =>
-  files.filter(({ path }) => !Schema.is(RelativePath)(path)).map(({ path }) => path);
+// A name can be longer than a title may be, so the title is cut to fit. A cut
+// through a surrogate pair would leave half a character, so the half goes too.
+const fitTitle = (title: string) =>
+  title.length <= maxTitleLength
+    ? title
+    : `${title.slice(0, maxTitleLength - 1).replace(/[\uD800-\uDBFF]$/u, "")}…`;
 
 export const deliveryTitle = (files: readonly ChosenFile[]) => {
   const [first] = files;
@@ -107,12 +112,12 @@ export const deliveryTitle = (files: readonly ChosenFile[]) => {
   }
   const [top] = first.path.split("/");
   if (files.length > 1 && files.every(({ path }) => path.startsWith(`${top}/`))) {
-    return top;
+    return fitTitle(top ?? "Delivery");
   }
   if (files.length === 1) {
-    return first.file.name;
+    return fitTitle(first.file.name);
   }
-  return `${first.file.name} and ${files.length - 1} more`;
+  return fitTitle(`${first.file.name} and ${files.length - 1} more`);
 };
 
 // Aborts are never signed: cancel is a server-side operation, and signing
@@ -582,6 +587,8 @@ const make = Effect.gen(function* makeUploads() {
     files: readonly ChosenFile[],
     retentionDays: RetentionDays,
   ) {
+    // Nothing is created for files the API would refuse.
+    yield* checkFiles(files);
     const uppy = yield* engine;
     // Fingerprints and ids are fixed before anything is sent, so a retried
     // CreateDelivery replays the same delivery instead of making a second.
@@ -625,8 +632,9 @@ const make = Effect.gen(function* makeUploads() {
         version: 1,
       })),
     );
-    const refused = (error: DeliveryConflict | OverPlanLimit | RateLimited | RetentionNotInPlan) =>
-      Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error));
+    const refused = (
+      error: DeliveryConflict | DeliveryRefused | OverPlanLimit | RateLimited | RetentionNotInPlan,
+    ) => Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error));
     yield* spans.beginDelivery(deliveryId, {
       "delivery.file_count": files.length,
       "delivery.retention_days": retentionDays,
@@ -644,6 +652,7 @@ const make = Effect.gen(function* makeUploads() {
       // attempt exists to resume; its records go.
       Effect.catchTags({
         DeliveryConflict: refused,
+        DeliveryRefused: refused,
         OverPlanLimit: refused,
         RateLimited: refused,
         RetentionNotInPlan: refused,

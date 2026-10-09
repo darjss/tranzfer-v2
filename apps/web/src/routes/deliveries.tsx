@@ -28,7 +28,7 @@ import { SendCard } from "../dashboard/SendCard";
 import { TopBar } from "../dashboard/TopBar";
 import { inkStrokes } from "../landing/notebook";
 import { online, wireWindow } from "../uploads/store";
-import { chosenFiles, getDroppedFiles, invalidPaths } from "../uploads/uploads";
+import { chosenFiles, getDroppedFiles } from "../uploads/uploads";
 import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
 import { paidPlansOpen } from "../ui/support";
@@ -128,11 +128,6 @@ const DeliveriesPage = () => {
     }
     const chosen = chosenFiles(picked);
     if (chosen.length === 0) {
-      return;
-    }
-    const bad = invalidPaths(chosen);
-    if (bad.length > 0) {
-      setProblems(bad.map((path) => `"${path}" isn't a path we can carry safely.`));
       return;
     }
     setProblems([]);

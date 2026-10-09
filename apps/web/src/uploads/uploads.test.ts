@@ -1,5 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
-import { DeliveryId, InvalidUpload, NotUploaded, TransferId } from "@tranzfer/contracts";
+import {
+  checkFiles,
+  DeliveryId,
+  maxTitleLength,
+  InvalidUpload,
+  NotUploaded,
+  TransferId,
+} from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Tracer from "effect/Tracer";
@@ -9,6 +16,7 @@ import { md5 } from "hash-wasm";
 
 import { RpcClientDefect, RpcClientError } from "effect/rpc/RpcClientError";
 
+import { appError } from "../api/errors";
 import { fingerprint } from "./recovery";
 import { makeUploadSpans } from "./spans";
 import {
@@ -259,6 +267,46 @@ describe("choosing files", () => {
       "a.mov and 2 more",
     );
   });
+});
+
+const refusal = (names: readonly string[]) =>
+  Effect.map(Effect.flip(checkFiles(names.map((path) => ({ path })))), (error) => appError(error));
+
+describe("refusing a selection", () => {
+  it("titles_stay_within_the_contract_whatever_the_names", () => {
+    const longName = "n".repeat(255);
+    const titles = [
+      deliveryTitle(chosenFiles([file(longName)])),
+      deliveryTitle(chosenFiles([file(longName), file("b.mov")])),
+      deliveryTitle(chosenFiles([file("😀".repeat(127))])),
+      deliveryTitle(chosenFiles([file("a", `${longName}/a`), file("b", `${longName}/b`)])),
+    ];
+    expect(titles.map((title) => title.length <= maxTitleLength)).toEqual([true, true, true, true]);
+    expect(titles[2]).not.toMatch(/[\uD800-\uDBFF]…$/u);
+  });
+
+  it.effect("255_byte_names_pass_and_the_next_byte_says_how_long_it_is", () =>
+    Effect.gen(function* refusals() {
+      yield* checkFiles([{ path: "a".repeat(255) }, { path: `d/${"日".repeat(85)}` }]);
+      const ascii = yield* refusal(["b".repeat(256)]);
+      expect(ascii.message).toBe(
+        `"${"b".repeat(80)}…" is 256 characters long. Names can be up to 255. Shorten it and try again.`,
+      );
+      const multibyte = yield* refusal(["日".repeat(86)]);
+      expect(multibyte.message).toContain("is 86 characters and 258 bytes long.");
+    }),
+  );
+
+  it.effect("too_many_files_says_the_count_and_the_way_out", () =>
+    Effect.gen(function* refusals() {
+      const tooMany = yield* refusal(Array.from({ length: 2000 }, (_, index) => `f${index}`));
+      expect(tooMany).toEqual({
+        message:
+          "That's 2,000 files. A delivery holds up to 1,000. Send them in two deliveries or zip a folder.",
+        tag: "DeliveryRefused",
+      });
+    }),
+  );
 });
 
 describe("upload spans", () => {
