@@ -19,6 +19,7 @@ Allow: /
 Disallow: /api/
 Disallow: /rpc
 Disallow: /d/
+Disallow: /r/
 Disallow: /deliveries
 Disallow: /sign-in
 
@@ -27,6 +28,7 @@ Allow: /
 Disallow: /api/
 Disallow: /rpc
 Disallow: /d/
+Disallow: /r/
 Disallow: /deliveries
 Disallow: /sign-in
 

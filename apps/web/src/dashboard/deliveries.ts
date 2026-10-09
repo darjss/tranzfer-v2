@@ -39,6 +39,68 @@ export interface Finished {
 }
 
 /**
+ * Reads a list of deliveries again when something it shows may have settled:
+ * a transfer this tab finished, one another tab stopped sending, or one the
+ * server was finalizing. Shared by the owner's board and an uploader's page.
+ */
+export const rereadWhenSettled = (
+  list: readonly Pick<Delivery, "transfers">[],
+  reread: () => void,
+) => {
+  // A transfer finishing locally changes its delivery on the server.
+  createEffect(
+    () => Object.values(transfers).filter((progress) => progress.phase === "done").length,
+    (done, before) => {
+      if (before !== undefined && done > before) {
+        reread();
+      }
+    },
+  );
+  // A transfer another tab is sending ends when that tab lets go of its lock,
+  // finished or closed. Read the list again then. The key is the joined ids so
+  // the effect restarts only when the set changes, not on every phase write.
+  createEffect(
+    () =>
+      Object.entries(transfers)
+        .filter(([, progress]) => progress.phase === "elsewhere")
+        .map(([transferId]) => transferId)
+        .join(","),
+    (ids) => {
+      const abort = new AbortController();
+      const readWhenFree = async (transferId: string) => {
+        if (await untilFree(transferId, abort.signal)) {
+          reread();
+        }
+      };
+      for (const transferId of ids === "" ? [] : ids.split(",")) {
+        void readWhenFree(transferId);
+      }
+      return () => {
+        abort.abort();
+      };
+    },
+  );
+  // A server-side finalizing transfer settles on its own (this tab's lost
+  // Complete, or the sweeper); poll until none are left so it lands as done.
+  createEffect(
+    () =>
+      list.some((delivery) =>
+        delivery.transfers.some((transfer) => transfer.state === "finalizing"),
+      ),
+    (stuck) => {
+      const timer = stuck
+        ? setInterval(() => {
+            reread();
+          }, 10_000)
+        : undefined;
+      return () => {
+        clearInterval(timer);
+      };
+    },
+  );
+};
+
+/**
  * The sender's deliveries and the actions that change them. Each action
  * resolves to a problem to show, or undefined when it went through.
  */
@@ -62,57 +124,9 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     [],
     { key: "id" },
   );
-  // A transfer finishing locally changes its delivery on the server.
-  createEffect(
-    () => Object.values(transfers).filter((progress) => progress.phase === "done").length,
-    (done, before) => {
-      if (before !== undefined && done > before) {
-        void refresh(deliveries);
-      }
-    },
-  );
-  // A transfer another tab is sending ends when that tab lets go of its lock,
-  // finished or closed. Read the list again then. The key is the joined ids so
-  // the effect restarts only when the set changes, not on every phase write.
-  createEffect(
-    () =>
-      Object.entries(transfers)
-        .filter(([, progress]) => progress.phase === "elsewhere")
-        .map(([transferId]) => transferId)
-        .join(","),
-    (ids) => {
-      const abort = new AbortController();
-      const readWhenFree = async (transferId: string) => {
-        if (await untilFree(transferId, abort.signal)) {
-          void refresh(deliveries);
-        }
-      };
-      for (const transferId of ids === "" ? [] : ids.split(",")) {
-        void readWhenFree(transferId);
-      }
-      return () => {
-        abort.abort();
-      };
-    },
-  );
-  // A server-side finalizing transfer settles on its own (this tab's lost
-  // Complete, or the sweeper); poll until none are left so it lands as done.
-  createEffect(
-    () =>
-      deliveries.some((delivery) =>
-        delivery.transfers.some((transfer) => transfer.state === "finalizing"),
-      ),
-    (stuck) => {
-      const timer = stuck
-        ? setInterval(() => {
-            void refresh(deliveries);
-          }, 10_000)
-        : undefined;
-      return () => {
-        clearInterval(timer);
-      };
-    },
-  );
+  rereadWhenSettled(deliveries, () => {
+    void refresh(deliveries);
+  });
   // The server flips a delivery to ready only after every file has finalized,
   // so this is the finished moment, not progress reaching 100%.
   const [finished, setFinished] = createSignal<readonly Finished[]>([]);
@@ -379,7 +393,10 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
 };
 
 /** A delivery's live state: server status plus whatever this tab is uploading. */
-export const liveDelivery = (source: { readonly delivery: Delivery; readonly online: boolean }) => {
+export const liveDelivery = (source: {
+  readonly delivery: Pick<Delivery, "status" | "transfers">;
+  readonly online: boolean;
+}) => {
   const roll = createMemo(() => rollup(source.delivery, (id) => transfers[id]), {
     name: "Row.roll",
   });

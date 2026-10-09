@@ -12,12 +12,9 @@ import {
 } from "@tranzfer/contracts";
 import type {
   Delivery,
-  DeliveryConflict,
-  DeliveryRefused,
-  OverPlanLimit,
-  RateLimited,
+  NewFile,
   RetentionDays,
-  RetentionNotInPlan,
+  SignedUrl,
   Transfer,
   UploadRequest,
 } from "@tranzfer/contracts";
@@ -32,6 +29,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
 import { ApiClient } from "../api/client";
+import type { ApiError } from "../api/errors";
 import {
   fingerprint,
   forget,
@@ -69,6 +67,8 @@ const SPEED_WINDOW_MS = 30_000;
 // it; one part stream tops out near 20 MB/s. Four parts at once is rclone's
 // default and leaves room for a second file.
 const PART_CONCURRENCY = 4;
+// RequestUploads reads this many delivery ids at a time.
+const MAX_RECOVERED = 50;
 
 /** Bytes of the given parts; only the last part is short. */
 const partBytes = (parts: ReadonlySet<number>, size: number) => {
@@ -293,6 +293,9 @@ const make = Effect.gen(function* makeUploads() {
   // transferId -> transport retries spent; any acknowledged part resets the
   // budget because progress proves transport works.
   const autoRetries = new Map<TransferId, number>();
+  // transferId -> the file request's token, for transfers an uploader without
+  // an account sends. Their calls go to the token-bound RPCs.
+  const requestTokens = new Map<TransferId, string>();
   // transferId -> part numbers R2 holds. Parts finish out of order, so
   // confirmed bytes come from this set, seeded from ListParts on resume.
   const doneParts = new Map<TransferId, Set<number>>();
@@ -330,6 +333,23 @@ const make = Effect.gen(function* makeUploads() {
       ),
     );
 
+  // An owner's transfer signs and finalizes as the owner; an uploader's, as
+  // the request's token.
+  const signFor = (transferId: TransferId | undefined, key: string, request: UploadRequest) =>
+    Effect.suspend((): Effect.Effect<SignedUrl, ApiError> => {
+      const token = transferId === undefined ? undefined : requestTokens.get(transferId);
+      return token === undefined
+        ? api.SignUpload({ key, request })
+        : api.SignRequestUpload({ key, request, token });
+    });
+  const finalizeFor = (transferId: TransferId) =>
+    Effect.suspend((): Effect.Effect<Pick<Delivery, "id" | "status" | "transfers">, ApiError> => {
+      const token = requestTokens.get(transferId);
+      return token === undefined
+        ? api.FinalizeTransfer({ transferId })
+        : api.FinalizeRequestTransfer({ token, transferId });
+    });
+
   const sign = Effect.fn("Uploads.sign")(function* sign(request: PresignableRequest) {
     const upload = toUploadRequest(request);
     if (upload === null) {
@@ -346,7 +366,7 @@ const make = Effect.gen(function* makeUploads() {
       uploadIdStored.set(transferId, request.uploadId);
       yield* recordUploadId(transferId, request.uploadId);
     }
-    const signed = yield* retryTransport(api.SignUpload({ key: request.key, request: upload }));
+    const signed = yield* retryTransport(signFor(transferId, request.key, upload));
     if (upload._tag === "Complete" && transferId !== undefined) {
       completeSigned.add(transferId);
       yield* spans.note(transferId, "complete.signed");
@@ -360,6 +380,7 @@ const make = Effect.gen(function* makeUploads() {
   // means the multipart upload itself vanished (404 or NoSuchUpload), and no
   // resume may start a new one in its place.
   const listRemoteParts = Effect.fn("Uploads.listRemoteParts")(function* listRemoteParts(
+    transferId: TransferId,
     objectKey: string,
     uploadId: string,
   ) {
@@ -367,13 +388,13 @@ const make = Effect.gen(function* makeUploads() {
     let marker: number | undefined;
     for (;;) {
       const signed = yield* retryTransport(
-        api.SignUpload({
-          key: objectKey,
-          request:
-            marker === undefined
-              ? { _tag: "List", uploadId }
-              : { _tag: "List", partNumberMarker: marker, uploadId },
-        }),
+        signFor(
+          transferId,
+          objectKey,
+          marker === undefined
+            ? { _tag: "List", uploadId }
+            : { _tag: "List", partNumberMarker: marker, uploadId },
+        ),
       );
       const response = yield* Effect.tryPromise(
         async () => await fetch(signed.url, { headers: signed.headers }),
@@ -416,6 +437,7 @@ const make = Effect.gen(function* makeUploads() {
       completeSigned.delete(transferId);
       autoRetries.delete(transferId);
       doneParts.delete(transferId);
+      requestTokens.delete(transferId);
       uppy.removeFile(fileId);
       yield* forget([transferId]);
       letGo(transferId);
@@ -428,7 +450,7 @@ const make = Effect.gen(function* makeUploads() {
     fileId: string,
     transferId: TransferId,
   ) {
-    return yield* retryWhileNotUploaded(retryTransport(api.FinalizeTransfer({ transferId }))).pipe(
+    return yield* retryWhileNotUploaded(retryTransport(finalizeFor(transferId))).pipe(
       Effect.matchEffect({
         onFailure: (error) =>
           Effect.andThen(
@@ -602,139 +624,177 @@ const make = Effect.gen(function* makeUploads() {
     }),
   );
 
+  // Creates the delivery for picked files and starts them. `begin` is the API
+  // call that makes the delivery: the owner's CreateDelivery, or an uploader's
+  // CreateRequestUpload, whose `token` then signs and finalizes every file.
+  const place = <D extends Pick<Delivery, "id" | "transfers">, E extends { readonly _tag: string }>(
+    files: readonly ChosenFile[],
+    begin: (draft: {
+      readonly files: readonly NewFile[];
+      readonly id: DeliveryId;
+    }) => Effect.Effect<D, E>,
+    attributes: Record<string, boolean | number>,
+    token?: string,
+  ) =>
+    Effect.gen(function* placeDelivery() {
+      // Nothing is created for files the API would refuse.
+      yield* checkFiles(files);
+      const uppy = yield* engine;
+      // Fingerprints and ids are fixed before anything is sent, so a retried
+      // CreateDelivery replays the same delivery instead of making a second.
+      const prepared = yield* Effect.forEach(
+        files,
+        ({ file, path }) =>
+          Effect.map(fingerprint(file), (print) => ({
+            file,
+            path,
+            print,
+            transferId: TransferId.make(crypto.randomUUID()),
+          })),
+        { concurrency: 4 },
+      );
+      const deliveryId = DeliveryId.make(crypto.randomUUID());
+      const draft = {
+        files: prepared.map(({ file, path, transferId }) => ({
+          contentType: file.type === "" ? null : file.type,
+          id: transferId,
+          lastModified: file.lastModified,
+          path,
+          size: file.size,
+        })),
+        id: deliveryId,
+      };
+      // The records land before CreateDelivery: a create whose response is lost
+      // still leaves enough behind for restore to find the transfers.
+      yield* remember(
+        prepared.map(({ file, path, print, transferId }): RecoveryRecord => ({
+          confirmed: 0,
+          createdAt: Date.now(),
+          deliveryId,
+          fingerprint: print,
+          lastModified: file.lastModified,
+          partSize: partSize(file.size),
+          path,
+          size: file.size,
+          transferId,
+          version: 1,
+        })),
+      );
+      yield* spans.beginDelivery(deliveryId, {
+        "delivery.file_count": files.length,
+        "delivery.total_bytes": files.reduce((total, { file }) => total + file.size, 0),
+        ...attributes,
+      });
+      const delivery = yield* begin(draft).pipe(
+        spans.underDelivery(deliveryId),
+        Effect.retry({
+          schedule: Schedule.exponential("1 second"),
+          times: 5,
+          while: (error) => error._tag === "RpcClientError",
+        }),
+        // A conflict means these ids already belong to different content, and a
+        // plan, request or rate refusal means no delivery was made. Either way
+        // nothing from this attempt exists to resume; its records go. Only a
+        // dropped connection leaves them, since that create may have landed.
+        Effect.catchIf(
+          (error) => error._tag !== "RpcClientError",
+          (error) =>
+            Effect.andThen(
+              forget(prepared.map(({ transferId }) => transferId)),
+              Effect.fail(error),
+            ),
+        ),
+        Effect.tapError((error) => spans.abandon(deliveryId, error._tag)),
+      );
+
+      const byPath = new Map(delivery.transfers.map((transfer) => [transfer.path, transfer]));
+      const added: { fileId: string; size: number; transferId: TransferId }[] = [];
+      // All or nothing: the delivery exists, but if any file can't be queued
+      // none will upload. Drop what landed and cancel the delivery, so no row
+      // is left whose Retry has no file behind it.
+      yield* Effect.try(() => {
+        for (const { file, path } of files) {
+          const transfer = byPath.get(path);
+          if (transfer === undefined) {
+            continue;
+          }
+          patchTransfer(transfer.id, { phase: "queued" });
+          claim(transfer.id);
+          keys.set(transfer.objectKey, transfer.id);
+          if (token !== undefined) {
+            requestTokens.set(transfer.id, token);
+          }
+          const fileId = uppy.addFile({
+            data: file,
+            meta: {
+              deliveryId: delivery.id,
+              objectKey: transfer.objectKey,
+              relativePath: transfer.objectKey,
+              transferId: transfer.id,
+            },
+            name: file.name,
+            type: file.type,
+          });
+          added.push({ fileId, size: transfer.size, transferId: transfer.id });
+        }
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.gen(function* dropQueued() {
+            for (const { fileId } of added) {
+              uppy.removeFile(fileId);
+            }
+            for (const transfer of delivery.transfers) {
+              keys.delete(transfer.objectKey);
+              completeSigned.delete(transfer.id);
+              autoRetries.delete(transfer.id);
+              requestTokens.delete(transfer.id);
+              patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
+              letGo(transfer.id);
+            }
+            yield* forget(delivery.transfers.map((transfer) => transfer.id));
+            yield* spans.abandon(delivery.id, "files could not be queued");
+            // If this cancel fails too, the sweeper ends the open delivery. An
+            // uploader has no account to cancel with; the owner or the sweeper does.
+            if (token === undefined) {
+              yield* Effect.ignore(api.CancelDelivery({ deliveryId: delivery.id }));
+            }
+            return yield* Effect.die(error.cause);
+          }),
+        ),
+      );
+      if (added.length === 0) {
+        yield* spans.abandon(delivery.id, "no file queued");
+      }
+      for (const { fileId, size, transferId } of added) {
+        yield* spans.beginFile(delivery.id, { id: transferId, size }, false);
+        runFork(start(uppy, fileId, transferId));
+      }
+      return delivery;
+    });
+
   const send = Effect.fn("Uploads.send")(function* send(
     files: readonly ChosenFile[],
     retentionDays: RetentionDays,
   ) {
-    // Nothing is created for files the API would refuse.
-    yield* checkFiles(files);
-    const uppy = yield* engine;
-    // Fingerprints and ids are fixed before anything is sent, so a retried
-    // CreateDelivery replays the same delivery instead of making a second.
-    const prepared = yield* Effect.forEach(
+    return yield* place(
       files,
-      ({ file, path }) =>
-        Effect.map(fingerprint(file), (print) => ({
-          file,
-          path,
-          print,
-          transferId: TransferId.make(crypto.randomUUID()),
-        })),
-      { concurrency: 4 },
+      (draft) => api.CreateDelivery({ ...draft, retentionDays, title: deliveryTitle(files) }),
+      { "delivery.retention_days": retentionDays },
     );
-    const deliveryId = DeliveryId.make(crypto.randomUUID());
-    const payload = {
-      files: prepared.map(({ file, path, transferId }) => ({
-        contentType: file.type === "" ? null : file.type,
-        id: transferId,
-        lastModified: file.lastModified,
-        path,
-        size: file.size,
-      })),
-      id: deliveryId,
-      retentionDays,
-      title: deliveryTitle(files),
-    };
-    // The records land before CreateDelivery: a create whose response is lost
-    // still leaves enough behind for restore to find the transfers.
-    yield* remember(
-      prepared.map(({ file, path, print, transferId }): RecoveryRecord => ({
-        confirmed: 0,
-        createdAt: Date.now(),
-        deliveryId,
-        fingerprint: print,
-        lastModified: file.lastModified,
-        partSize: partSize(file.size),
-        path,
-        size: file.size,
-        transferId,
-        version: 1,
-      })),
-    );
-    const refused = (
-      error: DeliveryConflict | DeliveryRefused | OverPlanLimit | RateLimited | RetentionNotInPlan,
-    ) => Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error));
-    yield* spans.beginDelivery(deliveryId, {
-      "delivery.file_count": files.length,
-      "delivery.retention_days": retentionDays,
-      "delivery.total_bytes": files.reduce((total, { file }) => total + file.size, 0),
-    });
-    const delivery = yield* api.CreateDelivery(payload).pipe(
-      spans.underDelivery(deliveryId),
-      Effect.retry({
-        schedule: Schedule.exponential("1 second"),
-        times: 5,
-        while: (error) => error._tag === "RpcClientError",
-      }),
-      // A conflict means these ids already belong to different content, and a
-      // plan or rate refusal means no delivery was made. Either way nothing from this
-      // attempt exists to resume; its records go.
-      Effect.catchTags({
-        DeliveryConflict: refused,
-        DeliveryRefused: refused,
-        OverPlanLimit: refused,
-        RateLimited: refused,
-        RetentionNotInPlan: refused,
-      }),
-      Effect.tapError((error) => spans.abandon(deliveryId, error._tag)),
-    );
+  });
 
-    const byPath = new Map(delivery.transfers.map((transfer) => [transfer.path, transfer]));
-    const added: { fileId: string; size: number; transferId: TransferId }[] = [];
-    // All or nothing: the delivery exists, but if any file can't be queued
-    // none will upload. Drop what landed and cancel the delivery, so no row
-    // is left whose Retry has no file behind it.
-    yield* Effect.try(() => {
-      for (const { file, path } of files) {
-        const transfer = byPath.get(path);
-        if (transfer === undefined) {
-          continue;
-        }
-        patchTransfer(transfer.id, { phase: "queued" });
-        claim(transfer.id);
-        keys.set(transfer.objectKey, transfer.id);
-        const fileId = uppy.addFile({
-          data: file,
-          meta: {
-            deliveryId: delivery.id,
-            objectKey: transfer.objectKey,
-            relativePath: transfer.objectKey,
-            transferId: transfer.id,
-          },
-          name: file.name,
-          type: file.type,
-        });
-        added.push({ fileId, size: transfer.size, transferId: transfer.id });
-      }
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.gen(function* dropQueued() {
-          for (const { fileId } of added) {
-            uppy.removeFile(fileId);
-          }
-          for (const transfer of delivery.transfers) {
-            keys.delete(transfer.objectKey);
-            completeSigned.delete(transfer.id);
-            autoRetries.delete(transfer.id);
-            patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
-            letGo(transfer.id);
-          }
-          yield* forget(delivery.transfers.map((transfer) => transfer.id));
-          yield* spans.abandon(delivery.id, "files could not be queued");
-          // If this cancel fails too, the sweeper ends the open delivery.
-          yield* Effect.ignore(api.CancelDelivery({ deliveryId: delivery.id }));
-          return yield* Effect.die(error.cause);
-        }),
-      ),
+  /** An uploader without an account sends into a file request; its token signs everything after. */
+  const sendToRequest = Effect.fn("Uploads.sendToRequest")(function* sendToRequest(
+    files: readonly ChosenFile[],
+    via: { readonly email: string | null; readonly name: string; readonly token: string },
+  ) {
+    return yield* place(
+      files,
+      (draft) =>
+        api.CreateRequestUpload({ ...draft, email: via.email, name: via.name, token: via.token }),
+      { "request.upload": true },
+      via.token,
     );
-    if (added.length === 0) {
-      yield* spans.abandon(delivery.id, "no file queued");
-    }
-    for (const { fileId, size, transferId } of added) {
-      yield* spans.beginFile(delivery.id, { id: transferId, size }, false);
-      runFork(start(uppy, fileId, transferId));
-    }
-    return delivery;
   });
 
   const retry = Effect.fn("Uploads.retry")(function* retry(transferId: TransferId) {
@@ -759,7 +819,7 @@ const make = Effect.gen(function* makeUploads() {
       // resumes: Uppy lists parts and Completes again.
       patchTransfer(transferId, { error: undefined, phase: "finalizing" });
       runFork(
-        api.FinalizeTransfer({ transferId }).pipe(
+        finalizeFor(transferId).pipe(
           spans.underFile(transferId),
           Effect.matchEffect({
             onFailure: (error) =>
@@ -818,7 +878,11 @@ const make = Effect.gen(function* makeUploads() {
    * reselected file can push the missing parts. One that another live tab
    * holds the lock for becomes elsewhere and is left to that tab.
    */
-  const restore = Effect.fn("Uploads.restore")(function* restore(deliveries: readonly Delivery[]) {
+  const restore = Effect.fn("Uploads.restore")(function* restore(
+    deliveries: readonly Pick<Delivery, "transfers">[],
+    // The file request the deliveries came in through, for an uploader.
+    token?: string,
+  ) {
     const records = yield* readAll();
     const elsewhere = yield* sendingElsewhere();
     const byTransfer = new Map(
@@ -841,6 +905,9 @@ const make = Effect.gen(function* makeUploads() {
       if (local !== undefined && local.phase !== "elsewhere") {
         continue;
       }
+      if (token !== undefined) {
+        requestTokens.set(transfer.id, token);
+      }
       if (transfer.state === "complete" || transfer.state === "cancelled") {
         forgotten.push(transfer.id);
       } else if (elsewhere.has(transfer.id)) {
@@ -848,7 +915,7 @@ const make = Effect.gen(function* makeUploads() {
       } else if (transfer.state === "finalizing") {
         patchTransfer(transfer.id, { confirmed: record.confirmed, phase: "finalizing" });
         runFork(
-          retryWhileNotUploaded(api.FinalizeTransfer({ transferId: transfer.id })).pipe(
+          retryWhileNotUploaded(finalizeFor(transfer.id)).pipe(
             Effect.matchEffect({
               onFailure: (error) =>
                 Effect.sync(() => {
@@ -878,12 +945,19 @@ const make = Effect.gen(function* makeUploads() {
    * explain (law 3: never resume against an unverified file).
    */
   const resume = Effect.fn("Uploads.resume")(function* resume(
-    delivery: Delivery,
+    delivery: Pick<Delivery, "id" | "transfers">,
     files: readonly File[],
     // Bytes of stored parts hashed so far, out of those listed so far.
     onChecking?: (progress: { readonly checked: number; readonly total: number }) => void,
+    // The file request the delivery came in through, for an uploader.
+    token?: string,
   ) {
     const uppy = yield* engine;
+    if (token !== undefined) {
+      for (const transfer of delivery.transfers) {
+        requestTokens.set(transfer.id, token);
+      }
+    }
     const records = yield* readAll();
     const recordOf = new Map(records.map((record) => [record.transferId, record]));
     const candidates = delivery.transfers.filter(
@@ -946,7 +1020,7 @@ const make = Effect.gen(function* makeUploads() {
         // R2 holds must hash to their ETags against this file. A record with
         // no uploadId has nothing remote to verify.
         if (problem === undefined && record.uploadId !== undefined) {
-          const remote = yield* listRemoteParts(candidate.objectKey, record.uploadId);
+          const remote = yield* listRemoteParts(candidate.id, candidate.objectKey, record.uploadId);
           listed = remote === "gone" ? [] : remote;
           const heldBytes = listed.reduce((total, part) => total + part.size, 0);
           const before = spentBytes;
@@ -1025,7 +1099,29 @@ const make = Effect.gen(function* makeUploads() {
     return problems;
   });
 
-  return { cancel, restore, resume, retry, send };
+  /**
+   * What an uploader's browser can recover on a file request page: the
+   * deliveries it remembers plus the ones sent since the page opened, read
+   * back through the token. Unfinished ones are restored like the owner's.
+   */
+  const recoverRequest = Effect.fn("Uploads.recoverRequest")(function* recoverRequest(
+    token: string,
+    sentHere: readonly DeliveryId[],
+  ) {
+    const records = yield* readAll();
+    const remembered = records
+      .toSorted((a, b) => b.createdAt - a.createdAt)
+      .map((record) => record.deliveryId);
+    const ids = [...new Set([...sentHere, ...remembered])].slice(0, MAX_RECOVERED);
+    const found =
+      ids.length === 0
+        ? []
+        : yield* retryTransport(api.RequestUploads({ deliveryIds: ids, token }));
+    yield* restore(found, token);
+    return found;
+  });
+
+  return { cancel, recoverRequest, restore, resume, retry, send, sendToRequest };
 });
 
 export class Uploads extends Context.Service<Uploads, Effect.Success<typeof make>>()(
