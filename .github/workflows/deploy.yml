@@ -23,6 +23,9 @@ jobs:
       url: ${{ github.ref_name == 'main' && 'https://tranzfer.app' || 'https://staging.tranzfer.app' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history so the sitemap's lastmod is the last page change, not this commit.
+          fetch-depth: 0
       - uses: voidzero-dev/setup-vp@d5616419e3a9637febec6da1475cee9d07a317fd # v1.20.0
         with:
           node-version: "24"
@@ -36,6 +39,12 @@ jobs:
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          # Paid plans stay closed until this production variable is "true"
+          # (docs/PRODUCT.md). Closed, the deploy never reads the Polar token.
+          PAID_PLANS_OPEN: ${{ vars.PAID_PLANS_OPEN || 'false' }}
+          POLAR_ACCESS_TOKEN: ${{ secrets.POLAR_ACCESS_TOKEN }}
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
+          AXIOM_ORG_ID: ${{ secrets.AXIOM_ORG_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy staging
@@ -43,6 +52,9 @@ jobs:
         run: vp run --filter @tranzfer/infra deploy:staging
         env:
           TEST_LOGIN_KEY: ${{ secrets.TEST_LOGIN_KEY }}
+          POLAR_SANDBOX_ACCESS_TOKEN: ${{ secrets.POLAR_SANDBOX_ACCESS_TOKEN }}
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
+          AXIOM_ORG_ID: ${{ secrets.AXIOM_ORG_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       - name: Health check production
@@ -51,3 +63,20 @@ jobs:
       - name: Health check staging
         if: github.ref == 'refs/heads/dev'
         run: curl -fsS --retry 10 --retry-all-errors --retry-delay 6 https://staging.tranzfer.app/health | jq -e '.ok'
+      # IndexNow asks Bing (which ChatGPT search reads from) and the other
+      # participating engines to recrawl every sitemap URL. The key is public
+      # by design; apps/web/public/<key>.txt proves we own the host. A failed
+      # ping shouldn't fail a deploy that already shipped.
+      - name: Ping IndexNow
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          INDEXNOW_KEY: 62e05174fb563a7d999c4c35e5ae49fe
+        run: |
+          curl -fsS "https://tranzfer.app/$INDEXNOW_KEY.txt" | grep -qx "$INDEXNOW_KEY"
+          curl -fsS https://tranzfer.app/sitemap.xml \
+            | grep -o '<loc>[^<]*' | sed 's/<loc>//' \
+            | jq -R . | jq -s --arg key "$INDEXNOW_KEY" \
+              '{host: "tranzfer.app", key: $key, keyLocation: "https://tranzfer.app/\($key).txt", urlList: .}' \
+            | curl -fsS -w '%{http_code}\n' -X POST https://api.indexnow.org/indexnow \
+              -H 'content-type: application/json; charset=utf-8' --data-binary @-

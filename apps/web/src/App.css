@@ -45,3 +45,16 @@
   background-image: radial-gradient(var(--dots-ink) 1px, transparent 1.5px);
   background-size: 18px 18px;
 }
+
+@keyframes spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}

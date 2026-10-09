@@ -242,9 +242,19 @@ How the browser recovers today:
 
 An upload change is not finished until the recipient can download the correct file through an authorized link. Expiry is stated clearly on the page. Define download recovery, and do not make anyone redownload confirmed bytes where the client supports ranges.
 
+How the recipient page does it today:
+
+- One file: one Download button. The browser's download manager resumes it with the same 7-day URL.
+- Several files in Chromium: Download all saves into a folder the recipient picks (`showDirectoryPicker`), recreating each `RelativePath`, three files at a time. A file already at full size is skipped; a shorter one continues with `Range: bytes=<size on disk>-`. Picking the same folder after a reload carries on.
+- Chromium only replaces the real file when a writable closes, so a failure or interruption closes it to keep what arrived, and a long file also commits whenever its unsaved part reaches its saved part (at least 256 MiB). A reload loses at most half of the file in flight.
+- A network failure waits for `online`, re-opens the link for fresh URLs (or its typed refusal) and retries with the same capped backoff as uploads. A disk failure stops and names the file; Resume reuses the folder.
+- Safari and Firefox have no folder picker. They get the per-file list and a line pointing to Chrome or Edge. A streamed zip through a service worker was rejected: a dropped connection restarts the whole archive, and Safari buffers service-worker downloads. No server-side zip: CRC32 over hundreds of GB does not fit Worker CPU limits.
+
 ## Authorization and abuse
 
 Every create, sign, list, complete, abort and download checks identity, ownership, workspace membership where it applies, entitlement and transfer status. The object key and multipart ID are bound to the authorized transfer. A client-supplied upload ID never grants access to arbitrary storage. Resuming is not a way to read or write someone else's upload.
+
+Entitlement is the sender's plan ([PRODUCT.md](PRODUCT.md)). `CreateDelivery` refuses a delivery before any byte moves when its link lifetime is longer than the plan allows (`RetentionNotInPlan`) or when its declared size would push the sender's active space past the limit (`OverPlanLimit`). Active space is the bytes of the sender's open deliveries plus ready ones that haven't expired; cancelled and expired deliveries free it. Two creates racing past the limit both succeed, and the next create sees both. Signing does not re-check the limit, and the declared size is verified at finalize, not while bytes move, so a client that uploads more than it declared is only caught at the end.
 
 Before public uploads:
 
@@ -258,6 +268,8 @@ Before public uploads:
 Record transfer and multipart identities, recovery transitions, retries, file mismatches, authorization renewals and completion uncertainty.
 
 Never log credentials, session tokens, signed URLs or file contents. A signed URL in a log is a working credential in a log.
+
+Traces ship to Axiom, with log lines as span events ([STACK.md](STACK.md)). A delivery upload is a `Uploads.delivery` span with one `Uploads.file` child per file. Offline pauses, retries with their attempt number and status, `complete.signed`, and resume verification (duration, parts and bytes checked) are events on the file span. Parts get no span of their own. A file span ends `done`, `failed` or `cancelled`, and a failure carries an error tag, never a message. On the API, spans carry the delivery and transfer ids, part count and size, and the sweeper's counts. Query strings and most headers are redacted before export, so a new span attribute is never a place for a URL.
 
 Measure the things that matter: success rate, resume rate, bytes resent that did not need resending, manual interventions, retries and finalization failures.
 
@@ -274,7 +286,7 @@ We need the original file to continue.
 217 GB is already uploaded.
 ```
 
-Progress shows confirmed work. In-flight activity can be shown separately. Smooth the speed, keep the ETA approximate, and give a next action for offline, reselect file, permission required, upload expired and retrying.
+Progress shows confirmed work. In-flight activity can be shown separately. Speed and ETA come only from parts the server acknowledged, over a sliding window; until the first part lands the row says it is starting (#95). Keep the ETA approximate, and give a next action for offline, reselect file, permission required, upload expired and retrying.
 
 The user should come out of a recovery still knowing what already arrived.
 

@@ -8,9 +8,10 @@ import {
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as HttpEffect from "effect/unstable/http/HttpEffect";
-import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
+import * as HttpEffect from "effect/http/HttpEffect";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
+import { Billing } from "./billing";
 import { Auth } from "./infrastructure/auth";
 import { Deliveries } from "./deliveries";
 import { SharedLinks } from "./shared-links";
@@ -46,18 +47,25 @@ export const ApiHandlers = Api.toLayer(
     const deliveries = yield* Deliveries;
     const transfers = yield* Transfers;
     const links = yield* SharedLinks;
+    const billing = yield* Billing;
     const sender = Effect.map(CurrentPrincipal, ({ id }) => id);
     return Api.of({
       CancelDelivery: ({ deliveryId }) =>
         Effect.flatMap(sender, (id) => deliveries.cancel(id, deliveryId)),
+      ClearDeliveries: ({ deliveryIds }) =>
+        Effect.flatMap(sender, (id) => deliveries.clear(id, deliveryIds)),
       CreateDelivery: (input) => Effect.flatMap(sender, (id) => deliveries.create(id, input)),
       Deliveries: () => Effect.flatMap(sender, deliveries.list),
       FinalizeTransfer: ({ transferId }) =>
         Effect.flatMap(sender, (id) => transfers.finalize(id, transferId)),
+      GetBilling: () => Effect.flatMap(sender, billing.summary),
       Me: () => Effect.service(CurrentPrincipal),
+      OpenBillingPortal: () => Effect.flatMap(sender, billing.portal),
       OpenLink: ({ token }) => links.open(token),
       SignUpload: ({ key, request }) =>
         Effect.flatMap(sender, (id) => transfers.sign(id, key, request)),
+      StartCheckout: ({ plan }) =>
+        Effect.flatMap(Effect.service(CurrentPrincipal), (user) => billing.checkout(user, plan)),
     });
   }),
 );

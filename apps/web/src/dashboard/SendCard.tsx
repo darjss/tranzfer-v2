@@ -1,4 +1,5 @@
-import { RetentionDays } from "@tranzfer/contracts";
+import { PaidPlanId, plans, RetentionDays } from "@tranzfer/contracts";
+import type { BillingSummary } from "@tranzfer/contracts";
 import { For, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 
@@ -7,6 +8,9 @@ import PhUploadSimpleBold from "~icons/ph/upload-simple-bold";
 
 import { inkStrokes } from "../landing/notebook";
 import { Button } from "../ui/Button";
+import { upgradeFrom } from "./billing";
+import { paidPlansOpen } from "../ui/support";
+import { bytes } from "./format";
 
 const ghost = css({
   bg: "panel",
@@ -16,12 +20,18 @@ const ghost = css({
   shadow: "paperGhost",
 });
 
+// The cheapest paid plan whose links last that long. Every retention option is
+// within Studio's, so one always exists.
+const unlockedBy = (days: RetentionDays) =>
+  PaidPlanId.literals.find((plan) => plans[plan].maxRetentionDays >= days) ?? "studio";
+
 /**
  * The send surface: a stack of paper with one big drop target. Dropping
  * works anywhere on the page (the page owns that listener); this card
  * lights up while files hover and offers real buttons for keyboards.
  */
 export function SendCard(props: {
+  billing: BillingSummary;
   dragging: boolean;
   pickFiles: () => void;
   pickFolder: () => void;
@@ -29,6 +39,7 @@ export function SendCard(props: {
   retention: RetentionDays;
   sending: boolean;
   setRetention: (days: RetentionDays) => void;
+  upgrade: (plan: PaidPlanId) => void;
 }) {
   return (
     <section
@@ -146,6 +157,12 @@ export function SendCard(props: {
               <For each={RetentionDays.literals}>
                 {(days) => (
                   <label
+                    // The native tooltip names the plan that unlocks the option.
+                    title={
+                      days > props.billing.maxRetentionDays
+                        ? `Needs ${plans[unlockedBy(days)].name} or higher`
+                        : undefined
+                    }
                     class={cx(
                       css({
                         "&:has(:focus-visible)": {
@@ -166,11 +183,14 @@ export function SendCard(props: {
                       props.retention === days
                         ? css({ bg: "white", color: "ink", shadow: "paperRow" })
                         : css({ _hover: { color: "ink" }, color: "mut" }),
+                      days > props.billing.maxRetentionDays &&
+                        css({ _hover: { color: "mut" }, cursor: "not-allowed", opacity: 0.5 }),
                     )}
                   >
                     <input
                       checked={props.retention === days}
                       class={css({ srOnly: true })}
+                      disabled={days > props.billing.maxRetentionDays}
                       name="retention"
                       onChange={() => {
                         props.setRetention(days);
@@ -179,6 +199,11 @@ export function SendCard(props: {
                       value={String(days)}
                     />
                     {days}d
+                    <Show when={days > props.billing.maxRetentionDays}>
+                      <span class={css({ srOnly: true })}>
+                        , needs {plans[unlockedBy(days)].name} or higher
+                      </span>
+                    </Show>
                   </label>
                 )}
               </For>
@@ -308,6 +333,26 @@ export function SendCard(props: {
                 fallback={`link lives ${props.retention} ${props.retention === 1 ? "day" : "days"} after the upload finishes`}
               >
                 setting the delivery up…
+              </Show>
+            </p>
+            <p>
+              {bytes(props.billing.usedBytes)} of {bytes(props.billing.limitBytes)} in use on{" "}
+              {plans[props.billing.plan].name}
+              <Show when={paidPlansOpen && upgradeFrom[props.billing.plan]}>
+                {(target) => (
+                  <>
+                    {" · "}
+                    <button
+                      class={css({ _hover: { color: "ink" }, textDecoration: "underline" })}
+                      onClick={() => {
+                        props.upgrade(target());
+                      }}
+                      type="button"
+                    >
+                      Upgrade to {plans[target()].name}
+                    </button>
+                  </>
+                )}
               </Show>
             </p>
           </footer>

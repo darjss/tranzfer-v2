@@ -8,13 +8,13 @@ import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 
 import { Storage, StorageError, UPLOAD_URL_TTL } from "../storage";
 import { Files } from "../resources";
@@ -66,6 +66,15 @@ interface R2Options {
   readonly tokenValue: Effect.Effect<Redacted.Redacted>;
 }
 
+const objectUrl = (options: R2Options, key: string) =>
+  Effect.map(
+    Effect.all([options.accountId, options.bucket]),
+    ([accountId, bucket]) =>
+      new URL(
+        `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key.split("/").map(encodeURIComponent).join("/")}`,
+      ),
+  );
+
 const make = (options: R2Options) =>
   Effect.gen(function* makeR2Storage() {
     const headObject = yield* S3.headObject;
@@ -73,15 +82,6 @@ const make = (options: R2Options) =>
     const abortMultipartUpload = yield* S3.abortMultipartUpload;
     const deleteObjects = yield* S3.deleteObjects;
     const presignContext = yield* Effect.context<Credentials.Credentials | Region.Region>();
-
-    const objectUrl = (key: string) =>
-      Effect.map(
-        Effect.all([options.accountId, options.bucket]),
-        ([accountId, bucket]) =>
-          new URL(
-            `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key.split("/").map(encodeURIComponent).join("/")}`,
-          ),
-      );
 
     const presign = (
       method: string,
@@ -185,7 +185,7 @@ const make = (options: R2Options) =>
         filename: string,
         ttl: Duration.Duration,
       ) {
-        const url = yield* objectUrl(key);
+        const url = yield* objectUrl(options, key);
         const fallback = filename.replaceAll(/[^ -~]/gu, "_").replaceAll(/["\\]/gu, "_");
         url.searchParams.set(
           "response-content-disposition",
@@ -198,7 +198,7 @@ const make = (options: R2Options) =>
         key: string,
         request: UploadRequest,
       ) {
-        const url = yield* objectUrl(key);
+        const url = yield* objectUrl(options, key);
         const { headers, method, query } = uploadRequest(request);
         for (const [name, value] of Object.entries(query)) {
           url.searchParams.set(name, value);
@@ -226,7 +226,7 @@ export const r2Storage = (options: R2Options) =>
           return {
             accessKeyId: Redacted.make(tokenId),
             region,
-            secretAccessKey: Redacted.make(Encoding.encodeHex(new Uint8Array(digest))),
+            secretAccessKey: Redacted.make(Hex.encode(new Uint8Array(digest))),
             sessionToken: undefined,
           };
         }),
@@ -249,7 +249,7 @@ export const r2Storage = (options: R2Options) =>
   );
 
 // Binding values resolve per invocation, never at deploy time.
-const lazy = <A>(value: Effect.Effect<A, never, RuntimeContext>) =>
+export const lazy = <A>(value: Effect.Effect<A, never, RuntimeContext>) =>
   value.pipe(Effect.provide(RuntimeContext.phantom));
 
 /** The Files bucket plus an account token scoped to it, as a Storage layer. */

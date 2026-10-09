@@ -41,12 +41,14 @@ const sectionTitle = css({
 
 const count = css({ color: "mut", fontFamily: "mono", fontSize: "13", fontWeight: "normal" });
 
+const slot = css({ alignItems: "center", display: "flex", gap: "2", pos: "relative", zIndex: 1 });
+
 /**
- * The group note tells people to cancel an interrupted delivery and send the
- * files again, so both actions sit on the row. Cancel confirms in place, the
- * same way the sheet does.
+ * This browser has no record of the upload, so the only way forward is to
+ * cancel it and send the files again. One action does both after an in-place
+ * confirm: the picker opens inside the click, which browsers require.
  */
-function InterruptedActions(props: {
+function StartOver(props: {
   cancel: (deliveryId: DeliveryId) => Promise<string | undefined>;
   deliveryId: DeliveryId;
   sendAgain: () => void;
@@ -55,8 +57,9 @@ function InterruptedActions(props: {
   const [problem, setProblem] = createSignal<string>();
   // The action moves the delivery to cancelled at once; only a failure
   // comes back here, and the optimistic move reverts on its own.
-  const cancel = async () => {
+  const startOver = async () => {
     setProblem(undefined);
+    props.sendAgain();
     const failure = await props.cancel(props.deliveryId);
     if (failure === undefined) {
       setConfirming(false);
@@ -65,72 +68,64 @@ function InterruptedActions(props: {
     }
   };
   return (
-    <div
-      class={css({
-        alignItems: "center",
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "2",
-        mt: "2.5",
-        pos: "relative",
-        zIndex: 1,
-      })}
-    >
-      <Show
-        when={confirming()}
-        fallback={
-          <>
+    <>
+      <div class={slot}>
+        <Button
+          disabled={confirming()}
+          onClick={() => {
+            setConfirming(true);
+          }}
+          size="sm"
+        >
+          Start over
+        </Button>
+      </div>
+      <Show when={confirming() || problem() !== undefined}>
+        <div
+          class={css({
+            alignItems: "center",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "2",
+            gridColumn: "[1 / -1]",
+            mt: "3",
+            pos: "relative",
+            zIndex: 1,
+          })}
+        >
+          <Show when={confirming()}>
+            <span class={css({ fontWeight: "medium", textStyle: "sm", w: "full" })}>
+              Cancel this delivery and pick the files again? Its link stops working.
+            </span>
             <Button
               onClick={() => {
-                setConfirming(true);
+                void startOver();
+              }}
+              size="xs"
+              variant="danger"
+            >
+              Yes, start over
+            </Button>
+            <Button
+              onClick={() => {
+                setConfirming(false);
               }}
               size="xs"
               variant="outline"
             >
-              Cancel
+              Keep it
             </Button>
-            <Button
-              onClick={() => {
-                props.sendAgain();
-              }}
-              size="xs"
-              variant="outline"
-            >
-              Send again
-            </Button>
-          </>
-        }
-      >
-        <span class={css({ fontWeight: "medium", textStyle: "sm", w: "full" })}>
-          Cancel it? The link stops working and the files are deleted.
-        </span>
-        <Button
-          onClick={() => {
-            void cancel();
-          }}
-          size="xs"
-          variant="danger"
-        >
-          Yes, cancel it
-        </Button>
-        <Button
-          onClick={() => {
-            setConfirming(false);
-          }}
-          size="xs"
-          variant="outline"
-        >
-          Keep it
-        </Button>
+          </Show>
+          <Show when={problem()}>
+            {(message) => (
+              <p class={css({ color: "rust", textStyle: "sm", w: "full" })} role="alert">
+                {message()}
+              </p>
+            )}
+          </Show>
+        </div>
       </Show>
-      <Show when={problem()}>
-        {(message) => (
-          <p class={css({ color: "rust", textStyle: "sm", w: "full" })} role="alert">
-            {message()}
-          </p>
-        )}
-      </Show>
-    </div>
+    </>
   );
 }
 
@@ -151,6 +146,7 @@ const sameGroups = (a: Record<Group, Delivery[]>, b: Record<Group, Delivery[]>) 
 
 function Row(
   props: RowActions & {
+    clear?: () => void;
     delivery: Delivery;
     online: boolean;
     compact?: boolean;
@@ -169,6 +165,7 @@ function Row(
   return (
     <li
       class={cx(
+        "row-in",
         css({
           "&:has([data-open]:focus-visible)": {
             outline: "[2px solid var(--colors-blue)]",
@@ -230,7 +227,10 @@ function Row(
           })}
         >
           <span>
-            {files(props.delivery.transfers.length)} · {bytes(live.total())}
+            {files(props.delivery.transfers.length)} ·{" "}
+            {live.kind() === "needsFile"
+              ? `${bytes(live.roll().confirmed)} of ${bytes(live.total())} arrived`
+              : bytes(live.total())}
           </span>
           <Switch>
             <Match when={live.kind() === "ready" ? props.delivery.expiresAt : null}>
@@ -254,7 +254,7 @@ function Row(
             </Match>
           </Switch>
         </p>
-        <Show when={moving()}>
+        <Show when={moving() || live.kind() === "needsFile"}>
           <Progress
             class={css({ mt: "2.5" })}
             confirmed={live.roll().confirmed}
@@ -264,52 +264,69 @@ function Row(
             total={live.total()}
           />
         </Show>
-        <Show when={live.kind() === "interrupted"}>
-          <InterruptedActions
-            cancel={props.cancel}
-            deliveryId={props.delivery.id}
-            sendAgain={props.sendAgain}
-          />
-        </Show>
       </div>
-      <div
-        class={css({ alignItems: "center", display: "flex", gap: "2", pos: "relative", zIndex: 1 })}
+      {/* One primary action per state, always in this slot. Everything else
+          (cancel included) lives in the delivery sheet. */}
+      <Show
+        when={live.kind() === "interrupted"}
+        fallback={
+          <div class={slot}>
+            <Switch>
+              <Match when={live.kind() === "ready"}>
+                <CopyLink link={props.delivery.link} variant="fill" />
+              </Match>
+              <Match when={live.kind() === "failed"}>
+                <Button onClick={retryFailed} size="sm">
+                  Retry
+                </Button>
+              </Match>
+              <Match when={live.kind() === "needsFile"}>
+                <Button
+                  onClick={() => {
+                    props.select(props.delivery.id);
+                  }}
+                  size="sm"
+                >
+                  Continue
+                </Button>
+              </Match>
+              <Match when={props.clear !== undefined}>
+                <Button
+                  onClick={() => {
+                    props.clear?.();
+                  }}
+                  size="sm"
+                  variant="outline"
+                >
+                  Clear
+                </Button>
+              </Match>
+              <Match when={moving()}>
+                <span
+                  class={css({
+                    fontFamily: "mono",
+                    fontSize: "15",
+                    fontVariantNumeric: "tabular-nums",
+                    minW: "[4ch]",
+                    textAlign: "right",
+                  })}
+                >
+                  {live.total() === 0
+                    ? 0
+                    : Math.floor((live.roll().confirmed / live.total()) * 100)}
+                  %
+                </span>
+              </Match>
+            </Switch>
+          </div>
+        }
       >
-        <Switch>
-          <Match when={live.kind() === "ready"}>
-            <CopyLink link={props.delivery.link} variant="fill" />
-          </Match>
-          <Match when={live.kind() === "failed"}>
-            <Button onClick={retryFailed} size="sm" variant="outline">
-              Retry
-            </Button>
-          </Match>
-          <Match when={live.kind() === "needsFile"}>
-            <Button
-              onClick={() => {
-                props.select(props.delivery.id);
-              }}
-              size="sm"
-              variant="outline"
-            >
-              Continue
-            </Button>
-          </Match>
-          <Match when={moving()}>
-            <span
-              class={css({
-                fontFamily: "mono",
-                fontSize: "15",
-                fontVariantNumeric: "tabular-nums",
-                minW: "[4ch]",
-                textAlign: "right",
-              })}
-            >
-              {live.total() === 0 ? 0 : Math.floor((live.roll().confirmed / live.total()) * 100)}%
-            </span>
-          </Match>
-        </Switch>
-      </div>
+        <StartOver
+          cancel={props.cancel}
+          deliveryId={props.delivery.id}
+          sendAgain={props.sendAgain}
+        />
+      </Show>
     </li>
   );
 }
@@ -332,10 +349,19 @@ function Section(props: { children: JSX.Element; count: number; note?: string; t
 
 export function Board(
   props: RowActions & {
+    clear: (deliveryIds: readonly DeliveryId[]) => Promise<string | undefined>;
     deliveries: readonly Delivery[];
     online: boolean;
   },
 ) {
+  const [endedOpen, setEndedOpen] = createSignal(false);
+  const [clearProblem, setClearProblem] = createSignal<string>();
+  // Rows leave the list at once; only a failure comes back, and it shows
+  // under the Ended heading where both clear buttons live.
+  const clear = async (deliveryIds: readonly DeliveryId[]) => {
+    setClearProblem(undefined);
+    setClearProblem(await props.clear(deliveryIds));
+  };
   // Grouping reads live progress, so a finished upload moves to "Ready"
   // the moment the refreshed list says so.
   const groups = createMemo(
@@ -396,7 +422,7 @@ export function Board(
       <Show when={groups().interrupted.length > 0}>
         <Section
           count={groups().interrupted.length}
-          note="Pick the original files to continue, or cancel and send them again."
+          note="Pick the original files again to continue from what already arrived."
           title="Interrupted"
         >
           <ul class={list}>
@@ -416,47 +442,76 @@ export function Board(
         </Section>
       </Show>
       <Show when={groups().ended.length > 0}>
-        <details>
-          <summary
-            class={cx(
-              sectionTitle,
-              css({
-                "&::-webkit-details-marker": { display: "none" },
-                _hover: { color: "ink" },
-                alignItems: "center",
-                color: "mut",
-                cursor: "pointer",
-                listStyle: "none",
-                w: "fit",
-              }),
-            )}
-          >
-            Ended <span class={count}>{groups().ended.length}</span>
-            <PhCaretDownBold
-              class={css({
-                boxSize: "3.5",
-                "details[open] &": { rotate: "[180deg]" },
-                transitionDuration: "fast",
-                transitionProperty: "[rotate]",
-                transitionTimingFunction: "smooth",
-              })}
-            />
-          </summary>
-          <ul class={list}>
-            <For each={groups().ended}>
-              {(delivery) => (
-                <Row
-                  compact
-                  delivery={delivery}
-                  online={props.online}
-                  select={props.select}
-                  cancel={props.cancel}
-                  sendAgain={props.sendAgain}
+        <section>
+          <div class={css({ alignItems: "center", display: "flex", gap: "3" })}>
+            <h2 class={sectionTitle}>
+              <button
+                aria-controls="ended-list"
+                aria-expanded={endedOpen() ? "true" : "false"}
+                class={css({
+                  _hover: { color: "ink" },
+                  alignItems: "center",
+                  color: "mut",
+                  display: "flex",
+                  gap: "2",
+                })}
+                onClick={() => {
+                  setEndedOpen((open) => !open);
+                }}
+                type="button"
+              >
+                Ended <span class={count}>{groups().ended.length}</span>
+                <PhCaretDownBold
+                  class={cx(
+                    css({
+                      boxSize: "3.5",
+                      transitionDuration: "fast",
+                      transitionProperty: "[rotate]",
+                      transitionTimingFunction: "smooth",
+                    }),
+                    endedOpen() && css({ rotate: "[180deg]" }),
+                  )}
                 />
-              )}
-            </For>
-          </ul>
-        </details>
+              </button>
+            </h2>
+            <Button
+              css={{ ml: "auto" }}
+              onClick={() => {
+                void clear(groups().ended.map((delivery) => delivery.id));
+              }}
+              size="xs"
+              variant="outline"
+            >
+              Clear all
+            </Button>
+          </div>
+          <Show when={clearProblem()}>
+            {(message) => (
+              <p class={css({ color: "rust", mt: "2", textStyle: "sm" })} role="alert">
+                {message()}
+              </p>
+            )}
+          </Show>
+          <Show when={endedOpen()}>
+            <ul class={list} id="ended-list">
+              <For each={groups().ended}>
+                {(delivery) => (
+                  <Row
+                    cancel={props.cancel}
+                    clear={() => {
+                      void clear([delivery.id]);
+                    }}
+                    compact
+                    delivery={delivery}
+                    online={props.online}
+                    select={props.select}
+                    sendAgain={props.sendAgain}
+                  />
+                )}
+              </For>
+            </ul>
+          </Show>
+        </section>
       </Show>
     </div>
   );

@@ -2,7 +2,6 @@ import type { Delivery, DeliveryId, RetentionDays } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import type * as ManagedRuntime from "effect/ManagedRuntime";
-import * as Struct from "effect/Struct";
 import {
   action,
   createEffect,
@@ -20,14 +19,6 @@ import { transfers } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
 import type { ChosenFile } from "../uploads/uploads";
 import { kindOf, rollup, totalSize } from "./format";
-
-// What a cancel looks like before the server confirms it.
-const cancelled = (delivery: Delivery): Delivery =>
-  Struct.evolve(delivery, {
-    status: () => "cancelled" as const,
-    transfers: (rows) =>
-      rows.map((transfer) => Struct.evolve(transfer, { state: () => "cancelled" as const })),
-  });
 
 /**
  * The sender's deliveries and the actions that change them. Each action
@@ -78,6 +69,11 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
       };
     },
   );
+  // Space in use changes whenever a delivery is made or cancelled, so the
+  // plan summary is read and refreshed beside the list.
+  const billing = createMemo(() => runEffect(ApiClient.use((api) => api.GetBilling())), {
+    name: "Billing.summary",
+  });
   const [sending, setSending] = createOptimistic(false);
 
   const send = action(async function* send(chosen: readonly ChosenFile[], days: RetentionDays) {
@@ -92,16 +88,22 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
       });
       void refresh(deliveries);
     }
+    void refresh(billing);
     return failure;
   });
 
   /** Resolves to a problem to show, or undefined once the delivery is cancelled. */
   const cancel = action(async function* cancel(deliveryId: DeliveryId) {
     setDeliveries((list) => {
-      const index = list.findIndex((delivery) => delivery.id === deliveryId);
-      const row = list[index];
+      // Write the fields a cancel changes, not a whole new row, so the
+      // server's answer settles to the same values instead of replacing them.
+      // Object.assign because the contract types are readonly.
+      const row = list.find((delivery) => delivery.id === deliveryId);
       if (row !== undefined) {
-        list[index] = cancelled(row);
+        Object.assign(row, { status: "cancelled" });
+        for (const transfer of row.transfers) {
+          Object.assign(transfer, { state: "cancelled" });
+        }
       }
     });
     const exit = await runtime.runPromiseExit(Uploads.use((uploads) => uploads.cancel(deliveryId)));
@@ -109,11 +111,38 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     const failure = Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
     if (failure === undefined) {
       void refresh(deliveries);
+      void refresh(billing);
+      const { toaster } = await import("../ui/Toasts");
+      toaster.success({
+        description: "The link stopped working and the files are being deleted.",
+        title: "Delivery cancelled",
+      });
     }
     return failure;
   });
 
-  return { cancel, deliveries, send, sending };
+  /** Takes ended deliveries off the list at once; resolves to a problem to show, if any. */
+  const clear = action(async function* clear(deliveryIds: readonly DeliveryId[]) {
+    setDeliveries((list) => list.filter((delivery) => !deliveryIds.includes(delivery.id)));
+    const exit = await runtime.runPromiseExit(
+      ApiClient.use((api) => api.ClearDeliveries({ deliveryIds })),
+    );
+    yield;
+    const failure = Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
+    if (failure === undefined) {
+      void refresh(deliveries);
+      const { toaster } = await import("../ui/Toasts");
+      toaster.success({
+        title:
+          deliveryIds.length === 1
+            ? "Cleared 1 delivery"
+            : `Cleared ${deliveryIds.length} deliveries`,
+      });
+    }
+    return failure;
+  });
+
+  return { billing, cancel, clear, deliveries, send, sending };
 };
 
 /** A delivery's live state: server status plus whatever this tab is uploading. */

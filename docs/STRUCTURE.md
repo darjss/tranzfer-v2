@@ -4,10 +4,10 @@ Use the existing directory tree as the file inventory. Add a package only for a 
 
 - `packages/contracts` owns the wire API: one file per domain with its schemas, branded ids and tagged errors, plus the RPC group. Errors carry data, not copy; the UI owns the words. It must not import handlers, database code or Worker bindings.
 - `packages/db` owns schema, migrations and `Database`: drizzle's Effect driver over D1, with `batch` as the only atomic unit. `@tranzfer/db/testing` gives tests a fresh migrated local D1.
-- The top level of `apps/api/src` owns the rules, one domain per file: `Deliveries`, `Transfers` and `SharedLinks` services, the `Storage` port, link tokens and the sweeper. `rpc.ts` is transport only: read the principal, call a service.
-- `apps/api/src/infrastructure` owns everything Cloudflare or Alchemy: R2 storage, Better Auth, the stage. Stage checks live here and nowhere else.
+- The top level of `apps/api/src` owns the rules, one domain per file: `Deliveries`, `Transfers`, `SharedLinks` and `Billing` services, the `Storage` port, link tokens and the sweeper. `rpc.ts` is transport only: read the principal, call a service.
+- `apps/api/src/infrastructure` owns everything Cloudflare or Alchemy: R2 storage, Better Auth, the stage, Polar access, Axiom telemetry and the browser trace relay. Stage checks live here and nowhere else.
 - `apps/web/src/routes` owns page and HTTP route entry points. `api` owns clients and the Solid bridge. `ui` owns reused presentation. Keep feature state beside its consumers.
-- `infra/alchemy.run.ts` composes the stack. The API Worker's resources and bindings live in `apps/api/src/resources.ts` and `index.ts`.
+- `infra/alchemy.run.ts` composes the stack. `infra/polar-provider.ts` holds the Alchemy providers for Polar products and webhook endpoints. The API Worker's resources and bindings live in `apps/api/src/resources.ts` and `index.ts`.
 
 ## Scope and dependencies
 

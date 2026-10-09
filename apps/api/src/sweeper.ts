@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 
+import { Billing } from "./billing";
 import { Deliveries } from "./deliveries";
 import { Transfers } from "./transfers";
 
@@ -7,11 +8,12 @@ import { Transfers } from "./transfers";
 export const sweep = Effect.gen(function* sweep() {
   const deliveries = yield* Deliveries;
   const transfers = yield* Transfers;
-  const [recovered, purged] = yield* Effect.all(
-    [transfers.recoverFinalizing, deliveries.purgeEnded],
-    { concurrency: 2 },
+  const billing = yield* Billing;
+  const [recovered, purged, reconciled] = yield* Effect.all(
+    [transfers.recoverFinalizing, deliveries.purgeEnded, billing.reconcileStale],
+    { concurrency: 3 },
   );
-  if (recovered + purged > 0) {
-    yield* Effect.logInfo("sweep", { purged, recovered });
+  if (recovered + purged + reconciled > 0) {
+    yield* Effect.logInfo("sweep", { purged, reconciled, recovered });
   }
 }).pipe(Effect.withSpan("sweep"));

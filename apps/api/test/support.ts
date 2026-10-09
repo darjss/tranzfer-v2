@@ -1,5 +1,5 @@
-import { DeliveryId, TransferId } from "@tranzfer/contracts";
-import type { NewDelivery, NewFile } from "@tranzfer/contracts";
+import { DeliveryId, rateLimits, TransferId } from "@tranzfer/contracts";
+import type { NewDelivery, NewFile, RetentionDays } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { testDatabase } from "@tranzfer/db/testing";
 import * as Effect from "effect/Effect";
@@ -12,7 +12,7 @@ import { LinkTokens } from "../src/link-tokens";
 import { SharedLinks } from "../src/shared-links";
 import { Storage } from "../src/storage";
 import type { StoredObject } from "../src/storage";
-import { Transfers } from "../src/transfers";
+import { SigningRate, Transfers } from "../src/transfers";
 
 /** Object storage as a map; tests put objects the way a browser upload would. */
 export const makeMemoryStorage = () => {
@@ -47,9 +47,23 @@ export const makeMemoryStorage = () => {
   return { layer, objects, purged, sealed };
 };
 
+/** The rate-limit binding as a count per sender that never resets. */
+const countingSigningRate = Layer.sync(SigningRate, () => {
+  const counts = new Map<string, number>();
+  return SigningRate.of({
+    allow: (senderId) =>
+      Effect.sync(() => {
+        const count = (counts.get(senderId) ?? 0) + 1;
+        counts.set(senderId, count);
+        return count <= rateLimits.uploadSigning.limit;
+      }),
+  });
+});
+
 /** The domain over a fresh migrated local D1 and the given storage. */
 export const domainLayer = (storage: Layer.Layer<Storage>) =>
   Layer.mergeAll(Transfers.layer, SharedLinks.layer).pipe(
+    Layer.provideMerge(countingSigningRate),
     Layer.provideMerge(Deliveries.layer),
     Layer.provideMerge(
       LinkTokens.layer(Effect.succeed(Redacted.make("test-link-secret-0123456789abcdef"))),
@@ -71,10 +85,14 @@ export const newFile = (path: string, size: number): NewFile => ({
   size,
 });
 
-export const newDelivery = (files: readonly NewFile[], title = "Delivery"): NewDelivery => ({
+export const newDelivery = (
+  files: readonly NewFile[],
+  title = "Delivery",
+  retentionDays: RetentionDays = 3,
+): NewDelivery => ({
   files,
   id: DeliveryId.make(crypto.randomUUID()),
-  retentionDays: 3,
+  retentionDays,
   title,
 });
 

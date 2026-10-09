@@ -1,8 +1,16 @@
 import * as Schema from "effect/Schema";
-import * as Rpc from "effect/unstable/rpc/Rpc";
-import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
+import * as Rpc from "effect/rpc/Rpc";
+import * as RpcGroup from "effect/rpc/RpcGroup";
 
 import { Authenticated, Principal, Unauthorized } from "./auth";
+import {
+  BillingSummary,
+  BillingUnavailable,
+  OverPlanLimit,
+  PaidPlanId,
+  RateLimited,
+  RetentionNotInPlan,
+} from "./billing";
 import {
   Delivery,
   DeliveryConflict,
@@ -24,7 +32,7 @@ import {
 export class Api extends RpcGroup.make(
   Rpc.make("Me", { error: Unauthorized, success: Principal }).middleware(Authenticated),
   Rpc.make("CreateDelivery", {
-    error: DeliveryConflict,
+    error: Schema.Union([DeliveryConflict, OverPlanLimit, RateLimited, RetentionNotInPlan]),
     payload: NewDelivery,
     success: Delivery,
   }).middleware(Authenticated),
@@ -34,8 +42,13 @@ export class Api extends RpcGroup.make(
     payload: Schema.Struct({ deliveryId: DeliveryId }),
     success: Delivery,
   }).middleware(Authenticated),
+  // Hides ended deliveries from the sender's list. Live ones are left alone.
+  // The dashboard lists at most 50, so one call never needs more.
+  Rpc.make("ClearDeliveries", {
+    payload: Schema.Struct({ deliveryIds: Schema.Array(DeliveryId).check(Schema.isMaxLength(50)) }),
+  }).middleware(Authenticated),
   Rpc.make("SignUpload", {
-    error: Schema.Union([DeliveryNotFound, InvalidUpload, UploadClosed]),
+    error: Schema.Union([DeliveryNotFound, InvalidUpload, RateLimited, UploadClosed]),
     payload: SignUploadPayload,
     success: SignedUrl,
   }).middleware(Authenticated),
@@ -49,6 +62,16 @@ export class Api extends RpcGroup.make(
     ]),
     payload: Schema.Struct({ transferId: TransferId }),
     success: Delivery,
+  }).middleware(Authenticated),
+  Rpc.make("GetBilling", { success: BillingSummary }).middleware(Authenticated),
+  Rpc.make("StartCheckout", {
+    error: BillingUnavailable,
+    payload: Schema.Struct({ plan: PaidPlanId }),
+    success: Schema.Struct({ url: Schema.String }),
+  }).middleware(Authenticated),
+  Rpc.make("OpenBillingPortal", {
+    error: BillingUnavailable,
+    success: Schema.Struct({ url: Schema.String }),
   }).middleware(Authenticated),
   Rpc.make("OpenLink", {
     error: Schema.Union([LinkExpired, LinkNotFound, LinkNotReady]),

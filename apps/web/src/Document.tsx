@@ -11,12 +11,18 @@ export default function Document(props: ParentProps) {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,600&family=IBM+Plex+Mono:wght@400;500&family=Caveat:wght@500;600&display=swap"
+        <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="theme-color" content="#f3efe6" />
+        <meta property="og:site_name" content="Tranzfer" />
+        <meta property="og:image" content="https://tranzfer.app/og.png" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta
+          property="og:image:alt"
+          content="Tranzfer: send the whole card, built to resume. A 463 GB delivery resuming after the Wi-Fi came back."
         />
+        <meta name="twitter:card" content="summary_large_image" />
         <HydrationScript />
       </head>
       <body>{props.children}</body>

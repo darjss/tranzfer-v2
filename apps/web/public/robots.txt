@@ -1,0 +1,33 @@
+# Search engines and AI assistants may read every public page. The app, its
+# API and share links stay out. A crawler follows only the most specific group
+# that names it, so the named group repeats the same rules as the * group.
+# Staging and previews are noindex through public/_headers, not here, so
+# crawlers can still read that header.
+
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: Applebot
+User-agent: OAI-SearchBot
+User-agent: GPTBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-SearchBot
+User-agent: Claude-User
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+Allow: /
+Disallow: /api/
+Disallow: /rpc
+Disallow: /d/
+Disallow: /deliveries
+Disallow: /sign-in
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /rpc
+Disallow: /d/
+Disallow: /deliveries
+Disallow: /sign-in
+
+Sitemap: https://tranzfer.app/sitemap.xml

@@ -1,10 +1,54 @@
+import { execFileSync } from "node:child_process";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { fileRoutes } from "filesystem-routing/vite";
+import { sitemap } from "prerender-crawler";
 import { prerender } from "prerender-crawler/vite";
 import Icons from "unplugin-icons/vite";
 import { defineConfig } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
 import { webLint } from "../../lint.config";
+import { ogImage } from "./og";
+
+const staticPages = [
+  "/",
+  "/terms",
+  "/privacy",
+  "/acceptable-use",
+  "/pricing",
+  "/about",
+  "/vs/masv",
+  "/vs/wetransfer",
+  "/alternatives/wetransfer",
+  "/alternatives/masv",
+  "/tools/upload-time-calculator",
+  "/guides",
+  // One per entry in src/guides/guides.ts.
+  ...[
+    "how-to-send-large-files",
+    "send-large-video-files-to-an-editor",
+    "send-raw-photos-to-a-client",
+    "send-pro-tools-or-logic-session",
+    "how-long-to-upload-100-gb",
+  ].map((slug) => `/guides/${slug}`),
+  // One per entry in src/marketing/content.ts.
+  ...["send-large-files", "resume", "folders", "share-links", "dashboard", "privacy"].map(
+    (slug) => `/features/${slug}`,
+  ),
+  ...["videographers", "photographers", "editors", "creators", "studios", "music"].map(
+    (slug) => `/for/${slug}`,
+  ),
+  "/llms.txt",
+  "/ai",
+  "/llms-full.txt",
+];
+
+// Sitemap lastmod: when the page sources last changed, not when the build ran.
+// The production deploy checks out full history so this stays accurate there.
+const lastmod = execFileSync(
+  "git",
+  ["log", "-1", "--format=%cI", "--", "src", "../../packages/contracts/src"],
+  { cwd: import.meta.dirname, encoding: "utf-8" },
+).trim();
 
 const envFlag = (value: string | undefined) => value !== undefined && value !== "";
 
@@ -40,7 +84,18 @@ export default defineConfig({
     }),
     fileRoutes({ codeSplitting: false, httpMethods: true, types: true }),
     Icons({ compiler: "solid" }),
-    prerender({ crawlLinks: false, emitPages: (p) => p === "/", mode: "hybrid", pages: ["/"] }),
+    ogImage(),
+    // The public pages ship as static HTML; everything else stays live SSR.
+    // Flat files (terms.html): Workers static assets serve /terms from them
+    // directly, where terms/index.html makes it redirect to /terms/.
+    prerender({
+      autoSubfolderIndex: false,
+      crawlLinks: false,
+      emitPages: (p) => staticPages.includes(p),
+      integrations: [sitemap({ entry: () => ({ lastmod }), hostname: "https://tranzfer.app" })],
+      mode: "hybrid",
+      pages: staticPages,
+    }),
   ],
   resolve: {
     alias: {
@@ -56,9 +111,13 @@ export default defineConfig({
     "*": "vp check --fix",
   },
   test: {
+    // Tests cover the open product; infra/alchemy.run.ts sets this per stage.
+    env: { VITE_PAID_PLANS_OPEN: "true" },
     environment: "jsdom",
     globals: false,
     include: ["src/**/*.test.{ts,tsx}"],
+    // It imports its own stylesheet, which Node can't load; let Vite handle it.
+    server: { deps: { inline: ["@trev.zip/solid-toast"] } },
     setupFiles: ["./vitest-setup.ts"],
   },
 });

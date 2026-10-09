@@ -1,7 +1,16 @@
-import { Delivery, DeliveryConflict, DeliveryNotFound } from "@tranzfer/contracts";
+import {
+  Delivery,
+  DeliveryConflict,
+  DeliveryNotFound,
+  OverPlanLimit,
+  plans,
+  RateLimited,
+  rateLimits,
+  RetentionNotInPlan,
+} from "@tranzfer/contracts";
 import type { DeliveryId, NewDelivery } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -26,6 +35,22 @@ const CANCEL_SETTLE = Duration.sum(UPLOAD_URL_TTL, Duration.minutes(1));
  * refuses past it, and the sweeper ends what is still open.
  */
 export const UPLOAD_WINDOW = Duration.days(7);
+
+/**
+ * Seconds until a rolling window has room again, given the creation times in
+ * it newest first, or undefined while it has room. The window is full when
+ * its limit-th newest entry is still inside it.
+ */
+export const secondsUntilRoom = (
+  newestFirst: readonly Date[],
+  rule: { readonly limit: number; readonly windowSeconds: number },
+  now: number,
+) => {
+  const oldestCounted = newestFirst[rule.limit - 1];
+  const reopensAt =
+    oldestCounted === undefined ? now : oldestCounted.getTime() + rule.windowSeconds * 1000;
+  return reopensAt > now ? Math.ceil((reopensAt - now) / 1000) : undefined;
+};
 
 export const objectPrefix = (deliveryId: DeliveryId) => `d/${deliveryId}/`;
 
@@ -62,13 +87,20 @@ export class Deliveries extends Context.Service<
     readonly create: (
       senderId: string,
       input: NewDelivery,
-    ) => Effect.Effect<Delivery, DeliveryConflict>;
+    ) => Effect.Effect<
+      Delivery,
+      DeliveryConflict | OverPlanLimit | RateLimited | RetentionNotInPlan
+    >;
+    /** Bytes of the sender's deliveries that are open, or ready and not yet expired. */
+    readonly activeBytes: (senderId: string) => Effect.Effect<number>;
     readonly list: (senderId: string) => Effect.Effect<readonly Delivery[]>;
     /** Stops signing, kills the link, aborts uploads and removes the objects; the sweeper confirms later. */
     readonly cancel: (
       senderId: string,
       deliveryId: DeliveryId,
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
+    /** Takes the sender's ended deliveries among these off their list; live ones stay. */
+    readonly clear: (senderId: string, deliveryIds: readonly DeliveryId[]) => Effect.Effect<void>;
     readonly view: (deliveryId: DeliveryId) => Effect.Effect<Delivery>;
     /** Removes the objects of cancelled and expired deliveries. Returns how many it purged. */
     readonly purgeEnded: Effect.Effect<number>;
@@ -132,6 +164,7 @@ export class Deliveries extends Context.Service<
         );
 
       const view = Effect.fn("Deliveries.view")(function* view(deliveryId: DeliveryId) {
+        yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
         const row = yield* load(deliveryId);
         if (row === undefined) {
           return yield* Effect.die(new Error(`Delivery ${deliveryId} vanished`));
@@ -139,7 +172,31 @@ export class Deliveries extends Context.Service<
         return yield* toView(row);
       }, dieOnDatabaseError);
 
+      const activeBytes = Effect.fn("Deliveries.activeBytes")(function* activeBytes(
+        senderId: string,
+      ) {
+        const now = yield* Clock.currentTimeMillis;
+        const [row] = yield* db
+          .select({ total: sql<number>`coalesce(sum(${schema.transfer.size}), 0)` })
+          .from(schema.transfer)
+          .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
+          .where(
+            and(
+              eq(schema.delivery.senderId, senderId),
+              or(
+                eq(schema.delivery.status, "open"),
+                and(
+                  eq(schema.delivery.status, "ready"),
+                  gt(schema.delivery.expiresAt, new Date(now)),
+                ),
+              ),
+            ),
+          );
+        return row?.total ?? 0;
+      }, dieOnDatabaseError);
+
       return Deliveries.of({
+        activeBytes,
         cancel: Effect.fn("Deliveries.cancel")(function* cancel(
           senderId: string,
           deliveryId: DeliveryId,
@@ -148,6 +205,11 @@ export class Deliveries extends Context.Service<
           if (row === undefined || row.senderId !== senderId) {
             return yield* new DeliveryNotFound();
           }
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": row.transfers.length,
+            "delivery.id": deliveryId,
+            "delivery.status": row.status,
+          });
           yield* batch([
             db
               .update(schema.delivery)
@@ -166,15 +228,98 @@ export class Deliveries extends Context.Service<
           return yield* view(deliveryId);
         }, dieOnDatabaseError),
 
+        clear: Effect.fn("Deliveries.clear")(function* clear(
+          senderId: string,
+          deliveryIds: readonly DeliveryId[],
+        ) {
+          yield* Effect.annotateCurrentSpan("delivery.count", deliveryIds.length);
+          if (deliveryIds.length === 0) {
+            return;
+          }
+          const now = new Date(yield* Clock.currentTimeMillis);
+          yield* db
+            .update(schema.delivery)
+            .set({ clearedAt: now })
+            .where(
+              and(
+                eq(schema.delivery.senderId, senderId),
+                inArray(schema.delivery.id, deliveryIds),
+                isNull(schema.delivery.clearedAt),
+                or(
+                  eq(schema.delivery.status, "cancelled"),
+                  and(eq(schema.delivery.status, "ready"), lte(schema.delivery.expiresAt, now)),
+                ),
+              ),
+            );
+        }, dieOnDatabaseError),
+
         create: Effect.fn("Deliveries.create")(function* create(
           senderId: string,
           input: NewDelivery,
         ) {
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": input.files.length,
+            "delivery.id": input.id,
+            "delivery.retention_days": input.retentionDays,
+            "delivery.total_bytes": input.files.reduce((total, file) => total + file.size, 0),
+          });
           const existing = yield* load(input.id);
           if (existing !== undefined) {
+            yield* Effect.annotateCurrentSpan("delivery.replayed", true);
             return sameDelivery(senderId, input, existing)
               ? yield* toView(existing)
               : yield* new DeliveryConflict();
+          }
+
+          // Refused before any bytes upload. Two creates racing past the limit
+          // both land; the next create sees both, so the overshoot stays bounded.
+          const subscription = yield* db.query.subscription.findFirst({
+            columns: { plan: true },
+            where: { userId: senderId },
+          });
+          const plan = subscription?.plan ?? "free";
+          if (plan === "free") {
+            // Cancelled deliveries count too, so create-and-cancel can't loop.
+            const now = yield* Clock.currentTimeMillis;
+            const { deliveriesPerDay } = rateLimits;
+            const recent = yield* db
+              .select({ createdAt: schema.delivery.createdAt })
+              .from(schema.delivery)
+              .where(
+                and(
+                  eq(schema.delivery.senderId, senderId),
+                  gt(
+                    schema.delivery.createdAt,
+                    new Date(now - deliveriesPerDay.windowSeconds * 1000),
+                  ),
+                ),
+              )
+              .orderBy(desc(schema.delivery.createdAt))
+              .limit(deliveriesPerDay.limit);
+            const createdAt = recent.map((row) => row.createdAt);
+            for (const limit of ["deliveriesPerHour", "deliveriesPerDay"] as const) {
+              const retryAfterSeconds = secondsUntilRoom(createdAt, rateLimits[limit], now);
+              if (retryAfterSeconds !== undefined) {
+                return yield* new RateLimited({ limit, retryAfterSeconds });
+              }
+            }
+          }
+          if (input.retentionDays > plans[plan].maxRetentionDays) {
+            return yield* new RetentionNotInPlan({
+              maxRetentionDays: plans[plan].maxRetentionDays,
+              plan,
+              requestedDays: input.retentionDays,
+            });
+          }
+          const requestedBytes = input.files.reduce((total, file) => total + file.size, 0);
+          const usedBytes = yield* activeBytes(senderId);
+          if (usedBytes + requestedBytes > plans[plan].activeBytes) {
+            return yield* new OverPlanLimit({
+              limitBytes: plans[plan].activeBytes,
+              plan,
+              requestedBytes,
+              usedBytes,
+            });
           }
 
           const linkId = yield* newLinkId;
@@ -235,9 +380,10 @@ export class Deliveries extends Context.Service<
           const rows = yield* db.query.delivery.findMany({
             limit: 50,
             orderBy: { createdAt: "desc" },
-            where: { senderId },
+            where: { clearedAt: { isNull: true }, senderId },
             with: { link: true, transfers: { orderBy: { path: "asc" } } },
           });
+          yield* Effect.annotateCurrentSpan("delivery.count", rows.length);
           return yield* Effect.forEach(rows, toView);
         }, dieOnDatabaseError),
 
@@ -274,6 +420,7 @@ export class Deliveries extends Context.Service<
             ]);
             yield* Effect.logInfo("abandoned deliveries cancelled", { count: ids.length });
           }
+          yield* Effect.annotateCurrentSpan("sweep.abandoned", abandoned.length);
           const ended = yield* db.query.delivery.findMany({
             columns: { id: true },
             limit: PURGE_BATCH,
@@ -301,7 +448,9 @@ export class Deliveries extends Context.Service<
               ).pipe(Effect.tap((removed) => (removed ? markPurged(delivery.id) : Effect.void))),
             { concurrency: 4 },
           );
-          return purged.filter(Boolean).length;
+          const total = purged.filter(Boolean).length;
+          yield* Effect.annotateCurrentSpan({ "sweep.ended": ended.length, "sweep.purged": total });
+          return total;
         }).pipe(Effect.withSpan("Deliveries.purgeEnded"), dieOnDatabaseError),
 
         view,

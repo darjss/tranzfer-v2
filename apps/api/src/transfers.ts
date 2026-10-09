@@ -3,6 +3,8 @@ import {
   InvalidUpload,
   NotUploaded,
   partCount,
+  RateLimited,
+  rateLimits,
   StorageUnavailable,
   UploadClosed,
 } from "@tranzfer/contracts";
@@ -52,6 +54,16 @@ const verify = (transfer: Transfer, object: Option.Option<StoredObject>) =>
     Match.orElse((found) => Effect.succeed(found.value)),
   );
 
+/**
+ * Counts signing requests per sender. Cloudflare's rate-limit binding in the
+ * Worker, set to `rateLimits.uploadSigning`; it answers whether this request
+ * still fits.
+ */
+export class SigningRate extends Context.Service<
+  SigningRate,
+  { readonly allow: (senderId: string) => Effect.Effect<boolean> }
+>()("tranzfer/SigningRate") {}
+
 /** Upload signing and completion for a sender's transfers. */
 export class Transfers extends Context.Service<
   Transfers,
@@ -60,7 +72,7 @@ export class Transfers extends Context.Service<
       senderId: string,
       key: string,
       request: UploadRequest,
-    ) => Effect.Effect<SignedUrl, DeliveryNotFound | InvalidUpload | UploadClosed>;
+    ) => Effect.Effect<SignedUrl, DeliveryNotFound | InvalidUpload | RateLimited | UploadClosed>;
     readonly finalize: (
       senderId: string,
       transferId: TransferId,
@@ -77,6 +89,7 @@ export class Transfers extends Context.Service<
     Effect.gen(function* makeTransfers() {
       const { db } = yield* Database;
       const deliveries = yield* Deliveries;
+      const signingRate = yield* SigningRate;
       const storage = yield* Storage;
 
       const owned = (senderId: string, where: { id: TransferId } | { objectKey: string }) =>
@@ -94,6 +107,10 @@ export class Transfers extends Context.Service<
         transfer: Transfer,
         object: StoredObject,
       ) {
+        yield* Effect.annotateCurrentSpan({
+          "transfer.id": transfer.id,
+          "transfer.size": object.size,
+        });
         const now = yield* Clock.currentTimeMillis;
         const claimed = yield* db
           .update(schema.transfer)
@@ -114,6 +131,7 @@ export class Transfers extends Context.Service<
             return yield* new UploadClosed();
           }
         }
+        yield* Effect.annotateCurrentSpan("transfer.claimed", claimed.length > 0);
         return claimed.length > 0;
       });
 
@@ -125,6 +143,11 @@ export class Transfers extends Context.Service<
        * reads the object that can no longer change.
        */
       const settle = Effect.fn("Transfers.settle")(function* settle(transfer: Transfer) {
+        yield* Effect.annotateCurrentSpan({
+          "delivery.id": transfer.deliveryId,
+          "transfer.id": transfer.id,
+          "transfer.size": transfer.size,
+        });
         yield* verify(transfer, yield* storage.head(transfer.objectKey));
         yield* db
           .update(schema.transfer)
@@ -164,10 +187,16 @@ export class Transfers extends Context.Service<
           senderId: string,
           transferId: TransferId,
         ) {
+          yield* Effect.annotateCurrentSpan("transfer.id", transferId);
           const transfer = yield* owned(senderId, { id: transferId });
           if (transfer === undefined) {
             return yield* new DeliveryNotFound();
           }
+          yield* Effect.annotateCurrentSpan({
+            "delivery.id": transfer.deliveryId,
+            "transfer.size": transfer.size,
+            "transfer.state": transfer.state,
+          });
           if (transfer.state === "cancelled") {
             return yield* new UploadClosed();
           }
@@ -223,7 +252,12 @@ export class Transfers extends Context.Service<
             { concurrency: 8 },
           );
           yield* markReady();
-          return recovered.reduce((total, count) => total + count, 0);
+          const total = recovered.reduce((sum, count) => sum + count, 0);
+          yield* Effect.annotateCurrentSpan({
+            "sweep.recovered": total,
+            "sweep.stuck": stuck.length,
+          });
+          return total;
         }).pipe(Effect.withSpan("Transfers.recoverFinalizing"), dieOnDatabaseError),
 
         sign: Effect.fn("Transfers.sign")(function* sign(
@@ -231,9 +265,34 @@ export class Transfers extends Context.Service<
           key: string,
           request: UploadRequest,
         ) {
+          // Every sender is counted, but only Free is held to it, so the plan
+          // is read only once the count runs over.
+          if (!(yield* signingRate.allow(senderId))) {
+            const subscription = yield* db.query.subscription.findFirst({
+              columns: { plan: true },
+              where: { userId: senderId },
+            });
+            if (subscription === undefined || subscription.plan === "free") {
+              return yield* new RateLimited({
+                limit: "uploadSigning",
+                retryAfterSeconds: rateLimits.uploadSigning.windowSeconds,
+              });
+            }
+          }
           const transfer = yield* owned(senderId, { objectKey: key });
           if (transfer === undefined) {
             return yield* new DeliveryNotFound();
+          }
+          yield* Effect.annotateCurrentSpan({
+            "delivery.id": transfer.deliveryId,
+            "transfer.id": transfer.id,
+            "transfer.part_count": partCount(transfer.size),
+            "transfer.size": transfer.size,
+            "transfer.state": transfer.state,
+            "upload.request": request._tag,
+          });
+          if (request._tag === "Part") {
+            yield* Effect.annotateCurrentSpan("upload.part_number", request.partNumber);
           }
           if (transfer.delivery.status !== "open") {
             return yield* new UploadClosed();

@@ -1,5 +1,6 @@
 import {
   AuthenticationUnavailable,
+  BillingUnavailable,
   DeliveryConflict,
   DeliveryNotFound,
   InvalidUpload,
@@ -7,23 +8,32 @@ import {
   LinkNotFound,
   LinkNotReady,
   NotUploaded,
+  OverPlanLimit,
+  PaidPlanId,
+  plans,
+  RateLimited,
+  RetentionNotInPlan,
   StorageUnavailable,
   Unauthorized,
   UploadClosed,
 } from "@tranzfer/contracts";
-import type { Api } from "@tranzfer/contracts";
+import type { Api, RateLimitName } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
 import * as Match from "effect/Match";
 import * as Schema from "effect/Schema";
-import type * as Rpc from "effect/unstable/rpc/Rpc";
-import { RpcClientError } from "effect/unstable/rpc/RpcClientError";
-import type * as RpcGroup from "effect/unstable/rpc/RpcGroup";
+import type * as Rpc from "effect/rpc/Rpc";
+import { RpcClientError } from "effect/rpc/RpcClientError";
+import type * as RpcGroup from "effect/rpc/RpcGroup";
+
+import { bytes } from "../dashboard/format";
+import { paidPlansOpen, supportEmail } from "../ui/support";
 
 /** Every error an Api call can fail with, middleware and transport included. */
 export type ApiError = Rpc.Error<RpcGroup.Rpcs<typeof Api>> | RpcClientError;
 
 const ApiErrors = Schema.Union([
   AuthenticationUnavailable,
+  BillingUnavailable,
   DeliveryConflict,
   DeliveryNotFound,
   InvalidUpload,
@@ -31,6 +41,9 @@ const ApiErrors = Schema.Union([
   LinkNotFound,
   LinkNotReady,
   NotUploaded,
+  OverPlanLimit,
+  RateLimited,
+  RetentionNotInPlan,
   RpcClientError,
   StorageUnavailable,
   Unauthorized,
@@ -41,9 +54,44 @@ const ApiErrors = Schema.Union([
 // the build at the Match below instead of silently reading as "unknown".
 const isApiError: (value: unknown) => value is ApiError = Schema.is(ApiErrors);
 
+// The cheapest paid plan above the current one that fits, if any does.
+const planThatFits = (error: OverPlanLimit) =>
+  PaidPlanId.literals.find(
+    (plan) =>
+      plans[plan].activeBytes > error.limitBytes &&
+      plans[plan].activeBytes >= error.usedBytes + error.requestedBytes,
+  );
+
+const tooMany = {
+  authRequests: "Too many sign-in attempts from your network.",
+  deliveriesPerDay: "Too many new deliveries in a day.",
+  deliveriesPerHour: "Too many new deliveries in an hour.",
+  newAccounts: "Too many new accounts from your network today.",
+  uploadSigning: "Too many upload requests at once.",
+} satisfies Record<RateLimitName, string>;
+
+const count = (value: number, unit: string) => `${value} ${unit}${value === 1 ? "" : "s"}`;
+
+// Rounded up, so the wait it names is never too short.
+const wait = (seconds: number) => {
+  if (seconds < 60) {
+    return count(seconds, "second");
+  }
+  if (seconds < 60 * 60) {
+    return count(Math.ceil(seconds / 60), "minute");
+  }
+  return count(Math.ceil(seconds / (60 * 60)), "hour");
+};
+
 const words = Match.type<ApiError>().pipe(
   Match.tagsExhaustive({
     AuthenticationUnavailable: () => "We couldn't check your sign-in. Try again in a moment.",
+    // `provider` covers Polar refusing the request and Polar not answering.
+    // Neither charges anything.
+    BillingUnavailable: (error) =>
+      error.reason === "notOpen"
+        ? "Paid plans aren't open yet, so nothing changed and nothing was charged."
+        : `Our payment provider turned this down or didn't answer, so nothing changed and nothing was charged. Try again later, or write to ${supportEmail}.`,
     DeliveryConflict: () => "That delivery already exists. Refresh to see it.",
     DeliveryNotFound: () => "We can't find that delivery anymore.",
     InvalidUpload: () => "This file doesn't match what the delivery expects. Send it again.",
@@ -51,6 +99,18 @@ const words = Match.type<ApiError>().pipe(
     LinkNotFound: () => "This link doesn't work. It may have been cancelled.",
     LinkNotReady: () => "Still uploading. The link starts working once every file is finished.",
     NotUploaded: () => "Still finishing up on our end. Retry in a moment.",
+    OverPlanLimit: (error) => {
+      const facts = `This delivery is ${bytes(error.requestedBytes)} and ${bytes(error.usedBytes)} of your ${bytes(error.limitBytes)} on ${plans[error.plan].name} is in use.`;
+      // Until paid plans open there is nothing bigger to move to.
+      const fit = paidPlansOpen ? planThatFits(error) : undefined;
+      return fit === undefined
+        ? `${facts} Cancel a delivery to free space, or send this one in smaller parts.`
+        : `${facts} ${plans[fit].name} holds ${bytes(plans[fit].activeBytes)}. Upgrade, or cancel a delivery to free space.`;
+    },
+    RateLimited: (error) =>
+      `${tooMany[error.limit]} Try again in ${wait(error.retryAfterSeconds)}.`,
+    RetentionNotInPlan: (error) =>
+      `${plans[error.plan].name} links last up to ${error.maxRetentionDays} days. Choose a shorter time${paidPlansOpen ? ", or upgrade" : ""}.`,
     RpcClientError: () => "We couldn't reach Tranzfer. Check your connection and try again.",
     StorageUnavailable: () => "Storage didn't answer. Try again in a moment.",
     Unauthorized: () => "Your sign-in expired. Sign in again to continue.",

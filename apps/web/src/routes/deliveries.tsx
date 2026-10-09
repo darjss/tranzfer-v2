@@ -1,15 +1,27 @@
 import { Meta, Title } from "@solidjs/meta";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import { clientOnly } from "@solidjs/web";
-import { defaultRetentionDays } from "@tranzfer/contracts";
+import { defaultRetentionDays, PaidPlanId, plans } from "@tranzfer/contracts";
 import type { RetentionDays } from "@tranzfer/contracts";
-import { createMemo, createSignal, Errored, Loading, onSettled, Show, useContext } from "solid-js";
+import * as Schema from "effect/Schema";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  Errored,
+  Loading,
+  onSettled,
+  refresh,
+  Show,
+  useContext,
+} from "solid-js";
 import { css, cx } from "styled-system/css";
 
 import { ApiClient } from "../api/client";
 import { appError } from "../api/errors";
 import { runEffect, RuntimeContext } from "../api/solid-effect";
 import { Board } from "../dashboard/Board";
+import { goToCheckout, goToPortal } from "../dashboard/billing";
 import { createDeliveries } from "../dashboard/deliveries";
 import { DeliverySheet } from "../dashboard/DeliverySheet";
 import { SendCard } from "../dashboard/SendCard";
@@ -17,6 +29,10 @@ import { TopBar } from "../dashboard/TopBar";
 import { inkStrokes } from "../landing/notebook";
 import { online, wireWindow } from "../uploads/store";
 import { chosenFiles, getDroppedFiles, invalidPaths } from "../uploads/uploads";
+import { bytes } from "../dashboard/format";
+import { button } from "../ui/Button";
+import { paidPlansOpen } from "../ui/support";
+import DashboardLoading from "../dashboard/DashboardLoading";
 import "../dashboard/dashboard.css";
 
 const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
@@ -69,15 +85,28 @@ const Empty = (props: { firstRun: boolean }) => (
   </div>
 );
 
+// The toast module stays out of the server bundle; see ui/Toasts.tsx.
+const welcome = async (plan: PaidPlanId) => {
+  const { toaster } = await import("../ui/Toasts");
+  toaster.success({
+    description: `${bytes(plans[plan].activeBytes)} at once, links up to ${plans[plan].maxRetentionDays} days.`,
+    title: `You're on ${plans[plan].name}`,
+  });
+};
+
 const DeliveriesPage = () => {
   const runtime = useContext(RuntimeContext);
-  const [searchParams, setSearchParams] = useSearchParams<{ d?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams<{
+    checkout?: string;
+    d?: string;
+    plan?: string;
+  }>();
   const select = (id?: string) => {
     setSearchParams({ d: id });
   };
 
   const me = createMemo(() => runEffect(ApiClient.use((api) => api.Me())));
-  const { cancel, deliveries, send, sending } = createDeliveries(runtime);
+  const { billing, cancel, clear, deliveries, send, sending } = createDeliveries(runtime);
   const selected = () => {
     const id = searchParams.d;
     return id === undefined ? undefined : deliveries.find((delivery) => delivery.id === id);
@@ -108,36 +137,104 @@ const DeliveriesPage = () => {
     const failure = await send(chosen, retention());
     if (failure !== undefined) {
       setProblems([`${failure} Nothing was uploaded.`]);
+      return;
+    }
+    const { toaster } = await import("../ui/Toasts");
+    toaster.success({
+      description: "Close the tab if you have to. It picks up where it left off.",
+      title: chosen.length === 1 ? "Sending 1 file" : `Sending ${chosen.length} files`,
+    });
+  };
+
+  const upgrade = async (plan: PaidPlanId) => {
+    const problem = await goToCheckout(runtime, plan);
+    if (problem !== undefined) {
+      const { toaster } = await import("../ui/Toasts");
+      toaster.error({ description: problem.message, title: "Checkout didn't open" });
+    }
+  };
+  const manage = async () => {
+    const problem = await goToPortal(runtime);
+    if (problem !== undefined) {
+      const { toaster } = await import("../ui/Toasts");
+      toaster.error({ description: problem.message, title: "Billing didn't open" });
     }
   };
 
+  // Signing in from a pricing button lands here with the plan to buy. An old
+  // link can carry one while paid plans are closed; it is dropped.
+  onSettled(() => {
+    const plan = Schema.decodeUnknownOption(PaidPlanId)(searchParams.plan);
+    if (plan._tag === "Some") {
+      setSearchParams({ plan: undefined });
+      if (paidPlansOpen) {
+        void upgrade(plan.value);
+      }
+    }
+  });
+
+  // The webhook can land a moment after the checkout redirect, so read the
+  // plan again until it changes or a few tries pass.
+  createEffect(
+    () => searchParams.checkout === "success" && billing().plan === "free",
+    (waiting) => {
+      let tries = 0;
+      const timer = waiting
+        ? setInterval(() => {
+            tries += 1;
+            if (tries > 15) {
+              clearInterval(timer);
+              return;
+            }
+            void refresh(billing);
+          }, 2000)
+        : undefined;
+      return () => {
+        clearInterval(timer);
+      };
+    },
+  );
+
+  // Back from checkout once the new plan is in: say so once, then drop the
+  // query so a reload doesn't say it again.
+  createEffect(
+    () => (searchParams.checkout === "success" ? billing().plan : "free"),
+    (plan) => {
+      if (plan !== "free") {
+        void welcome(plan);
+        setSearchParams({ checkout: undefined });
+      }
+    },
+  );
+
   const sendDropped = async (dropped: DataTransfer) => {
     await pick(await getDroppedFiles(dropped));
+  };
+
+  const over = (event: DragEvent) => {
+    if (hasFiles(event)) {
+      event.preventDefault();
+      setDragging(true);
+    }
+  };
+  const leave = (event: DragEvent) => {
+    if (event.relatedTarget === null) {
+      setDragging(false);
+    }
+  };
+  const drop = (event: DragEvent) => {
+    if (!hasFiles(event) || event.dataTransfer === null) {
+      return;
+    }
+    event.preventDefault();
+    setDragging(false);
+    void sendDropped(event.dataTransfer);
   };
 
   // The whole window is the drop target. dragleave with no relatedTarget
   // means the pointer left the window, not just moved between children.
   onSettled(() => {
     wireWindow();
-    const over = (event: DragEvent) => {
-      if (hasFiles(event)) {
-        event.preventDefault();
-        setDragging(true);
-      }
-    };
-    const leave = (event: DragEvent) => {
-      if (event.relatedTarget === null) {
-        setDragging(false);
-      }
-    };
-    const drop = (event: DragEvent) => {
-      if (!hasFiles(event) || event.dataTransfer === null) {
-        return;
-      }
-      event.preventDefault();
-      setDragging(false);
-      void sendDropped(event.dataTransfer);
-    };
     window.addEventListener("dragover", over);
     window.addEventListener("dragleave", leave);
     window.addEventListener("drop", drop);
@@ -158,24 +255,45 @@ const DeliveriesPage = () => {
     <>
       <Title>Deliveries · Tranzfer</Title>
       <Meta name="description" content="Your Tranzfer deliveries." />
-      <Loading fallback={<main class={css({ minH: "screen" })} />}>
+      <Meta name="robots" content="noindex" />
+      <Loading fallback={<DashboardLoading />}>
         <Errored
           fallback={(error, retry) => (
             <Show
               when={appError(error()).tag === "Unauthorized"}
               fallback={
                 <main
-                  class={css({ display: "grid", minH: "screen", placeItems: "center" })}
+                  class={css({ display: "grid", minH: "screen", placeItems: "center", px: "5" })}
                   role="alert"
                 >
-                  <div class={css({ textAlign: "center" })}>
-                    <p class={css({ color: "mut", textStyle: "sm" })}>
-                      {appError(error()).message}
+                  <div
+                    class={css({
+                      bg: "panel",
+                      borderRadius: "card",
+                      maxW: "[440px]",
+                      p: "8",
+                      rotate: "[-1deg]",
+                      shadow: "paper",
+                      textAlign: "center",
+                    })}
+                  >
+                    <p
+                      class={css({
+                        fontSize: "22",
+                        fontWeight: "semibold",
+                        letterSpacing: "tight",
+                      })}
+                    >
+                      Well, that didn't load.
+                    </p>
+                    <p class={css({ color: "mut", mt: "2", textStyle: "sm" })}>
+                      {appError(error()).message} Your uploads are fine; this is just the list.
                     </p>
                     <button
-                      class={css({ color: "ink", mt: "3", textDecoration: "underline" })}
+                      class={button({ size: "sm" })}
                       onClick={retry}
                       type="button"
+                      style={{ "margin-top": "20px" }}
                     >
                       Try again
                     </button>
@@ -197,9 +315,16 @@ const DeliveriesPage = () => {
             })}
           >
             <TopBar
+              billing={billing()}
+              manage={() => {
+                void manage();
+              }}
               principal={me()}
               send={() => {
                 filesInput?.click();
+              }}
+              upgrade={(plan) => {
+                void upgrade(plan);
               }}
             />
             <Show when={!online()}>
@@ -271,6 +396,7 @@ const DeliveriesPage = () => {
                   </span>
                 </h1>
                 <SendCard
+                  billing={billing()}
                   dragging={dragging()}
                   pickFiles={() => {
                     filesInput?.click();
@@ -284,6 +410,9 @@ const DeliveriesPage = () => {
                   setRetention={(days) => {
                     setRetention(days);
                   }}
+                  upgrade={(plan) => {
+                    void upgrade(plan);
+                  }}
                 />
               </div>
               {/* On phones, live deliveries come first so progress and links
@@ -294,6 +423,7 @@ const DeliveriesPage = () => {
                 </Show>
                 <Board
                   cancel={cancel}
+                  clear={clear}
                   deliveries={deliveries}
                   online={online()}
                   select={select}
@@ -358,5 +488,5 @@ const DeliveriesPage = () => {
 const LazyDeliveries = clientOnly(async () => await Promise.resolve({ default: DeliveriesPage }));
 
 export default function Deliveries() {
-  return <LazyDeliveries fallback={<main class={css({ minH: "screen" })} />} />;
+  return <LazyDeliveries fallback={<DashboardLoading />} />;
 }

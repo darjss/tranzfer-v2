@@ -1,21 +1,33 @@
-import type { DeliveryId, RetentionDays, TransferId } from "@tranzfer/contracts";
+import type {
+  DeliveryId,
+  PlanId,
+  RetentionDays,
+  SubscriptionStatus,
+  TransferId,
+} from "@tranzfer/contracts";
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-export const user = sqliteTable("user", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
-  image: text("image"),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
+export const user = sqliteTable(
+  "user",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull().unique(),
+    emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
+    image: text("image"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => new Date())
+      .notNull(),
+    // The client IP that created the account, for the new-accounts-per-IP cap.
+    signupIp: text("signup_ip"),
+  },
+  (table) => [index("user_signupIp_createdAt_idx").on(table.signupIp, table.createdAt)],
+);
 
 export const session = sqliteTable(
   "session",
@@ -102,6 +114,9 @@ export const delivery = sqliteTable(
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
     // Set once the sweeper has removed a cancelled or expired delivery's objects.
     purgedAt: integer("purged_at", { mode: "timestamp_ms" }),
+    // Set when the sender clears an ended delivery off the dashboard. The row
+    // stays so the sweeper still purges it and its link still reads as ended.
+    clearedAt: integer("cleared_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
@@ -160,3 +175,21 @@ export const link = sqliteTable(
   },
   (table) => [index("link_deliveryId_idx").on(table.deliveryId)],
 );
+
+// No row means the Free plan. Webhooks rebuild a row from Polar's customer
+// state, so it is a cache of Polar and never the source of truth.
+export const subscription = sqliteTable("subscription", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  plan: text("plan").$type<PlanId>().notNull(),
+  status: text("status").$type<SubscriptionStatus>().notNull(),
+  polarCustomerId: text("polar_customer_id"),
+  polarSubscriptionId: text("polar_subscription_id"),
+  currentPeriodEnd: integer("current_period_end", { mode: "timestamp_ms" }),
+  cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }).default(false).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .$onUpdate(() => new Date())
+    .notNull(),
+});

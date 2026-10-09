@@ -9,7 +9,20 @@
     "noEmit": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "types": ["@cloudflare/workers-types", "node"]
+    "types": ["@cloudflare/workers-types", "node"],
+    // Effect 4.0 still tags these unstable; we use them on purpose (#84).
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "allowedUnstableApis": [
+          "effect/http",
+          "effect/observability",
+          "effect/rpc",
+          "effect/sql",
+          "@effect/sql-d1"
+        ]
+      }
+    ]
   },
   "include": ["src", "test"]
 }

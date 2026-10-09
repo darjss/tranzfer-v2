@@ -19,6 +19,8 @@ declare module "virtual:file-routes" {
   export interface FileRouteEntry {
     path: string;
     page?: boolean;
+    /** The page component is a server function; its `$component` is delivered eagerly. */
+    server?: boolean;
     $component?: FileRouteLazyRef<any> | FileRouteEagerRef<any>;
     $$route?: FileRouteEagerRef<any>;
     [key: string]: unknown;
@@ -37,6 +39,32 @@ declare module "virtual:file-routes" {
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/[...404]")>;
       $$route: FileRouteEagerRef<typeof import("./src/routes/[...404]")>;
+    },
+    {
+      path: "/api/auth/*all";
+      page: false;
+      $GET: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
+      $POST: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
+      $HEAD: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/api/polar/webhook";
+      page: false;
+      $POST: FileRouteEagerRef<typeof import("./src/routes/api/polar/webhook")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/api/telemetry/traces";
+      page: false;
+      $POST: FileRouteEagerRef<typeof import("./src/routes/api/telemetry/traces")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/d/:token";
+      page: true;
+      $component: FileRouteEagerRef<typeof import("./src/routes/d/[token]")>;
+      $$route?: undefined;
     },
     {
       path: "/deliveries";
@@ -67,20 +95,6 @@ declare module "virtual:file-routes" {
       path: "/sign-in";
       page: true;
       $component: FileRouteEagerRef<typeof import("./src/routes/sign-in")>;
-      $$route?: undefined;
-    },
-    {
-      path: "/d/:token";
-      page: true;
-      $component: FileRouteEagerRef<typeof import("./src/routes/d/[token]")>;
-      $$route?: undefined;
-    },
-    {
-      path: "/api/auth/*all";
-      page: false;
-      $GET: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
-      $POST: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
-      $HEAD: FileRouteEagerRef<typeof import("./src/routes/api/auth/[...all]")>;
       $$route?: undefined;
     }
   ];

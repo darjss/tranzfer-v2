@@ -1,8 +1,13 @@
 import { Meta, Title } from "@solidjs/meta";
+import { PaidPlanId, RateLimited, plans } from "@tranzfer/contracts";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { createSignal, onSettled, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 
 import { authClient } from "../api/auth-client";
+import { appError } from "../api/errors";
+import { bytes } from "../dashboard/format";
 import Brand from "../landing/Brand";
 import videoEdit from "../landing/assets/video-edit.webp";
 import "../landing/landing.css";
@@ -28,12 +33,40 @@ const GoogleG = (props: { class?: string }) => (
   </svg>
 );
 
+// A pricing button sends signed-out visitors here with the plan to buy; the
+// dashboard carries on to checkout once they are in.
+const destination = () => {
+  const plan = Schema.decodeUnknownOption(PaidPlanId)(
+    new URLSearchParams(location.search).get("plan"),
+  );
+  return Option.isSome(plan) ? `/deliveries?plan=${plan.value}` : "/deliveries";
+};
+
 const scopes = "We use your name, email and photo from Google. Nothing else.";
+
+// Over an auth limit, the API answers 429 with an encoded RateLimited.
+const asRefusal = Schema.decodeUnknownOption(RateLimited);
+const refusal = (error: Option.Option<RateLimited>, fallback: string) =>
+  Option.match(error, {
+    onNone: () => fallback,
+    onSome: (limited) => appError(limited).message,
+  });
+
+// Better Auth redirects a failed Google callback here with its error code.
+// For the new-accounts cap the description is the wait in seconds.
+const callbackFailure = (params: URLSearchParams) => {
+  const code = params.get("error");
+  const retryAfterSeconds = Number(params.get("error_description"));
+  if (code === "RateLimited" && Number.isInteger(retryAfterSeconds)) {
+    return appError(new RateLimited({ limit: "newAccounts", retryAfterSeconds })).message;
+  }
+  return code === null ? undefined : "Google sign-in didn't finish. Try again.";
+};
 
 export default function SignIn() {
   const [pending, setPending] = createSignal(false);
-  const [failed, setFailed] = createSignal(false);
-  const [keyFailed, setKeyFailed] = createSignal(false);
+  const [failure, setFailure] = createSignal<string>();
+  const [keyFailure, setKeyFailure] = createSignal<string>();
   const [key, setKey] = createSignal("");
   const [staging, setStaging] = createSignal(false);
   // Only production has a Google provider; everywhere else the staging key
@@ -41,6 +74,7 @@ export default function SignIn() {
   // first client render match.
   onSettled(() => {
     setStaging(location.hostname !== "tranzfer.app");
+    setFailure(callbackFailure(new URLSearchParams(location.search)));
   });
 
   const signInWithGoogle = async () => {
@@ -48,15 +82,16 @@ export default function SignIn() {
       return;
     }
     setPending(true);
-    setFailed(false);
+    setFailure(undefined);
+    const fallback = "Google sign-in didn't open. Try again.";
     try {
       const result = await authClient.signIn.social({
-        callbackURL: "/deliveries",
+        callbackURL: destination(),
         provider: "google",
       });
-      setFailed(result.error !== null);
+      setFailure(result.error === null ? undefined : refusal(asRefusal(result.error), fallback));
     } catch {
-      setFailed(true);
+      setFailure(fallback);
     } finally {
       setPending(false);
     }
@@ -67,7 +102,8 @@ export default function SignIn() {
       return;
     }
     setPending(true);
-    setKeyFailed(false);
+    setKeyFailure(undefined);
+    const fallback = "That key didn't work. Try again.";
     try {
       const response = await fetch("/api/auth/staging-login", {
         body: JSON.stringify({ key: secret }),
@@ -75,12 +111,12 @@ export default function SignIn() {
         method: "POST",
       });
       if (response.ok) {
-        location.assign("/deliveries");
+        location.assign(destination());
         return;
       }
-      setKeyFailed(true);
+      setKeyFailure(refusal(asRefusal(await response.json().catch(() => null)), fallback));
     } catch {
-      setKeyFailed(true);
+      setKeyFailure(fallback);
     } finally {
       setPending(false);
     }
@@ -241,6 +277,10 @@ export default function SignIn() {
           <p class={css({ color: "mut", fontSize: "17", mt: "4" })}>
             One Google account. No password, no setup.
           </p>
+          <p class={css({ color: "ink", fontSize: "[14px]", fontWeight: "medium", mt: "3" })}>
+            {bytes(plans.free.activeBytes)} free. Links last up to {plans.free.maxRetentionDays}{" "}
+            days. No card.
+          </p>
           <button
             class={css({
               _active: { translate: "[0 1px]" },
@@ -283,12 +323,24 @@ export default function SignIn() {
             <GoogleG class={css({ boxSize: "5", flexShrink: 0 })} />
             {pending() ? "Opening Google…" : "Continue with Google"}
           </button>
-          <Show when={failed()}>
-            <p class={css({ color: "rust", mt: "3", textStyle: "sm" })} role="alert">
-              Google sign-in didn't open. Try again.
-            </p>
+          <Show when={failure()}>
+            {(message) => (
+              <p class={css({ color: "rust", mt: "3", textStyle: "sm" })} role="alert">
+                {message()}
+              </p>
+            )}
           </Show>
-          <p class={css({ color: "mut", mt: "6", textStyle: "sm" })}>{scopes}</p>
+          <p class={css({ color: "mut", mt: "6", textStyle: "sm" })}>
+            {scopes} By continuing you agree to the{" "}
+            <a class={css({ textDecoration: "underline" })} href="/terms">
+              terms
+            </a>{" "}
+            and{" "}
+            <a class={css({ textDecoration: "underline" })} href="/privacy">
+              privacy policy
+            </a>
+            .
+          </p>
           <Show when={staging()}>
             <form
               class={css({
@@ -358,10 +410,12 @@ export default function SignIn() {
                   {pending() ? "Signing in…" : "Sign in"}
                 </button>
               </div>
-              <Show when={keyFailed()}>
-                <p class={css({ color: "rust", mt: "3", textStyle: "sm" })} role="alert">
-                  That key didn't work. Try again.
-                </p>
+              <Show when={keyFailure()}>
+                {(message) => (
+                  <p class={css({ color: "rust", mt: "3", textStyle: "sm" })} role="alert">
+                    {message()}
+                  </p>
+                )}
               </Show>
             </form>
           </Show>

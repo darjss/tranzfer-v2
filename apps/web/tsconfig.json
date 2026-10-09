@@ -21,6 +21,14 @@
     // Paths
     "paths": {
       "styled-system/*": ["./styled-system/*"]
-    }
+    },
+
+    // Effect 4.0 still tags these unstable; we use them on purpose (#84).
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "allowedUnstableApis": ["effect/http", "effect/observability", "effect/rpc"]
+      }
+    ]
   }
 }

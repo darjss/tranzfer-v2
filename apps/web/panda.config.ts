@@ -1,13 +1,17 @@
 import { defineConfig } from "@pandacss/dev";
+import presetBase from "@pandacss/preset-base";
 import pandaPreset from "@pandacss/preset-panda";
 
 export default defineConfig({
   exclude: [],
   include: ["./src/**/*.{ts,tsx}"],
   jsxFramework: "solid",
+  // Styles go through css(); without this Panda reads JSX props such as
+  // <Meta content> as CSS and emits invalid rules.
+  jsxStyleProps: "none",
   outdir: "styled-system",
   preflight: true,
-  presets: [pandaPreset],
+  presets: [presetBase, pandaPreset],
   strictTokens: true,
   theme: {
     extend: {
@@ -41,9 +45,9 @@ export default defineConfig({
           "40": { value: "40px" },
         },
         fonts: {
-          hand: { value: '"Caveat", cursive' },
+          hand: { value: '"Caveat Variable", cursive' },
           mono: { value: '"IBM Plex Mono", ui-monospace, monospace' },
-          sans: { value: '"Archivo", system-ui, sans-serif' },
+          sans: { value: '"Archivo Variable", system-ui, sans-serif' },
         },
         letterSpacings: {
           label: { value: ".08em" },

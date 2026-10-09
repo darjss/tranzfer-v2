@@ -12,7 +12,10 @@ import { isExpired } from "./deliveries";
 import { LinkTokens } from "./link-tokens";
 import { Storage } from "./storage";
 
-const DOWNLOAD_URL_TTL = Duration.hours(1);
+// SigV4's ceiling. A browser resumes a paused download with the URL it started
+// with, so a short lifetime broke big downloads; cancel and expiry still end
+// them, because the purge deletes the objects every URL points at.
+const DOWNLOAD_URL_TTL = Duration.days(7);
 
 const basename = (path: string) => path.split("/").at(-1) ?? path;
 
@@ -46,6 +49,12 @@ export class SharedLinks extends Context.Service<
             return yield* new LinkNotFound();
           }
           const { delivery } = link;
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": delivery.transfers.length,
+            "delivery.id": delivery.id,
+            "delivery.status": delivery.status,
+            "delivery.total_bytes": delivery.transfers.reduce((sum, file) => sum + file.size, 0),
+          });
           if (delivery.status === "open") {
             return yield* new LinkNotReady({
               senderName: delivery.sender.name,

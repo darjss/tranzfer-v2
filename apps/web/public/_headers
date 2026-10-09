@@ -1,0 +1,4 @@
+# Only tranzfer.app belongs in search results. Static pages skip the Worker,
+# so staging and PR previews mark them here; App.tsx does the same for SSR.
+https://:sub.tranzfer.app/*
+  X-Robots-Tag: noindex
