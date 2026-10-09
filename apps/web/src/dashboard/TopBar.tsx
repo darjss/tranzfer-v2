@@ -1,14 +1,15 @@
 import { plans } from "@tranzfer/contracts";
 import type { BillingSummary, PaidPlanId, Principal } from "@tranzfer/contracts";
 import { Show } from "solid-js";
-import { css } from "styled-system/css";
+import { css, cx } from "styled-system/css";
 
 import PhSignOutBold from "~icons/ph/sign-out-bold";
+import PhTicketBold from "~icons/ph/ticket-bold";
 import PhUploadSimpleBold from "~icons/ph/upload-simple-bold";
 
 import { authClient } from "../api/auth-client";
 import Brand from "../landing/Brand";
-import { Button } from "../ui/Button";
+import { Button, button } from "../ui/Button";
 import { upgradeFrom } from "./billing";
 import { paidPlansOpen } from "../ui/support";
 import { bytes, untilDate } from "./format";
@@ -37,9 +38,25 @@ export function TopBar(props: {
   billing: BillingSummary;
   manage: () => void;
   principal: Principal;
+  redeem: (code: string) => Promise<string | undefined>;
+  redeeming: boolean;
   send: () => void;
   upgrade: (plan: PaidPlanId) => void;
 }) {
+  let codeInput: HTMLInputElement | undefined;
+  // The redeem action toasts either way; on success the menu gets out of the way.
+  const apply = async (form: HTMLFormElement) => {
+    const code = codeInput?.value.trim() ?? "";
+    if (code === "") {
+      return;
+    }
+    if ((await props.redeem(code)) === undefined) {
+      form.reset();
+      form.closest("details")?.removeAttribute("open");
+      document.querySelector<HTMLElement>("#account-menu")?.hidePopover();
+    }
+  };
+
   return (
     <nav
       aria-label="Account"
@@ -127,14 +144,81 @@ export function TopBar(props: {
                 Payment failed. Update it under Manage billing.
               </p>
             </Show>
-            <Show when={props.billing.periodEnd}>
+            <Show
+              when={props.billing.grantEndsAt}
+              fallback={
+                <Show when={props.billing.periodEnd}>
+                  {(end) => (
+                    <p class={css({ color: "mut", fontSize: "13" })}>
+                      {props.billing.cancelsAtPeriodEnd ? "Ends" : "Renews"} {untilDate(end())}
+                    </p>
+                  )}
+                </Show>
+              }
+            >
               {(end) => (
                 <p class={css({ color: "mut", fontSize: "13" })}>
-                  {props.billing.cancelsAtPeriodEnd ? "Ends" : "Renews"} {untilDate(end())}
+                  Free with a code until {untilDate(end())}
                 </p>
               )}
             </Show>
           </div>
+          <details>
+            <summary
+              class={cx(
+                menuItem,
+                css({
+                  "&::-webkit-details-marker": { display: "none" },
+                  cursor: "pointer",
+                  listStyle: "none",
+                }),
+              )}
+            >
+              <PhTicketBold class={css({ boxSize: "4" })} />
+              Have a code?
+            </summary>
+            <form
+              class={css({ display: "flex", gap: "2", pb: "2", px: "2" })}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void apply(event.currentTarget);
+              }}
+            >
+              <input
+                aria-label="Access code"
+                autocapitalize="characters"
+                autocomplete="off"
+                class={css({
+                  _focusVisible: {
+                    outlineColor: "blue",
+                    outlineOffset: "0.5",
+                    outlineStyle: "solid",
+                    outlineWidth: "2px",
+                  },
+                  bg: "white",
+                  borderRadius: "xl",
+                  flex: "1",
+                  fontFamily: "mono",
+                  fontSize: "[16px]",
+                  minW: "0",
+                  px: "3",
+                  shadow: "[inset 0 0 0 1px var(--colors-line)]",
+                  textTransform: "uppercase",
+                })}
+                maxlength={64}
+                name="code"
+                placeholder="BETA-PRO"
+                ref={(element) => {
+                  codeInput = element;
+                }}
+                required
+                spellcheck="false"
+              />
+              <button class={button({ size: "xs" })} disabled={props.redeeming} type="submit">
+                {props.redeeming ? "Applying…" : "Apply"}
+              </button>
+            </form>
+          </details>
           <Show when={paidPlansOpen && upgradeFrom[props.billing.plan]}>
             {(target) => (
               <button
@@ -148,7 +232,7 @@ export function TopBar(props: {
               </button>
             )}
           </Show>
-          <Show when={paidPlansOpen && props.billing.plan !== "free"}>
+          <Show when={paidPlansOpen && props.billing.status !== "none"}>
             <button
               class={menuItem}
               onClick={() => {

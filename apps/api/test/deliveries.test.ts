@@ -10,16 +10,27 @@ import { Base64 } from "effect/encoding";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 
 import { Billing, verifyWebhook } from "../src/billing";
 import { Deliveries } from "../src/deliveries";
+import { Emails, queueOpenings, sendWelcome } from "../src/emails";
+import { Mail, MailError } from "../src/infrastructure/email";
+import { admitSignup } from "../src/infrastructure/auth";
+import {
+  createAccessCode,
+  listAccessCodes,
+  NewAccessCode,
+  Plans,
+  revokeAccessCode,
+} from "../src/plans";
 import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } from "./support";
 
 const storage = makeMemoryStorage();
 const GB = 1_000_000_000;
 
-const subscribe = (userId: string, plan: "pro" | "starter") =>
+const subscribe = (userId: string, plan: "pro" | "starter" | "studio") =>
   Effect.flatMap(Effect.service(Database), ({ db }) =>
     db.insert(schema.subscription).values({ plan, status: "active", userId }),
   ).pipe(Effect.orDie);
@@ -357,6 +368,55 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
     }),
   );
 
+  it.effect("concurrent creates at the hourly cap land only up to it", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("pam");
+      const deliveries = yield* Deliveries;
+      const { limit } = rateLimits.deliveriesPerHour;
+      yield* Effect.forEach(Arr.range(1, limit - 1), () =>
+        deliveries.create("pam", newDelivery([newFile("a", 1)])),
+      );
+      // Every create reads one slot left before any of them inserts.
+      const outcomes = yield* Effect.forEach(
+        Arr.range(1, 5),
+        () =>
+          deliveries.create("pam", newDelivery([newFile("a", 1)])).pipe(
+            Effect.as("created"),
+            Effect.catchTag("RateLimited", (error) => Effect.succeed(error.limit)),
+          ),
+        { concurrency: "unbounded" },
+      );
+      expect(outcomes.toSorted()).toEqual([
+        "created",
+        "deliveriesPerHour",
+        "deliveriesPerHour",
+        "deliveriesPerHour",
+        "deliveriesPerHour",
+      ]);
+      expect(yield* deliveries.list("pam")).toHaveLength(limit);
+    }),
+  );
+
+  it.effect("concurrent creates never pass the plan's active space", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("quinn");
+      yield* subscribe("quinn", "pro");
+      const deliveries = yield* Deliveries;
+      const outcomes = yield* Effect.forEach(
+        Arr.range(1, 3),
+        () =>
+          deliveries.create("quinn", newDelivery([newFile("half.bin", 400 * GB)])).pipe(
+            Effect.as("created"),
+            Effect.catchTag("OverPlanLimit", (error) => Effect.succeed(error._tag)),
+          ),
+        { concurrency: "unbounded" },
+      );
+      expect(outcomes.toSorted()).toEqual(["OverPlanLimit", "created", "created"]);
+      expect(yield* deliveries.activeBytes("quinn")).toBe(800 * GB);
+    }),
+  );
+
   it.effect("accepts only a Polar delivery that is signed, fresh and intact", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(1_800_000_000_000);
@@ -392,6 +452,267 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       // The same signed delivery replayed past the five-minute window.
       yield* TestClock.adjust("6 minutes");
       expect(yield* check({})).toMatchObject({ reason: "timestamp" });
+    }),
+  );
+});
+
+const DAY = 24 * 60 * 60 * 1000;
+
+const addCode = (code: typeof schema.accessCode.$inferInsert) =>
+  Effect.flatMap(Effect.service(Database), ({ db }) =>
+    db.insert(schema.accessCode).values(code),
+  ).pipe(Effect.orDie);
+
+const usesOf = (code: string) =>
+  Effect.flatMap(Effect.service(Database), ({ db }) =>
+    db.query.accessCode.findFirst({ columns: { uses: true }, where: { code } }),
+  ).pipe(Effect.orDie);
+
+layer(domainLayer(storage.layer))("Access codes", (it) => {
+  it.effect("a code gives its plan once per user, and every limit follows it", () =>
+    Effect.gen(function* scenario() {
+      const now = Date.now();
+      yield* TestClock.setTime(now);
+      yield* addUser("ada");
+      yield* addCode({ code: "BETA-PRO", days: 90, maxUses: 30, plan: "pro" });
+      const plans = yield* Plans;
+      const deliveries = yield* Deliveries;
+
+      // Typed in any case, with stray spaces.
+      const grant = yield* plans.redeem("ada", "  beta-pro ");
+      expect(grant).toEqual({ endsAt: new Date(now + 90 * DAY), plan: "pro" });
+      expect(yield* plans.current("ada")).toEqual({ grantEndsAt: grant.endsAt, plan: "pro" });
+      // Pro's retention and space, with no subscription anywhere.
+      const created = yield* deliveries.create(
+        "ada",
+        newDelivery([newFile("big.bin", 500 * GB)], "Fortnight", 14),
+      );
+      expect(created.retentionDays).toBe(14);
+
+      expect(yield* Effect.flip(plans.redeem("ada", "BETA-PRO"))).toMatchObject({
+        _tag: "AccessCodeRefused",
+        reason: "alreadyRedeemed",
+      });
+      expect(yield* usesOf("BETA-PRO")).toEqual({ uses: 1 });
+
+      // The grant ends on its day and the plan falls back to Free.
+      yield* TestClock.adjust(Duration.days(90));
+      expect(yield* plans.current("ada")).toEqual({ grantEndsAt: null, plan: "free" });
+    }),
+  );
+
+  it.effect("refuses an unknown, expired or used up code without using it", () =>
+    Effect.gen(function* scenario() {
+      const now = Date.now();
+      yield* TestClock.setTime(now);
+      yield* addUser("bo");
+      yield* addUser("cy");
+      yield* addCode({
+        code: "OLD",
+        days: 30,
+        expiresAt: new Date(now),
+        maxUses: 5,
+        plan: "pro",
+      });
+      yield* addCode({ code: "ONE", days: 30, maxUses: 1, plan: "starter" });
+      const plans = yield* Plans;
+      const reason = (userId: string, code: string) =>
+        Effect.map(Effect.flip(plans.redeem(userId, code)), (error) =>
+          error._tag === "AccessCodeRefused" ? error.reason : error._tag,
+        );
+
+      expect(yield* reason("bo", "NOPE")).toBe("unknown");
+      expect(yield* reason("bo", "OLD")).toBe("expired");
+      yield* plans.redeem("bo", "ONE");
+      expect(yield* reason("cy", "ONE")).toBe("usedUp");
+      expect(yield* usesOf("OLD")).toEqual({ uses: 0 });
+      expect(yield* usesOf("ONE")).toEqual({ uses: 1 });
+      expect(yield* plans.current("cy")).toEqual({ grantEndsAt: null, plan: "free" });
+    }),
+  );
+
+  it.effect("concurrent redemptions never pass the code's uses", () =>
+    Effect.gen(function* scenario() {
+      const users = ["d1", "d2", "d3", "d4", "d5", "d6"];
+      yield* Effect.forEach(users, (id) => addUser(id));
+      yield* addCode({ code: "RUSH", days: 7, maxUses: 2, plan: "studio" });
+      const plans = yield* Plans;
+      // Every attempt reads the code with uses to spare before any batch lands.
+      const outcomes = yield* Effect.forEach(
+        users,
+        (id) =>
+          plans.redeem(id, "RUSH").pipe(
+            Effect.as("granted"),
+            Effect.catchTag("AccessCodeRefused", (error) => Effect.succeed(error.reason)),
+          ),
+        { concurrency: "unbounded" },
+      );
+      expect(outcomes.toSorted()).toEqual([
+        "granted",
+        "granted",
+        "usedUp",
+        "usedUp",
+        "usedUp",
+        "usedUp",
+      ]);
+      expect(yield* usesOf("RUSH")).toEqual({ uses: 2 });
+    }),
+  );
+
+  it.effect("the higher of a subscription and a grant sets the plan", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("eve");
+      yield* addUser("fay");
+      yield* subscribe("eve", "studio");
+      yield* subscribe("fay", "starter");
+      yield* addCode({ code: "PRO-30", days: 30, maxUses: 10, plan: "pro" });
+      const plans = yield* Plans;
+      yield* plans.redeem("eve", "PRO-30");
+      yield* plans.redeem("fay", "PRO-30");
+      expect(yield* plans.current("eve")).toEqual({ grantEndsAt: null, plan: "studio" });
+      expect(yield* plans.current("fay")).toMatchObject({ plan: "pro" });
+      yield* TestClock.adjust(Duration.days(30));
+      expect(yield* plans.current("fay")).toEqual({ grantEndsAt: null, plan: "starter" });
+    }),
+  );
+
+  it.effect("caps code attempts per user, so codes can't be guessed", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("gus");
+      const plans = yield* Plans;
+      const tries = yield* Effect.forEach(Arr.range(1, rateLimits.codeRedemptions.limit + 1), (n) =>
+        Effect.map(Effect.flip(plans.redeem("gus", `GUESS-${n}`)), (error) => error._tag),
+      );
+      expect(tries.at(-1)).toBe("RateLimited");
+      expect(tries.slice(0, -1)).toEqual(
+        Arr.makeBy(rateLimits.codeRedemptions.limit, () => "AccessCodeRefused"),
+      );
+    }),
+  );
+
+  it.effect("a code revoked while a redemption is in flight grants nothing", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("hal");
+      yield* addCode({ code: "LATE", days: 30, maxUses: 10, plan: "pro" });
+      // The operator's revoke lands after the redemption read the code and
+      // before its batch runs.
+      const revokingFirst = Layer.effect(
+        Database,
+        Effect.map(Effect.service(Database), (database) =>
+          Database.of({
+            ...database,
+            batch: (queries) =>
+              revokeAccessCode("LATE").pipe(
+                Effect.orDie,
+                Effect.provideService(Database, database),
+                Effect.andThen(database.batch(queries)),
+              ),
+          }),
+        ),
+      );
+      const refused = yield* Effect.flip(
+        Effect.flatMap(Effect.service(Plans), (plans) => plans.redeem("hal", "LATE")).pipe(
+          Effect.provide(
+            Plans.layer(() => Effect.succeed(true)).pipe(Layer.provide(revokingFirst)),
+          ),
+        ),
+      );
+      expect(refused).toMatchObject({ _tag: "AccessCodeRefused", reason: "expired" });
+      expect(yield* usesOf("LATE")).toEqual({ uses: 0 });
+      expect(yield* (yield* Plans).current("hal")).toEqual({ grantEndsAt: null, plan: "free" });
+    }),
+  );
+
+  it.effect("operators create, list and revoke codes", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("ivy");
+      const input = yield* Schema.decodeUnknownEffect(NewAccessCode)({
+        code: " beta-studio ",
+        days: 60,
+        lastDay: "2099-12-31",
+        maxUses: 3,
+        plan: "studio",
+      });
+      const created = yield* createAccessCode(input);
+      expect(created).toMatchObject({
+        code: "BETA-STUDIO",
+        days: 60,
+        expiresAt: new Date("2100-01-01T00:00:00Z"),
+        maxUses: 3,
+        uses: 0,
+      });
+      expect(yield* Effect.flip(createAccessCode(input))).toMatchObject({
+        _tag: "AccessCodeExists",
+      });
+      yield* (yield* Plans).redeem("ivy", "beta-studio");
+      expect(yield* listAccessCodes()).toContainEqual(
+        expect.objectContaining({ code: "BETA-STUDIO", uses: 1 }),
+      );
+
+      yield* revokeAccessCode("beta-studio");
+      yield* addUser("jo");
+      expect(yield* Effect.flip((yield* Plans).redeem("jo", "BETA-STUDIO"))).toMatchObject({
+        reason: "expired",
+      });
+      expect(yield* Effect.flip(revokeAccessCode("BETA-STUDIO"))).toMatchObject({
+        _tag: "AccessCodeNotLive",
+      });
+      expect(yield* Effect.flip(revokeAccessCode("NOPE"))).toMatchObject({
+        _tag: "AccessCodeNotLive",
+      });
+      // Grants already made keep their end.
+      expect(yield* (yield* Plans).current("ivy")).toMatchObject({ plan: "studio" });
+    }),
+  );
+
+  it.effect("refuses a code with a day that doesn't exist or a grant past ten years", () =>
+    Effect.gen(function* scenario() {
+      const valid = { code: "BETA-PRO", days: 90, maxUses: 30, plan: "pro" };
+      const decode = (input: Partial<typeof NewAccessCode.Encoded>) =>
+        Schema.decodeUnknownEffect(NewAccessCode)({ ...valid, ...input }).pipe(
+          Effect.match({ onFailure: () => "refused", onSuccess: () => "accepted" }),
+        );
+      expect(yield* decode({})).toBe("accepted");
+      expect(yield* decode({ lastDay: "2028-02-29" })).toBe("accepted");
+      expect(yield* decode({ lastDay: "2026-02-30" })).toBe("refused");
+      expect(yield* decode({ lastDay: "2026-13-01" })).toBe("refused");
+      expect(yield* decode({ lastDay: "2026-12-31T00:00:00Z" })).toBe("refused");
+      expect(yield* decode({ days: 100_000_000_000 })).toBe("refused");
+      expect(yield* decode({ days: 0 })).toBe("refused");
+      expect(yield* decode({ days: 1.5 })).toBe("refused");
+      expect(yield* decode({ maxUses: 0 })).toBe("refused");
+      expect(yield* decode({ code: "no spaces" })).toBe("refused");
+    }),
+  );
+});
+
+layer(domainLayer(storage.layer))("Accounts", (it) => {
+  it.effect("concurrent sign-ups from one IP never pass the new-accounts cap", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      const { limit } = rateLimits.newAccounts;
+      // Every attempt counts the IP's sign-ups before any of them inserts.
+      const outcomes = yield* Effect.forEach(
+        Arr.range(1, limit + 3),
+        () =>
+          admitSignup("203.0.113.7").pipe(
+            Effect.as("admitted"),
+            Effect.catchTag("RateLimited", (error) => Effect.succeed(error.limit)),
+          ),
+        { concurrency: "unbounded" },
+      );
+      expect(outcomes.filter((outcome) => outcome === "admitted")).toHaveLength(limit);
+      expect(outcomes.filter((outcome) => outcome === "newAccounts")).toHaveLength(3);
+      // Another IP has its own count.
+      yield* admitSignup("203.0.113.8");
+
+      const refused = yield* Effect.flip(admitSignup("203.0.113.7"));
+      expect(refused.retryAfterSeconds).toBeGreaterThan(rateLimits.newAccounts.windowSeconds - 60);
+      yield* TestClock.adjust(Duration.seconds(refused.retryAfterSeconds));
+      yield* admitSignup("203.0.113.7");
     }),
   );
 });
@@ -535,7 +856,182 @@ layer(closedBilling)("Billing before paid plans open", (it) => {
         reason: "disabled",
       });
       expect(yield* billing.summary("pia")).toMatchObject({ plan: "free", status: "none" });
+
+      // A code still works, and the summary says until when.
+      yield* addCode({ code: "BETA-STUDIO", days: 14, maxUses: 1, plan: "studio" });
+      const grant = yield* (yield* Plans).redeem("pia", "beta-studio");
+      expect(yield* billing.summary("pia")).toMatchObject({
+        grantEndsAt: grant.endsAt,
+        limitBytes: 3000 * GB,
+        maxRetentionDays: 14,
+        plan: "studio",
+        status: "none",
+      });
       expect(polarCalls).toEqual([]);
+    }),
+  );
+});
+
+// Email as a list of what went out. Addresses in `bouncing` fail the way the
+// send binding fails for a suppressed recipient.
+const sent: { readonly to: string; readonly subject: string }[] = [];
+const bouncing = new Set<string>();
+const memoryMail = Layer.succeed(
+  Mail,
+  Mail.of({
+    send: (message) =>
+      bouncing.has(message.to)
+        ? Effect.fail(new MailError({ code: "E_RECIPIENT_SUPPRESSED" }))
+        : Effect.sync(() => {
+            sent.push({ subject: message.subject, to: message.to });
+          }),
+  }),
+);
+const interestIps = new Map<string, number>();
+const emailsLayer = Emails.layer({
+  allowInterest: (ip) =>
+    Effect.sync(() => {
+      const count = (interestIps.get(ip) ?? 0) + 1;
+      interestIps.set(ip, count);
+      return count <= rateLimits.interestSignups.limit;
+    }),
+  appUrl: "https://app.test",
+}).pipe(Layer.provideMerge(memoryMail), Layer.provideMerge(domainLayer(storage.layer)));
+
+const interestRows = Effect.flatMap(Effect.service(Database), ({ db }) =>
+  db.query.planInterest.findMany({ orderBy: { id: "asc" } }),
+).pipe(Effect.orDie);
+
+layer(emailsLayer)("Emails", (it) => {
+  it.effect("keeps one row per address and plan, and confirms only the first ask", () =>
+    Effect.gen(function* scenario() {
+      yield* addUser("kai");
+      const emails = yield* Emails;
+      sent.length = 0;
+      expect(
+        yield* emails.joinInterest(
+          { email: "Ana@Example.com", plan: "pro", userId: null },
+          "1.1.1.1",
+        ),
+      ).toEqual({ email: "ana@example.com" });
+      yield* emails.joinInterest(
+        { email: "ana@example.com", plan: "pro", userId: null },
+        "1.1.1.1",
+      );
+      yield* emails.joinInterest(
+        { email: "ana@example.com", plan: "studio", userId: null },
+        "1.1.1.1",
+      );
+      yield* emails.joinInterest({ email: "kai@test", plan: "pro", userId: "kai" }, "1.1.1.2");
+      expect(
+        (yield* interestRows).map(({ email, plan, userId }) => ({ email, plan, userId })),
+      ).toEqual([
+        { email: "ana@example.com", plan: "pro", userId: null },
+        { email: "ana@example.com", plan: "studio", userId: null },
+        { email: "kai@test", plan: "pro", userId: "kai" },
+      ]);
+      expect(sent).toEqual([
+        { subject: "You're on the list for Pro", to: "ana@example.com" },
+        { subject: "You're on the list for Studio", to: "ana@example.com" },
+        { subject: "You're on the list for Pro", to: "kai@test" },
+      ]);
+    }),
+  );
+
+  it.effect("keeps a sign-up whose confirmation bounced", () =>
+    Effect.gen(function* scenario() {
+      bouncing.add("gone@example.com");
+      const emails = yield* Emails;
+      expect(
+        yield* emails.joinInterest(
+          { email: "gone@example.com", plan: "starter", userId: null },
+          "2.2.2.2",
+        ),
+      ).toEqual({ email: "gone@example.com" });
+      expect((yield* interestRows).filter((row) => row.email === "gone@example.com")).toHaveLength(
+        1,
+      );
+    }),
+  );
+
+  it.effect("holds interest sign-ups to the per-IP rate, and other IPs not at all", () =>
+    Effect.gen(function* scenario() {
+      const emails = yield* Emails;
+      const { limit, windowSeconds } = rateLimits.interestSignups;
+      yield* Effect.forEach(Arr.range(1, limit), (n) =>
+        emails.joinInterest({ email: `n${n}@example.com`, plan: "pro", userId: null }, "3.3.3.3"),
+      );
+      expect(
+        yield* Effect.flip(
+          emails.joinInterest({ email: "late@example.com", plan: "pro", userId: null }, "3.3.3.3"),
+        ),
+      ).toMatchObject({
+        _tag: "RateLimited",
+        limit: "interestSignups",
+        retryAfterSeconds: windowSeconds,
+      });
+      expect(
+        yield* emails.joinInterest(
+          { email: "late@example.com", plan: "pro", userId: null },
+          "4.4.4.4",
+        ),
+      ).toEqual({ email: "late@example.com" });
+    }),
+  );
+
+  it.effect("a failed welcome send never fails the sign-up that triggered it", () =>
+    Effect.gen(function* scenario() {
+      sent.length = 0;
+      bouncing.add("bounce@example.com");
+      yield* sendWelcome("bounce@example.com", "https://app.test");
+      yield* sendWelcome("new@example.com", "https://app.test");
+      expect(sent).toEqual([{ subject: "Your Tranzfer account is ready", to: "new@example.com" }]);
+    }),
+  );
+
+  it.effect("sends the opening email once to queued rows, and unqueues a failed send", () =>
+    Effect.gen(function* scenario() {
+      const emails = yield* Emails;
+      yield* emails.joinInterest(
+        { email: "o1@example.com", plan: "studio", userId: null },
+        "5.5.5.5",
+      );
+      yield* emails.joinInterest(
+        { email: "o2@example.com", plan: "studio", userId: null },
+        "5.5.5.5",
+      );
+      bouncing.add("o2@example.com");
+      // Nothing is queued yet, so nothing goes out, and a dry run only counts.
+      expect(yield* emails.sendOpenings).toBe(0);
+      expect(yield* queueOpenings("studio", { dryRun: true })).toEqual({ queued: 0, waiting: 3 });
+      expect(yield* emails.sendOpenings).toBe(0);
+      expect(yield* queueOpenings("studio", { dryRun: false })).toEqual({ queued: 3, waiting: 3 });
+      sent.length = 0;
+      const studioRows = Effect.map(interestRows, (rows) =>
+        rows
+          .filter((row) => row.plan === "studio")
+          .map(({ email, notifiedAt, notifyQueuedAt }) => ({
+            email,
+            notified: notifiedAt !== null,
+            queued: notifyQueuedAt !== null,
+          })),
+      );
+      expect(yield* emails.sendOpenings).toBe(3);
+      expect(sent).toEqual([
+        { subject: "Studio is open", to: "ana@example.com" },
+        { subject: "Studio is open", to: "o1@example.com" },
+      ]);
+      expect(yield* studioRows).toEqual([
+        { email: "ana@example.com", notified: true, queued: true },
+        { email: "o1@example.com", notified: true, queued: true },
+        { email: "o2@example.com", notified: false, queued: false },
+      ]);
+      // A second sweep sends nothing; queueing again retries only the failure.
+      expect(yield* emails.sendOpenings).toBe(0);
+      bouncing.delete("o2@example.com");
+      expect(yield* queueOpenings("studio", { dryRun: false })).toEqual({ queued: 1, waiting: 1 });
+      expect(yield* emails.sendOpenings).toBe(1);
+      expect(sent.at(-1)).toEqual({ subject: "Studio is open", to: "o2@example.com" });
     }),
   );
 });

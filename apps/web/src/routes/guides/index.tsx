@@ -1,7 +1,7 @@
 import { Link, Meta, Title } from "@solidjs/meta";
 import { For } from "solid-js";
 import { css, cx } from "styled-system/css";
-import { guides } from "../../guides/guides";
+import { alternatives, comparisons, guides } from "../../guides/pages";
 import { eyebrow, lede, sectionTitle } from "../../landing/styles";
 import "../../landing/landing.css";
 import Reveal from "../../ui/Reveal";
@@ -9,34 +9,28 @@ import { SitePage } from "../../ui/Site";
 
 const site = "https://tranzfer.app";
 const description =
-  "Plain answers about sending large files: video to an editor, RAW photos to a client, audio sessions to a mixer, and how long a 100 GB upload takes.";
+  "Plain answers about sending large files: video to an editor, RAW photos to a client, audio sessions to a mixer, failed uploads, upload times, and how the other tools compare.";
 
-// The pillar first, then the specific questions.
-const list = (
-  [
-    "how-to-send-large-files",
-    "send-large-video-files-to-an-editor",
-    "send-raw-photos-to-a-client",
-    "send-pro-tools-or-logic-session",
-    "how-long-to-upload-100-gb",
-  ] as const
-).map((slug) => ({ href: `/guides/${slug}`, ...guides[slug] }));
+const pages = [
+  ...guides.map((page) => ({ ...page, href: `/guides/${page.slug}` })),
+  ...alternatives.map((page) => ({ ...page, href: `/alternatives/${page.slug}` })),
+  ...comparisons.map((page) => ({ ...page, href: `/compare/${page.slug}` })),
+];
 
-const more = [
+// The hub's groups, in order. Each Markdown page names its group.
+const titles = {
+  basics: "Sending",
+  comparisons: "Alternatives and comparisons",
+  formats: "By file type",
+  problems: "When an upload fails",
+  sizes: "Sizes and upload times",
+} satisfies Record<(typeof pages)[number]["section"], string>;
+
+const tools = [
   {
     href: "/tools/upload-time-calculator",
     summary: "File size and upload speed in, time out. Runs in your browser.",
     title: "Upload time calculator",
-  },
-  {
-    href: "/alternatives/wetransfer",
-    summary: "Six services ranked for big files, with prices, limits and what happens on a drop.",
-    title: "WeTransfer alternatives for large files",
-  },
-  {
-    href: "/alternatives/masv",
-    summary: "Flat plans against per-GB pricing, and who should stay with MASV.",
-    title: "MASV alternatives for large files",
   },
   {
     href: "/pricing",
@@ -45,18 +39,29 @@ const more = [
   },
 ];
 
+const sections = [
+  ...Object.entries(titles).map(([id, title]) => ({
+    id,
+    items: pages.filter((page) => page.section === id),
+    title,
+  })),
+  { id: "tools", items: tools, title: "Tools" },
+];
+
 const structuredData = {
   "@context": "https://schema.org",
   "@type": "CollectionPage",
   description,
   mainEntity: {
     "@type": "ItemList",
-    itemListElement: [...list, ...more].map((item, i) => ({
-      "@type": "ListItem",
-      name: item.title,
-      position: i + 1,
-      url: `${site}${item.href}`,
-    })),
+    itemListElement: sections
+      .flatMap((section) => section.items)
+      .map((item, i) => ({
+        "@type": "ListItem",
+        name: item.title,
+        position: i + 1,
+        url: `${site}${item.href}`,
+      })),
   },
   name: "Guides to sending large files",
   url: `${site}/guides`,
@@ -131,15 +136,14 @@ export default function Guides() {
             an honest word on when another tool fits better.
           </p>
 
-          <section class={css({ mt: "14" })}>
-            <h2 class={eyebrow}>Questions</h2>
-            <Cards items={list} />
-          </section>
-
-          <section class={css({ mt: "14" })}>
-            <h2 class={eyebrow}>Tools and comparisons</h2>
-            <Cards items={more} />
-          </section>
+          <For each={sections}>
+            {(section) => (
+              <section class={css({ mt: "14", scrollMarginTop: "[96px]" })} id={section.id}>
+                <h2 class={eyebrow}>{section.title}</h2>
+                <Cards items={section.items} />
+              </section>
+            )}
+          </For>
         </main>
       </Reveal>
     </SitePage>

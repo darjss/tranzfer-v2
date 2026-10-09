@@ -1,32 +1,47 @@
 import type {
   DeliveryId,
+  PaidPlanId,
   PlanId,
   RetentionDays,
   SubscriptionStatus,
   TransferId,
 } from "@tranzfer/contracts";
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  check,
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
-export const user = sqliteTable(
-  "user",
+export const user = sqliteTable("user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
+  image: text("image"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+// One row per account creation a client IP was allowed, for the
+// new-accounts cap. The sign-up hook adds a row only while the IP is under the
+// cap, in the same statement that counts, so concurrent sign-ups can't pass it.
+export const signup = sqliteTable(
+  "signup",
   {
-    id: text("id").primaryKey(),
-    name: text("name").notNull(),
-    email: text("email").notNull().unique(),
-    emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
-    image: text("image"),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .$onUpdate(() => new Date())
-      .notNull(),
-    // The client IP that created the account, for the new-accounts-per-IP cap.
-    signupIp: text("signup_ip"),
+    ip: text("ip").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [index("user_signupIp_createdAt_idx").on(table.signupIp, table.createdAt)],
+  (table) => [index("signup_ip_createdAt_idx").on(table.ip, table.createdAt)],
 );
 
 export const session = sqliteTable(
@@ -193,3 +208,67 @@ export const subscription = sqliteTable("subscription", {
     .$onUpdate(() => new Date())
     .notNull(),
 });
+
+// A code that gives a paid plan for free, made by hand with `code:create`
+// (docs/PRODUCT.md). Stored upper case. The check makes a redemption past
+// max_uses fail its batch, so concurrent redemptions can't overshoot.
+export const accessCode = sqliteTable(
+  "access_code",
+  {
+    code: text("code").primaryKey(),
+    plan: text("plan").$type<PaidPlanId>().notNull(),
+    // How long each grant lasts from the moment it is redeemed.
+    days: integer("days").notNull(),
+    maxUses: integer("max_uses").notNull(),
+    uses: integer("uses").default(0).notNull(),
+    // Redeemable until then; grants already made keep their own end.
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [check("access_code_uses_within_max", sql`${table.uses} <= ${table.maxUses}`)],
+);
+
+// One row per redeemed code. Polar never sees it; the higher of a grant and a
+// subscription sets the user's plan.
+export const planGrant = sqliteTable(
+  "plan_grant",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    code: text("code")
+      .notNull()
+      .references(() => accessCode.code),
+    plan: text("plan").$type<PaidPlanId>().notNull(),
+    endsAt: integer("ends_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.code] })],
+);
+
+// People who asked to hear when a paid plan opens. The email is stored
+// lowercased, so one person is one row per plan. The founder queues a plan's
+// rows with `interest:notify`; the sweeper sends and sets `notifiedAt`.
+export const planInterest = sqliteTable(
+  "plan_interest",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    email: text("email").notNull(),
+    plan: text("plan").$type<PaidPlanId>().notNull(),
+    // Set when the sign-up came from a signed-in account.
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    notifyQueuedAt: integer("notify_queued_at", { mode: "timestamp_ms" }),
+    notifiedAt: integer("notified_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    uniqueIndex("plan_interest_email_plan_unique").on(table.email, table.plan),
+    index("plan_interest_notifyQueuedAt_idx").on(table.notifyQueuedAt),
+  ],
+);

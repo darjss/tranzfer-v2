@@ -2,7 +2,15 @@ import { afterEach, describe, expect, it, vi } from "@effect/vitest";
 import { assertBudget, captureArtifact } from "@solidjs/diagnostics";
 import "@solidjs/diagnostics/vitest";
 import { cleanup, render, screen } from "@solidjs/testing-library";
-import { Api, Authenticated, CurrentPrincipal, DeliveryId, TransferId } from "@tranzfer/contracts";
+import {
+  AccessCodeRefused,
+  Api,
+  Authenticated,
+  CurrentPrincipal,
+  DeliveryId,
+  TransferId,
+  Unauthorized,
+} from "@tranzfer/contracts";
 import type { BillingSummary, Delivery } from "@tranzfer/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -12,9 +20,10 @@ import * as Option from "effect/Option";
 import * as Struct from "effect/Struct";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as RpcTest from "effect/rpc/RpcTest";
-import { flush, Loading } from "solid-js";
+import { createSignal, flush, Loading, onSettled, Show } from "solid-js";
 
 import { ApiClient } from "../api/client";
+import { NotifyMe } from "../landing/Pricing";
 import { RuntimeContext } from "../api/solid-effect";
 import { patchTransfer } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
@@ -59,6 +68,7 @@ const delivery = (
 // really changes, behind the typed RPC client the page uses.
 const freePlan: BillingSummary = {
   cancelsAtPeriodEnd: false,
+  grantEndsAt: null,
   limitBytes: 20_000 * MB,
   maxRetentionDays: 3,
   periodEnd: null,
@@ -67,11 +77,26 @@ const freePlan: BillingSummary = {
   usedBytes: 3200 * MB,
 };
 
+// What BETA-PRO gives: Pro until 7 January, with no subscription behind it.
+const betaEnds = new Date("2027-01-07T12:00:00Z");
+const betaPro: BillingSummary = {
+  cancelsAtPeriodEnd: false,
+  grantEndsAt: betaEnds,
+  limitBytes: 1_000_000 * MB,
+  maxRetentionDays: 14,
+  periodEnd: null,
+  plan: "pro",
+  status: "none",
+  usedBytes: 3200 * MB,
+};
+
 const makeWorld = (
   server: Delivery[],
   gate?: Deferred.Deferred<boolean>,
-  billing: BillingSummary = freePlan,
+  initialBilling: BillingSummary = freePlan,
 ) => {
+  // Redeeming BETA-PRO changes what the next GetBilling answers, like the real API.
+  let billing = initialBilling;
   const api = Layer.effect(ApiClient, RpcTest.makeClient(Api)).pipe(
     Layer.provide(
       Api.toLayer(
@@ -89,10 +114,21 @@ const makeWorld = (
           CreateDelivery: () => Effect.die("unused"),
           Deliveries: () => Effect.sync(() => [...server]),
           FinalizeTransfer: () => Effect.die("unused"),
-          GetBilling: () => Effect.succeed(billing),
+          GetBilling: () => Effect.sync(() => billing),
+          // Like the real one: without an address it needs a session, and
+          // this page plays a signed-out visitor.
+          JoinInterest: ({ email }) =>
+            email === undefined ? Effect.fail(new Unauthorized()) : Effect.succeed({ email }),
           Me: () => Effect.service(CurrentPrincipal),
           OpenBillingPortal: () => Effect.die("unused"),
           OpenLink: () => Effect.die("unused"),
+          RedeemCode: ({ code }) =>
+            code.trim().toUpperCase() === "BETA-PRO"
+              ? Effect.sync(() => {
+                  billing = betaPro;
+                  return { endsAt: betaEnds, plan: "pro" as const };
+                })
+              : Effect.fail(new AccessCodeRefused({ reason: "unknown" })),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
         }),
@@ -157,6 +193,14 @@ const noop = () => {};
 // The fake cancel never fails.
 const nothingToReport = async () =>
   await Promise.resolve(Option.getOrUndefined(Option.none<string>()));
+// As the dashboard does with /deliveries?code=, once it has settled.
+const Landing = (props: { redeem: (code: string) => Promise<string | undefined> }) => {
+  onSettled(() => {
+    void props.redeem("beta-pro");
+  });
+  return null;
+};
+
 const readyCount = () => screen.getByRole("heading", { name: /Ready to share/u }).textContent;
 
 describe("dashboard reactivity", () => {
@@ -311,6 +355,7 @@ describe("dashboard reactivity", () => {
     {
       billing: {
         cancelsAtPeriodEnd: false,
+        grantEndsAt: null,
         limitBytes: 1_000_000 * MB,
         maxRetentionDays: 14,
         periodEnd: new Date("2026-11-06T00:00:00Z"),
@@ -319,6 +364,14 @@ describe("dashboard reactivity", () => {
         usedBytes: 3200 * MB,
       } satisfies BillingSummary,
       manage: true,
+      retention: ["1:on", "3:on", "7:on", "14:on"],
+      upgrade: "Upgrade to Studio · $69/mo",
+      usage: "Pro · 3.2 GB of 1 TB",
+    },
+    // A code's grant is no subscription, so there is no billing to manage.
+    {
+      billing: betaPro,
+      manage: false,
       retention: ["1:on", "3:on", "7:on", "14:on"],
       upgrade: "Upgrade to Studio · $69/mo",
       usage: "Pro · 3.2 GB of 1 TB",
@@ -333,6 +386,8 @@ describe("dashboard reactivity", () => {
             billing={state.billing()}
             manage={noop}
             principal={{ email: "s@test", id: "s", image: null, name: "Sender" }}
+            redeem={state.redeem}
+            redeeming={state.redeeming()}
             send={noop}
             upgrade={noop}
           />
@@ -384,6 +439,79 @@ describe("dashboard reactivity", () => {
     expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
   });
+  it("an invite code redeems on landing and the plan shows until when", async () => {
+    const runtime = makeWorld([]);
+    const [landed, setLanded] = createSignal(false);
+    let redeem: ReturnType<typeof createDeliveries>["redeem"] | undefined;
+    const Harness = () => {
+      const state = createDeliveries(runtime);
+      ({ redeem } = state);
+      return (
+        <>
+          <TopBar
+            billing={state.billing()}
+            manage={noop}
+            principal={{ email: "s@test", id: "s", image: null, name: "Sender" }}
+            redeem={state.redeem}
+            redeeming={state.redeeming()}
+            send={noop}
+            upgrade={noop}
+          />
+          <SendCard
+            billing={state.billing()}
+            dragging={false}
+            pickFiles={noop}
+            pickFolder={noop}
+            problems={[]}
+            retention={3}
+            sending={false}
+            setRetention={noop}
+            upgrade={noop}
+          />
+          <Show when={landed()}>
+            <Landing redeem={state.redeem} />
+          </Show>
+        </>
+      );
+    };
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <Loading fallback={<p>loading</p>}>
+          <Harness />
+        </Loading>
+      </RuntimeContext>
+    ));
+    await screen.findByText("Free · 3.2 GB of 20 GB");
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        setLanded(true);
+        flush();
+        await screen.findByText("Pro · 3.2 GB of 1 TB");
+      },
+      { scenario: "redeem-on-landing" },
+    );
+    flush();
+
+    const until = new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "long",
+      weekday: "long",
+    }).format(betaEnds);
+    expect(screen.getByText(`Free with a code until ${until}`)).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(`^3.2 GB of 1 TB in use on Pro until ${until}`, "u")),
+    ).toBeInTheDocument();
+    // The Applying… flag is an optimistic write that reverts when the action
+    // settles, by design; anything else is a defect.
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    // A wrong code resolves to the words its toast shows.
+    expect(await redeem?.("NOPE")).toBe(
+      "We don't know that code. Check the spelling and try again.",
+    );
+    await runtime.dispose();
+  });
+
   it("a row says Starting… until acknowledged parts give it a speed", async () => {
     const fresh = delivery("Fresh", "open", [500 * MB]);
     const [transfer] = fresh.transfers;
@@ -519,6 +647,45 @@ describe("dashboard reactivity", () => {
 
     expect(screen.getByText("Live")).toBeInTheDocument();
     expect(artifact).toHaveNoDiagnostics();
+    await runtime.dispose();
+  });
+
+  it("a signed-out visitor joins a closed plan's list from its card", async () => {
+    const runtime = makeWorld([]);
+    // What each paid pricing card shows while paid plans are closed.
+    render(() => (
+      <RuntimeContext value={runtime}>
+        <NotifyMe hot plan="pro" />
+        <NotifyMe hot={false} plan="studio" />
+      </RuntimeContext>
+    ));
+    const [pro] = screen.getAllByRole("button", { name: "Tell me when it opens" });
+
+    const { artifact } = await captureArtifact(
+      async () => {
+        pro?.click();
+        const input = await screen.findByRole("textbox", { name: "Your email" });
+        expect(screen.getByText("We'll email you once, the day Pro opens.")).toBeInTheDocument();
+        if (!(input instanceof HTMLInputElement)) {
+          throw new Error("expected the email input");
+        }
+        input.value = "ana@example.com";
+        screen.getByRole("button", { name: "Notify me" }).click();
+        await screen.findByRole("status");
+      },
+      { scenario: "interest-signup" },
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "You're on the list. We'll email ana@example.com once, the day Pro opens.",
+    );
+    // The other card is untouched.
+    expect(screen.getAllByRole("button", { name: "Tell me when it opens" })).toHaveLength(1);
+    // The pending flag is an optimistic true that each of the two calls ends.
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    // Two calls, two state changes (button to form, form to the note) and the
+    // pending flag on each; nothing recomputes without changing.
+    assertBudget(artifact, { allow: ["OPTIMISTIC_REVERTED"], maxReruns: 15, maxWastedRuns: 0 });
     await runtime.dispose();
   });
 });

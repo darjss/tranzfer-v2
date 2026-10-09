@@ -9,6 +9,7 @@ import * as Redacted from "effect/Redacted";
 
 import { Deliveries } from "../src/deliveries";
 import { LinkTokens } from "../src/link-tokens";
+import { Plans } from "../src/plans";
 import { SharedLinks } from "../src/shared-links";
 import { Storage } from "../src/storage";
 import type { StoredObject } from "../src/storage";
@@ -47,24 +48,27 @@ export const makeMemoryStorage = () => {
   return { layer, objects, purged, sealed };
 };
 
-/** The rate-limit binding as a count per sender that never resets. */
-const countingSigningRate = Layer.sync(SigningRate, () => {
+/** A rate-limit binding as a count per key that never resets. */
+const counting = (limit: number) => {
   const counts = new Map<string, number>();
-  return SigningRate.of({
-    allow: (senderId) =>
-      Effect.sync(() => {
-        const count = (counts.get(senderId) ?? 0) + 1;
-        counts.set(senderId, count);
-        return count <= rateLimits.uploadSigning.limit;
-      }),
-  });
-});
+  return (key: string) =>
+    Effect.sync(() => {
+      const count = (counts.get(key) ?? 0) + 1;
+      counts.set(key, count);
+      return count <= limit;
+    });
+};
 
 /** The domain over a fresh migrated local D1 and the given storage. */
 export const domainLayer = (storage: Layer.Layer<Storage>) =>
   Layer.mergeAll(Transfers.layer, SharedLinks.layer).pipe(
-    Layer.provideMerge(countingSigningRate),
+    Layer.provideMerge(
+      Layer.sync(SigningRate, () =>
+        SigningRate.of({ allow: counting(rateLimits.uploadSigning.limit) }),
+      ),
+    ),
     Layer.provideMerge(Deliveries.layer),
+    Layer.provideMerge(Plans.layer(counting(rateLimits.codeRedemptions.limit))),
     Layer.provideMerge(
       LinkTokens.layer(Effect.succeed(Redacted.make("test-link-secret-0123456789abcdef"))),
     ),

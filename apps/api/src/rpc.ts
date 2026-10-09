@@ -12,8 +12,10 @@ import * as HttpEffect from "effect/http/HttpEffect";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { Billing } from "./billing";
-import { Auth } from "./infrastructure/auth";
+import { Auth, clientIp } from "./infrastructure/auth";
 import { Deliveries } from "./deliveries";
+import { Emails } from "./emails";
+import { Plans } from "./plans";
 import { SharedLinks } from "./shared-links";
 import { Transfers } from "./transfers";
 
@@ -48,6 +50,9 @@ export const ApiHandlers = Api.toLayer(
     const transfers = yield* Transfers;
     const links = yield* SharedLinks;
     const billing = yield* Billing;
+    const userPlans = yield* Plans;
+    const emails = yield* Emails;
+    const auth = yield* Auth;
     const sender = Effect.map(CurrentPrincipal, ({ id }) => id);
     return Api.of({
       CancelDelivery: ({ deliveryId }) =>
@@ -59,9 +64,28 @@ export const ApiHandlers = Api.toLayer(
       FinalizeTransfer: ({ transferId }) =>
         Effect.flatMap(sender, (id) => transfers.finalize(id, transferId)),
       GetBilling: () => Effect.flatMap(sender, billing.summary),
+      // Without an email the signed-in account's address is used, so a
+      // signed-in visitor joins in one click.
+      JoinInterest: ({ email, plan }, { headers }) =>
+        Effect.gen(function* joinInterest() {
+          const who =
+            email === undefined
+              ? yield* auth.session(new Headers(headers)).pipe(
+                  Effect.mapError(() => new AuthenticationUnavailable()),
+                  Effect.flatMap(({ principal }) =>
+                    Option.match(principal, {
+                      onNone: () => Effect.fail(new Unauthorized()),
+                      onSome: (user) => Effect.succeed({ email: user.email, userId: user.id }),
+                    }),
+                  ),
+                )
+              : { email, userId: null };
+          return yield* emails.joinInterest({ ...who, plan }, clientIp(new Headers(headers)));
+        }),
       Me: () => Effect.service(CurrentPrincipal),
       OpenBillingPortal: () => Effect.flatMap(sender, billing.portal),
       OpenLink: ({ token }) => links.open(token),
+      RedeemCode: ({ code }) => Effect.flatMap(sender, (id) => userPlans.redeem(id, code)),
       SignUpload: ({ key, request }) =>
         Effect.flatMap(sender, (id) => transfers.sign(id, key, request)),
       StartCheckout: ({ plan }) =>

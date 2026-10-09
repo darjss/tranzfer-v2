@@ -24,9 +24,12 @@ export default function Feature() {
         <MarketingPage
           page={page()}
           path={`/features/${page().slug}`}
-          related={features
-            .filter((other) => other.slug !== page().slug)
-            .map((other) => ({ href: `/features/${other.slug}`, label: other.menu }))}
+          related={[
+            ...(page().guides ?? []),
+            ...features
+              .filter((other) => other.slug !== page().slug)
+              .map((other) => ({ href: `/features/${other.slug}`, label: other.menu })),
+          ]}
         />
       )}
     </Show>

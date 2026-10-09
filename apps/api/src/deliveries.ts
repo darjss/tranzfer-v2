@@ -8,9 +8,9 @@ import {
   rateLimits,
   RetentionNotInPlan,
 } from "@tranzfer/contracts";
-import type { DeliveryId, NewDelivery } from "@tranzfer/contracts";
+import type { DeliveryId, NewDelivery, PlanId, RetentionDays } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -20,6 +20,7 @@ import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 
 import { LinkTokens, newLinkId } from "./link-tokens";
+import { Plans } from "./plans";
 import { Storage, UPLOAD_URL_TTL } from "./storage";
 
 // D1 caps a statement at 100 bound parameters and a transfer row binds 8.
@@ -53,6 +54,13 @@ export const secondsUntilRoom = (
 };
 
 export const objectPrefix = (deliveryId: DeliveryId) => `d/${deliveryId}/`;
+
+// How many deliveries the sender created after `since`, as SQL.
+const createdSince = (senderId: string, since: number) =>
+  sql`(select count(*) from ${schema.delivery} where ${and(
+    eq(schema.delivery.senderId, senderId),
+    gt(schema.delivery.createdAt, new Date(since)),
+  )})`;
 
 export const isExpired = (expiresAt: Date | null, now: number) =>
   expiresAt !== null && expiresAt.getTime() <= now;
@@ -110,6 +118,7 @@ export class Deliveries extends Context.Service<
     Deliveries,
     Effect.gen(function* makeDeliveries() {
       const { batch, db } = yield* Database;
+      const userPlans = yield* Plans;
       const tokens = yield* LinkTokens;
       const storage = yield* Storage;
 
@@ -172,11 +181,8 @@ export class Deliveries extends Context.Service<
         return yield* toView(row);
       }, dieOnDatabaseError);
 
-      const activeBytes = Effect.fn("Deliveries.activeBytes")(function* activeBytes(
-        senderId: string,
-      ) {
-        const now = yield* Clock.currentTimeMillis;
-        const [row] = yield* db
+      const activeBytesAt = (senderId: string, now: number) =>
+        db
           .select({ total: sql<number>`coalesce(sum(${schema.transfer.size}), 0)` })
           .from(schema.transfer)
           .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
@@ -192,8 +198,73 @@ export class Deliveries extends Context.Service<
               ),
             ),
           );
+
+      const activeBytes = Effect.fn("Deliveries.activeBytes")(function* activeBytes(
+        senderId: string,
+      ) {
+        const [row] = yield* activeBytesAt(senderId, yield* Clock.currentTimeMillis);
         return row?.total ?? 0;
       }, dieOnDatabaseError);
+
+      // Refused before any bytes upload, with the exact wait or the space in
+      // use; else the sender's active bytes. Cancelled deliveries count
+      // toward the Free caps, so create-and-cancel can't loop.
+      const admit = Effect.fn("Deliveries.admit")(function* admit(
+        senderId: string,
+        plan: PlanId,
+        requestedBytes: number,
+        now: number,
+      ) {
+        if (plan === "free") {
+          const { deliveriesPerDay } = rateLimits;
+          const recent = yield* db
+            .select({ createdAt: schema.delivery.createdAt })
+            .from(schema.delivery)
+            .where(
+              and(
+                eq(schema.delivery.senderId, senderId),
+                gt(
+                  schema.delivery.createdAt,
+                  new Date(now - deliveriesPerDay.windowSeconds * 1000),
+                ),
+              ),
+            )
+            .orderBy(desc(schema.delivery.createdAt))
+            .limit(deliveriesPerDay.limit);
+          const createdAt = recent.map((row) => row.createdAt);
+          for (const limit of ["deliveriesPerHour", "deliveriesPerDay"] as const) {
+            const retryAfterSeconds = secondsUntilRoom(createdAt, rateLimits[limit], now);
+            if (retryAfterSeconds !== undefined) {
+              return yield* new RateLimited({ limit, retryAfterSeconds });
+            }
+          }
+        }
+        const usedBytes = yield* activeBytes(senderId);
+        if (usedBytes + requestedBytes <= plans[plan].activeBytes) {
+          return usedBytes;
+        }
+        return yield* new OverPlanLimit({
+          limitBytes: plans[plan].activeBytes,
+          plan,
+          requestedBytes,
+          usedBytes,
+        });
+      });
+
+      // The same rules as `admit`, checked by the statement that inserts the
+      // delivery, so they hold when creates race.
+      const withinLimits = (senderId: string, plan: PlanId, requestedBytes: number, now: number) =>
+        and(
+          sql`(${activeBytesAt(senderId, now)}) + ${requestedBytes} <= ${plans[plan].activeBytes}`,
+          ...(plan === "free"
+            ? (["deliveriesPerHour", "deliveriesPerDay"] as const).map((limit) =>
+                lt(
+                  createdSince(senderId, now - rateLimits[limit].windowSeconds * 1000),
+                  rateLimits[limit].limit,
+                ),
+              )
+            : []),
+        );
 
       return Deliveries.of({
         activeBytes,
@@ -271,39 +342,7 @@ export class Deliveries extends Context.Service<
               : yield* new DeliveryConflict();
           }
 
-          // Refused before any bytes upload. Two creates racing past the limit
-          // both land; the next create sees both, so the overshoot stays bounded.
-          const subscription = yield* db.query.subscription.findFirst({
-            columns: { plan: true },
-            where: { userId: senderId },
-          });
-          const plan = subscription?.plan ?? "free";
-          if (plan === "free") {
-            // Cancelled deliveries count too, so create-and-cancel can't loop.
-            const now = yield* Clock.currentTimeMillis;
-            const { deliveriesPerDay } = rateLimits;
-            const recent = yield* db
-              .select({ createdAt: schema.delivery.createdAt })
-              .from(schema.delivery)
-              .where(
-                and(
-                  eq(schema.delivery.senderId, senderId),
-                  gt(
-                    schema.delivery.createdAt,
-                    new Date(now - deliveriesPerDay.windowSeconds * 1000),
-                  ),
-                ),
-              )
-              .orderBy(desc(schema.delivery.createdAt))
-              .limit(deliveriesPerDay.limit);
-            const createdAt = recent.map((row) => row.createdAt);
-            for (const limit of ["deliveriesPerHour", "deliveriesPerDay"] as const) {
-              const retryAfterSeconds = secondsUntilRoom(createdAt, rateLimits[limit], now);
-              if (retryAfterSeconds !== undefined) {
-                return yield* new RateLimited({ limit, retryAfterSeconds });
-              }
-            }
-          }
+          const { plan } = yield* userPlans.current(senderId);
           if (input.retentionDays > plans[plan].maxRetentionDays) {
             return yield* new RetentionNotInPlan({
               maxRetentionDays: plans[plan].maxRetentionDays,
@@ -311,26 +350,33 @@ export class Deliveries extends Context.Service<
               requestedDays: input.retentionDays,
             });
           }
+          const now = yield* Clock.currentTimeMillis;
           const requestedBytes = input.files.reduce((total, file) => total + file.size, 0);
-          const usedBytes = yield* activeBytes(senderId);
-          if (usedBytes + requestedBytes > plans[plan].activeBytes) {
-            return yield* new OverPlanLimit({
-              limitBytes: plans[plan].activeBytes,
-              plan,
-              requestedBytes,
-              usedBytes,
-            });
-          }
+          yield* admit(senderId, plan, requestedBytes, now);
 
           const linkId = yield* newLinkId;
           const inserted = yield* Effect.result(
             batch([
-              db.insert(schema.delivery).values({
-                id: input.id,
-                retentionDays: input.retentionDays,
-                senderId,
-                title: input.title,
-              }),
+              // Inserts the delivery only while the sender is still within
+              // its limits, counted by this statement. When it inserts
+              // nothing, the transfers' and link's foreign keys fail the batch
+              // and nothing lands.
+              db.insert(schema.delivery).select((qb) =>
+                qb
+                  .select({
+                    id: sql<DeliveryId>`${input.id}`.as("id"),
+                    retentionDays: sql<RetentionDays>`${input.retentionDays}`.as("retention_days"),
+                    senderId: schema.user.id,
+                    title: sql<string>`${input.title}`.as("title"),
+                  })
+                  .from(schema.user)
+                  .where(
+                    and(
+                      eq(schema.user.id, senderId),
+                      withinLimits(senderId, plan, requestedBytes, now),
+                    ),
+                  ),
+              ),
               ...Arr.chunksOf(input.files, TRANSFER_ROWS_PER_INSERT).map((files) =>
                 db.insert(schema.transfer).values(
                   files.map((file) => ({
@@ -351,7 +397,8 @@ export class Deliveries extends Context.Service<
             return yield* view(input.id);
           }
 
-          // The batch lost a race or hit a taken transfer id: decide from what landed.
+          // The batch lost a race, hit a taken transfer id or found the
+          // sender over a limit: decide from what landed.
           const landed = yield* load(input.id);
           // One JSON parameter instead of one per id keeps this under D1's cap.
           const taken = yield* db
@@ -372,7 +419,13 @@ export class Deliveries extends Context.Service<
             Match.whenOr({ landed: (row) => row !== undefined }, { taken: true }, () =>
               Effect.fail(new DeliveryConflict()),
             ),
-            Match.orElse(() => Effect.die(inserted.failure)),
+            // A limit a concurrent create filled names the refusal; nothing
+            // naming it means a real database fault.
+            Match.orElse(() =>
+              admit(senderId, plan, requestedBytes, now).pipe(
+                Effect.andThen(Effect.die(inserted.failure)),
+              ),
+            ),
           );
         }, dieOnDatabaseError),
 

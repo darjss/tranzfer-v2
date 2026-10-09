@@ -15,6 +15,7 @@
       {
         "name": "@effect/language-service",
         "allowedUnstableApis": [
+          "effect/cli",
           "effect/http",
           "effect/observability",
           "effect/rpc",
@@ -24,5 +25,5 @@
       }
     ]
   },
-  "include": ["src", "test"]
+  "include": ["scripts", "src", "test"]
 }

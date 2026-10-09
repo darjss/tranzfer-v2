@@ -9,6 +9,9 @@ import "../landing/landing.css";
 import { button } from "../ui/Button";
 import Reveal from "../ui/Reveal";
 import { SitePage } from "../ui/Site";
+import { Crumbs } from "../marketing/Crumbs";
+import { CompareTable, Ranked } from "./Alternatives";
+import type { ContentPage } from "./pages";
 
 // One answer page: guides, alternatives and tools. The first paragraph answers
 // the question in the title; the rest is prose, a FAQ and the JSON-LD that
@@ -16,17 +19,12 @@ import { SitePage } from "../ui/Site";
 
 const site = "https://tranzfer.app";
 
-const day = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "long",
-  timeZone: "UTC",
-  year: "numeric",
-});
-
-/** Body copy: headings, lists and links inside an article. */
+/** Body copy: headings, lists, links and tables inside an article. */
 export const prose = css({
   "& :is(p, ul, ol, h2, h3)": { maxW: "[68ch]" },
   "& a": { color: "blue", textDecoration: "underline", textUnderlineOffset: "[3px]" },
+  // Tables scroll sideways on a phone instead of squashing.
+  "& div:has(> table)": { mt: "6", overflowX: "auto", w: "full" },
   "& h2": {
     color: "ink",
     fontSize: "26",
@@ -41,42 +39,38 @@ export const prose = css({
   "& ol": { listStyleType: "decimal", mt: "4", pl: "6" },
   "& p": { mt: "4" },
   "& strong": { color: "ink", fontWeight: "semibold" },
+  "& table": {
+    "& :is(td, th)": {
+      borderColor: "line",
+      borderTopWidth: "1px",
+      pr: "5",
+      py: "3",
+      textAlign: "left",
+      verticalAlign: "top",
+    },
+    "& tbody th": { color: "ink", fontWeight: "semibold" },
+    "& thead th": {
+      borderTopWidth: "0",
+      color: "mut",
+      fontFamily: "mono",
+      fontSize: "11",
+      fontWeight: "normal",
+      letterSpacing: "widest",
+      pb: "2",
+      textTransform: "uppercase",
+    },
+    // Our own row: its header cell is bold, in Markdown or in CompareTable.
+    "& tr:has(> th > strong)": { bg: "panel", color: "ink" },
+    borderCollapse: "collapse",
+    fontSize: "15",
+    lineHeight: "[1.5]",
+    w: "full",
+  },
   "& ul": { listStyleType: "disc", mt: "4", pl: "6" },
   color: "[#3a3b40]",
   fontSize: "17",
   lineHeight: "[1.65]",
   textWrap: "pretty",
-});
-
-/** A table that scrolls sideways on a phone instead of squashing. */
-export const tableWrap = css({ mt: "6", overflowX: "auto", w: "full" });
-
-export const table = css({
-  "& tbody th": { color: "ink", fontWeight: "semibold" },
-  "& td, & th": {
-    borderColor: "line",
-    borderTopWidth: "1px",
-    pr: "5",
-    py: "3",
-    textAlign: "left",
-    verticalAlign: "top",
-  },
-  "& thead th": {
-    borderTopWidth: "0",
-    color: "mut",
-    fontFamily: "mono",
-    fontSize: "11",
-    fontWeight: "normal",
-    letterSpacing: "widest",
-    pb: "2",
-    textTransform: "uppercase",
-  },
-  "& tr.us": { bg: "panel" },
-  "& tr.us > *": { color: "ink" },
-  borderCollapse: "collapse",
-  fontSize: "15",
-  lineHeight: "[1.5]",
-  w: "full",
 });
 
 export default function Article(
@@ -88,6 +82,9 @@ export default function Article(
     readonly faq: readonly { readonly q: string; readonly a: string }[];
     readonly path: string;
     readonly related: readonly { readonly href: string; readonly label: string }[];
+    /** The breadcrumb between Home and this page, linked when it has a page. */
+    readonly section: string;
+    readonly sectionHref?: string;
     readonly title: string;
     /** An interactive tool shown right under the answer, outside the prose styles. */
     readonly tool?: JSX.Element;
@@ -137,8 +134,15 @@ export default function Article(
       <Link rel="canonical" href={url()} />
       <script type="application/ld+json">{JSON.stringify(structuredData())}</script>
       <Reveal>
-        <main id="content" class={css({ pb: "10", pt: { base: "12", lg: "20" } })}>
-          <article>
+        <main id="content" class={css({ pb: "10" })}>
+          <Crumbs
+            name={props.title}
+            path={props.path}
+            section={props.section}
+            sectionHref={props.sectionHref}
+            updated={props.updated}
+          />
+          <article class={css({ pt: { base: "8", lg: "10" } })}>
             <p class={cx("rv", eyebrow)}>{props.eyebrow}</p>
             <h1
               class={cx(
@@ -149,9 +153,6 @@ export default function Article(
             >
               {props.title}
             </h1>
-            <p class={cx("rv", css({ color: "mut", fontSize: "13", mt: "5" }))}>
-              Updated <time datetime={props.updated}>{day.format(new Date(props.updated))}</time>
-            </p>
             <div
               class={cx(
                 "rv",
@@ -275,5 +276,42 @@ export default function Article(
         </main>
       </Reveal>
     </SitePage>
+  );
+}
+
+/** A page from content/: its frontmatter around the article, its body inside. */
+export function ContentArticle(props: {
+  readonly eyebrow: string;
+  readonly page: ContentPage;
+  readonly path: string;
+  readonly section: string;
+  readonly sectionHref?: string;
+}) {
+  return (
+    <Article
+      answer={<p>{props.page.answer}</p>}
+      description={props.page.description}
+      eyebrow={props.eyebrow}
+      faq={props.page.faq}
+      path={props.path}
+      related={props.page.related}
+      section={props.section}
+      sectionHref={props.sectionHref}
+      title={props.page.title}
+      updated={props.page.updated}
+    >
+      <For each={props.page.body}>
+        {(block) => {
+          if (block.type === "html") {
+            return <div innerHTML={block.html} />;
+          }
+          // A `<!-- compare ids -->` or `<!-- ranked ids -->` line in the Markdown.
+          if (block.type === "compare") {
+            return <CompareTable ids={block.ids} />;
+          }
+          return <Ranked ids={block.ids} />;
+        }}
+      </For>
+    </Article>
   );
 }

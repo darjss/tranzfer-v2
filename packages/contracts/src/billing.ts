@@ -22,23 +22,28 @@ export const plans = {
 
 export const RateLimitName = Schema.Literals([
   "authRequests",
+  "codeRedemptions",
   "deliveriesPerDay",
   "deliveriesPerHour",
+  "interestSignups",
   "newAccounts",
   "uploadSigning",
 ]);
 export type RateLimitName = typeof RateLimitName.Type;
 
 /**
- * Rate limits, per rolling window. docs/PRODUCT.md is the spec. The auth
- * limits count per client IP on every plan; the rest count per sender on the
- * Free plan only, and paid or comp plans have none. Cloudflare's rate-limit
- * binding enforces the 10 and 60 second windows, the only periods it offers.
+ * Rate limits, per rolling window. docs/PRODUCT.md is the spec. The auth and
+ * interest-list limits count per client IP and access code attempts per user,
+ * on every plan; the rest count per sender on the Free plan only, and paid or
+ * comp plans have none. Cloudflare's rate-limit binding enforces the 10 and 60
+ * second windows, the only periods it offers.
  */
 export const rateLimits = {
   authRequests: { limit: 30, windowSeconds: 60 },
+  codeRedemptions: { limit: 5, windowSeconds: 60 },
   deliveriesPerDay: { limit: 100, windowSeconds: 24 * 60 * 60 },
   deliveriesPerHour: { limit: 20, windowSeconds: 60 * 60 },
+  interestSignups: { limit: 10, windowSeconds: 60 },
   newAccounts: { limit: 10, windowSeconds: 24 * 60 * 60 },
   uploadSigning: { limit: 200, windowSeconds: 10 },
 } as const satisfies Record<
@@ -77,6 +82,8 @@ export type SubscriptionStatus = typeof SubscriptionStatus.Type;
 export const BillingSummary = Schema.Struct({
   /** A paid subscription that stops at `periodEnd` instead of renewing. */
   cancelsAtPeriodEnd: Schema.Boolean,
+  /** The plan comes from an access code until then. Null when a subscription or Free sets it. */
+  grantEndsAt: Schema.NullOr(Schema.DateFromString),
   limitBytes: Schema.Int,
   maxRetentionDays: RetentionDays,
   periodEnd: Schema.NullOr(Schema.DateFromString),
@@ -108,4 +115,20 @@ export class RetentionNotInPlan extends Schema.TaggedError<RetentionNotInPlan>()
 export class BillingUnavailable extends Schema.TaggedError<BillingUnavailable>()(
   "BillingUnavailable",
   { reason: Schema.Literals(["notOpen", "provider"]) },
+) {}
+
+/** A paid plan an access code gives for free until `endsAt`. */
+export const PlanGrant = Schema.Struct({ endsAt: Schema.DateFromString, plan: PaidPlanId });
+export interface PlanGrant extends Schema.Schema.Type<typeof PlanGrant> {}
+
+/** What a person types or a `?code=` link carries. Case and surrounding spaces don't matter. */
+export const AccessCodeInput = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64));
+
+/**
+ * The code gave nothing. `unknown`: no such code. `expired`: past its last
+ * day. `usedUp`: every use is taken. `alreadyRedeemed`: this user has it.
+ */
+export class AccessCodeRefused extends Schema.TaggedError<AccessCodeRefused>()(
+  "AccessCodeRefused",
+  { reason: Schema.Literals(["unknown", "expired", "usedUp", "alreadyRedeemed"]) },
 ) {}
