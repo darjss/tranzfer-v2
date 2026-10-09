@@ -11,6 +11,9 @@ import wrong6 from "../landing/assets/wrong-06-delivered.webp";
 // The feature and use-case pages: one entry each, feeding the nav menus, the
 // page template and the prerender list. Only claim what Tranzfer does today.
 
+/** When these pages last changed, shown on each one. ISO, so <time> can use it. */
+export const lastUpdated = "2026-10-09";
+
 export interface Page {
   readonly description: string;
   readonly eyebrow: string;
@@ -35,6 +38,24 @@ export const features: readonly Page[] = [
     description:
       "Send hundreds of gigabytes from your browser. No app, no size anxiety, no splitting files.",
     eyebrow: "Send huge files",
+    faq: [
+      {
+        a: "No separate one. A single file can be as big as your plan holds at once: 20 GB on Free, 300 GB on Starter, 1 TB on Pro and 3 TB on Studio.",
+        q: "Is there a size limit per file?",
+      },
+      {
+        a: "No. Tranzfer runs in Chrome, Edge, Safari and Firefox. The person you send to doesn't install anything either.",
+        q: "Do I need to install anything?",
+      },
+      {
+        a: "No. Send files and folders as they are. Subfolders and file names arrive the way you sent them.",
+        q: "Do I have to zip it first?",
+      },
+      {
+        a: "We sent one 100 GB upload and broke it eight ways on purpose, including Wi-Fi off, a reload, a closed tab and a crashed browser. It finished, and the file on the other end matched the original exactly.",
+        q: "How was it tested?",
+      },
+    ],
     image: videoEdit,
     lede: "Drag in a whole shoot and hit send. Tranzfer moves hundreds of gigabytes straight from your browser. Nothing to install, nothing to zip, no splitting a project into polite little pieces.",
     menu: "Send huge files",
@@ -60,6 +81,24 @@ export const features: readonly Page[] = [
     description:
       "Wi-Fi drops, laptop sleeps, browser crashes: Tranzfer keeps what arrived and sends only what's missing.",
     eyebrow: "Resume anything",
+    faq: [
+      {
+        a: "No. Tranzfer waits for the connection to come back and carries on by itself.",
+        q: "Do I have to do anything when the Wi-Fi drops?",
+      },
+      {
+        a: "The upload waits on your dashboard. Open Tranzfer, pick the same files again, and only the missing parts go up. The browser forgets your files when it closes, which is why it has to ask.",
+        q: "What if I close the tab or the browser crashes?",
+      },
+      {
+        a: "Tranzfer checks what you picked against what already arrived. If it doesn't match, it tells you instead of mixing them up.",
+        q: "What if I pick the wrong file?",
+      },
+      {
+        a: "No. Every plan has it, Free included.",
+        q: "Is resume a paid extra?",
+      },
+    ],
     image: wrong1,
     lede: "Uploads die at the worst moment. Tranzfer keeps every piece that already arrived, so a dropped connection, a sleeping laptop or a crashed browser never sends you back to zero.",
     menu: "Resume anything",
@@ -85,6 +124,20 @@ export const features: readonly Page[] = [
     description:
       "Send a whole folder with its subfolders. Recipients on desktop Chrome or Edge save it all into one folder.",
     eyebrow: "Send whole folders",
+    faq: [
+      {
+        a: "Yes. Pick the folder and everything inside goes, subfolders and file names included.",
+        q: "Can I send a folder with subfolders in it?",
+      },
+      {
+        a: "On desktop Chrome or Edge, Download all asks for a folder once and saves the whole delivery into it, subfolders included. If it gets interrupted, it carries on.",
+        q: "How does my recipient save it all at once?",
+      },
+      {
+        a: "They download each file on its own.",
+        q: "What about Safari, Firefox or a phone?",
+      },
+    ],
     image: loftPacking,
     lede: "Pick a folder and everything inside goes, subfolders and file names included. On desktop Chrome or Edge, your recipient picks a destination folder once and everything lands there. Other browsers download the files one by one.",
     menu: "Send whole folders",
@@ -110,6 +163,20 @@ export const features: readonly Page[] = [
     description:
       "Every delivery is one link. Recipients download without an account, and links end when you say.",
     eyebrow: "One link, no account",
+    faq: [
+      {
+        a: "No. They open the link and download. Nothing to sign up for, nothing to install.",
+        q: "Does the person I send to need an account?",
+      },
+      {
+        a: "You pick 1, 3, 7 or 14 days, up to your plan's limit: 3 on Free, 7 on Starter, 14 on Pro and Studio. When it ends, the files are deleted.",
+        q: "How long does a link last?",
+      },
+      {
+        a: "Yes. Cancel the delivery on your dashboard and the link stops working right away.",
+        q: "Can I stop a link early?",
+      },
+    ],
     image: filmmaker,
     lede: "Every delivery becomes one link. Your editor clicks it and downloads. They don't sign up, they don't install anything, and they don't email you asking how.",
     menu: "One link, no account",
@@ -135,6 +202,20 @@ export const features: readonly Page[] = [
     description:
       "See every delivery in one place: what's moving, what's ready, what got interrupted, and how much space you're using.",
     eyebrow: "Your delivery desk",
+    faq: [
+      {
+        a: "Every delivery: what's uploading, what's ready to share, what was interrupted and needs the files again, and how much of your plan is in use.",
+        q: "What does the dashboard show?",
+      },
+      {
+        a: "It stays on the dashboard. Pick the same files again and Tranzfer sends only what's missing.",
+        q: "What happens to an interrupted upload?",
+      },
+      {
+        a: "The link stops working, the files are deleted and the space goes back to your plan.",
+        q: "What happens when I cancel a delivery?",
+      },
+    ],
     image: mountainStudio,
     lede: "Every delivery lives on one dashboard: what's moving, what's ready to share, what got interrupted and needs the files again. Plus how much of your plan you're using.",
     menu: "Track every delivery",
@@ -160,6 +241,20 @@ export const features: readonly Page[] = [
     description:
       "Files are encrypted, links are private, and everything is deleted when the link ends. No ads, no tracking.",
     eyebrow: "Private by default",
+    faq: [
+      {
+        a: "Yes, on the way to us and while they're stored.",
+        q: "Are my files encrypted?",
+      },
+      {
+        a: "When the link ends or you cancel the delivery. Expired and cancelled deliveries are wiped within minutes.",
+        q: "When are my files deleted?",
+      },
+      {
+        a: "No. We don't sell data and we don't run advertising trackers.",
+        q: "Do you run ads or sell data?",
+      },
+    ],
     image: wrong6,
     lede: "Your footage is your business. Files are encrypted on the way and while stored, only people with the link can download them, and they're deleted the moment the link ends.",
     menu: "Private by default",
