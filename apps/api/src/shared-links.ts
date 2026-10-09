@@ -86,25 +86,36 @@ export class SharedLinks extends Context.Service<
           open: Effect.fn("SharedLinks.open")(function* open(token: string, unlock?: string) {
             const linkId = yield* tokens.verify(token);
             if (Option.isNone(linkId)) {
+              yield* Effect.annotateCurrentSpan("link.refused", "badToken");
               return yield* new LinkNotFound();
             }
+            yield* Effect.annotateCurrentSpan("link.id", linkId.value);
             const link = yield* db.query.link.findFirst({
-              where: { id: linkId.value, revokedAt: { isNull: true } },
+              where: { id: linkId.value },
               with: {
                 delivery: { with: { sender: true, transfers: { orderBy: { path: "asc" } } } },
               },
             });
-            if (link === undefined || link.delivery.status === "cancelled") {
+            if (link === undefined) {
+              yield* Effect.annotateCurrentSpan("link.refused", "unknown");
               return yield* new LinkNotFound();
             }
             const { delivery } = link;
+            yield* Effect.annotateCurrentSpan("delivery.id", delivery.id);
+            if (link.revokedAt !== null) {
+              yield* Effect.annotateCurrentSpan("link.refused", "revoked");
+              return yield* new LinkNotFound();
+            }
+            if (delivery.status === "cancelled") {
+              yield* Effect.annotateCurrentSpan("link.refused", "cancelled");
+              return yield* new LinkNotFound();
+            }
             // Before anything else is said about the delivery, its title included.
             if (!(yield* isOpen(link, unlock))) {
               return yield* new LinkLocked({ senderName: delivery.sender.name });
             }
             yield* Effect.annotateCurrentSpan({
               "delivery.file_count": delivery.transfers.length,
-              "delivery.id": delivery.id,
               "delivery.status": delivery.status,
               "delivery.total_bytes": delivery.transfers.reduce((sum, file) => sum + file.size, 0),
             });
@@ -157,6 +168,7 @@ export class SharedLinks extends Context.Service<
             if (Option.isNone(linkId)) {
               return;
             }
+            yield* Effect.annotateCurrentSpan("link.id", linkId.value);
             const link = yield* db.query.link.findFirst({
               columns: { id: true, passwordHash: true },
               where: { id: linkId.value },
@@ -209,6 +221,7 @@ export class SharedLinks extends Context.Service<
             if (Option.isNone(linkId)) {
               return yield* new LinkNotFound();
             }
+            yield* Effect.annotateCurrentSpan("link.id", linkId.value);
             if (!(yield* attempts.allowIp(ip))) {
               return yield* new RateLimited({
                 limit: "passwordAttemptsPerIp",

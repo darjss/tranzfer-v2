@@ -320,6 +320,7 @@ export class Emails extends Context.Service<
             senderId: string,
             deliveryId: DeliveryId,
           ) {
+            yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
             return yield* db
               .select({
                 errorCode: schema.deliveryEmail.errorCode,
@@ -385,6 +386,7 @@ export class Emails extends Context.Service<
                 retryAfterSeconds: rateLimits.emailRequests.windowSeconds,
               });
             }
+            yield* Effect.annotateCurrentSpan("delivery.id", input.deliveryId);
             const delivery = yield* deliveries.owned(sender.id, input.deliveryId);
             if (delivery.status !== "ready") {
               return yield* new DeliveryNotShareable();

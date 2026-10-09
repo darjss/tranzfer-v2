@@ -36,7 +36,10 @@ export const AuthenticatedLive = Layer.effect(
         Effect.flatMap(({ principal }) =>
           Option.match(principal, {
             onNone: () => Effect.fail(new Unauthorized()),
-            onSome: (value) => effect.pipe(Effect.provideService(CurrentPrincipal, value)),
+            onSome: (value) =>
+              Effect.annotateCurrentSpan("user.id", value.id).pipe(
+                Effect.andThen(effect.pipe(Effect.provideService(CurrentPrincipal, value))),
+              ),
           }),
         ),
       ),
@@ -87,7 +90,10 @@ export const ApiHandlers = Api.toLayer(
                   Effect.flatMap(({ principal }) =>
                     Option.match(principal, {
                       onNone: () => Effect.fail(new Unauthorized()),
-                      onSome: (user) => Effect.succeed({ email: user.email, userId: user.id }),
+                      onSome: (user) =>
+                        Effect.annotateCurrentSpan("user.id", user.id).pipe(
+                          Effect.as({ email: user.email, userId: user.id }),
+                        ),
                     }),
                   ),
                 )

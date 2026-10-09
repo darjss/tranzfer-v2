@@ -206,6 +206,9 @@ export class Transfers extends Context.Service<
           requestId?: RequestId,
         ) {
           yield* Effect.annotateCurrentSpan("transfer.id", transferId);
+          if (requestId !== undefined) {
+            yield* Effect.annotateCurrentSpan("request.id", requestId);
+          }
           const transfer = yield* owned(senderId, { id: transferId }, requestId);
           if (transfer === undefined) {
             return yield* new DeliveryNotFound();
@@ -284,6 +287,9 @@ export class Transfers extends Context.Service<
           request: UploadRequest,
           requestId?: RequestId,
         ) {
+          if (requestId !== undefined) {
+            yield* Effect.annotateCurrentSpan("request.id", requestId);
+          }
           // Every sender is counted, but only Free is held to it, so the plan
           // is read only once the count runs over. An uploader through a file
           // request is held to the portal limits instead (FileRequests).

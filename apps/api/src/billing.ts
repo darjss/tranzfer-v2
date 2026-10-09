@@ -194,6 +194,7 @@ export class Billing extends Context.Service<
          * incomplete ones grant nothing. A comp row is never overwritten.
          */
         const reconcile = Effect.fn("Billing.reconcile")(function* reconcile(userId: string) {
+          yield* Effect.annotateCurrentSpan("user.id", userId);
           const current = yield* row(userId);
           if (current?.status === "comp") {
             return;
@@ -346,6 +347,7 @@ export class Billing extends Context.Service<
             if (user === undefined) {
               return;
             }
+            yield* Effect.annotateCurrentSpan("user.id", userId);
             yield* reconcile(userId);
           }),
         });
