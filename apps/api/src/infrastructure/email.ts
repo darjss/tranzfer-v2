@@ -58,7 +58,7 @@ export const makeMail = (
   Mail.of({
     send: Effect.fn("Mail.send")(function* send(message) {
       if (stage === "staging" && !allowlist.has(message.to.toLowerCase())) {
-        yield* Effect.logInfo("email held: recipient is not on this stage's allowlist");
+        yield* Effect.logInfo("email held because the recipient is not on this stage's allowlist");
         return;
       }
       yield* client

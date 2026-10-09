@@ -52,6 +52,8 @@ jobs:
         run: vp run --filter @tranzfer/infra deploy:staging
         env:
           TEST_LOGIN_KEY: ${{ secrets.TEST_LOGIN_KEY }}
+          # Staging and previews email only these addresses (docs/PRODUCT.md "Email").
+          EMAIL_ALLOWLIST: ${{ vars.EMAIL_ALLOWLIST }}
           POLAR_SANDBOX_ACCESS_TOKEN: ${{ secrets.POLAR_SANDBOX_ACCESS_TOKEN }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
           AXIOM_ORG_ID: ${{ secrets.AXIOM_ORG_ID }}
