@@ -1,7 +1,7 @@
 import { For } from "solid-js";
 import { css, cx } from "styled-system/css";
 import { faq } from "./faq";
-import { eyebrow, sectionTitle } from "./styles";
+import { eyebrow, sideTitle } from "./styles";
 
 export default function Faq() {
   return (
@@ -11,12 +11,12 @@ export default function Faq() {
         display: "grid",
         gap: { base: "8", lg: "16" },
         gridTemplateColumns: { base: "1fr", lg: "minmax(0,1fr) minmax(0,1.5fr)" },
-        py: { base: "20", lg: "30" },
+        py: { base: "12", lg: "16" },
       })}
     >
-      <div>
+      <div class={css({ alignSelf: "start", pos: { lg: "sticky" }, top: "8" })}>
         <p class={eyebrow}>Questions</p>
-        <h2 class={cx("rv", sectionTitle)}>
+        <h2 class={cx("rv", sideTitle)}>
           Before you send <i>the big one.</i>
         </h2>
       </div>
