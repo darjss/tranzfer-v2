@@ -25,6 +25,7 @@ import {
   NewDelivery,
   TransferId,
 } from "./delivery";
+import { DeliveryEmail, DeliveryNotShareable, SendDeliveryEmailPayload } from "./email";
 import { InterestJoined, JoinInterestPayload } from "./interest";
 import { DownloadEvent, LinkExpired, LinkNotFound, LinkNotReady, SharedDelivery } from "./link";
 import {
@@ -65,6 +66,20 @@ export class Api extends RpcGroup.make(
     error: DeliveryNotFound,
     payload: Schema.Struct({ deliveryId: DeliveryId, note: DeliveryNote, title: DeliveryTitle }),
     success: Delivery,
+  }).middleware(Authenticated),
+  // Owner only; the delivery must be ready and unexpired. Answers at once with
+  // one queued row per distinct address, in request order; the mail goes out in
+  // the background and `DeliveryEmails` reports how each one ended.
+  Rpc.make("SendDeliveryEmail", {
+    error: Schema.Union([DeliveryNotFound, DeliveryNotShareable, RateLimited]),
+    payload: SendDeliveryEmailPayload,
+    success: Schema.Array(DeliveryEmail),
+  }).middleware(Authenticated),
+  // The sender's latest 50 emails for a delivery, newest first. Someone else's
+  // delivery reads as none.
+  Rpc.make("DeliveryEmails", {
+    payload: Schema.Struct({ deliveryId: DeliveryId }),
+    success: Schema.Array(DeliveryEmail),
   }).middleware(Authenticated),
   Rpc.make("SignUpload", {
     error: Schema.Union([DeliveryNotFound, InvalidUpload, RateLimited, UploadClosed]),

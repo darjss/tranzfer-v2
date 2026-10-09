@@ -61,6 +61,8 @@ export const ApiHandlers = Api.toLayer(
         Effect.flatMap(sender, (id) => deliveries.clear(id, deliveryIds)),
       CreateDelivery: (input) => Effect.flatMap(sender, (id) => deliveries.create(id, input)),
       Deliveries: () => Effect.flatMap(sender, deliveries.list),
+      DeliveryEmails: ({ deliveryId }) =>
+        Effect.flatMap(sender, (id) => emails.deliveryEmails(id, deliveryId)),
       FinalizeTransfer: ({ transferId }) =>
         Effect.flatMap(sender, (id) => transfers.finalize(id, transferId)),
       GetBilling: () => Effect.flatMap(sender, billing.summary),
@@ -87,6 +89,10 @@ export const ApiHandlers = Api.toLayer(
       OpenLink: ({ token }) => links.open(token),
       RedeemCode: ({ code }) => Effect.flatMap(sender, (id) => userPlans.redeem(id, code)),
       ReportDownload: ({ event, path, token }) => links.report(token, path, event),
+      SendDeliveryEmail: (input) =>
+        Effect.flatMap(Effect.service(CurrentPrincipal), (user) =>
+          emails.sendDelivery(user, input),
+        ),
       SignUpload: ({ key, request }) =>
         Effect.flatMap(sender, (id) => transfers.sign(id, key, request)),
       StartCheckout: ({ plan }) =>

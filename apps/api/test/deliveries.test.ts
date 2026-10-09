@@ -1,7 +1,7 @@
 import { expect, layer, vi } from "@effect/vitest";
 import { DeliveryId, DeliveryNote, DeliveryTitle, rateLimits } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -26,6 +26,7 @@ import {
   revokeAccessCode,
 } from "../src/plans";
 import { SharedLinks } from "../src/shared-links";
+import { Transfers } from "../src/transfers";
 import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } from "./support";
 
 const storage = makeMemoryStorage();
@@ -35,6 +36,25 @@ const subscribe = (userId: string, plan: "pro" | "starter" | "studio") =>
   Effect.flatMap(Effect.service(Database), ({ db }) =>
     db.insert(schema.subscription).values({ plan, status: "active", userId }),
   ).pipe(Effect.orDie);
+
+// A ready delivery of `sizes` for `senderId`, finalized at the current time.
+const readyDelivery = (senderId: string, sizes: readonly number[], title = "Cut") =>
+  Effect.gen(function* makeReady() {
+    const deliveries = yield* Deliveries;
+    const transfers = yield* Transfers;
+    const created = yield* deliveries.create(
+      senderId,
+      newDelivery(
+        sizes.map((size, index) => newFile(`f${index}.bin`, size)),
+        title,
+      ),
+    );
+    for (const file of created.transfers) {
+      storage.objects.set(file.objectKey, { etag: "m", size: file.size });
+      yield* transfers.finalize(senderId, file.id);
+    }
+    return yield* deliveries.owned(senderId, created.id);
+  });
 
 // Polar's secret is `whsec_` plus the base64 of the HMAC key.
 const webhookSecret = (key: string) =>
@@ -989,29 +1009,48 @@ layer(closedBilling)("Billing before paid plans open", (it) => {
 });
 
 // Email as a list of what went out. Addresses in `bouncing` fail the way the
-// send binding fails for a suppressed recipient.
+// send binding fails for a suppressed recipient, and `holding` ones are kept
+// back the way a staging allowlist keeps them.
 const sent: { readonly to: string; readonly subject: string }[] = [];
+const mailed: Parameters<Mail["Service"]["send"]>[0][] = [];
 const bouncing = new Set<string>();
+const holding = new Set<string>();
 const memoryMail = Layer.succeed(
   Mail,
   Mail.of({
-    send: (message) =>
-      bouncing.has(message.to)
-        ? Effect.fail(new MailError({ code: "E_RECIPIENT_SUPPRESSED" }))
-        : Effect.sync(() => {
-            sent.push({ subject: message.subject, to: message.to });
-          }),
+    send: (message) => {
+      if (bouncing.has(message.to)) {
+        return Effect.fail(new MailError({ code: "E_RECIPIENT_SUPPRESSED" }));
+      }
+      if (holding.has(message.to)) {
+        return Effect.succeed("held" as const);
+      }
+      return Effect.sync(() => {
+        sent.push({ subject: message.subject, to: message.to });
+        mailed.push(message);
+        return "sent" as const;
+      });
+    },
   }),
 );
-const interestIps = new Map<string, number>();
+// Counts per key and never resets, like the other fake limiters here.
+const counts = new Map<string, number>();
+const underLimit = (limit: number) => (key: string) =>
+  Effect.sync(() => {
+    const count = (counts.get(key) ?? 0) + 1;
+    counts.set(key, count);
+    return count <= limit;
+  });
+// Background work waits here until a test runs it, as waitUntil runs it after the response.
+const background: Effect.Effect<void>[] = [];
 const emailsLayer = Emails.layer({
-  allowInterest: (ip) =>
-    Effect.sync(() => {
-      const count = (interestIps.get(ip) ?? 0) + 1;
-      interestIps.set(ip, count);
-      return count <= rateLimits.interestSignups.limit;
-    }),
+  allowDeliveryEmail: underLimit(rateLimits.emailRequests.limit),
+  allowInterest: underLimit(rateLimits.interestSignups.limit),
   appUrl: "https://app.test",
+  background: (effect) =>
+    Effect.sync(() => {
+      background.push(effect);
+    }),
 }).pipe(Layer.provideMerge(memoryMail), Layer.provideMerge(domainLayer(storage.layer)));
 
 const interestRows = Effect.flatMap(Effect.service(Database), ({ db }) =>
@@ -1148,6 +1187,209 @@ layer(emailsLayer)("Emails", (it) => {
       expect(yield* queueOpenings("studio", { dryRun: false })).toEqual({ queued: 1, waiting: 1 });
       expect(yield* emails.sendOpenings).toBe(1);
       expect(sent.at(-1)).toEqual({ subject: "Studio is open", to: "o2@example.com" });
+    }),
+  );
+
+  const runBackground = Effect.suspend(() => Effect.all(background.splice(0)));
+
+  it.effect("emails each distinct address in the background and reports how each one ended", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.parse("2026-10-09T09:00:00Z"));
+      yield* addUser("ema", "Ema <b>Ross");
+      const emails = yield* Emails;
+      const deliveries = yield* Deliveries;
+      const created = yield* readyDelivery("ema", [1_500_000, 2_000_000], 'Cut <3 "final"');
+      const ready = yield* deliveries.update("ema", created.id, {
+        note: "Hello & bye\nSecond line <b>bold</b>",
+        title: created.title,
+      });
+      bouncing.add("gone@example.com");
+      holding.add("held@example.com");
+      mailed.length = 0;
+
+      const queued = yield* emails.sendDelivery(
+        { email: "ema@test", id: "ema", name: "Ema <b>Ross" },
+        {
+          deliveryId: ready.id,
+          recipients: ["A@Example.com", "gone@example.com", "held@example.com", "a@example.com"],
+        },
+      );
+      // Off the request path: the answer comes back before anything is sent.
+      expect(queued.map(({ errorCode, status }) => ({ errorCode, status }))).toEqual([
+        { errorCode: null, status: "queued" },
+        { errorCode: null, status: "queued" },
+        { errorCode: null, status: "queued" },
+      ]);
+      expect(mailed).toEqual([]);
+
+      yield* runBackground;
+      const settled = yield* emails.deliveryEmails("ema", ready.id);
+      expect(
+        settled.toReversed().map(({ errorCode, id, status }) => ({ errorCode, id, status })),
+      ).toEqual([
+        { errorCode: null, id: queued[0]?.id, status: "sent" },
+        { errorCode: "E_RECIPIENT_SUPPRESSED", id: queued[1]?.id, status: "failed" },
+        { errorCode: "held", id: queued[2]?.id, status: "failed" },
+      ]);
+
+      expect(mailed).toHaveLength(1);
+      const { html, ...envelope } = first(mailed);
+      const url = `https://app.test${ready.link}`;
+      expect(envelope).toEqual({
+        replyTo: "ema@test",
+        subject: 'Ema <b>Ross sent you Cut <3 "final"',
+        text: [
+          "Hi,",
+          'Ema <b>Ross sent you Cut <3 "final" on Tranzfer.',
+          "Ema <b>Ross wrote:\nHello & bye\nSecond line <b>bold</b>",
+          "2 files, 3.5 MB. The link works until 12 October 2026 at 09:00 UTC.",
+          `Download: ${url}`,
+          "You don't need an account. Reply to this email to write to Ema <b>Ross.",
+          "Tranzfer",
+        ].join("\n\n"),
+        to: "a@example.com",
+      });
+      // Names, titles and notes are text in the HTML, and the download link is its only link.
+      expect(html).toContain(
+        "Ema &lt;b&gt;Ross wrote:<br>Hello &amp; bye<br>Second line &lt;b&gt;bold&lt;/b&gt;",
+      );
+      expect(html).toContain("Cut &lt;3 &quot;final&quot;");
+      expect(html).not.toContain("<b>");
+      expect(html.match(/<a /gu)).toHaveLength(1);
+      expect(html).toContain(`<a href="${url}"`);
+      expect(html).not.toContain("<img");
+    }),
+  );
+
+  it.effect("emails only the owner's ready, unexpired deliveries", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.parse("2026-10-09T09:00:00Z"));
+      yield* addUser("own");
+      yield* addUser("other");
+      const emails = yield* Emails;
+      const deliveries = yield* Deliveries;
+      const to = { recipients: ["a@example.com"] };
+      const owner = { email: "own@test", id: "own", name: "Own" };
+
+      const ready = yield* readyDelivery("own", [3]);
+      expect(
+        yield* Effect.flip(
+          emails.sendDelivery({ ...owner, id: "other" }, { ...to, deliveryId: ready.id }),
+        ),
+      ).toMatchObject({ _tag: "DeliveryNotFound" });
+      expect(yield* emails.deliveryEmails("other", ready.id)).toEqual([]);
+
+      const open = yield* deliveries.create("own", newDelivery([newFile("x", 1)], "Still going"));
+      expect(
+        yield* Effect.flip(emails.sendDelivery(owner, { ...to, deliveryId: open.id })),
+      ).toMatchObject({ _tag: "DeliveryNotShareable" });
+
+      const cancelled = yield* readyDelivery("own", [3], "Cancelled");
+      yield* deliveries.cancel("own", cancelled.id);
+      expect(
+        yield* Effect.flip(emails.sendDelivery(owner, { ...to, deliveryId: cancelled.id })),
+      ).toMatchObject({ _tag: "DeliveryNotShareable" });
+
+      yield* TestClock.adjust("4 days");
+      expect(
+        yield* Effect.flip(emails.sendDelivery(owner, { ...to, deliveryId: ready.id })),
+      ).toMatchObject({ _tag: "DeliveryNotShareable" });
+      expect(background).toEqual([]);
+    }),
+  );
+
+  it.effect("holds a sender to the request rate and the daily caps, then reopens", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.parse("2028-03-01T09:00:00Z"));
+      yield* addUser("cap");
+      const emails = yield* Emails;
+      const ready = yield* readyDelivery("cap", [3]);
+      const sender = { email: "cap@test", id: "cap", name: "Cap" };
+      const many = (prefix: string, count: number) => ({
+        deliveryId: ready.id,
+        recipients: Arr.range(1, count).map((n) => `${prefix}${n}@example.com`),
+      });
+
+      // 50 a day for one sender: five sends of ten.
+      for (const round of Arr.range(1, 5)) {
+        yield* emails.sendDelivery(sender, many(`r${round}-`, 10));
+      }
+      expect(yield* Effect.flip(emails.sendDelivery(sender, many("late-", 1)))).toMatchObject({
+        _tag: "RateLimited",
+        limit: "emailsPerDay",
+        retryAfterSeconds: rateLimits.emailsPerDay.windowSeconds,
+      });
+      // Nothing was queued by the refused send.
+      expect(yield* emails.deliveryEmails("cap", ready.id)).toHaveLength(50);
+      yield* TestClock.adjust("1 day");
+      expect(yield* emails.sendDelivery(sender, many("again-", 1))).toHaveLength(1);
+
+      // Each sender gets a request budget of their own.
+      for (const _ of Arr.range(1, rateLimits.emailRequests.limit - 7)) {
+        yield* emails.sendDelivery(sender, many("x-", 1));
+      }
+      expect(yield* Effect.flip(emails.sendDelivery(sender, many("y-", 1)))).toMatchObject({
+        _tag: "RateLimited",
+        limit: "emailRequests",
+        retryAfterSeconds: rateLimits.emailRequests.windowSeconds,
+      });
+      background.length = 0;
+    }),
+  );
+
+  it.effect("keeps every sender together under the account's daily quota", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.parse("2031-03-01T09:00:00Z"));
+      yield* addUser("wide");
+      yield* addUser("bulk");
+      const { db } = yield* Database;
+      const emails = yield* Emails;
+      const ready = yield* readyDelivery("wide", [3]);
+      const bulk = yield* readyDelivery("bulk", [3]);
+      const { emailsAccountPerDay } = rateLimits;
+      // Everyone else's sends so far today, short of the cap by five.
+      yield* db
+        .run(
+          sql`insert into delivery_email (delivery_id, status, created_at) select ${bulk.id}, 'sent', ${Date.parse("2031-03-01T09:00:00Z")} from json_each(${JSON.stringify(Arr.range(1, emailsAccountPerDay.limit - 5))})`,
+        )
+        .pipe(Effect.orDie);
+      const sender = { email: "wide@test", id: "wide", name: "Wide" };
+      const many = (count: number) => ({
+        deliveryId: ready.id,
+        recipients: Arr.range(1, count).map((n) => `w${n}@example.com`),
+      });
+      expect(yield* Effect.flip(emails.sendDelivery(sender, many(6)))).toMatchObject({
+        _tag: "RateLimited",
+        limit: "emailsAccountPerDay",
+      });
+      expect(yield* emails.sendDelivery(sender, many(5))).toHaveLength(5);
+      background.length = 0;
+    }),
+  );
+
+  it.effect("marks a send that never finished as failed once it is clearly lost", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.parse("2032-03-01T09:00:00Z"));
+      yield* addUser("lost");
+      const emails = yield* Emails;
+      const ready = yield* readyDelivery("lost", [3]);
+      // Earlier tests left their sends queued; settle those first.
+      yield* emails.failLost;
+      yield* emails.sendDelivery(
+        { email: "lost@test", id: "lost", name: "Lost" },
+        { deliveryId: ready.id, recipients: ["a@example.com"] },
+      );
+      background.length = 0;
+      yield* TestClock.adjust("9 minutes");
+      expect(yield* emails.failLost).toBe(0);
+      yield* TestClock.adjust("2 minutes");
+      expect(yield* emails.failLost).toBe(1);
+      expect(
+        (yield* emails.deliveryEmails("lost", ready.id)).map(({ errorCode, status }) => ({
+          errorCode,
+          status,
+        })),
+      ).toEqual([{ errorCode: "lost", status: "failed" }]);
     }),
   );
 });

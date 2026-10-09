@@ -296,3 +296,30 @@ export const planInterest = sqliteTable(
     index("plan_interest_notifyQueuedAt_idx").on(table.notifyQueuedAt),
   ],
 );
+
+// One row per email a sender asked Tranzfer to send about a delivery. The
+// recipient's address is not stored: the send runs in the request's
+// waitUntil with the address in memory, and the sender's page already knows
+// what it typed. A row left queued means the isolate died mid-send; the
+// sweeper marks it failed.
+export const deliveryEmail = sqliteTable(
+  "delivery_email",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    deliveryId: text("delivery_id")
+      .$type<DeliveryId>()
+      .notNull()
+      .references(() => delivery.id),
+    status: text("status", { enum: ["queued", "sent", "failed"] })
+      .default("queued")
+      .notNull(),
+    // Cloudflare's error code, or `held` / `lost`. Never the address.
+    errorCode: text("error_code"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    sentAt: integer("sent_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("delivery_email_deliveryId_idx").on(table.deliveryId),
+    index("delivery_email_createdAt_idx").on(table.createdAt),
+  ],
+);

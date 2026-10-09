@@ -25,6 +25,9 @@ export const RateLimitName = Schema.Literals([
   "codeRedemptions",
   "deliveriesPerDay",
   "deliveriesPerHour",
+  "emailRequests",
+  "emailsAccountPerDay",
+  "emailsPerDay",
   "interestSignups",
   "newAccounts",
   "uploadSigning",
@@ -34,8 +37,11 @@ export type RateLimitName = typeof RateLimitName.Type;
 /**
  * Rate limits, per rolling window. docs/PRODUCT.md is the spec. The auth and
  * interest-list limits count per client IP and access code attempts per user,
- * on every plan; the rest count per sender on the Free plan only, and paid or
- * comp plans have none. Cloudflare's rate-limit binding enforces the 10 and 60
+ * on every plan. Delivery emails count per sender on every plan, except
+ * `emailsAccountPerDay`, which counts every sender together and keeps them
+ * under the account's 1,000 a day sending quota with room for the welcome and
+ * interest emails. The rest count per sender on the Free plan only, and paid
+ * or comp plans have none. Cloudflare's rate-limit binding enforces the 10 and 60
  * second windows, the only periods it offers.
  */
 export const rateLimits = {
@@ -43,6 +49,9 @@ export const rateLimits = {
   codeRedemptions: { limit: 5, windowSeconds: 60 },
   deliveriesPerDay: { limit: 100, windowSeconds: 24 * 60 * 60 },
   deliveriesPerHour: { limit: 20, windowSeconds: 60 * 60 },
+  emailRequests: { limit: 10, windowSeconds: 60 },
+  emailsAccountPerDay: { limit: 800, windowSeconds: 24 * 60 * 60 },
+  emailsPerDay: { limit: 50, windowSeconds: 24 * 60 * 60 },
   interestSignups: { limit: 10, windowSeconds: 60 },
   newAccounts: { limit: 10, windowSeconds: 24 * 60 * 60 },
   uploadSigning: { limit: 200, windowSeconds: 10 },

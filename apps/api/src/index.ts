@@ -141,10 +141,19 @@ export default ApiWorker.make(
       },
     });
 
+    const emailRequests = yield* Cloudflare.RateLimit("EMAIL_REQUESTS", {
+      namespaceId: 1005,
+      simple: {
+        limit: rateLimits.emailRequests.limit,
+        period: rateLimits.emailRequests.windowSeconds,
+      },
+    });
+
     // Sends through Cloudflare Email Sending as hello@tranzfer.app. The
     // domain is onboarded on the account, so any recipient is allowed.
     const email = yield* Cloudflare.Email.Send(yield* Cloudflare.Email.SendEmail("EMAIL"));
     const mail = makeMail(stage, email, yield* emailAllowlist);
+    const execution = yield* Cloudflare.WorkerExecutionContext;
 
     const isolate = yield* Layer.build(
       Layer.mergeAll(
@@ -164,7 +173,14 @@ export default ApiWorker.make(
       Transfers.layer,
       SharedLinks.layer,
       billing,
-      Emails.layer({ allowInterest: limiter(interestSignups), appUrl: origin }),
+      Emails.layer({
+        allowDeliveryEmail: limiter(emailRequests),
+        allowInterest: limiter(interestSignups),
+        appUrl: origin,
+        // Runs after the response, kept alive by the request's waitUntil.
+        background: (effect) =>
+          execution.waitUntil(effect).pipe(Effect.provide(RuntimeContext.phantom)),
+      }),
     ).pipe(
       Layer.provideMerge(Deliveries.layer),
       Layer.provideMerge(Plans.layer(limiter(codeRedemptions))),

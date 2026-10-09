@@ -128,6 +128,9 @@ const DeliveriesPage = () => {
     clear,
     deliveries,
     dismiss,
+    email,
+    emailed,
+    emailing,
     finished,
     redeem,
     redeeming,
@@ -459,6 +462,9 @@ const DeliveriesPage = () => {
                 <SendDoneList
                   deliveries={deliveries}
                   dismiss={dismiss}
+                  email={email}
+                  emailed={emailed}
+                  emailing={emailing()}
                   finished={finished()}
                   update={update}
                 />
