@@ -56,7 +56,7 @@ A code gives a paid plan for free for a set number of days, so beta testers get 
 - One user redeems a code once. A use is spent only when the grant lands, and the database refuses a redemption past the code's uses.
 - Send `https://tranzfer.app/sign-in?code=BETA-PRO`. The code survives Google sign-in and redeems on the dashboard. A signed-in user can also type it under "Have a code?" in the account menu.
 
-Create and list codes from the main checkout. The script finds the stage's D1 and runs `wrangler d1 execute --remote`, with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` from the repo's `.env`. `--stage` defaults to `production`. `--expires` is the last day it can be redeemed, in UTC.
+Create and list codes from the main checkout. The script finds the stage's D1 and runs `wrangler d1 execute --remote` with your `wrangler login`, or with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` when the repo's `.env` sets them. `--stage` defaults to `production`. `--expires` is the last day it can be redeemed, in UTC.
 
 ```text
 vp run --filter @tranzfer/api code:create -- --code BETA-PRO --plan pro --days 90 --uses 30

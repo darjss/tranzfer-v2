@@ -1,6 +1,6 @@
 // Creates and lists beta access codes in a stage's remote D1 through wrangler.
 // docs/PRODUCT.md "Access codes" has the commands. Cloudflare credentials come
-// from the repo's .env, the same file `alchemy` deploys with.
+// from the repo's .env when it sets them, otherwise from `wrangler login`.
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
