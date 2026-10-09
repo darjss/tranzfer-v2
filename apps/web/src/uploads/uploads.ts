@@ -14,6 +14,7 @@ import type {
   Transfer,
   UploadRequest,
 } from "@tranzfer/contracts";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -23,8 +24,6 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
-import { md5 } from "hash-wasm";
-
 import { ApiClient } from "../api/client";
 import {
   fingerprint,
@@ -37,6 +36,7 @@ import {
 import type { RecoveryRecord } from "./recovery";
 import { makeUploadSpans } from "./spans";
 import { patchTransfer, transfers, wireWindow } from "./store";
+import type { ListedPart, VerifyReply, VerifyRequest } from "./verify";
 
 type SignRequest = Extract<
   AwsS3Options<TransferMeta, Body>,
@@ -223,38 +223,39 @@ export const isTransientUploadError = (error: Error) => {
 
 const basename = (path: string) => path.split("/").pop() ?? path;
 
-/** One part R2 lists for an open upload. Its ETag is the part's MD5 hex. */
-export interface ListedPart {
-  readonly etag: string;
-  readonly partNumber: number;
-  readonly size: number;
-}
-
-/**
- * The fingerprint samples 16 spots, so an edit between samples could pass it.
- * Parts R2 already holds must hash to their ETags against the picked file, or
- * the resumed upload would seal an object mixing old and new bytes. Reads one
- * part at a time, so a partSize-worth of memory is the peak.
- */
-export const verifyParts = (file: Blob, parts: readonly ListedPart[], partSizeBytes: number) => {
-  // Sequential on purpose: parallel reads would hold every part in memory.
-  const check = async (index: number): Promise<boolean> => {
-    const part = parts[index];
-    if (part === undefined) {
-      return true;
-    }
-    const start = (part.partNumber - 1) * partSizeBytes;
-    const expected = Math.min(partSizeBytes, file.size - start);
-    if (part.partNumber < 1 || expected <= 0 || part.size !== expected) {
-      return false;
-    }
-    const digest = await md5(
-      new Uint8Array(await file.slice(start, start + partSizeBytes).arrayBuffer()),
-    );
-    return digest === part.etag && (await check(index + 1));
-  };
-  return Effect.tryPromise(async () => await check(0));
-};
+// The pick waits on this hashing, and it can run for minutes, so it lives in a
+// worker: on the page thread each 64 MiB part was a ~120 ms long task. Worker
+// events are the adapter edge; a read or hash failure becomes UnknownError and
+// the caller reports the file as unreadable.
+export const verifyInWorker = (
+  file: Blob,
+  parts: readonly ListedPart[],
+  partSizeBytes: number,
+  onChecked: (bytes: number) => void,
+) =>
+  Effect.callback<boolean, Cause.UnknownError>((resume) => {
+    const worker = new Worker(new URL("hash.worker.ts", import.meta.url), { type: "module" });
+    worker.addEventListener("message", ({ data }: MessageEvent<VerifyReply>) => {
+      if ("checked" in data) {
+        onChecked(data.checked);
+      } else if ("ok" in data) {
+        resume(Effect.succeed(data.ok));
+      } else {
+        resume(Effect.fail(new Cause.UnknownError(undefined, "hash worker failed")));
+      }
+    });
+    worker.addEventListener("error", (event) => {
+      resume(Effect.fail(new Cause.UnknownError(event, "hash worker crashed")));
+    });
+    // The options form: a worker takes a transfer list, not a target origin.
+    worker.postMessage({ file, partSize: partSizeBytes, parts } satisfies VerifyRequest, {
+      transfer: [],
+    });
+    // Interrupting the pick terminates the worker mid-hash.
+    return Effect.sync(() => {
+      worker.terminate();
+    });
+  });
 
 const make = Effect.gen(function* makeUploads() {
   const api = yield* ApiClient;
@@ -852,6 +853,8 @@ const make = Effect.gen(function* makeUploads() {
   const resume = Effect.fn("Uploads.resume")(function* resume(
     delivery: Delivery,
     files: readonly File[],
+    // Bytes of stored parts hashed so far, out of those listed so far.
+    onChecking?: (progress: { readonly checked: number; readonly total: number }) => void,
   ) {
     const uppy = yield* engine;
     const records = yield* readAll();
@@ -860,6 +863,10 @@ const make = Effect.gen(function* makeUploads() {
       (transfer) => transfers[transfer.id]?.phase === "needsFile" && recordOf.has(transfer.id),
     );
     const claimed = new Set<TransferId>();
+    // Totals across every file of this pick: listed grows as each file's parts
+    // are listed, spent is what finished files already hashed.
+    let listedBytes = 0;
+    let spentBytes = 0;
     const problems: {
       name: string;
       problem: "changed" | "gone" | "policy" | "unreadable" | "unknown";
@@ -914,13 +921,21 @@ const make = Effect.gen(function* makeUploads() {
         if (problem === undefined && record.uploadId !== undefined) {
           const remote = yield* listRemoteParts(candidate.objectKey, record.uploadId);
           listed = remote === "gone" ? [] : remote;
+          const heldBytes = listed.reduce((total, part) => total + part.size, 0);
+          const before = spentBytes;
+          const total = listedBytes + heldBytes;
+          onChecking?.({ checked: before, total });
           problem =
             remote === "gone"
               ? "gone"
-              : yield* verifyParts(file, remote, record.partSize).pipe(
+              : yield* verifyInWorker(file, remote, record.partSize, (checked) => {
+                  onChecking?.({ checked: before + checked, total });
+                }).pipe(
                   Effect.map((ok) => (ok ? undefined : ("changed" as const))),
                   Effect.catch(() => Effect.succeed("unreadable" as const)),
                 );
+          listedBytes = total;
+          spentBytes = before + heldBytes;
         }
         if (problem === undefined) {
           matched = {

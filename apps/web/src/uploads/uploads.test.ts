@@ -26,13 +26,13 @@ import {
   retryTransport,
   retryWhileNotUploaded,
   toUploadRequest,
-  verifyParts,
 } from "./uploads";
+import { verifyParts } from "./verify";
 
 const file = (name: string, relativePath = "") =>
   Object.assign(new File(["x"], name), { relativePath });
 
-const etag = (bytes: readonly number[]) =>
+const etag = (bytes: ArrayLike<number>) =>
   Effect.promise(async () => await md5(Uint8Array.from(bytes)));
 
 // Fails with each error in turn, then succeeds; counts every call.
@@ -221,6 +221,9 @@ describe("fingerprint", () => {
   );
 });
 
+const verify = (...args: Parameters<typeof verifyParts>) =>
+  Effect.promise(async () => await verifyParts(...args));
+
 describe("verifyParts", () => {
   it.effect("passes matching parts and fails a flipped byte or a wrong size", () =>
     Effect.gen(function* verifying() {
@@ -231,20 +234,38 @@ describe("verifyParts", () => {
         // The last part is the remainder, shorter than the part size.
         { etag: yield* etag([9, 10]), partNumber: 3, size: 2 },
       ];
-      expect(yield* verifyParts(blob, parts, 4)).toBe(true);
+      const checked: number[] = [];
+      expect(
+        yield* verify(blob, parts, 4, (bytes) => {
+          checked.push(bytes);
+        }),
+      ).toBe(true);
+      // Progress counts the bytes of every part hashed so far.
+      expect(checked).toEqual([4, 8, 10]);
 
       const flippedEtag = yield* etag([5, 6, 7, 0]);
       const flipped = parts.map((part) =>
         part.partNumber === 2 ? { ...part, etag: flippedEtag } : part,
       );
-      expect(yield* verifyParts(blob, flipped, 4)).toBe(false);
+      expect(yield* verify(blob, flipped, 4)).toBe(false);
 
       const wrongSize = parts.map((part) => (part.partNumber === 2 ? { ...part, size: 5 } : part));
-      expect(yield* verifyParts(blob, wrongSize, 4)).toBe(false);
+      expect(yield* verify(blob, wrongSize, 4)).toBe(false);
 
       // A part number past partCount has no expected bytes left.
       const extra = [...parts, { etag: yield* etag([11]), partNumber: 4, size: 1 }];
-      expect(yield* verifyParts(blob, extra, 4)).toBe(false);
+      expect(yield* verify(blob, extra, 4)).toBe(false);
+    }),
+  );
+
+  it.effect("hashes a part larger than one read slice to the same MD5 as the whole part", () =>
+    Effect.gen(function* verifyingLarge() {
+      // 9 MiB + 3 crosses the 8 MiB slice boundary mid-part.
+      const bytes = Uint8Array.from({ length: 9 * 1024 * 1024 + 3 }, (_, index) => index % 251);
+      const blob = new Blob([bytes]);
+      const part = { etag: yield* etag(bytes), partNumber: 1, size: bytes.length };
+      expect(yield* verify(blob, [part], bytes.length)).toBe(true);
+      expect(yield* verify(blob, [{ ...part, etag: yield* etag([1]) }], bytes.length)).toBe(false);
     }),
   );
 });
