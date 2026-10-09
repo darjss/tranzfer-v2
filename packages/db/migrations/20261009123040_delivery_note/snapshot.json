@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "354613b0-4b88-46b8-b1bd-5965b0328e05",
-  "prevIds": ["0fc982f9-a8d3-4db2-81b8-707f7f4df564"],
+  "id": "90f8ccc8-875f-4b25-84b7-d02566c4d29e",
+  "prevIds": ["3098691f-3f8b-4c30-9b9c-aeb46e0776ff"],
   "ddl": [
     {
       "name": "access_code",
@@ -14,6 +14,10 @@
     },
     {
       "name": "delivery",
+      "entityType": "tables"
+    },
+    {
+      "name": "download",
       "entityType": "tables"
     },
     {
@@ -361,6 +365,56 @@
       "name": "updated_at",
       "entityType": "columns",
       "table": "delivery"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "transfer_id",
+      "entityType": "columns",
+      "table": "download"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "delivery_id",
+      "entityType": "columns",
+      "table": "download"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "table": "download"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "last_at",
+      "entityType": "columns",
+      "table": "download"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "saved_at",
+      "entityType": "columns",
+      "table": "download"
     },
     {
       "type": "text",
@@ -975,6 +1029,28 @@
       "table": "delivery"
     },
     {
+      "columns": ["transfer_id"],
+      "tableTo": "transfer",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_download_transfer_id_transfer_id_fk",
+      "entityType": "fks",
+      "table": "download"
+    },
+    {
+      "columns": ["delivery_id"],
+      "tableTo": "delivery",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_download_delivery_id_delivery_id_fk",
+      "entityType": "fks",
+      "table": "download"
+    },
+    {
       "columns": ["delivery_id"],
       "tableTo": "delivery",
       "columnsTo": ["id"],
@@ -1080,6 +1156,13 @@
       "entityType": "pks"
     },
     {
+      "columns": ["transfer_id"],
+      "nameExplicit": false,
+      "name": "download_pk",
+      "table": "download",
+      "entityType": "pks"
+    },
+    {
       "columns": ["id"],
       "nameExplicit": false,
       "name": "link_pk",
@@ -1159,6 +1242,20 @@
       "name": "delivery_senderId_createdAt_idx",
       "entityType": "indexes",
       "table": "delivery"
+    },
+    {
+      "columns": [
+        {
+          "value": "delivery_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "download_deliveryId_idx",
+      "entityType": "indexes",
+      "table": "download"
     },
     {
       "columns": [
