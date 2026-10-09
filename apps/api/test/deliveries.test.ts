@@ -10,11 +10,19 @@ import { Base64 } from "effect/encoding";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 
 import { Billing, verifyWebhook } from "../src/billing";
 import { Deliveries } from "../src/deliveries";
-import { Plans } from "../src/plans";
+import { admitSignup } from "../src/infrastructure/auth";
+import {
+  createAccessCode,
+  listAccessCodes,
+  NewAccessCode,
+  Plans,
+  revokeAccessCode,
+} from "../src/plans";
 import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } from "./support";
 
 const storage = makeMemoryStorage();
@@ -578,6 +586,131 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
       expect(tries.slice(0, -1)).toEqual(
         Arr.makeBy(rateLimits.codeRedemptions.limit, () => "AccessCodeRefused"),
       );
+    }),
+  );
+
+  it.effect("a code revoked while a redemption is in flight grants nothing", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("hal");
+      yield* addCode({ code: "LATE", days: 30, maxUses: 10, plan: "pro" });
+      // The operator's revoke lands after the redemption read the code and
+      // before its batch runs.
+      const revokingFirst = Layer.effect(
+        Database,
+        Effect.map(Effect.service(Database), (database) =>
+          Database.of({
+            ...database,
+            batch: (queries) =>
+              revokeAccessCode("LATE").pipe(
+                Effect.orDie,
+                Effect.provideService(Database, database),
+                Effect.andThen(database.batch(queries)),
+              ),
+          }),
+        ),
+      );
+      const refused = yield* Effect.flip(
+        Effect.flatMap(Effect.service(Plans), (plans) => plans.redeem("hal", "LATE")).pipe(
+          Effect.provide(
+            Plans.layer(() => Effect.succeed(true)).pipe(Layer.provide(revokingFirst)),
+          ),
+        ),
+      );
+      expect(refused).toMatchObject({ _tag: "AccessCodeRefused", reason: "expired" });
+      expect(yield* usesOf("LATE")).toEqual({ uses: 0 });
+      expect(yield* (yield* Plans).current("hal")).toEqual({ grantEndsAt: null, plan: "free" });
+    }),
+  );
+
+  it.effect("operators create, list and revoke codes", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      yield* addUser("ivy");
+      const input = yield* Schema.decodeUnknownEffect(NewAccessCode)({
+        code: " beta-studio ",
+        days: 60,
+        lastDay: "2099-12-31",
+        maxUses: 3,
+        plan: "studio",
+      });
+      const created = yield* createAccessCode(input);
+      expect(created).toMatchObject({
+        code: "BETA-STUDIO",
+        days: 60,
+        expiresAt: new Date("2100-01-01T00:00:00Z"),
+        maxUses: 3,
+        uses: 0,
+      });
+      expect(yield* Effect.flip(createAccessCode(input))).toMatchObject({
+        _tag: "AccessCodeExists",
+      });
+      yield* (yield* Plans).redeem("ivy", "beta-studio");
+      expect(yield* listAccessCodes()).toContainEqual(
+        expect.objectContaining({ code: "BETA-STUDIO", uses: 1 }),
+      );
+
+      yield* revokeAccessCode("beta-studio");
+      yield* addUser("jo");
+      expect(yield* Effect.flip((yield* Plans).redeem("jo", "BETA-STUDIO"))).toMatchObject({
+        reason: "expired",
+      });
+      expect(yield* Effect.flip(revokeAccessCode("BETA-STUDIO"))).toMatchObject({
+        _tag: "AccessCodeNotLive",
+      });
+      expect(yield* Effect.flip(revokeAccessCode("NOPE"))).toMatchObject({
+        _tag: "AccessCodeNotLive",
+      });
+      // Grants already made keep their end.
+      expect(yield* (yield* Plans).current("ivy")).toMatchObject({ plan: "studio" });
+    }),
+  );
+
+  it.effect("refuses a code with a day that doesn't exist or a grant past ten years", () =>
+    Effect.gen(function* scenario() {
+      const valid = { code: "BETA-PRO", days: 90, maxUses: 30, plan: "pro" };
+      const decode = (input: Partial<typeof NewAccessCode.Encoded>) =>
+        Schema.decodeUnknownEffect(NewAccessCode)({ ...valid, ...input }).pipe(
+          Effect.match({ onFailure: () => "refused", onSuccess: () => "accepted" }),
+        );
+      expect(yield* decode({})).toBe("accepted");
+      expect(yield* decode({ lastDay: "2028-02-29" })).toBe("accepted");
+      expect(yield* decode({ lastDay: "2026-02-30" })).toBe("refused");
+      expect(yield* decode({ lastDay: "2026-13-01" })).toBe("refused");
+      expect(yield* decode({ lastDay: "2026-12-31T00:00:00Z" })).toBe("refused");
+      expect(yield* decode({ days: 100_000_000_000 })).toBe("refused");
+      expect(yield* decode({ days: 0 })).toBe("refused");
+      expect(yield* decode({ days: 1.5 })).toBe("refused");
+      expect(yield* decode({ maxUses: 0 })).toBe("refused");
+      expect(yield* decode({ code: "no spaces" })).toBe("refused");
+    }),
+  );
+});
+
+layer(domainLayer(storage.layer))("Accounts", (it) => {
+  it.effect("concurrent sign-ups from one IP never pass the new-accounts cap", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      const { limit } = rateLimits.newAccounts;
+      // Every attempt counts the IP's sign-ups before any of them inserts.
+      const outcomes = yield* Effect.forEach(
+        Arr.range(1, limit + 3),
+        () =>
+          admitSignup("203.0.113.7").pipe(
+            Effect.as("admitted"),
+            Effect.catchTag("RateLimited", (error) => Effect.succeed(error.limit)),
+          ),
+        { concurrency: "unbounded" },
+      );
+      expect(outcomes.filter((outcome) => outcome === "admitted")).toHaveLength(limit);
+      expect(outcomes.filter((outcome) => outcome === "newAccounts")).toHaveLength(3);
+      // Another IP has its own count.
+      yield* admitSignup("203.0.113.8");
+
+      const refused = yield* Effect.flip(admitSignup("203.0.113.7"));
+      expect(refused.retryAfterSeconds).toBeGreaterThan(rateLimits.newAccounts.windowSeconds - 60);
+      yield* TestClock.adjust(Duration.seconds(refused.retryAfterSeconds));
+      yield* admitSignup("203.0.113.7");
     }),
   );
 });
