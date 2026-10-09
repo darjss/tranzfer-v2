@@ -9,6 +9,7 @@ import {
   createMemo,
   createOptimistic,
   createOptimisticStore,
+  createSignal,
   refresh,
 } from "solid-js";
 
@@ -20,6 +21,18 @@ import { transfers } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
 import type { ChosenFile } from "../uploads/uploads";
 import { bytes, kindOf, rollup, totalSize, untilDate } from "./format";
+
+// Deliveries this page load sent, with when each send began. A delivery that
+// finishes while it is listed here gets its finished card once. Module state,
+// like the uploads, so leaving the page mid-upload doesn't lose it; a reload
+// starts empty, so nothing replays.
+const sent = new Map<DeliveryId, number>();
+
+/** A delivery's finished card: how long the send took, in milliseconds. */
+export interface Finished {
+  readonly id: DeliveryId;
+  readonly tookMs: number;
+}
 
 /**
  * The sender's deliveries and the actions that change them. Each action
@@ -70,6 +83,26 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
       };
     },
   );
+  // The server flips a delivery to ready only after every file has finalized,
+  // so this is the finished moment, not progress reaching 100%.
+  const [finished, setFinished] = createSignal<readonly Finished[]>([]);
+  createEffect(
+    () =>
+      deliveries
+        .filter((delivery) => delivery.status === "ready" && sent.has(delivery.id))
+        .map((delivery) => delivery.id),
+    (ready) => {
+      const now = Date.now();
+      const done = ready.flatMap((id) => {
+        const began = sent.get(id);
+        sent.delete(id);
+        return began === undefined ? [] : [{ id, tookMs: now - began }];
+      });
+      if (done.length > 0) {
+        setFinished((list) => [...done, ...list]);
+      }
+    },
+  );
   // Space in use changes whenever a delivery is made or cancelled, so the
   // plan summary is read and refreshed beside the list.
   const billing = createMemo(() => runEffect(ApiClient.use((api) => api.GetBilling())), {
@@ -79,11 +112,13 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
 
   const send = action(async function* send(chosen: readonly ChosenFile[], days: RetentionDays) {
     setSending(true);
+    const began = Date.now();
     const exit = await runtime.runPromiseExit(Uploads.use((uploads) => uploads.send(chosen, days)));
     yield;
     const failure = Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
     if (Exit.isSuccess(exit)) {
       const created = exit.value;
+      sent.set(created.id, began);
       setDeliveries((list) => {
         list.unshift(created);
       });
@@ -119,6 +154,31 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
         title: "Delivery cancelled",
       });
     }
+    return failure;
+  });
+
+  const dismiss = (deliveryId: DeliveryId) => {
+    setFinished((list) => list.filter((done) => done.id !== deliveryId));
+  };
+
+  /** Resolves to a problem to show, or undefined once the title and note are saved. */
+  const update = action(async function* update(
+    deliveryId: DeliveryId,
+    details: { readonly note: string; readonly title: string },
+  ) {
+    setDeliveries((list) => {
+      // Object.assign because the contract types are readonly.
+      const row = list.find((delivery) => delivery.id === deliveryId);
+      if (row !== undefined) {
+        Object.assign(row, details);
+      }
+    });
+    const exit = await runtime.runPromiseExit(
+      ApiClient.use((api) => api.UpdateDelivery({ deliveryId, ...details })),
+    );
+    yield;
+    const failure = Exit.isFailure(exit) ? appError(exit.cause).message : undefined;
+    void refresh(deliveries);
     return failure;
   });
 
@@ -165,7 +225,19 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
     return problem;
   });
 
-  return { billing, cancel, clear, deliveries, redeem, redeeming, send, sending };
+  return {
+    billing,
+    cancel,
+    clear,
+    deliveries,
+    dismiss,
+    finished,
+    redeem,
+    redeeming,
+    send,
+    sending,
+    update,
+  };
 };
 
 /** A delivery's live state: server status plus whatever this tab is uploading. */

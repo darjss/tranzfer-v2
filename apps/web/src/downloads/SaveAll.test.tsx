@@ -29,6 +29,7 @@ const bytesOf = (path: string) =>
 const delivery: SharedDelivery = {
   expiresAt: new Date("2026-10-12T08:00:00Z"),
   files: [...source].map(([path, size]) => ({ path, size, url: `https://r2.test/${path}` })),
+  note: "",
   senderName: "Sender",
   title: "Card",
 };
@@ -99,6 +100,7 @@ const makeWorld = () => {
             }),
           SignUpload: () => Effect.die("unused"),
           StartCheckout: () => Effect.die("unused"),
+          UpdateDelivery: () => Effect.die("unused"),
         }),
       ),
     ),

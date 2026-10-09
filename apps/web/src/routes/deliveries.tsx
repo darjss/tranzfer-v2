@@ -25,6 +25,7 @@ import { goToCheckout, goToPortal } from "../dashboard/billing";
 import { createDeliveries } from "../dashboard/deliveries";
 import { DeliverySheet } from "../dashboard/DeliverySheet";
 import { SendCard } from "../dashboard/SendCard";
+import { SendDoneList } from "../dashboard/SendDone";
 import { TopBar } from "../dashboard/TopBar";
 import { inkStrokes } from "../landing/notebook";
 import { online, wireWindow } from "../uploads/store";
@@ -107,8 +108,19 @@ const DeliveriesPage = () => {
   };
 
   const me = createMemo(() => runEffect(ApiClient.use((api) => api.Me())));
-  const { billing, cancel, clear, deliveries, redeem, redeeming, send, sending } =
-    createDeliveries(runtime);
+  const {
+    billing,
+    cancel,
+    clear,
+    deliveries,
+    dismiss,
+    finished,
+    redeem,
+    redeeming,
+    send,
+    sending,
+    update,
+  } = createDeliveries(runtime);
   const selected = () => {
     const id = searchParams.d;
     return id === undefined ? undefined : deliveries.find((delivery) => delivery.id === id);
@@ -430,6 +442,12 @@ const DeliveriesPage = () => {
                 <Show when={!hasLive()}>
                   <Empty firstRun={deliveries.length === 0} />
                 </Show>
+                <SendDoneList
+                  deliveries={deliveries}
+                  dismiss={dismiss}
+                  finished={finished()}
+                  update={update}
+                />
                 <Board
                   cancel={cancel}
                   clear={clear}

@@ -98,6 +98,27 @@
   }
 }
 
+/* The finished-send card drops in once, and its check draws itself. */
+.done-in {
+  animation: done-in 0.25s var(--easings-spring) both;
+}
+@keyframes done-in {
+  from {
+    opacity: 0;
+    translate: 0 -8px;
+    scale: 0.98;
+  }
+}
+.done-check path {
+  stroke-dasharray: 24;
+  animation: done-draw 0.25s ease-out 0.08s backwards;
+}
+@keyframes done-draw {
+  from {
+    stroke-dashoffset: 24;
+  }
+}
+
 /* A delivery that just became ready: the check pops and throws one ring. */
 [data-kind="ready"] {
   position: relative;
@@ -140,6 +161,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .row-in,
+  .done-in,
+  .done-check path,
   [data-kind="ready"],
   [data-kind="ready"]::after,
   [data-kind="moving"] {
