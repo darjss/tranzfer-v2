@@ -9,6 +9,7 @@ import PhUploadSimpleBold from "~icons/ph/upload-simple-bold";
 import { inkStrokes } from "../landing/notebook";
 import { Button } from "../ui/Button";
 import { upgradeFrom } from "./billing";
+import { paidPlansOpen } from "../ui/support";
 import { bytes } from "./format";
 
 const ghost = css({
@@ -337,7 +338,7 @@ export function SendCard(props: {
             <p>
               {bytes(props.billing.usedBytes)} of {bytes(props.billing.limitBytes)} in use on{" "}
               {plans[props.billing.plan].name}
-              <Show when={upgradeFrom[props.billing.plan]}>
+              <Show when={paidPlansOpen && upgradeFrom[props.billing.plan]}>
                 {(target) => (
                   <>
                     {" · "}

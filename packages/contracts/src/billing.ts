@@ -100,8 +100,12 @@ export class RetentionNotInPlan extends Schema.TaggedError<RetentionNotInPlan>()
   { maxRetentionDays: RetentionDays, plan: PlanId, requestedDays: RetentionDays },
 ) {}
 
-/** Polar could not be reached or refused the request. */
+/**
+ * Checkout or the billing portal can't open. `notOpen`: this stage doesn't
+ * sell paid plans yet (docs/PRODUCT.md), so retrying won't help. `provider`:
+ * Polar could not be reached or refused the request.
+ */
 export class BillingUnavailable extends Schema.TaggedError<BillingUnavailable>()(
   "BillingUnavailable",
-  {},
+  { reason: Schema.Literals(["notOpen", "provider"]) },
 ) {}

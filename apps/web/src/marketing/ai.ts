@@ -1,6 +1,6 @@
 import { PlanId, plans, rateLimits } from "@tranzfer/contracts";
 import { bytes } from "../dashboard/format";
-import { supportEmail } from "../ui/support";
+import { paidPlansOpen, supportEmail } from "../ui/support";
 
 // Plain facts for AI assistants, rendered at /ai and in /llms-full.txt. Every
 // line must stay true of the shipped product: check docs/PRODUCT.md and the
@@ -19,6 +19,9 @@ export const aiPlans = PlanId.literals.map((id) => ({
 }));
 
 export const aiPlanNotes = [
+  ...(paidPlansOpen
+    ? []
+    : ["Paid plans aren't on sale yet. They open soon at these prices, and Free works today."]),
   "Prices are in US dollars, billed monthly. Polar sells the paid plans as merchant of record.",
   `Active transfer space counts deliveries that haven't ended. It frees up when a link expires or is cancelled, so there is no monthly cap on how much you send. A Pro user can send 5 TB in a month as long as no more than ${bytes(plans.pro.activeBytes)} is live at once.`,
   "Every plan, Free included, gets resume, folders, links and the dashboard. Paid plans buy space and longer links, nothing else.",

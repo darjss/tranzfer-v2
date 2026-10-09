@@ -2,7 +2,7 @@ import { PlanId, plans } from "@tranzfer/contracts";
 import { bytes } from "../dashboard/format";
 import { guides } from "../guides/guides";
 import { faq } from "../landing/faq";
-import { supportEmail } from "../ui/support";
+import { paidPlansOpen, supportEmail } from "../ui/support";
 
 // A plain summary for language models and answer engines (llmstxt.org).
 // Prerendered to a static file; plans and answers come from the same sources
@@ -20,7 +20,7 @@ ${PlanId.literals
   )
   .join("\n")}
 
-Active transfer space counts deliveries that haven't ended; it frees up when a link expires or is cancelled. Payments go through Polar, the merchant of record.
+Active transfer space counts deliveries that haven't ended; it frees up when a link expires or is cancelled. Payments go through Polar, the merchant of record.${paidPlansOpen ? "" : " Paid plans aren't on sale yet. They open soon at these prices, and Free works today."}
 
 ## Questions
 

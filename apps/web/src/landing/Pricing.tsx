@@ -9,6 +9,7 @@ import { RuntimeContext } from "../api/solid-effect";
 import { goToCheckout } from "../dashboard/billing";
 import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
+import { paidPlansOpen, supportEmail } from "../ui/support";
 
 // Who each plan is for, from docs/PRODUCT.md.
 const forWhom: Record<Plan, string> = {
@@ -223,18 +224,30 @@ export default function Pricing(props: { heading?: "h1" }) {
                     </a>
                   }
                 >
-                  <button
-                    class={button({ variant: hot ? "fill" : "outline" })}
-                    onClick={() => {
-                      // Free is the only plan without a checkout.
-                      if (id !== "free") {
-                        void choose(id);
-                      }
-                    }}
-                    type="button"
+                  <Show
+                    when={paidPlansOpen}
+                    fallback={
+                      <a
+                        class={button({ variant: hot ? "fill" : "outline" })}
+                        href={`mailto:${supportEmail}?subject=${encodeURIComponent(`Tell me when ${plans[id].name} opens`)}`}
+                      >
+                        Tell me when it opens
+                      </a>
+                    }
                   >
-                    Choose {plans[id].name}
-                  </button>
+                    <button
+                      class={button({ variant: hot ? "fill" : "outline" })}
+                      onClick={() => {
+                        // Free is the only plan without a checkout.
+                        if (id !== "free") {
+                          void choose(id);
+                        }
+                      }}
+                      type="button"
+                    >
+                      Choose {plans[id].name}
+                    </button>
+                  </Show>
                 </Show>
               </div>
             );
@@ -242,8 +255,9 @@ export default function Pricing(props: { heading?: "h1" }) {
         </For>
       </div>
       <p class={css({ color: "mut", mt: "6", textStyle: "sm" })}>
-        Billed monthly through Polar. Cancel whenever; your plan runs to the end of the month you
-        paid for.
+        {paidPlansOpen
+          ? "Billed monthly through Polar. Cancel whenever; your plan runs to the end of the month you paid for."
+          : "Paid plans open soon. Free has every feature today, with less space and shorter links."}
       </p>
     </section>
   );

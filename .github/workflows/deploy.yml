@@ -39,6 +39,9 @@ jobs:
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          # Paid plans stay closed until this production variable is "true"
+          # (docs/PRODUCT.md). Closed, the deploy never reads the Polar token.
+          PAID_PLANS_OPEN: ${{ vars.PAID_PLANS_OPEN || 'false' }}
           POLAR_ACCESS_TOKEN: ${{ secrets.POLAR_ACCESS_TOKEN }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
           AXIOM_ORG_ID: ${{ secrets.AXIOM_ORG_ID }}

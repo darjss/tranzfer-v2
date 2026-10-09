@@ -26,7 +26,7 @@ import { RpcClientError } from "effect/rpc/RpcClientError";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 import { bytes } from "../dashboard/format";
-import { supportEmail } from "../ui/support";
+import { paidPlansOpen, supportEmail } from "../ui/support";
 
 /** Every error an Api call can fail with, middleware and transport included. */
 export type ApiError = Rpc.Error<RpcGroup.Rpcs<typeof Api>> | RpcClientError;
@@ -86,10 +86,12 @@ const wait = (seconds: number) => {
 const words = Match.type<ApiError>().pipe(
   Match.tagsExhaustive({
     AuthenticationUnavailable: () => "We couldn't check your sign-in. Try again in a moment.",
-    // One tag covers Polar refusing the request and Polar not answering.
+    // `provider` covers Polar refusing the request and Polar not answering.
     // Neither charges anything.
-    BillingUnavailable: () =>
-      `Our payment provider turned this down or didn't answer, so nothing changed and nothing was charged. Try again later, or write to ${supportEmail}.`,
+    BillingUnavailable: (error) =>
+      error.reason === "notOpen"
+        ? "Paid plans aren't open yet, so nothing changed and nothing was charged."
+        : `Our payment provider turned this down or didn't answer, so nothing changed and nothing was charged. Try again later, or write to ${supportEmail}.`,
     DeliveryConflict: () => "That delivery already exists. Refresh to see it.",
     DeliveryNotFound: () => "We can't find that delivery anymore.",
     InvalidUpload: () => "This file doesn't match what the delivery expects. Send it again.",
@@ -99,7 +101,8 @@ const words = Match.type<ApiError>().pipe(
     NotUploaded: () => "Still finishing up on our end. Retry in a moment.",
     OverPlanLimit: (error) => {
       const facts = `This delivery is ${bytes(error.requestedBytes)} and ${bytes(error.usedBytes)} of your ${bytes(error.limitBytes)} on ${plans[error.plan].name} is in use.`;
-      const fit = planThatFits(error);
+      // Until paid plans open there is nothing bigger to move to.
+      const fit = paidPlansOpen ? planThatFits(error) : undefined;
       return fit === undefined
         ? `${facts} Cancel a delivery to free space, or send this one in smaller parts.`
         : `${facts} ${plans[fit].name} holds ${bytes(plans[fit].activeBytes)}. Upgrade, or cancel a delivery to free space.`;
@@ -107,7 +110,7 @@ const words = Match.type<ApiError>().pipe(
     RateLimited: (error) =>
       `${tooMany[error.limit]} Try again in ${wait(error.retryAfterSeconds)}.`,
     RetentionNotInPlan: (error) =>
-      `${plans[error.plan].name} links last up to ${error.maxRetentionDays} days. Choose a shorter time, or upgrade.`,
+      `${plans[error.plan].name} links last up to ${error.maxRetentionDays} days. Choose a shorter time${paidPlansOpen ? ", or upgrade" : ""}.`,
     RpcClientError: () => "We couldn't reach Tranzfer. Check your connection and try again.",
     StorageUnavailable: () => "Storage didn't answer. Try again in a moment.",
     Unauthorized: () => "Your sign-in expired. Sign in again to continue.",

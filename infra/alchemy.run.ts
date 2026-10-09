@@ -10,6 +10,7 @@ import * as Match from "effect/Match";
 
 import ApiWorkerLive from "../apps/api/src/index";
 import { ApiWorker } from "../apps/api/src/worker";
+import { paidPlansOpen } from "../apps/api/src/infrastructure/polar";
 import { isPreviewStage, ownsAxiom, stageName } from "../apps/api/src/infrastructure/stage";
 import { polarProviders } from "./polar-provider";
 
@@ -56,6 +57,8 @@ export default Alchemy.Stack(
       domain,
       env: {
         API: api,
+        // Inlined at build time, so the prerendered pricing pages match the API.
+        VITE_PAID_PLANS_OPEN: String(yield* paidPlansOpen),
       },
       rootDir: webRoot,
     });
