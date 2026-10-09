@@ -136,7 +136,7 @@ export const etaAt = (bytesLeft: number, bytesPerSecond: number) => {
   return `about ${hours} h ${minutes - hours * 60} min`;
 };
 
-export const totalSize = (delivery: Delivery) =>
+export const totalSize = (delivery: Pick<Delivery, "transfers">) =>
   delivery.transfers.reduce((total, transfer) => total + transfer.size, 0);
 
 // What one file shows. The server state wins; local progress only speaks
@@ -212,7 +212,7 @@ const addTransfer = (roll: Rollup, transfer: Transfer, local: TransferProgress |
   });
 
 export const rollup = (
-  delivery: Delivery,
+  delivery: Pick<Delivery, "transfers">,
   progressOf: (transferId: string) => TransferProgress | undefined,
 ) => {
   let roll = idle;
