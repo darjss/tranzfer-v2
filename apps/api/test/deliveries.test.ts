@@ -1,9 +1,10 @@
-import { expect, layer, vi } from "@effect/vitest";
+import { expect, it as test, layer, vi } from "@effect/vitest";
 import { DeliveryId, rateLimits } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import { Base64 } from "effect/encoding";
@@ -18,6 +19,8 @@ import { Deliveries } from "../src/deliveries";
 import { Emails, queueOpenings, sendWelcome } from "../src/emails";
 import { Mail, MailError } from "../src/infrastructure/email";
 import { admitSignup } from "../src/infrastructure/auth";
+import { sweep } from "../src/sweeper";
+import { Transfers } from "../src/transfers";
 import {
   createAccessCode,
   listAccessCodes,
@@ -29,6 +32,47 @@ import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } 
 
 const storage = makeMemoryStorage();
 const GB = 1_000_000_000;
+
+test.effect("finishes independent upkeep when opening emails fail, and reports the defect", () =>
+  Effect.gen(function* scenario() {
+    const failed = yield* Deferred.make<boolean>();
+    const completed: string[] = [];
+    const error = new Error("D1_ERROR: Network connection lost.");
+    const result = yield* sweep.pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.mock(Transfers, {
+            recoverFinalizing: Deferred.await(failed).pipe(
+              Effect.andThen(Effect.yieldNow),
+              Effect.andThen(Effect.sync(() => completed.push("recovery"))),
+            ),
+          }),
+          Layer.mock(Deliveries, {
+            purgeEnded: Deferred.await(failed).pipe(
+              Effect.andThen(Effect.yieldNow),
+              Effect.andThen(Effect.sync(() => completed.push("cleanup"))),
+            ),
+          }),
+          Layer.mock(Billing, {
+            reconcileStale: Deferred.await(failed).pipe(
+              Effect.andThen(Effect.yieldNow),
+              Effect.andThen(Effect.sync(() => completed.push("billing"))),
+            ),
+          }),
+          Layer.mock(Emails, {
+            sendOpenings: Deferred.succeed(failed, true).pipe(Effect.andThen(Effect.die(error))),
+          }),
+        ),
+      ),
+      Effect.exit,
+    );
+    expect(completed.toSorted()).toEqual(["billing", "cleanup", "recovery"]);
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      cause: { reasons: [{ _tag: "Die", defect: error }] },
+    });
+  }),
+);
 
 const subscribe = (userId: string, plan: "pro" | "starter" | "studio") =>
   Effect.flatMap(Effect.service(Database), ({ db }) =>
