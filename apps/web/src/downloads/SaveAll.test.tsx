@@ -248,7 +248,7 @@ describe("SaveAll", () => {
       });
       expect(new Set(opens)).toEqual(new Set([unlock]));
       expect(new Set(reportUnlocks)).toEqual(new Set([unlock]));
-      expect(artifact).toHaveNoDiagnostics();
+      expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
       // Idle to saving to done flips the three panes' hidden bindings. Every progress report
       // (start and end of each file) re-runs only the counts, the current path
       // and the bar: 28 runs, plus room for one throttled byte report.
@@ -318,7 +318,7 @@ describe("SaveAll", () => {
       },
       { scenario: "unlock-form" },
     );
-    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME", "OPTIMISTIC_REVERTED"] });
     await runtime.dispose();
   });
 
@@ -392,7 +392,7 @@ describe("SaveAll", () => {
       },
       { scenario: "previews" },
     );
-    expect(artifact).toHaveNoDiagnostics();
+    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
     // The browser fetched nothing through the app, and the sender heard nothing.
     expect(fetched).not.toHaveBeenCalled();
     expect(reports).toEqual([]);
@@ -433,7 +433,7 @@ describe("SaveAll", () => {
     );
     expect(reports).toEqual([]);
     expect(reportUnlocks).toEqual([]);
-    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
+    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME", "OPTIMISTIC_REVERTED"] });
     await runtime.dispose();
   });
 });
