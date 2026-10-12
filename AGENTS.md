@@ -4,11 +4,12 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 
 ## Read for the task
 
-- Solid components or reactivity: [.agents/skills/solidjs-v2/SKILL.md](.agents/skills/solidjs-v2/SKILL.md). Check installed Solid docs and types. For any reactivity change, follow "Reactivity changes" below.
-- Effect workflows or layers: [.agents/skills/effect/SKILL.md](.agents/skills/effect/SKILL.md). Installed package types take precedence over examples.
+- Solid components or reactivity: invoke the `solidjs-v2` skill with the Skill tool (file: [.agents/skills/solidjs-v2/SKILL.md](.agents/skills/solidjs-v2/SKILL.md)). Check installed Solid docs and types. For any reactivity change, follow "Reactivity changes" below.
+- Effect workflows or layers: invoke the `effect` skill (file: [.agents/skills/effect/SKILL.md](.agents/skills/effect/SKILL.md)). Installed package types take precedence over examples.
+- Styling with Panda: invoke the `panda-css` skill (file: [.agents/skills/panda-css/SKILL.md](.agents/skills/panda-css/SKILL.md)).
 - Writing or reviewing any code (errors, unknown data, types, tests, run edges): [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
 - Library docs, installed source paths and known pitfalls (Effect, Solid, Alchemy, drizzle, Panda, Vite+, Uppy, Better Auth): [docs/LIBRARIES.md](docs/LIBRARIES.md). Read it before you search `node_modules` or the web.
-- Local serving: [.agents/skills/portless/SKILL.md](.agents/skills/portless/SKILL.md), then `vp run dev`.
+- Local serving: invoke the `portless` skill (file: [.agents/skills/portless/SKILL.md](.agents/skills/portless/SKILL.md)), then `vp run dev`.
 - Product scope: [docs/VISION.md](docs/VISION.md). Plans, prices and limits: [docs/PRODUCT.md](docs/PRODUCT.md). Product judgment and tone: [docs/SOUL.md](docs/SOUL.md).
 - Upload, resume, download or cancellation: [docs/RELIABILITY.md](docs/RELIABILITY.md). Measured gate results: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 - Tests, scenarios or lint guardrails: [docs/TESTING.md](docs/TESTING.md). Remaining work: [docs/plan/03-testing-and-guardrails.md](docs/plan/03-testing-and-guardrails.md).
@@ -56,6 +57,28 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 - Local pages: use `agent-browser`. The `preview_*` tools run remotely and reach only public URLs.
 - ripgrep: `-r` means replace. Use `rg -n` and `rg -l`.
 - Some agent shells are dash with a 30 s limit. Wrap bash-only syntax in `bash -c`, start servers with `setsid nohup ... &`, and poll in loops under 25 s.
+
+## Names that moved
+
+Effect 4.0.1 and Solid 2.0.0-rc.13 dropped or renamed these. Agents lost many tool calls to the old forms; the installed types confirm the new ones. More are in [docs/LIBRARIES.md](docs/LIBRARIES.md).
+
+| Old or guessed                                              | Use                                                                                             |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `effect/unstable/rpc`, `/http`, `/sql`, `/cli`              | `effect/rpc`, `effect/http`, `effect/sql`, `effect/cli`                                         |
+| `Config.string`, `.boolean`, `.redacted`, `.mapOrFail`      | `Config.String`, `.Boolean`, `.Redacted`; `Config.schema(codec, name)` or `Config.mapEffect`    |
+| `Schema.decodeUnknown`, `Schema.isLengthBetween`            | `Schema.decodeUnknownEffect`, `Schema.isBetweenLength`                                          |
+| `Schema.TaggedErrorClass`                                   | `Schema.TaggedError<Self>()("Tag", fields)`                                                     |
+| `Effect.either`, `Either`, `Effect.catchAll`, `Effect.fork` | `Effect.result`, `Result`, `Effect.catch`, `Effect.forkChild`                                   |
+| `Effect.ignoreLogged`                                       | `Effect.ignore({ log: true })`; `Effect.ignoreCause` also swallows defects                      |
+| `Exit.isInterrupted`                                        | `Cause.hasInterruptsOnly(exit.cause)`. `Exit.hasInterrupts` narrows its else branch to `never`  |
+| `Effect.promise` on a promise that can reject               | `Effect.tryPromise`; a `promise` rejection is a defect that `Effect.ignore` cannot catch        |
+| `RpcClient.FromGroup<Api>`                                  | `FromGroup<typeof Api, RpcClientError>`; class-style definitions take `typeof`                  |
+| `onMount`, `on()`, `createComputed`                         | `onSettled`, `createEffect(compute, apply)`, `createMemo`                                       |
+| `Suspense`, `ErrorBoundary`, `mergeProps`, `splitProps`     | `Loading`, `Errored`, `merge`, `omit`                                                           |
+| `<For>` callback                                            | default: row is a value, index an accessor. `keyed={false}` or `keyed={fn}`: row is an accessor |
+| `<Dynamic component={...}>`                                 | `dynamic(() => Component)`; `vp check` rejects `<Dynamic>`                                      |
+| `<MetaProvider>`                                            | None. Use `Title`, `Meta`, `Link` from `@solidjs/meta` directly                                 |
+| A list rebuilt from fresh objects on every change           | `createProjection(fn, [], { name })`, keyed by id; `keyed` on `<For>` does not fix it           |
 
 ## Keep the record useful
 

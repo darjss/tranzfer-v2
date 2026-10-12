@@ -35,6 +35,9 @@ Names that moved since 4.0.0-rc. The old form fails or does not exist.
 | `Exit.isInterrupted`                           | `Cause.hasInterruptsOnly(exit.cause)`. `Exit.hasInterrupts` is a `self is Failure` guard that narrows else to `never` |
 | `YieldWrap`                                    | Gone. Effects are iterable directly                                                                                   |
 
+- `Schema.decodeUnknownEffect(schema)(input)` fails with `Schema.SchemaError`. `schema.makeEffect(input)` (typed constructor input) fails with `SchemaIssue.Issue`. Map one to the other with `new Schema.SchemaError(issue)`.
+- Forking is `Effect.forkChild`, `forkDetach` and `forkScoped`; use `forkScoped` for work a layer owns. `Effect.catchAll` and `Effect.fork` are gone; `Effect.catch` replaces `catchAll`.
+- `TestClock` is `effect/testing/TestClock`, not the root barrel.
 - Class-style definitions take `typeof X` in type helpers. `RpcClient.FromGroup<typeof Api, RpcClientError>` has the RPC names; `FromGroup<Api>` has `keyof` of `never`. One agent reported this as a library bug.
 - `Effect.promise` turns a rejection into a defect, and `Effect.ignore` does not catch defects. Use `Effect.tryPromise` with a handler when the promise can reject.
 - `ConfigProvider.fromEnv` treats an empty string as missing, so `Config.option(Config.String("X"))` is `None` for `X=`. Pass `preserveEmptyStrings: true` to keep it.
@@ -45,7 +48,7 @@ Names that moved since 4.0.0-rc. The old form fails or does not exist.
 
 ## Solid 2
 
-Read `apps/web/node_modules/solid-js/CHEATSHEET.md` first. It matches the installed rc.13; the skill's `references/` describe rc.5. Types are in `apps/web/node_modules/solid-js/types` and `apps/web/node_modules/@solidjs/web/types`. Repair guides for diagnostic codes are in `apps/web/node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md` and `apps/web/node_modules/@solidjs/diagnostics/skills/agent-loops/SKILL.md`. `@solidjs/router` is 2.0.0-next.35 and `@solidjs/meta` is 1.0.0-next.2; neither ships docs beyond a README.
+Read `apps/web/node_modules/solid-js/CHEATSHEET.md` first. It matches the installed rc.13; the skill's `references/` target rc.8. Types are in `apps/web/node_modules/solid-js/types` and `apps/web/node_modules/@solidjs/web/types`. Repair guides for diagnostic codes are in `apps/web/node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md` and `apps/web/node_modules/@solidjs/diagnostics/skills/agent-loops/SKILL.md`. `@solidjs/router` is 2.0.0-next.35 and `@solidjs/meta` is 1.0.0-next.2; neither ships docs beyond a README.
 
 - `createEffect(compute, apply)` takes two functions. The cheatsheet's "What changed from 1.x" lists the rest: `onMount` is `onSettled`, `on()` and `createComputed` are gone, `ErrorBoundary` is `Errored`.
 - `<For each>` rows are plain values and the index is an accessor. With `keyed={false}` or `keyed={fn}` the row is an accessor. `<Show>` and `<Match>` function children get an accessor unless `keyed`. Read an accessor in JSX, a memo or an effect, never at the top of the callback.
