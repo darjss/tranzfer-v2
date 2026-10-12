@@ -19,7 +19,7 @@ import {
 import { css, cx } from "styled-system/css";
 
 import { ApiClient } from "../api/client";
-import { appError, reportFailure } from "../api/errors";
+import { appError, reportFailure, supportRef, traceIdOf } from "../api/errors";
 import { runEffect, RuntimeContext } from "../api/solid-effect";
 import { Board } from "../dashboard/Board";
 import { goToCheckout, goToPortal } from "../dashboard/billing";
@@ -96,6 +96,14 @@ const welcome = async (plan: PaidPlanId) => {
   });
 };
 
+// A denied clipboard leaves the reference on screen to read out.
+const copyReference = async (reference: string) => {
+  await navigator.clipboard
+    .writeText(reference)
+    .then(() => true)
+    .catch(() => false);
+};
+
 const DeliveriesPage = () => {
   const runtime = useContext(RuntimeContext);
   const [searchParams, setSearchParams] = useSearchParams<{
@@ -109,11 +117,15 @@ const DeliveriesPage = () => {
   };
 
   // The fallback below only says "didn't load". Solid hands the boundary's
-  // real error to this hook once, with the owner path of whatever threw.
+  // real error to this hook once, with the owner path of whatever threw. The
+  // report's trace id is the reference the card shows.
+  const [reference, setReference] = createSignal<string>();
   onSettled(() => {
     configureClientErrors({
       onError: (error, { ownerPath }) => {
-        runtime.runFork(reportFailure(error, ownerPath));
+        const traceId = traceIdOf(error);
+        setReference(supportRef(traceId));
+        runtime.runFork(reportFailure(error, ownerPath, traceId));
       },
     });
     return () => {
@@ -334,6 +346,22 @@ const DeliveriesPage = () => {
                     >
                       Try again
                     </button>
+                    <Show when={reference()}>
+                      {(ref) => (
+                        <p class={css({ color: "mut", mt: "4", textStyle: "xs" })}>
+                          Ref {ref()}{" "}
+                          <button
+                            class={css({ textDecoration: "underline" })}
+                            onClick={() => {
+                              void copyReference(ref());
+                            }}
+                            type="button"
+                          >
+                            Copy
+                          </button>
+                        </p>
+                      )}
+                    </Show>
                   </div>
                 </main>
               }

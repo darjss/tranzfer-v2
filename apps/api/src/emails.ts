@@ -111,9 +111,10 @@ export const sendWelcome = Effect.fn("Emails.welcome")(function* sendWelcome(
   appUrl: string,
 ) {
   const mail = yield* Mail;
-  yield* mail
-    .send({ to: email, ...welcome(appUrl) })
-    .pipe(Effect.catchTag("MailError", () => Effect.void));
+  yield* mail.send({ to: email, ...welcome(appUrl) }).pipe(
+    Effect.annotateSpans("mail.kind", "welcome"),
+    Effect.catchTag("MailError", () => Effect.void),
+  );
 });
 
 const onTheList = (plan: PaidPlanId, appUrl: string) =>
@@ -320,6 +321,7 @@ export class Emails extends Context.Service<
             senderId: string,
             deliveryId: DeliveryId,
           ) {
+            yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
             return yield* db
               .select({
                 errorCode: schema.deliveryEmail.errorCode,
@@ -371,9 +373,10 @@ export class Emails extends Context.Service<
               "interest.plan": input.plan,
             });
             if (added.length > 0) {
-              yield* mail
-                .send({ to: email, ...onTheList(input.plan, options.appUrl) })
-                .pipe(Effect.catchTag("MailError", () => Effect.void));
+              yield* mail.send({ to: email, ...onTheList(input.plan, options.appUrl) }).pipe(
+                Effect.annotateSpans("mail.kind", "interest"),
+                Effect.catchTag("MailError", () => Effect.void),
+              );
             }
             return { email };
           }, dieOnDatabaseError),
@@ -385,6 +388,7 @@ export class Emails extends Context.Service<
                 retryAfterSeconds: rateLimits.emailRequests.windowSeconds,
               });
             }
+            yield* Effect.annotateCurrentSpan("delivery.id", input.deliveryId);
             const delivery = yield* deliveries.owned(sender.id, input.deliveryId);
             if (delivery.status !== "ready") {
               return yield* new DeliveryNotShareable();
@@ -406,6 +410,10 @@ export class Emails extends Context.Service<
                 Arr.zip(rows, addresses),
                 ([row, to]) =>
                   mail.send({ ...content, replyTo: sender.email, to }).pipe(
+                    Effect.annotateSpans({
+                      "delivery.id": input.deliveryId,
+                      "mail.kind": "delivery",
+                    }),
                     Effect.map((result) =>
                       result === "sent"
                         ? ({ code: null, status: "sent" } as const)
@@ -455,19 +463,19 @@ export class Emails extends Context.Service<
                 id: schema.planInterest.id,
                 plan: schema.planInterest.plan,
               });
+            yield* Effect.annotateCurrentSpan("emails.claimed", claimed.length);
             yield* Effect.forEach(
               claimed,
               (row) =>
-                mail
-                  .send({ to: row.email, ...planOpen(row.plan, options.appUrl) })
-                  .pipe(
-                    Effect.catchTag("MailError", () =>
-                      db
-                        .update(schema.planInterest)
-                        .set({ notifiedAt: null, notifyQueuedAt: null })
-                        .where(eq(schema.planInterest.id, row.id)),
-                    ),
+                mail.send({ to: row.email, ...planOpen(row.plan, options.appUrl) }).pipe(
+                  Effect.annotateSpans("mail.kind", "opening"),
+                  Effect.catchTag("MailError", () =>
+                    db
+                      .update(schema.planInterest)
+                      .set({ notifiedAt: null, notifyQueuedAt: null })
+                      .where(eq(schema.planInterest.id, row.id)),
                   ),
+                ),
               { concurrency: 5, discard: true },
             );
             return claimed.length;

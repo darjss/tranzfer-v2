@@ -284,15 +284,16 @@ export const makeAuth = (
           catch: (cause) => new AuthError({ cause }),
           try: async () => await native.api.getSession({ headers, returnHeaders: true }),
         });
-        return {
-          cookies: Cookies.fromSetCookie(result.headers.getSetCookie()),
-          principal: Option.map(Option.fromNullishOr(result.response), ({ user }) => ({
-            email: user.email,
-            id: user.id,
-            image: user.image ?? null,
-            name: user.name,
-          })),
-        };
+        const principal = Option.map(Option.fromNullishOr(result.response), ({ user }) => ({
+          email: user.email,
+          id: user.id,
+          image: user.image ?? null,
+          name: user.name,
+        }));
+        if (Option.isSome(principal)) {
+          yield* Effect.annotateCurrentSpan("user.id", principal.value.id);
+        }
+        return { cookies: Cookies.fromSetCookie(result.headers.getSetCookie()), principal };
       }),
     });
   });

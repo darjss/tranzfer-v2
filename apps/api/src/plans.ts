@@ -216,9 +216,15 @@ export class Plans extends Context.Service<
               (a, b) => rank(b.plan) - rank(a.plan) || b.endsAt.getTime() - a.endsAt.getTime(),
             );
             const subscribed = subscription?.plan ?? "free";
-            return grant !== undefined && rank(grant.plan) > rank(subscribed)
-              ? { grantEndsAt: grant.endsAt, plan: grant.plan }
-              : { grantEndsAt: null, plan: subscribed };
+            const resolved =
+              grant !== undefined && rank(grant.plan) > rank(subscribed)
+                ? { grantEndsAt: grant.endsAt, plan: grant.plan }
+                : { grantEndsAt: null, plan: subscribed };
+            yield* Effect.annotateCurrentSpan({
+              plan: resolved.plan,
+              "plan.source": resolved.grantEndsAt === null ? "subscription" : "grant",
+            });
+            return resolved;
           }, dieOnDatabaseError),
 
           redeem: Effect.fn("Plans.redeem")(function* redeem(userId: string, input: string) {
@@ -274,6 +280,10 @@ export class Plans extends Context.Service<
               yield* redeemable(userId, code, now);
               return yield* Effect.die(redeemed.failure);
             }
+            yield* Effect.annotateCurrentSpan({
+              "plan.grant_days": row.days,
+              "plan.granted": row.plan,
+            });
             return grant;
           }, dieOnDatabaseError),
         });

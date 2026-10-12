@@ -19,4 +19,6 @@ declare module "*.webp?*" {
 interface ImportMetaEnv {
   /** Set per stage at deploy from PAID_PLANS_OPEN (infra/alchemy.run.ts). */
   readonly VITE_PAID_PLANS_OPEN?: "false" | "true";
+  /** The commit this bundle was built from (infra/alchemy.run.ts). Unset in dev. */
+  readonly VITE_GIT_SHA?: string;
 }

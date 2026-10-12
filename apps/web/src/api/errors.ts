@@ -31,6 +31,7 @@ import * as Effect from "effect/Effect";
 import * as Match from "effect/Match";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
+import * as Tracer from "effect/Tracer";
 import type * as Rpc from "effect/rpc/Rpc";
 import { RpcClientError } from "effect/rpc/RpcClientError";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
@@ -189,16 +190,64 @@ const words = Match.type<ApiError>().pipe(
   }),
 );
 
+// A trace id is 32 hex characters; a span id is 16.
+const hex = (characters: number) => crypto.randomUUID().replaceAll("-", "").slice(0, characters);
+
+/** Makes the id a failure's trace will carry, so the screen can show its reference first. */
+export const newTraceId = () => hex(32);
+
+/** What a person quotes to support: the first 8 characters of the trace id. */
+export const supportRef = (traceId: string) => traceId.slice(0, 8);
+
+// The trace id each caught error was given, so a message that is read again
+// keeps its reference and the failure is reported once.
+const traces = new WeakMap<object, string>();
+let reportUnexpected: ((cause: unknown, traceId: string) => void) | undefined;
+
+/** The app's runtime registers here to report failures that read as "Something went wrong". */
+export const onUnexpectedFailure = (report: typeof reportUnexpected) => {
+  reportUnexpected = report;
+};
+
+/** The trace id this error's report carries. A value that is not an object gets a new one each time. */
+export const traceIdOf = (cause: unknown) => {
+  if (!Predicate.isObject(cause)) {
+    return newTraceId();
+  }
+  const known = traces.get(cause);
+  if (known !== undefined) {
+    return known;
+  }
+  const traceId = newTraceId();
+  traces.set(cause, traceId);
+  return traceId;
+};
+
+const squashed = (cause: unknown) => (Cause.isCause(cause) ? Cause.squash(cause) : cause);
+
 /**
  * The one place failures become words. Takes whatever a boundary caught (an
  * error, a Cause or an Uppy transport failure); anything that is not a known
- * Api error reads as a generic, retryable problem.
+ * Api error reads as a generic, retryable problem with a support reference.
  */
 export const appError = (cause: unknown) => {
-  const error = Cause.isCause(cause) ? Cause.squash(cause) : cause;
-  return isApiError(error)
-    ? { message: words(error), tag: error._tag }
-    : { message: "Something went wrong. Try again.", tag: "Unknown" as const };
+  const error = squashed(cause);
+  if (isApiError(error)) {
+    return { message: words(error), tag: error._tag };
+  }
+  // Only an object can be remembered, so only an object gets a reference.
+  if (!Predicate.isObject(error)) {
+    return { message: "Something went wrong. Try again.", tag: "Unknown" as const };
+  }
+  const fresh = !traces.has(error);
+  const traceId = traceIdOf(error);
+  if (fresh) {
+    reportUnexpected?.(error, traceId);
+  }
+  return {
+    message: `Something went wrong. Try again. Ref ${supportRef(traceId)}`,
+    tag: "Unknown" as const,
+  };
 };
 
 // Origins and query strings go, so a stack or message never carries a URL, a
@@ -211,17 +260,24 @@ const withoutUrls = (text: string) =>
  * words only, so this is where the real error goes: its type, message and
  * stack with URLs removed, and the owner path of what threw.
  */
-export const reportFailure = (cause: unknown, ownerPath: readonly string[] = []) => {
+export const reportFailure = (
+  cause: unknown,
+  ownerPath: readonly string[] = [],
+  traceId = newTraceId(),
+) => {
   const thrown = Predicate.isError(cause) ? cause : undefined;
+  const caught = squashed(cause);
   return Effect.logError("error boundary caught a failure").pipe(
     Effect.withSpan("Web.errorBoundary", {
       attributes: {
         "error.message": withoutUrls(thrown?.message ?? String(cause)),
         "error.stack": withoutUrls(thrown?.stack ?? ""),
-        "error.tag": appError(cause).tag,
+        "error.tag": isApiError(caught) ? caught._tag : "Unknown",
         "error.type": thrown?.name ?? "NotAnError",
         "owner.path": ownerPath.join(" > "),
       },
+      // The screen already shows the first 8 characters of this id.
+      parent: Tracer.externalSpan({ sampled: true, spanId: hex(16), traceId }),
     }),
   );
 };

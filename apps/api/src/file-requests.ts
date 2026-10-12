@@ -287,6 +287,7 @@ export class FileRequests extends Context.Service<
             transferId: TransferId,
           ) {
             const request = yield* live(token, ip);
+            yield* Effect.annotateCurrentSpan("request.id", request.id);
             return toUpload(yield* transfers.finalize(request.ownerId, transferId, request.id));
           }),
 
@@ -303,6 +304,7 @@ export class FileRequests extends Context.Service<
 
           open: Effect.fn("FileRequests.open")(function* open(token: string, ip: string) {
             const request = yield* live(token, ip);
+            yield* Effect.annotateCurrentSpan("request.id", request.id);
             return OpenedRequest.make({
               expiresAt: request.expiresAt,
               instructions: request.instructions,
@@ -316,6 +318,7 @@ export class FileRequests extends Context.Service<
             ip: string,
           ) {
             const request = yield* live(input.token, ip);
+            yield* Effect.annotateCurrentSpan("request.id", request.id);
             if (!(yield* rates.uploadsPerIp(ip))) {
               return yield* limited("portalUploadsPerIp");
             }
@@ -329,6 +332,7 @@ export class FileRequests extends Context.Service<
             request: UploadRequest,
           ) {
             const row = yield* live(token, ip);
+            yield* Effect.annotateCurrentSpan("request.id", row.id);
             return yield* transfers.sign(row.ownerId, key, request, row.id);
           }),
 
@@ -338,6 +342,7 @@ export class FileRequests extends Context.Service<
             deliveryIds: readonly DeliveryId[],
           ) {
             const request = yield* live(token, ip);
+            yield* Effect.annotateCurrentSpan("request.id", request.id);
             const found = yield* deliveries.ofRequest(request.id, deliveryIds);
             return found.map(toUpload);
           }),

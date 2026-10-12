@@ -526,13 +526,13 @@ export class Deliveries extends Context.Service<
           senderId: string,
           deliveryId: DeliveryId,
         ) {
+          yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
           const row = yield* load(deliveryId);
           if (row === undefined || row.senderId !== senderId) {
             return yield* new DeliveryNotFound();
           }
           yield* Effect.annotateCurrentSpan({
             "delivery.file_count": row.transfers.length,
-            "delivery.id": deliveryId,
             "delivery.status": row.status,
           });
           yield* batch([
@@ -632,6 +632,7 @@ export class Deliveries extends Context.Service<
           senderId: string,
           deliveryId: DeliveryId,
         ) {
+          yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
           const row = yield* load(deliveryId);
           if (row === undefined || row.senderId !== senderId) {
             return yield* new DeliveryNotFound();
