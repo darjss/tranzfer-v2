@@ -26,6 +26,7 @@ import { SaveAll } from "../../downloads/SaveAll";
 import { Unlock } from "../../downloads/Unlock";
 import Brand from "../../landing/Brand";
 import Loader, { linkQuips } from "../../ui/Loader";
+import { retryTransport } from "../../uploads/uploads";
 
 const ghost = css({
   bg: "panel",
@@ -310,7 +311,7 @@ export const LinkPage = (props: { token: string }) => {
     const { token } = props;
     return runEffect(
       ApiClient.use((api) =>
-        api.OpenLink({ token, unlock: current }).pipe(
+        retryTransport(api.OpenLink({ token, unlock: current })).pipe(
           Effect.map((shared) => ({ locked: undefined, shared })),
           Effect.catchTag("LinkLocked", (locked) => Effect.succeed({ locked, shared: undefined })),
         ),
@@ -332,9 +333,16 @@ export const LinkPage = (props: { token: string }) => {
       if (Schema.is(LinkLocked)(error)) {
         // The unlock ran out; clearing it opens the password form again.
         setUnlock(undefined);
-      } else {
-        setLinkError(error);
+        return;
       }
+      const { message, tag } = appError(exit.cause);
+      if (tag === "LinkNotFound" || tag === "LinkExpired" || tag === "LinkNotReady") {
+        setLinkError(error);
+        return;
+      }
+      // A dropped connection says nothing about the link; keep the file list.
+      const { toaster } = await import("../../ui/Toasts");
+      toaster.warning({ title: message });
       return;
     }
     const file = exit.value.files.find((candidate) => candidate.path === path);
