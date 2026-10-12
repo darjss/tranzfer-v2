@@ -1,374 +1,295 @@
-# Reactivity: batching, effects, ownership
+# Reactivity
 
-Verified against solid-js@2.0.0-rc.5 / @solidjs/diagnostics@2.0.0-rc.5
-published typings/runtime and `solidjs/solid@5eb3250a` sources/tests.
+## Batching and derivation
 
-## Microtask batching — reads lag writes
-
-All writes are batched on a microtask. After calling a setter, reads return the
-**last committed** value until the batch flushes:
+Batching is automatic (`batch` is absent from v2 exports). Writes commit on the next microtask. Read synchronously after `flush()`:
 
 ```ts
 const [count, setCount] = createSignal(0);
 setCount(1);
-count(); // still 0
+// count() is still 0 here.
 flush();
-count(); // 1
+// count() is 1.
+const doubled = createMemo(() => count() * 2);
 ```
 
-- `batch()` is gone — there is nothing to wrap; batching is the default.
-- `flush()` drains the queue synchronously. Use sparingly: tests, and imperative
-  boundaries where you must read DOM right after a state change (e.g. focus).
-- `flush(fn)` runs writes inside `fn` in a synchronous flush scope and drains
-  them before returning (no leftover queued flush). Return value is preserved.
+`flush(fn)` runs the callback in a synchronous flush scope, drains writes before
+returning, and preserves its return value. Use it at imperative boundaries/tests.
+A memo's second argument is its options; seed `prev` with a default parameter.
+`createSignal(() => props.initial)` derives writable state; a dependency change
+replaces the local override.
+Signal setters also accept an updater: `setCount(previous => previous + 1)`.
 
-## Split effects: compute → apply
+## Split effects
 
-`createEffect` takes **two functions**. The single-callback form is a hard
-error: it throws synchronously in dev (`MISSING_EFFECT_FN`), and TS flags the
-one-argument overload as deprecated (`createEffect(compute): never`). Want a
-derived value → `createMemo`; want a one-shot side effect → just call it.
+Import from `solid-js`. The signature is
+`createEffect(compute, apply, options?)`: two required callback arguments, followed
+by optional options. Compute tracks dependencies; apply runs untracked.
 
 ```ts
 createEffect(
-  (prev) => count(), // compute: reactive reads only; deps recorded; gets prev value
-  (value, prev) => {
-    // apply: side effects; runs after flush, untracked
-    el.title = value;
+  () => ({ title: props.title, count: count() }),
+  (value) => {
+    document.title = `${value.title}: ${value.count}`;
     return () => {
-      /* cleanup before next apply / on dispose */
+      /* teardown before next apply or disposal */
     };
   },
-  { defer: true }, // optional: skip the initial run (replaces on(..., { defer: true }))
+  { defer: true }, // optional: skip initial apply
 );
 ```
 
-- No `initialValue` parameter (1.x). `prev` is `undefined` on first run; use a
-  default parameter: `(prev = 0) => count()`.
-- Same for `createMemo` — its second argument is `options`, never an initial value.
-- The apply phase is **untracked**: reads there don't subscribe and warn
-  (`STRICT_READ_UNTRACKED`). Extract everything you need in compute and pass
-  plain values through. For store proxies see "Stores in the compute phase" below.
-- Cleanup belongs in the apply return value, not `onCleanup` (which is for
-  reactive cleanup inside computations — library/primitive territory).
-- The apply callback must return a function or `undefined` — anything else throws.
+Compute tracks reads; apply runs untracked and returns a cleanup function or
+`undefined`. Apply may receive `(value, previous)`; `previous` is the prior
+computed value, initially `undefined`. Compute's `prev` also starts as
+`undefined`; use `(prev = 0) => ...` for a seed.
+The single-callback form has no TypeScript overload and throws synchronously
+with `MISSING_EFFECT_FN` in dev. Keep assignments inside apply braces so its
+return value is `undefined`, not the assigned string/number.
 
-Error handling — pass an `EffectBundle` instead of the apply function:
+Extract store fields in compute, or use `deep(store)` for a plain tracked snapshot:
+
+```ts
+createEffect(
+  () => deep(settings),
+  (value) => {
+    localStorage.setItem("settings", JSON.stringify(value));
+  },
+);
+createEffect(
+  () => saveFlag(),
+  () => {
+    upload(snapshot(settings));
+  },
+);
+```
+
+`snapshot` takes an untracked copy. Passing a store proxy to apply leaves any
+fields read there untracked (`STRICT_READ_UNTRACKED`).
+
+### Effect errors
+
+Put both handlers in the second argument. The third argument configures the
+effect (for example `name`/`defer`), not its error handler.
 
 ```ts
 createEffect(() => fetchData(id()), {
-  effect: (data) => render(data),
-  error: (err, cleanup) => {
-    setErrorMsg(String(err));
+  effect: (data) => {
+    renderData(data);
+  },
+  error: (error, cleanup) => {
+    setError(String(error));
     cleanup();
-  }, // signal write is legal here
+  },
 });
 ```
 
-This replaces `onError` / `catchError` for programmatic handling (UI-level
-errors go to `<Errored>`). The `error` handler is the **error arm of the
-effect phase**: it is queued on the same schedule as the `effect` arm and runs
-in the same **imperative, writable scope** — so setting a signal to record the
-error is legal there (it does _not_ trip `REACTIVE_WRITE_IN_OWNED_SCOPE`). It
-receives the **original thrown error**, not an internal wrapper, so
-`instanceof` / class branching works. This includes nullish/falsy rejections:
-`Promise.reject(undefined)` reaches it as `undefined`, not as an internal
-`StatusError`. A `throw` from the handler escalates to the
-nearest error boundary, or halts the system if there is none (see below).
+The error arm handles compute errors and async rejections, on the same schedule
+and writable imperative scope as apply. It receives the exact thrown value,
+including `undefined`/`null`; class identity survives. An error recovered within
+one flush delivers the settled success arm. Held transitions defer both arms.
+Errors thrown by apply or by the error handler reach the enclosing boundary.
 
-- The handler catches **compute-phase** errors only (a throw in the compute
-  function, or an async source rejection). An error thrown inside the `effect`
-  (apply) arm is _not_ routed here — it goes to the enclosing error boundary
-  (or halts). The apply body is your own imperative code; guard it yourself.
-- Because it observes **settled** outcomes, an error raised and then recovered
-  within the same flush runs the `effect` arm instead of the handler, and a
-  held transition defers the handler exactly as it defers `effect`.
+## Ownership: setup, reads, writes
 
-The `on(...)` helper is gone — the compute phase _is_ the explicit dependency
-declaration. `on([a, b], ...)` becomes `createEffect(() => [a(), b()], ([a, b]) => ...)`.
+Create primitives in a component or `createRoot`. Use handlers, effect apply/error
+callbacks, actions, and `onSettled` for writes/action invocation. Component/root bodies,
+memos, and effect compute callbacks build/derive the graph; writes there throw
+`REACTIVE_WRITE_IN_OWNED_SCOPE`, action calls `ACTION_CALLED_IN_OWNED_SCOPE` in dev.
+`untrack` only changes tracking; the ambient owner and its write guard remain.
+`ownedWrite: true` is a narrow internal-state option; derive application state.
 
-## Uncaught errors halt the reactive system
+Read props, signals, and store fields in JSX/memos/effect compute. Component
+parameters and component/flow-callback bodies run at setup: destructuring
+`function Heading({ title })` or assigning `const title = props.title` captures
+once, loses updates, and warns in dev. Keep the props object. To name a changing
+expression, use an accessor (`const title = () => props.title`) and call it in
+JSX/compute. Use `untrack(() => props.title)` for an intentional one-time capture.
 
-An error that escapes **every** error boundary **permanently halts** reactivity:
-it rethrows as an uncaught exception, then all further writes and flushes are
-silently ignored and a `REACTIVITY_HALTED` message is logged. There is no
-partial-update limbo and no automatic recovery — an uncaught error is an app
-crash. This fires only when _nothing_ catches it: a `createErrorBoundary` /
-`<Errored>` that handles the error keeps the system alive, so the fix is to
-wrap fallible reactive code in a boundary, not to defuse the halt.
+Components execute once per mount. Updates rerun dependent JSX bindings and
+computations directly, without a component rerender or virtual DOM. An effect's
+compute callback declares dependencies by reading them; there is no dependency array.
 
-The cause is now always surfaced: `haltReactivity` logs the causing error
-alongside the halt message, and a boundary that cannot deliver an error to any
-handler halts and rethrows it instead of discarding it — so the halt can no
-longer swallow the error silently (previously an error thrown during initial
-render under a specific `<Loading>` + element + `<Show>` nesting could vanish
-entirely with no console trace).
+Keep changing displayed values in signals/stores. A function such as
+`() => localLabel` reads an ordinary variable, so assigning `localLabel` does
+not notify JSX. A write to an unrelated signal does not rerender the component
+or re-read that function. Use a signal read in the binding:
 
-```ts
-import { resetErrorHalt } from "solid-js";
+```tsx
+import { createSignal } from "solid-js";
+function Status() {
+  const [label, setLabel] = createSignal("Ready");
+  const display = () => label();
+  return <button onClick={() => setLabel("Saving")}>{display()}</button>;
+}
 ```
 
-`resetErrorHalt()` revives scheduling for tests, HMR, and playground-style dev
-tooling. It is a no-op in the server build and not an app-level production
-recovery hook. The browser `render()` and refresh runtime reset a prior halt in
-dev so a fresh mount/hot update can recover; production remains a hard crash.
+Plain variables/Maps are appropriate for non-rendered bookkeeping, such as a
+request identity or unsubscribe handle. Keep any displayed overlay itself reactive.
 
-## No writes or action calls in owned scope
-
-Writing a signal/store inside a reactive scope (memo, effect compute, component
-body) **throws in dev** (`REACTIVE_WRITE_IN_OWNED_SCOPE`). So does calling
-`refresh()` there. **Invoking** an `action()` there also throws
-synchronously in dev (`ACTION_CALLED_IN_OWNED_SCOPE`): the eventual post-await
-write otherwise escapes the write guard and can livelock a scope that tracks
-the same state. Defining the action there is fine; call it from event handlers,
-effect apply/error arms, `onSettled`/tracked effects, or another imperative
-scope.
-
-```ts
-createMemo(() => setDoubled(count() * 2)); // ❌ throws
-const doubled = createMemo(() => count() * 2); // ✅ derive, don't write back
-```
-
-Escape hatch for genuinely internal state (not app state):
-`createSignal(null, { ownedWrite: true })`. Using `ownedWrite` to silence the
-error for application state is a misuse — derive instead.
-
-`untrack()` is **not** a write exemption. It suppresses dependency collection
-for reads, but preserves the current owner; a setter, `refresh()`, or action
-invocation inside `untrack(() => ...)` still trips the same owned-scope guard.
-Move the operation to an imperative phase/call site instead of wrapping it in
-`untrack`.
-
-### Server rendering is setter-free
-
-Setter writes during SSR emit `[SERVER_WRITE]` once per process/category and
-are deprecated ahead of becoming errors. Signal and store writes currently
-change inert data for later reads/serialization but never re-render; optimistic
-writes are complete no-ops and their setter callback does not run. Model server
-data changes as async computation sources. For a subscription, return its
-`AsyncIterable` instead of pushing values through a setter callback.
-
-## Strict top-level reads
-
-Reading a signal, signal-backed prop, or store property at the **top level of a
-component body** warns (`STRICT_READ_UNTRACKED`) — the value is captured once
-and never updates. Same for destructuring props in the argument list, and for
-reads directly in the body of control-flow function children (the callback is
-structure-building, not tracked).
-
-```jsx
-function Bad(props)  { const t = props.title; return <h1>{t}</h1>; }       // ❌ warns
-function Bad2({ title }) { return <h1>{title}</h1>; }                       // ❌ warns
-function Good(props) { return <h1>{props.title}</h1>; }                     // ✅ read in JSX
-function AlsoGood(props) { const t = untrack(() => props.title); ... }      // ✅ explicit one-shot
-```
-
-A **derived store** (`createStore(derive, seed)` / `createProjection`) read
-untracked before its first resolution behaves like an async memo, not like a
-plain store: the seed is a draft for the derive function only, never an
-observable value, so any outside read throws `NotReadyError` — in a dev
-strict-read scope (component body) this is the more descriptive
-`PENDING_ASYNC_UNTRACKED_READ`.
-
-## Passing reactive values to children — props are getters
-
-For a value prop, pass `<Counter value={count()} />` and read `props.value`
-in the child's JSX, memo, or effect compute. The compiler supplies a getter,
-so the read subscribes in the child's tracking scope:
-
-```jsx
+```tsx
+function Counter(props: { value: number }) {
+  return <p>{props.value}</p>;
+}
 <Counter value={count()} />;
-// Equivalent prop getter:
-createComponent(Counter, {
+// JSX compiler supplies: { get value() { return count(); } }
+createThing({
   get value() {
     return count();
   },
-});
+}); // manual object: explicit getter
+createThingWithAccessor({ value: count }); // accessor-typed API
 ```
 
-An accessor prop is valid when the component contract explicitly accepts one.
-Pass `count` to that prop and call it inside the child's tracking scope. Choose
-the form from the component's contract; value props need no accessor wrapper.
+Both Solid 1.x and v2 preserve value props through JSX getters. An explicitly
+accessor-typed prop is a separate API contract; follow its declared type.
 
-The getter is a **JSX/compiler** feature. When you hand-build a props object and
-pass it to a function/hook/composable, it's a plain object literal — the compiler
-does **not** wrap it, so a bare `{ value: count() }` evaluates `count()` once and
-freezes. Preserve reactivity explicitly, either with a getter or by passing the
-accessor as-is:
+A derived store's seed is its backing draft. Before first resolution, an
+untracked read throws `NotReadyError` (dev strict scope:
+`PENDING_ASYNC_UNTRACKED_READ`); `seedLoadingValue` explicitly exposes the seed.
 
-```ts
-useThing({ value: count() }); // ❌ frozen — read once at call time
-useThing({
-  get value() {
-    return count();
-  },
-}); // ✅ getter — re-reads reactively
-useThing({ value: count }); // ✅ accessor as-is — hook calls opts.value()
-```
-
-At a JSX value-prop boundary, the compiler supplies the getter. Across a
-manual object, preserve laziness with an explicit getter or accessor.
-
-## Lifecycle: `onSettled` (replaces `onMount`)
+### Lifecycle
 
 ```ts
-// In a component body — an OWNED scope. Only here is a returned cleanup honored.
 onSettled(() => {
-  measureLayout();
-  const onResize = () => measureLayout();
-  window.addEventListener("resize", onResize);
-  return () => window.removeEventListener("resize", onResize); // fires on owner disposal
+  const resize = () => measureLayout();
+  window.addEventListener("resize", resize);
+  return () => window.removeEventListener("resize", resize);
 });
 ```
 
-- Works in component bodies (after first reactive settle) **and** in event
-  handlers (defer until the triggered transition settles).
-- **A returned cleanup is only honored in an owned scope** (a component body),
-  where it runs on owner disposal. When `onSettled` fires **out of band** — from
-  an event handler, a tracked effect, or another `onSettled` — there is no owner
-  lifecycle to bind to, so returning a cleanup is a dev error
-  (`SETTLED_CLEANUP_UNOWNED`) and is dropped in production. The out-of-band
-  one-shot fire itself (no cleanup) is fine — use it
-  for `onSettled(() => toast("Saved"))` after a handler write; for
-  setup-with-teardown, call the helper from the component body instead.
-- Reactive reads are allowed inside.
-- `onSettled` and `createTrackedEffect` are **leaf owners**: you cannot create
-  reactive primitives (`createSignal`, `createMemo`, `createEffect`, …) or call
-  `onCleanup` inside them (both throw). Create primitives in the component
-  body, return a cleanup function instead of `onCleanup`, and don't call
-  `flush()` inside (not reentrant there).
-- Reading a _pending async_ value inside them throws — use `createEffect`
-  for async-aware reactions.
+Call setup-with-cleanup from the component body: that owner owns the returned
+teardown. A subscription that does not need post-settlement timing can instead
+be set up directly in the component/root body with `onCleanup(unsubscribe)`.
+An out-of-band `onSettled` (handler, tracked effect, nested callback)
+is for one-shot work; returning cleanup there throws `SETTLED_CLEANUP_UNOWNED`
+in dev and drops it in production.
 
-## Memo options: `lazy` and `unobserved`
+`onSettled` and `createTrackedEffect` are leaf scopes: create primitives before
+entering them and return teardown. `onCleanup` there throws; pending async reads
+and reentrant `flush()` are outside their contract. Use split effects for async.
+`createTrackedEffect` is deprecated; write new reactive side effects as split
+effects and one-time post-render work as `onSettled`.
+
+### Lifetime
+
+`createRoot` belongs to its parent. `runWithOwner(null, () => createRoot(...))`
+creates a deliberately detached root; retain its disposer where appropriate.
+`getOwner`/`runWithOwner` restore an active owner's scope; `getObserver` identifies
+the observer. `isEqual` is the equality helper.
+
+`createMemo(fn, { lazy: true })` starts on first read. A settled lazy memo tears
+down when its final subscriber leaves and starts fresh on the next read;
+`unobserved` reports teardown. Pending async work survives temporary unobserved
+gaps, so a new subscriber rejoins it. If work settles while still unobserved,
+normal teardown resumes. Register external cancellation with
+`onCleanup` synchronously in compute, before its first await/yield.
+
+`createReaction(onInvalidate)` returns a tracking function. Track an expression,
+which fires once on invalidation and disarms. A second tracking call replaces
+the previous arm: `track(a); track(b)` watches only `b`. Call track again
+(often inside onInvalidate) to re-arm; use a memo for ordinary derived state.
+
+## Render effects and paint timing
+
+| Need                                                          | Primitive                            |
+| ------------------------------------------------------------- | ------------------------------------ |
+| Logging, persistence, subscriptions, network                  | `createEffect(compute, apply)`       |
+| Measure DOM geometry then position/size it; renderer bindings | `createRenderEffect(compute, apply)` |
+| Read updated DOM immediately in a handler                     | write → `flush()` → read             |
+
+Both effect lanes run in the same microtask flush **before paint**; choosing a
+user effect does not inherently cause a visible flash. The render lane precedes
+the user lane and runs with DOM work, including during hydration/held loading
+when user-lane work may be deferred.
+Solid effects use tracked compute callbacks, rather than React dependency arrays.
+
+A ref runs during render, potentially before insertion. Store the node through
+`ref={setNode}`, then measure in a render effect tracking `node()`: the queued
+signal update trails insertion on initial mount and subsequent updates.
+
+## Errors and diagnostics
+
+Use `Errored`/`createErrorBoundary` around fallible reactive work. An error escaping
+all boundaries halts reactivity: the cause is logged/rethrown and later
+writes/flushes are ignored (`REACTIVITY_HALTED`). `resetErrorHalt` is an internal
+test/dev-reload hook re-exported by `solid-js`, not `@solidjs/web`; it clears the halt flag even in
+the production client build, but does not repair a partially applied application
+graph. The server export is a no-op. Dev `render()`/refresh runtime reset a prior
+halt; production has no automatic recovery.
+
+SSR setters emit a deprecation warning (`SERVER_WRITE`) once per process/category: ordinary signal/store setters alter inert data
+without rerendering; optimistic setters are no-ops, including their callbacks.
+Model changing SSR data as async sources; return subscription data as an AsyncIterable.
+
+| Diagnostic                                                      | Repair                                                         |
+| --------------------------------------------------------------- | -------------------------------------------------------------- |
+| `STRICT_READ_UNTRACKED`                                         | Read in JSX/compute, or explicitly capture with `untrack`      |
+| `REACTIVE_WRITE_IN_OWNED_SCOPE`, `ACTION_CALLED_IN_OWNED_SCOPE` | Derive state; invoke writes/actions from imperative callbacks  |
+| `PENDING_ASYNC_UNTRACKED_READ`                                  | Move async reads into JSX/compute                              |
+| `ASYNC_OUTSIDE_LOADING_BOUNDARY`                                | Add `Loading` for visible fallback; otherwise root mount waits |
+| `CLEANUP_IN_FORBIDDEN_SCOPE`                                    | Return teardown from the leaf callback                         |
+| `SETTLED_CLEANUP_UNOWNED`                                       | Register setup-with-teardown from a component body             |
+| `PENDING_ASYNC_FORBIDDEN_SCOPE`                                 | Use a split effect for pending async reads                     |
+| `MISSING_EFFECT_FN`                                             | Supply compute and apply callbacks                             |
+| `NO_OWNER_EFFECT`, `NO_OWNER_CLEANUP`, `NO_OWNER_BOUNDARY`      | Create in a component/root                                     |
+| `RUN_WITH_DISPOSED_OWNER`                                       | Use an active owner                                            |
+
+Import `OBSERVE` from `solid-js` for the development/observe diagnostics channel:
+`OBSERVE?.diagnostics.subscribe(listener)` observes events;
+`OBSERVE?.diagnostics.capture()` returns `{ events, clear(), stop() }`.
+The channel is absent in ordinary production builds. `DEV` supplies development
+graph hooks, not the diagnostics channel.
+For serializable regression artifacts use `@solidjs/diagnostics`:
+adapters live at `/vitest`, `/browser`, `/playwright`.
+
+For a healthy scenario, require no diagnostics and a numeric rerun budget:
 
 ```ts
-const expensive = createMemo(() => heavy(source()), { lazy: true });
-```
-
-- `lazy: true` defers the first computation until first read, and opts a
-  synchronous/settled memo into **autodisposal**: when it loses its last
-  subscriber it is torn down and recomputed from scratch on next read. A
-  pending async memo is the exception: temporary loss of its final
-  subscriber preserves the in-flight computation, and a new subscriber rejoins
-  it. If it settles while still unobserved, normal teardown resumes. Default
-  (non-lazy) owned memos live for their owner's lifetime; unowned memos normally
-  autodispose. See `async-and-actions.md` for async cleanup rules.
-- `unobserved: () => ...` (on `createSignal` and `createMemo`) fires when the
-  node loses all subscribers — for tearing down external resources (sockets,
-  subscriptions) that should only exist while observed. Combine with `lazy` for
-  demand-driven computations.
-- `loadingValue` gives an async memo a committed first value instead of
-  suspending; see `async-and-actions.md` for its pending and SSR semantics.
-- Other options: `equals: false | (prev, next) => boolean` (signals and memos),
-  `name` (debugging).
-
-## `createReaction` — one-shot tracking, replace on re-arm
-
-`createReaction(callback)` returns a `track(fn)` function. `track` runs `fn` to
-subscribe without firing the callback; the **next** invalidation fires the
-callback once and disarms the reaction. Re-arm explicitly for another cycle:
-
-```ts
-const track = createReaction(() => {
-  syncToExternalSystem();
-  track(() => source());
+import { createRoot, createSignal, createMemo, createEffect, flush } from "solid-js";
+import { captureArtifact, expectNoDiagnostics, expectRerunBudget } from "@solidjs/diagnostics";
+const { artifact } = await captureArtifact(() => {
+  const control = createRoot((stop) => {
+    const [count, setCount] = createSignal(0);
+    const doubled = createMemo(() => count() * 2, { name: "doubled" });
+    createEffect(doubled, () => {});
+    return { setCount, stop };
+  });
+  // Drive the graph after root setup has returned: writes here are imperative.
+  flush();
+  control.setCount(1);
+  flush();
+  control.stop();
 });
-track(() => source());
+expectNoDiagnostics(artifact);
+expectRerunBudget(artifact, 2, { scope: "doubled" });
 ```
 
-Calling `track()` again **before** the current arm fires replaces the previous
-arm; it does not accumulate subscriptions. After
-`track(() => a()); track(() => b())`, a change to `a` does nothing and the next
-change to `b` fires once. The callback may return a cleanup function; it runs
-before the next callback invocation or when the owning scope disposes.
+For a separate test that deliberately triggers a warning, use
+`expectDiagnostic(artifact, "STRICT_READ_UNTRACKED")` instead of
+`expectNoDiagnostics(artifact)`. Assertions inspect the capture without consuming
+events, so those two expectations conflict on the same artifact. `expectNoWaste`
+checks unchanged recomputations; choose assertions for the scenario being tested.
 
-## Ownership
-
-- `createRoot(dispose => ...)` created inside an owned scope is **owned by that
-  parent** and disposed with it (1.x roots were detached).
-- Truly detached lifetime is explicit: `runWithOwner(null, () => ...)` — for
-  module singletons and external integrations only.
-- Effects/boundaries created with no owner warn (`NO_OWNER_EFFECT`,
-  `NO_OWNER_BOUNDARY`) and never dispose. In tests, wrap reactive code in
-  `createRoot`.
-- Renames: `getListener` → `getObserver`, `equalFn` → `isEqual`.
-
-## Stores in the compute phase
-
-The apply phase is untracked, so don't pass store proxies through it:
+Trigger the rule in the scope it checks. This reads a signal in effect apply,
+outside tracked compute; creating a root and reading a signal alone does not
+establish this diagnostic:
 
 ```ts
-// ❌ reads in apply: untracked, warns, never re-runs
-createEffect(
-  () => store.user,
-  (user) => send(user.name, user.age),
-);
-
-// ✅ extract plain values in compute
-createEffect(
-  () => ({ name: store.user.name, age: store.user.age }),
-  (v) => send(v.name, v.age),
-);
-
-// ✅ react to ANY nested change: deep() subscribes deeply, returns a plain snapshot
-createEffect(
-  () => deep(store),
-  (snap) => save(JSON.stringify(snap)),
-);
-
-// ✅ current value WITHOUT subscribing: snapshot()
-createEffect(
-  () => saveFlag(),
-  () => upload(snapshot(store)),
-);
+import { expectDiagnostic } from "@solidjs/diagnostics";
+const { artifact: warningArtifact } = await captureArtifact(() => {
+  const stop = createRoot((dispose) => {
+    const [value] = createSignal(1);
+    createEffect(
+      () => 0,
+      () => {
+        value();
+      },
+    );
+    return dispose;
+  });
+  flush();
+  stop();
+});
+expectDiagnostic(warningArtifact, "STRICT_READ_UNTRACKED");
 ```
-
-## `createRenderEffect` / `createTrackedEffect`
-
-- `createRenderEffect(compute, apply)` — same split shape, but runs in the
-  render lane of the flush, before `createEffect`'s user lane. It is the
-  `useLayoutEffect` equivalent: the place to measure a node and write back
-  layout (positioning, sizing). Non-obvious point an agent will get wrong: the
-  trigger is still flush-scheduled — a signal set from a `ref` does NOT run the
-  effect inline at the setter; the effect runs in the flush _after_ the node has
-  been inserted into the DOM (true for both initial mount and reactive
-  re-render — `ref` writes go through a detached owner, so the effect always
-  trails insertion). So `getBoundingClientRect()` reads true geometry, not
-  zeros. "App code should prefer `createEffect`" only rules out
-  the render lane for side effects that don't read layout; it is not a reason to
-  avoid render effects for measure-then-position work.
-- `createTrackedEffect(fn)` — single-callback tracked effect; may re-run in
-  async situations; leaf owner (see `onSettled` restrictions). Rare; prefer
-  `createEffect`.
-
-### Which lane to reach for
-
-| Need                                                                                                     | Use                                                               |
-| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Side effect not touching layout (set title, log, subscribe, persist, network)                            | `createEffect` (user lane) — the default                          |
-| Read DOM geometry then write layout back, in lockstep with the render (position, size, scroll-into-view) | `createRenderEffect` (render lane) — the `useLayoutEffect` analog |
-| Renderer plumbing: custom attribute/property bindings, `insert`/`spread`                                 | `createRenderEffect`                                              |
-| Imperatively read DOM right after a state change in a handler                                            | `flush()` then read (rare; not an effect)                         |
-
-Footgun: a `ref` callback fires **during render, before the node is inserted**,
-so the node is not guaranteed connected or laid out there. Don't call
-`getBoundingClientRect()` / `offset*` inside a `ref` — stash the node in a
-signal (`ref={setNode}`) and read its geometry from a `createRenderEffect`
-keyed on that signal, where the flush guarantees the node is mounted.
-
-Paint timing — do NOT carry the React model over: **both lanes run in the same
-microtask flush, before the browser paints.** `createEffect` is _not_ post-paint
-like React's `useEffect` — Solid has no post-paint effect phase, and a follow-up
-flush an effect schedules also drains before paint. So choosing `createEffect`
-over `createRenderEffect` for layout does **not** cause a visible flash; both
-land before the first paint. Prefer the render lane for layout because it is the
-correct phase — runs in lockstep with DOM updates, before user-lane consumers,
-and isn't deferred by Suspense/hydration — not to avoid a flicker.
-
-## Dev diagnostics
-
-Read `node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md` for the
-installed version's diagnostic codes and repairs. For capture and verification,
-read `node_modules/@solidjs/diagnostics/skills/agent-loops/SKILL.md`.
-Resolve package paths from the application being edited.
