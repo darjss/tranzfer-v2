@@ -20,7 +20,7 @@ The installed version takes precedence: prerelease APIs and import paths can dif
 Check these before guessing:
 
 - the nearest `AGENTS.md` and any project-local Effect practices doc
-- the project-pinned `effect` package source and version
+- the project-pinned `effect` package source and version, including `node_modules/effect/AGENTS.md` and the runnable examples in `node_modules/effect/ai-docs/src/<topic>/` (cli, observability, testing, sql, http server)
 - current upstream Effect source when the installed package does not answer the question
 
 ## Branch Chooser

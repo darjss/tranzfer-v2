@@ -1,7 +1,7 @@
 # Control flow and DOM
 
 Control-flow components come from `solid-js`; `render`, `hydrate`, `Portal`,
-`dynamic`, and `Dynamic` come from `@solidjs/web`.
+and `dynamic` come from `@solidjs/web`.
 
 ## Lists
 
@@ -105,11 +105,11 @@ synchronous `renderToString` supports natural and uncollapsed sequential.
 ## Dynamic and lazy components
 
 ```tsx
-const Active = dynamic(() => editing() ? Editor : Viewer);
-<Active value={value()} />
-// Inline equivalent:
-<Dynamic component={editing() ? Editor : Viewer} value={value()} />
+const Active = dynamic(() => (editing() ? Editor : Viewer));
+<Active value={value()} />;
 ```
+
+`<Dynamic>` still renders in rc.13, but it is deprecated and `vp check` rejects it. Use `dynamic()`.
 
 The factory returns a stable component, shares source evaluation across instances,
 and accepts async component sources. Imperative construction uses

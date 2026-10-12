@@ -7,12 +7,6 @@
       "skillPath": "skills/effect/SKILL.md",
       "computedHash": "d88417dca5f22fcc80b03ebd4096dfa6113a50cc6bb574bf53f75248cd321e35"
     },
-    "effect-ts": {
-      "source": "Effect-TS/skills",
-      "sourceType": "github",
-      "skillPath": "skills/effect-ts/SKILL.md",
-      "computedHash": "cb225ba5dda169883dfee680fba6c570c89245ba19242a9bc5c3f2ac8218a55f"
-    },
     "solidjs-v2": {
       "source": "khmm12/solidjs-v2-skills",
       "sourceType": "github",
