@@ -5,6 +5,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
@@ -66,6 +67,11 @@ const errorFacts = (exit: Exit.Exit<unknown, unknown>) =>
     Option.getOrElse(() => ({})),
   );
 
+// A log line becomes a span event, and its message or cause can quote a
+// request. Origins go, so a signed URL never reaches Axiom (the browser does
+// the same in `withoutUrls`).
+const withoutUrls = (text: string) => text.replaceAll(/https?:\/\/\S+/gu, "<url>");
+
 // Wraps the tracer Alchemy builds from the bound Axiom destinations. The
 // exporter ignores which tracer layer produced a span, so scrubbing at
 // `attribute` covers the server spans, the HTTP client spans and our own.
@@ -85,6 +91,7 @@ const scrubbedTracer = Layer.effect(
         const span = inner.span(options);
         const attribute = span.attribute.bind(span);
         const end = span.end.bind(span);
+        const event = span.event.bind(span);
         // The span belongs to the exporter's tracer, so patching its methods
         // is the only seam between creating it and writing to it.
         span.attribute = (key, value) => {
@@ -101,6 +108,19 @@ const scrubbedTracer = Layer.effect(
           }
           end(endTime, exit);
         };
+        span.event = (name, startTime, attributes) => {
+          event(
+            withoutUrls(name),
+            startTime,
+            attributes &&
+              Object.fromEntries(
+                Object.entries(attributes).map(([key, value]) => [
+                  key,
+                  Predicate.isString(value) ? withoutUrls(value) : value,
+                ]),
+              ),
+          );
+        };
         return span;
       },
     });
@@ -110,6 +130,9 @@ const scrubbedTracer = Layer.effect(
 /**
  * Traces, with log lines as span events, to this stage's Axiom dataset. Dev stages ship nothing:
  * the Axiom resources would need org credentials just to run `vp run dev`.
+ *
+ * The Worker runtime installs the console logger alone, which drops Effect's
+ * default `tracerLogger`, so no log line ever reached a span. This sets both.
  */
 export const telemetry = Layer.unwrap(
   Effect.map(deployStage, (stage) =>
@@ -121,7 +144,12 @@ export const telemetry = Layer.unwrap(
             token: Ingest,
             traces: Traces,
           }),
-          Alchemy.Telemetry.layer(scrubbedTracer),
+          Alchemy.Telemetry.layer(
+            Layer.merge(
+              scrubbedTracer,
+              Logger.layer([Logger.consolePretty(), Logger.tracerLogger]),
+            ),
+          ),
         ),
   ),
 );

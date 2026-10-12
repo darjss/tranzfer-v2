@@ -64,6 +64,7 @@ export const makeMail = (
     send: Effect.fn("Mail.send")(function* send(message) {
       if (stage === "staging" && !allowlist.has(message.to.toLowerCase())) {
         yield* Effect.logInfo("email held because the recipient is not on this stage's allowlist");
+        yield* Effect.annotateCurrentSpan("mail.result", "held");
         return "held" as const;
       }
       yield* client
@@ -83,8 +84,18 @@ export const makeMail = (
                 }),
               }),
           ),
-          Effect.tapError((error) => Effect.logWarning("email not sent", error.code)),
+          Effect.tapError((error) =>
+            Effect.logWarning("email not sent", error.code).pipe(
+              Effect.andThen(
+                Effect.annotateCurrentSpan({
+                  "mail.error_code": error.code,
+                  "mail.result": "failed",
+                }),
+              ),
+            ),
+          ),
         );
+      yield* Effect.annotateCurrentSpan("mail.result", "sent");
       return "sent" as const;
     }),
   });
