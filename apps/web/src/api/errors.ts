@@ -132,7 +132,7 @@ const refusal = Match.type<DeliveryRefused["reason"]>().pipe(
     PathTooLong: ({ bytes: size, max, path }) =>
       `${quoted(path)} is ${number(size)} bytes long with its folders. A path can be up to ${number(max)}. Shorten the folder names or move the files up a level.`,
     PathUnsafe: ({ path }) =>
-      `${quoted(path)} isn't a path we can carry safely. Names can't contain backslashes or control characters, or be empty, "." or "..".`,
+      `${quoted(path)} isn't a path we can carry safely. Names can't contain backslashes, control characters or text-direction marks, or be empty, "." or "..".`,
     TooManyFiles: ({ count: total, max }) =>
       `That's ${number(total)} files. A delivery holds up to ${number(max)}. Send them in two deliveries or zip a folder.`,
   }),
