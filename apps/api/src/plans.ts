@@ -6,7 +6,7 @@ import {
   rateLimits,
 } from "@tranzfer/contracts";
 import type { PlanGrant } from "@tranzfer/contracts";
-import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
+import { Database, databaseFault, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -278,7 +278,7 @@ export class Plans extends Context.Service<
               // Lost a race: the second look names why, and nothing naming
               // it means a real database fault.
               yield* redeemable(userId, code, now);
-              return yield* Effect.die(redeemed.failure);
+              return yield* databaseFault(redeemed.failure);
             }
             yield* Effect.annotateCurrentSpan({
               "plan.grant_days": row.days,

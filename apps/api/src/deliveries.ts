@@ -21,7 +21,7 @@ import type {
   RetentionDays,
   DeliveryRefused,
 } from "@tranzfer/contracts";
-import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
+import { Database, databaseFault, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
@@ -514,7 +514,7 @@ export class Deliveries extends Context.Service<
             Match.orElse(() =>
               admit(senderId, plan, requestedBytes, now).pipe(
                 Effect.andThen(intake?.explain(requestedBytes) ?? Effect.void),
-                Effect.andThen(Effect.die(inserted.failure)),
+                Effect.andThen(databaseFault(inserted.failure)),
               ),
             ),
           );
