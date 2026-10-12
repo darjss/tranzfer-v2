@@ -677,6 +677,7 @@ export class Deliveries extends Context.Service<
           const ended = yield* db.query.delivery.findMany({
             columns: { id: true },
             limit: PURGE_BATCH,
+            orderBy: { updatedAt: "asc" },
             where: {
               OR: [
                 // Cancel removed the objects already. A Complete that was in
@@ -692,13 +693,22 @@ export class Deliveries extends Context.Service<
             },
             with: { transfers: { columns: { objectKey: true } } },
           });
+          // A failing row rotates to the back instead of filling every batch.
+          // For a cancelled one this also waits CANCEL_SETTLE before the retry.
+          const touch = (deliveryId: DeliveryId) =>
+            db
+              .update(schema.delivery)
+              .set({ updatedAt: new Date(now) })
+              .where(eq(schema.delivery.id, deliveryId));
           const purged = yield* Effect.forEach(
             ended,
             (delivery) =>
               removeObjects(
                 delivery.id,
                 delivery.transfers.map((transfer) => transfer.objectKey),
-              ).pipe(Effect.tap((removed) => (removed ? markPurged(delivery.id) : Effect.void))),
+              ).pipe(
+                Effect.tap((removed) => (removed ? markPurged(delivery.id) : touch(delivery.id))),
+              ),
             { concurrency: 4 },
           );
           const total = purged.filter(Boolean).length;
