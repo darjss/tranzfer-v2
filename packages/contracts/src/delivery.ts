@@ -48,7 +48,8 @@ export const DeliveryNote = Schema.Trim.check(Schema.isMaxLength(500));
 export const NewFile = Schema.Struct({
   contentType: Schema.NullOr(Schema.String.check(Schema.isMaxLength(255))),
   id: TransferId,
-  lastModified: Schema.Int,
+  // A Date's range: a larger value is an Invalid Date the insert rejects.
+  lastModified: Schema.Int.check(Schema.isBetween({ maximum: 8_640_000_000_000_000, minimum: 0 })),
   path: Schema.String,
   size: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });

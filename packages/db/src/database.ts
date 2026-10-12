@@ -3,6 +3,7 @@ import type { Query } from "drizzle-orm";
 import * as EffectD1 from "drizzle-orm/effect-d1";
 import { defineRelations } from "drizzle-orm/relations";
 import * as Context from "effect/Context";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { SqlError } from "effect/sql/SqlError";
@@ -67,6 +68,20 @@ type DatabaseError = EffectDrizzleQueryError | SqlError;
 const isDatabaseError = <E>(error: E): error is Extract<E, DatabaseError> =>
   error instanceof EffectDrizzleQueryError || error instanceof SqlError;
 
+/**
+ * The defect a failed query leaves. RpcServer sends a defect's message to the
+ * browser and the tracer puts it on the span, and drizzle's message holds the
+ * SQL and every bound value, so the original stays in the log as a tag and
+ * placeholder SQL only.
+ */
+export class DatabaseFault extends Data.TaggedError("DatabaseFault") {}
+
+export const databaseFault = (error: DatabaseError) =>
+  Effect.logError("database error", {
+    error: error._tag,
+    query: error instanceof EffectDrizzleQueryError ? error.query : undefined,
+  }).pipe(Effect.andThen(Effect.die(new DatabaseFault())));
+
 /** Database failures are infrastructure faults, never outcomes a caller can act on. */
 export const dieOnDatabaseError = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  Effect.catchIf(effect, isDatabaseError, Effect.die, Effect.fail);
+  Effect.catchIf(effect, isDatabaseError, (error) => databaseFault(error), Effect.fail);

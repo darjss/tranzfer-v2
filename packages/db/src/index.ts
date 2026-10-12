@@ -1,2 +1,2 @@
-export { Database, dieOnDatabaseError } from "./database";
+export { Database, databaseFault, dieOnDatabaseError } from "./database";
 export * as schema from "./schema";
