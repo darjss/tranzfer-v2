@@ -3,7 +3,7 @@
 Verified against solid-js@2.0.0-rc.5 / @solidjs/web@2.0.0-rc.5 published
 typings/runtime and `solidjs/solid@5eb3250a` sources/tests.
 Control-flow components live in `solid-js`; `render`/`hydrate`/`Portal`/
-`Dynamic`/`dynamic` live in `@solidjs/web`.
+`dynamic` (and the deprecated `Dynamic`) live in `@solidjs/web`.
 
 ## `For` — one list primitive, three keying modes
 
@@ -120,18 +120,18 @@ Coordinates sibling `Loading` boundaries.
 ## Dynamic components
 
 ```jsx
-import { dynamic, Dynamic } from "@solidjs/web";
+import { dynamic } from "@solidjs/web";
 
 // Factory (canonical): stable Component identity; source may be async
 // (composes with <Loading> via the normal NotReadyError flow)
 const Active = dynamic(() => (isEditing() ? Editor : Viewer));
 return <Active value={value()} />;
 
-// JSX wrapper for inline sources — unchanged from 1.x at the call site
-<Dynamic component={isEditing() ? Editor : Viewer} value={value()} />;
+// `<Dynamic component={...} />` still renders in rc.13, but it is deprecated and
+// `vp check` rejects it. Use `dynamic()`.
 ```
 
-`createDynamic(source, props)` is gone — use `<Dynamic>` or
+`createDynamic(source, props)` is gone — use `dynamic()` or
 `createComponent(dynamic(source), props)`. One `dynamic(...)` source is shared
 across all mounted instances.
 

@@ -82,14 +82,18 @@ For code changes:
 7. **Store setters take a draft**: `setStore(s => { s.a.b = 1; })` (produce is
    the default). Store APIs (`createStore`, `reconcile`, `snapshot`…) are
    exported from `solid-js` — `solid-js/store` does not exist.
-8. **List rendering is `For` with keying modes** — `<Index>` is gone. Callback
-   shapes differ per mode (see references); `keyed={false}` gives
-   `(itemAccessor, plainIndex)`. Fixed-count rendering: `<Repeat>`.
+8. **List rendering is `For` with keying modes** — `<Index>` is gone. Default
+   `<For each>` gives `(plainRow, indexAccessor)`; `keyed={false}` gives
+   `(rowAccessor, plainIndex)`; `keyed={fn}` gives accessors for both. `<Show>`
+   and `<Match>` function children get an accessor unless `keyed`. Read an
+   accessor in JSX, a memo or an effect, never at the top of the callback. A
+   list rebuilt from fresh objects on every change belongs in
+   `createProjection`, keyed by id. Fixed-count rendering: `<Repeat>`.
 9. **Lifecycle**: `onSettled(() => { ...; return cleanup; })` replaces
    `onMount`/`onCleanup` for component-level setup-and-teardown. It's a leaf
    owner — no primitives or `onCleanup` inside.
-10. **Imports moved**: `@solidjs/web` for `render`/`hydrate`/`Portal`/`Dynamic`
-    (not `solid-js/web`); `jsxImportSource: "@solidjs/web"`; DOM attributes are
+10. **Imports moved**: `@solidjs/web` for `render`/`hydrate`/`Portal`/`dynamic`
+    (not `solid-js/web`; `<Dynamic>` is deprecated, use `dynamic()`); `jsxImportSource: "@solidjs/web"`; DOM attributes are
     lowercase (`tabindex`); `class` takes object/array forms (`classList` is
     gone); directives are `ref={factory(opts)}` (`use:` is gone).
 

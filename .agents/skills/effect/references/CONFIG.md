@@ -10,9 +10,9 @@ export const dataDirectoryConfig = Config.schema(AbsolutePath, "APP_DATA_DIR");
 export const layerFromEnvironment = Layer.effect(
   Configuration.Service,
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("API_KEY");
-    const optionalModel = yield* Config.option(Config.string("MODEL"));
-    const enabled = yield* Config.boolean("FEATURE_ENABLED").pipe(Config.withDefault(false));
+    const apiKey = yield* Config.Redacted("API_KEY");
+    const optionalModel = yield* Config.option(Config.String("MODEL"));
+    const enabled = yield* Config.Boolean("FEATURE_ENABLED").pipe(Config.withDefault(false));
 
     return Configuration.Service.of({ apiKey, optionalModel, enabled });
   }),
@@ -23,9 +23,10 @@ export const layerFromEnvironment = Layer.effect(
 
 - `Config<T>` is yieldable and reads the current `ConfigProvider` reference.
 - The default provider is `ConfigProvider.fromEnv()`.
-- Use `Config.redacted(...)` for credentials.
-- Use `Config.schema(...)` or `Config.mapOrFail(...)` for refined values.
-- Use `Config.option(...)` for semantic absence.
+- Use `Config.Redacted(...)` for credentials.
+- The primitives are capitalized in 4.0.1: `Config.String`, `Config.NonEmptyString`, `Config.Boolean`, `Config.Number`, `Config.Port`, `Config.URL`.
+- Use `Config.schema(codec, name)` for refined values. `Config.mapOrFail` does not exist.
+- Use `Config.option(...)` for semantic absence. `ConfigProvider.fromEnv` already reads an empty string as missing; pass `preserveEmptyStrings: true` to keep it.
 - Use `Config.withDefault(...)` for missing-data defaults only; malformed values still fail.
 - Use `Config.orElse(...)` only when intentionally catching any config parse failure.
 - Use `Config.unwrap(...)` / `Config.Wrap<T>` for `layerConfig(...)` helpers.

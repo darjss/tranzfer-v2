@@ -15,7 +15,8 @@ Use current Effect v4 APIs and the production defaults in this skill. Establishe
 Check these before guessing:
 
 - the nearest `AGENTS.md` and any project-local Effect practices doc
-- the project-pinned `effect` package source and version
+- the project-pinned `effect` package source and version, including `node_modules/effect/AGENTS.md` and the runnable examples in `node_modules/effect/ai-docs/src/<topic>/` (cli, observability, testing, sql, http server)
+- `docs/LIBRARIES.md` in this repository, which lists the names that changed since 4.0.0-rc
 - current upstream Effect source when the installed package does not answer the question
 
 ## Branch Chooser
