@@ -153,13 +153,21 @@ export class DeliveryRefused extends Schema.TaggedError<DeliveryRefused>()("Deli
   ]),
 }) {}
 
+// Bidirectional controls reorder how a name displays. Zero-width joiners stay: emoji and several scripts need them.
+const bidiControl = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
+
 const firstRefusal = (files: readonly { readonly path: string }[]) => {
   if (files.length > maxFiles) {
     return { _tag: "TooManyFiles", count: files.length, max: maxFiles } as const;
   }
   const seen = new Set<string>();
   for (const { path } of files) {
-    if (path.startsWith("/") || path.includes("\\") || /\p{Cc}/u.test(path)) {
+    if (
+      path.startsWith("/") ||
+      path.includes("\\") ||
+      /\p{Cc}/u.test(path) ||
+      bidiControl.test(path)
+    ) {
       return { _tag: "PathUnsafe", path } as const;
     }
     for (const name of path.split("/")) {
