@@ -81,7 +81,7 @@ State lives in a Cloudflare Secrets Store. A token without Secrets Store access 
 - `WorkerBridge.ts` installs `Logger.layer([Logger.consolePretty()])` without `mergeWithExisting`, which drops Effect's `tracerLogger`. `infrastructure/telemetry.ts` adds `Logger.tracerLogger` back so log lines reach spans.
 - `ViteBuildChildRunner` sets `disableErrorReporting: true` in beta.81, so a failed Vite build under Alchemy ends as `BundleError: Vite build child exited with code 1:` with nothing after it. Upstream prints the cause from 2026-10-06 (alchemy-run/alchemy#2036), after beta.81. Until you upgrade, reproduce with `vp run --filter @tranzfer/web build` and read its output.
 - A green `vp run build` has passed while the Alchemy deploy build failed (PR 101). The PR preview runs the real deploy build; read it before you merge.
-- Rate-limit `namespaceId` is unique per Cloudflare account and shared by every stage.
+- Rate-limit `namespaceId` is unique per Cloudflare account and shared by every stage. `rateLimitBindings` in `apps/api/src/index.ts` is the one list of them; a duplicate id fails typecheck.
 - `alchemy state ls`, `cat` and `rm` browse and delete state records without touching cloud resources (https://alchemy.run/cli/inspecting-state). A deploy that failed mid-create left a record that broke the next plan on beta.79; `alchemy state rm tranzfer/<stage>/<Resource>` cleared it.
 
 ## drizzle and D1
