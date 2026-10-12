@@ -48,6 +48,7 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 ## Parallel work and tools
 
 - Run at most 3 subagents at once. Each commits and pushes after every green step, so a usage-limit or capacity kill leaves a branch. Resume a killed agent with `git log origin/dev..HEAD` and `git status`. Review agents get a shell, a worktree off `origin/dev` and the check to run; read-only reviewers approved bugs that a reviewer with a shell found.
+- Delegate well-scoped implementation and verification to `run_subagent` swe-2 profiles (`subagent_general` for write work, `subagent_explore` for read-only).
 - Each parallel agent gets its own worktree under `~/dev/scratchpad/tranzfer2` and its own branch. Never `rm`, `git clean`, `git stash` or `git checkout <branch>` in a checkout another thread may use, and never `pkill -f`; stop only the PID you started. Give each agent-browser its own `--session <task>-<role>`.
 - Wait for CI with one backgrounded `gh pr checks <number> --watch --interval 60`, not a sleep loop. Read a failing log once with `gh run view <id> --log-failed`.
 - Local pages: use `agent-browser`. The `preview_*` tools run remotely and reach only public URLs.
