@@ -1,6 +1,7 @@
 import * as Alchemy from "alchemy";
 import * as Axiom from "alchemy/Axiom";
 import * as Config from "effect/Config";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -19,7 +20,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { Ingest, Traces } from "../resources";
 import { lazy } from "./r2";
-import { deployStage } from "./stage";
+import { deployStage, stageName } from "./stage";
 
 // Response headers worth keeping on a span. Everything else can carry a
 // credential (set-cookie, x-amz-security-token, signed redirects), so the
@@ -72,60 +73,77 @@ const errorFacts = (exit: Exit.Exit<unknown, unknown>) =>
 // the same in `withoutUrls`).
 const withoutUrls = (text: string) => text.replaceAll(/https?:\/\/\S+/gu, "<url>");
 
+// Read while the Worker initializes, which is what binds it to the Worker.
+// infra/alchemy.run.ts sets it to the commit being deployed.
+const gitSha = Config.String("GIT_SHA");
+
 // Wraps the tracer Alchemy builds from the bound Axiom destinations. The
 // exporter ignores which tracer layer produced a span, so scrubbing at
 // `attribute` covers the server spans, the HTTP client spans and our own.
-const scrubbedTracer = Layer.effect(
-  Tracer.Tracer,
-  Effect.gen(function* scrubbedTracer() {
-    // Alchemy types its exporter layer with any errors and requirements. It
-    // reads config and the HTTP client and degrades to an empty layer when
-    // either fails, so the real shape is narrower.
-    const bound: Layer.Layer<never, Config.ConfigError, HttpClient.HttpClient> =
-      yield* Alchemy.Telemetry.Telemetry;
-    const exporters = yield* Layer.build(bound);
-    const inner = Context.get(exporters, Tracer.Tracer);
-    return Tracer.make({
-      context: inner.context,
-      span(options) {
-        const span = inner.span(options);
-        const attribute = span.attribute.bind(span);
-        const end = span.end.bind(span);
-        const event = span.event.bind(span);
-        // The span belongs to the exporter's tracer, so patching its methods
-        // is the only seam between creating it and writing to it.
-        span.attribute = (key, value) => {
-          // The client's address is not worth keeping.
-          if (key !== "client.address") {
-            attribute(key, isScrubbed(key) ? "<redacted>" : value);
-          }
-        };
-        span.end = (endTime, exit) => {
-          for (const [key, value] of Object.entries(errorFacts(exit))) {
-            if (value !== undefined) {
-              attribute(key, value);
+const scrubbedTracerFor = (version: string) =>
+  Layer.effect(
+    Tracer.Tracer,
+    Effect.gen(function* scrubbedTracer() {
+      // Alchemy types its exporter layer with any errors and requirements. It
+      // reads config and the HTTP client and degrades to an empty layer when
+      // either fails, so the real shape is narrower.
+      const bound: Layer.Layer<never, Config.ConfigError, HttpClient.HttpClient> =
+        yield* Alchemy.Telemetry.Telemetry;
+      // Alchemy's resource has the service name and the stage. OtlpResource
+      // reads the version and any other attribute from these two settings, so
+      // they go in as config rather than as a span attribute on every span.
+      const resource = ConfigProvider.fromUnknown({
+        OTEL_RESOURCE_ATTRIBUTES: `deployment.environment.name=${yield* deployStage}`,
+        OTEL_SERVICE_VERSION: version,
+      });
+      const exporters = yield* Layer.build(bound).pipe(
+        Effect.provideService(
+          ConfigProvider.ConfigProvider,
+          ConfigProvider.orElse(resource, yield* ConfigProvider.ConfigProvider),
+        ),
+      );
+      const inner = Context.get(exporters, Tracer.Tracer);
+      return Tracer.make({
+        context: inner.context,
+        span(options) {
+          const span = inner.span(options);
+          const attribute = span.attribute.bind(span);
+          const end = span.end.bind(span);
+          const event = span.event.bind(span);
+          // The span belongs to the exporter's tracer, so patching its methods
+          // is the only seam between creating it and writing to it.
+          span.attribute = (key, value) => {
+            // The client's address is not worth keeping.
+            if (key !== "client.address") {
+              attribute(key, isScrubbed(key) ? "<redacted>" : value);
             }
-          }
-          end(endTime, exit);
-        };
-        span.event = (name, startTime, attributes) => {
-          event(
-            withoutUrls(name),
-            startTime,
-            attributes &&
-              Object.fromEntries(
-                Object.entries(attributes).map(([key, value]) => [
-                  key,
-                  Predicate.isString(value) ? withoutUrls(value) : value,
-                ]),
-              ),
-          );
-        };
-        return span;
-      },
-    });
-  }),
-);
+          };
+          span.end = (endTime, exit) => {
+            for (const [key, value] of Object.entries(errorFacts(exit))) {
+              if (value !== undefined) {
+                attribute(key, value);
+              }
+            }
+            end(endTime, exit);
+          };
+          span.event = (name, startTime, attributes) => {
+            event(
+              withoutUrls(name),
+              startTime,
+              attributes &&
+                Object.fromEntries(
+                  Object.entries(attributes).map(([key, value]) => [
+                    key,
+                    Predicate.isString(value) ? withoutUrls(value) : value,
+                  ]),
+                ),
+            );
+          };
+          return span;
+        },
+      });
+    }),
+  );
 
 /**
  * Traces, with log lines as span events, to this stage's Axiom dataset. Dev stages ship nothing:
@@ -135,29 +153,30 @@ const scrubbedTracer = Layer.effect(
  * default `tracerLogger`, so no log line ever reached a span. This sets both.
  */
 export const telemetry = Layer.unwrap(
-  Effect.map(deployStage, (stage) =>
-    stage === "dev"
-      ? Layer.empty
-      : Layer.mergeAll(
-          Axiom.Telemetry({
-            serviceName: "tranzfer-api",
-            token: Ingest,
-            traces: Traces,
-          }),
-          Alchemy.Telemetry.layer(
-            Layer.merge(
-              scrubbedTracer,
-              Logger.layer([Logger.consolePretty(), Logger.tracerLogger]),
-            ),
-          ),
+  Effect.gen(function* telemetry() {
+    if ((yield* deployStage) === "dev") {
+      return Layer.empty;
+    }
+    return Layer.mergeAll(
+      Axiom.Telemetry({
+        serviceName: "tranzfer-api",
+        token: Ingest,
+        traces: Traces,
+      }),
+      Alchemy.Telemetry.layer(
+        Layer.merge(
+          scrubbedTracerFor(yield* gitSha),
+          Logger.layer([Logger.consolePretty(), Logger.tracerLogger]),
         ),
-  ),
+      ),
+    );
+  }),
 );
 
 const MAX_BODY_BYTES = 256 * 1024;
 
 // The browser's spans, forwarded as they are but for the resource: the
-// service name comes from here, not from the caller.
+// service name, stage and environment come from here, not from the caller.
 const BrowserSpans = Schema.fromJsonString(
   Schema.Struct({
     resourceSpans: Schema.Array(
@@ -179,7 +198,8 @@ const status = (code: number) => HttpServerResponse.empty({ status: code });
 export const relayConfig = Effect.gen(function* relayConfig() {
   const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
   const client = yield* HttpClient.HttpClient;
-  if ((yield* deployStage) === "dev") {
+  const environment = yield* deployStage;
+  if (environment === "dev") {
     return { client, origin, target: undefined };
   }
   const traces = yield* Traces;
@@ -189,8 +209,11 @@ export const relayConfig = Effect.gen(function* relayConfig() {
     origin,
     target: {
       dataset: lazy(yield* traces.name),
+      environment,
+      stage: yield* stageName,
       token: lazy(yield* token.token),
       url: lazy(yield* traces.otelTracesEndpoint),
+      version: yield* gitSha,
     },
   };
 });
@@ -212,6 +235,10 @@ export const relayTraces = ({ client, origin, target }: Effect.Success<typeof re
     if (!request.headers["content-type"]?.startsWith("application/json")) {
       return status(415);
     }
+    // The tab's own build, which can be older than this Worker. Anything that
+    // is not a full commit hash is ignored.
+    const build = request.headers["x-tranzfer-build"];
+    const version = build !== undefined && /^[0-9a-f]{40}$/u.test(build) ? build : target.version;
     // Stops reading one chunk past the cap, so an oversized body is never
     // buffered whole and no header has to be trusted.
     const chunks = yield* request.stream.pipe(
@@ -240,7 +267,15 @@ export const relayTraces = ({ client, origin, target }: Effect.Success<typeof re
           resourceSpans: [
             {
               resource: {
-                attributes: [{ key: "service.name", value: { stringValue: "tranzfer-web" } }],
+                attributes: [
+                  { key: "service.name", value: { stringValue: "tranzfer-web" } },
+                  { key: "service.version", value: { stringValue: version } },
+                  {
+                    key: "deployment.environment.name",
+                    value: { stringValue: target.environment },
+                  },
+                  { key: "alchemy.stage", value: { stringValue: target.stage } },
+                ],
               },
               scopeSpans: [
                 {

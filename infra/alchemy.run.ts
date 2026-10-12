@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 import * as Alchemy from "alchemy";
@@ -18,6 +19,12 @@ const envFile = new URL("../.env", import.meta.url);
 if (existsSync(envFile)) {
   process.loadEnvFile(envFile);
 }
+
+// The commit being deployed. The API Worker binds it as GIT_SHA and the web
+// build inlines it, so every span says which build made it.
+const gitSha =
+  process.env.GIT_SHA ?? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf-8" }).trim();
+process.env.GIT_SHA = gitSha;
 
 const webRoot = new URL("../apps/web", import.meta.url).pathname;
 
@@ -57,6 +64,7 @@ export default Alchemy.Stack(
       domain,
       env: {
         API: api,
+        VITE_GIT_SHA: gitSha,
         // Inlined at build time, so the prerendered pricing pages match the API.
         VITE_PAID_PLANS_OPEN: String(yield* paidPlansOpen),
       },
