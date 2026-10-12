@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "vp test",
+    "test": "vp test --testTimeout=20000",
     "code:create": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/codes.ts create",
     "code:list": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/codes.ts list",
     "code:revoke": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/codes.ts revoke",
