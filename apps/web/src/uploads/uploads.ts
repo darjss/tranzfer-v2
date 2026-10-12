@@ -655,11 +655,19 @@ const make = Effect.gen(function* makeUploads() {
     const refused = (
       error: DeliveryConflict | DeliveryRefused | OverPlanLimit | RateLimited | RetentionNotInPlan,
     ) => Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error));
-    yield* spans.beginDelivery(deliveryId, {
+    const attributes = {
       "delivery.file_count": files.length,
       "delivery.retention_days": retentionDays,
       "delivery.total_bytes": files.reduce((total, { file }) => total + file.size, 0),
-    });
+    };
+    yield* spans.beginDelivery(deliveryId, attributes);
+    // Uploads.delivery and Uploads.file export only when they end, so a tab
+    // closed mid-upload takes them along. This one ends at once and stays.
+    yield* Effect.void.pipe(
+      Effect.withSpan("Uploads.start", {
+        attributes: { ...attributes, "delivery.id": deliveryId },
+      }),
+    );
     const delivery = yield* api.CreateDelivery(payload).pipe(
       spans.underDelivery(deliveryId),
       Effect.retry({
