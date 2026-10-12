@@ -5,7 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 
 import { ApiClient } from "../api/client";
-import { retryTransport, untilOnline } from "../uploads/uploads";
+import { retryTransport, untilOnline } from "../api/retry";
 
 // The parts of the File System Access API a save touches. A picked folder
 // satisfies them; so does the in-memory folder the tests use.
