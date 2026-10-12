@@ -238,27 +238,31 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
     }),
   );
 
-  it.effect("holds Free senders to the signing rate, and paid plans not at all", () =>
-    Effect.gen(function* scenario() {
-      const free = first((yield* seed("fern", [newFile("a.bin", 200 * MIB)])).transfers);
-      const comp = first((yield* seed("cole", [newFile("a.bin", 200 * MIB)])).transfers);
-      const { db } = yield* Database;
-      yield* db
-        .insert(schema.subscription)
-        .values({ plan: "studio", status: "comp", userId: "cole" });
-      const transfers = yield* Transfers;
-      const { limit, windowSeconds } = rateLimits.uploadSigning;
-      const create = (sender: string, key: string) =>
-        transfers.sign(sender, key, { _tag: "Create" });
+  // 401 signs against SQLite take about 3.5 s locally; CI runners crossed the 5 s default.
+  it.effect(
+    "holds Free senders to the signing rate, and paid plans not at all",
+    () =>
+      Effect.gen(function* scenario() {
+        const free = first((yield* seed("fern", [newFile("a.bin", 200 * MIB)])).transfers);
+        const comp = first((yield* seed("cole", [newFile("a.bin", 200 * MIB)])).transfers);
+        const { db } = yield* Database;
+        yield* db
+          .insert(schema.subscription)
+          .values({ plan: "studio", status: "comp", userId: "cole" });
+        const transfers = yield* Transfers;
+        const { limit, windowSeconds } = rateLimits.uploadSigning;
+        const create = (sender: string, key: string) =>
+          transfers.sign(sender, key, { _tag: "Create" });
 
-      yield* Effect.forEach(Arr.range(1, limit), () => create("fern", free.objectKey));
-      expect(yield* Effect.flip(create("fern", free.objectKey))).toMatchObject({
-        _tag: "RateLimited",
-        limit: "uploadSigning",
-        retryAfterSeconds: windowSeconds,
-      });
-      yield* Effect.forEach(Arr.range(1, limit + 1), () => create("cole", comp.objectKey));
-    }),
+        yield* Effect.forEach(Arr.range(1, limit), () => create("fern", free.objectKey));
+        expect(yield* Effect.flip(create("fern", free.objectKey))).toMatchObject({
+          _tag: "RateLimited",
+          limit: "uploadSigning",
+          retryAfterSeconds: windowSeconds,
+        });
+        yield* Effect.forEach(Arr.range(1, limit + 1), () => create("cole", comp.objectKey));
+      }),
+    20_000,
   );
 
   it.effect("stops signing once the delivery is past its upload window", () =>
