@@ -10,7 +10,7 @@
     "preview": "vp preview",
     "test": "vp test",
     "lint": "vp lint src",
-    "prepare": "panda codegen"
+    "prepare": "panda codegen && node scripts/file-routes.ts"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.3.0",
