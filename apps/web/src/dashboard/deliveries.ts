@@ -280,12 +280,16 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
   });
 
   // The mail goes out after the server answers, so read how each ended until
-  // none of this page's emails is still queued.
-  const readEmails = async (deliveryId: string) => {
+  // none of this page's emails is still queued. A signed-out session calls
+  // onSignedOut, so the poller stops.
+  const readEmails = async (deliveryId: string, onSignedOut: () => void) => {
     const exit = await runtime.runPromiseExit(
       ApiClient.use((api) => api.DeliveryEmails({ deliveryId: DeliveryId.make(deliveryId) })),
     );
     if (Exit.isFailure(exit)) {
+      if (appError(exit.cause).tag === "Unauthorized") {
+        onSignedOut();
+      }
       return;
     }
     const emailsDone: Emailed[][] = [];
@@ -316,6 +320,8 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
       }
     }
   };
+  // The sweeper marks a row lost after 10 minutes, so a poll that keeps
+  // failing stops after 30 tries (a minute) instead of running that long.
   createEffect(
     () =>
       Object.entries(emailed)
@@ -323,12 +329,20 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
         .map(([deliveryId]) => deliveryId)
         .join(","),
     (waiting) => {
+      let tries = 0;
       const timer =
         waiting === ""
           ? undefined
           : setInterval(() => {
+              tries += 1;
+              if (tries > 30) {
+                clearInterval(timer);
+                return;
+              }
               for (const deliveryId of waiting.split(",")) {
-                void readEmails(deliveryId);
+                void readEmails(deliveryId, () => {
+                  clearInterval(timer);
+                });
               }
             }, 2000);
       return () => {

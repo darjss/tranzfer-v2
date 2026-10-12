@@ -752,6 +752,7 @@ const make = Effect.gen(function* makeUploads() {
     if (file === undefined) {
       return;
     }
+    autoRetries.delete(transferId);
     yield* spans.beginFile(file.meta.deliveryId, { id: transferId, size: file.size ?? 0 }, true);
     if (transfers[transferId]?.uploaded) {
       // Uppy finished, so the object exists and only FinalizeTransfer failed;
