@@ -3,7 +3,10 @@ import * as Axiom from "alchemy/Axiom";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -36,6 +39,33 @@ export const isScrubbed = (key: string) => {
     : !KEPT_HEADERS.has(header);
 };
 
+// The fields of a typed error that explain a refusal and carry no person's
+// data: a limit's name and wait, a plan, a reason tag, a mail provider's code.
+// Other fields (sender names, titles, file paths) stay off the span.
+const ErrorFacts = Schema.Struct({
+  _tag: Schema.String,
+  code: Schema.optional(Schema.String),
+  limit: Schema.optional(Schema.String),
+  plan: Schema.optional(Schema.String),
+  reason: Schema.optional(Schema.Union([Schema.String, Schema.Struct({ _tag: Schema.String })])),
+  retryAfterSeconds: Schema.optional(Schema.Number),
+});
+
+// Effect's exporter keeps only the error's tag; its message is empty. These
+// attributes are the reason, so a refusal can be told from its tag alone.
+const errorFacts = (exit: Exit.Exit<unknown, unknown>) =>
+  Option.flatMap(Exit.findErrorOption(exit), Schema.decodeUnknownOption(ErrorFacts)).pipe(
+    Option.map((facts) => ({
+      "error.code": facts.code,
+      "error.limit": facts.limit,
+      "error.plan": facts.plan,
+      "error.reason": Predicate.isString(facts.reason) ? facts.reason : facts.reason?._tag,
+      "error.retry_after_s": facts.retryAfterSeconds,
+      "error.tag": facts._tag,
+    })),
+    Option.getOrElse(() => ({})),
+  );
+
 // Wraps the tracer Alchemy builds from the bound Axiom destinations. The
 // exporter ignores which tracer layer produced a span, so scrubbing at
 // `attribute` covers the server spans, the HTTP client spans and our own.
@@ -54,13 +84,22 @@ const scrubbedTracer = Layer.effect(
       span(options) {
         const span = inner.span(options);
         const attribute = span.attribute.bind(span);
-        // The span belongs to the exporter's tracer, so patching the one
-        // method is the only seam between creating it and writing to it.
+        const end = span.end.bind(span);
+        // The span belongs to the exporter's tracer, so patching its methods
+        // is the only seam between creating it and writing to it.
         span.attribute = (key, value) => {
           // The client's address is not worth keeping.
           if (key !== "client.address") {
             attribute(key, isScrubbed(key) ? "<redacted>" : value);
           }
+        };
+        span.end = (endTime, exit) => {
+          for (const [key, value] of Object.entries(errorFacts(exit))) {
+            if (value !== undefined) {
+              attribute(key, value);
+            }
+          }
+          end(endTime, exit);
         };
         return span;
       },

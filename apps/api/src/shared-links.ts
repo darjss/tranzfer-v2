@@ -112,6 +112,7 @@ export class SharedLinks extends Context.Service<
             }
             // Before anything else is said about the delivery, its title included.
             if (!(yield* isOpen(link, unlock))) {
+              yield* Effect.annotateCurrentSpan("link.refused", "locked");
               return yield* new LinkLocked({ senderName: delivery.sender.name });
             }
             yield* Effect.annotateCurrentSpan({
@@ -120,6 +121,7 @@ export class SharedLinks extends Context.Service<
               "delivery.total_bytes": delivery.transfers.reduce((sum, file) => sum + file.size, 0),
             });
             if (delivery.status === "open") {
+              yield* Effect.annotateCurrentSpan("link.refused", "notReady");
               return yield* new LinkNotReady({
                 senderName: delivery.sender.name,
                 title: delivery.title,
@@ -131,6 +133,7 @@ export class SharedLinks extends Context.Service<
               return yield* Effect.die(new Error(`Ready delivery ${delivery.id} has no expiry`));
             }
             if (isExpired(delivery.expiresAt, now)) {
+              yield* Effect.annotateCurrentSpan("link.refused", "expired");
               return yield* new LinkExpired({
                 expiredAt: delivery.expiresAt,
                 title: delivery.title,
@@ -219,6 +222,7 @@ export class SharedLinks extends Context.Service<
           ) {
             const linkId = yield* tokens.verify(token);
             if (Option.isNone(linkId)) {
+              yield* Effect.annotateCurrentSpan("link.refused", "badToken");
               return yield* new LinkNotFound();
             }
             yield* Effect.annotateCurrentSpan("link.id", linkId.value);
@@ -235,16 +239,26 @@ export class SharedLinks extends Context.Service<
               });
             }
             const link = yield* db.query.link.findFirst({
-              where: { id: linkId.value, revokedAt: { isNull: true } },
+              where: { id: linkId.value },
               with: { delivery: true },
             });
-            if (link === undefined || link.delivery.status === "cancelled") {
+            if (link === undefined) {
+              yield* Effect.annotateCurrentSpan("link.refused", "unknown");
+              return yield* new LinkNotFound();
+            }
+            if (link.revokedAt !== null) {
+              yield* Effect.annotateCurrentSpan("link.refused", "revoked");
+              return yield* new LinkNotFound();
+            }
+            if (link.delivery.status === "cancelled") {
+              yield* Effect.annotateCurrentSpan("link.refused", "cancelled");
               return yield* new LinkNotFound();
             }
             if (
               link.passwordHash !== null &&
               !(yield* checkPassword(password, link.passwordHash))
             ) {
+              yield* Effect.annotateCurrentSpan("link.refused", "wrongPassword");
               return yield* new WrongPassword();
             }
             return yield* tokens.issueUnlock(link.id, link.passwordHash ?? "");
