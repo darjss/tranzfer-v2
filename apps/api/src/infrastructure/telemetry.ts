@@ -96,7 +96,9 @@ const scrubbedTracerFor = (version: string) =>
         OTEL_RESOURCE_ATTRIBUTES: `deployment.environment.name=${yield* deployStage}`,
         OTEL_SERVICE_VERSION: version,
       });
-      const exporters = yield* Layer.build(bound).pipe(
+      // Alchemy's bridge builds `bound` next to this layer in one memo map,
+      // so a plain build reuses its copy and never reads the config below.
+      const exporters = yield* Layer.build(Layer.fresh(bound)).pipe(
         Effect.provideService(
           ConfigProvider.ConfigProvider,
           ConfigProvider.orElse(resource, yield* ConfigProvider.ConfigProvider),
