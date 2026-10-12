@@ -203,6 +203,41 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
     }),
   );
 
+  it.effect("a file of one part or less signs a guarded Put; a bigger one does not", () =>
+    Effect.gen(function* scenario() {
+      const created = yield* seed("hal", [
+        newFile("small.bin", 3 * MIB),
+        newFile("edge.bin", partSize(0)),
+        newFile("big.bin", partSize(0) + 1),
+      ]);
+      const transfers = yield* Transfers;
+      const key = (path: string) => {
+        const found = created.transfers.find((transfer) => transfer.path === path);
+        if (found === undefined) {
+          throw new Error(`missing ${path}`);
+        }
+        return found.objectKey;
+      };
+
+      const put = yield* transfers.sign("hal", key("small.bin"), { _tag: "Put" });
+      expect(put.url).toBe(`memory://Put/${key("small.bin")}`);
+      // Signing the Put is the point the object may land unseen, so the
+      // sweeper's state is set and no multipart upload can start after it.
+      const reopen = yield* Effect.flip(
+        transfers.sign("hal", key("small.bin"), { _tag: "Create" }),
+      );
+      expect(reopen._tag).toBe("UploadClosed");
+      // A lost response signs again; If-None-Match makes the second write fail.
+      yield* transfers.sign("hal", key("small.bin"), { _tag: "Put" });
+      yield* transfers.sign("hal", key("edge.bin"), { _tag: "Put" });
+
+      const tooBig = yield* Effect.flip(transfers.sign("hal", key("big.bin"), { _tag: "Put" }));
+      expect(tooBig._tag).toBe("InvalidUpload");
+      // Transfers that began as multipart before single PUTs existed still can.
+      yield* transfers.sign("hal", key("big.bin"), { _tag: "Create" });
+    }),
+  );
+
   it.effect("holds Free senders to the signing rate, and paid plans not at all", () =>
     Effect.gen(function* scenario() {
       const free = first((yield* seed("fern", [newFile("a.bin", 200 * MIB)])).transfers);

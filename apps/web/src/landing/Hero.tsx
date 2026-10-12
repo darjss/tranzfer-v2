@@ -4,10 +4,12 @@ import Reel from "./Reel";
 import { ArrowIcon, Asterisk, Blob, Hand, Ink, Ring, Still, inkStrokes } from "./notebook";
 import { eyebrow } from "./styles";
 import { button } from "../ui/Button";
-import coastRoad from "./assets/coast-road.webp";
-import frozenWilds from "./assets/frozen-wilds.webp";
-import hikerSea from "./assets/hiker-sea.webp";
-import neonCrosswalk from "./assets/neon-crosswalk.webp";
+import { photos } from "./photos";
+
+const coastRoad = photos["./assets/coast-road.webp"];
+const frozenWilds = photos["./assets/frozen-wilds.webp"];
+const hikerSea = photos["./assets/hiker-sea.webp"];
+const neonCrosswalk = photos["./assets/neon-crosswalk.webp"];
 
 const words = ["shoot.", "night.", "card.", "season."];
 
@@ -15,6 +17,7 @@ const words = ["shoot.", "night.", "card.", "season."];
 const stills = [
   {
     label: "a-cam · 214 gb",
+    priority: true,
     src: neonCrosswalk,
     style: "--w:190px;--x:1%;--y:4%;--r:-8deg;--dx:-200px;--dy:-80px;--d:.15s",
   },

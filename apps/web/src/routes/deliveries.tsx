@@ -5,6 +5,7 @@ import { AccessCodeInput, defaultRetentionDays, PaidPlanId, plans } from "@tranz
 import type { RetentionDays } from "@tranzfer/contracts";
 import * as Schema from "effect/Schema";
 import {
+  configureClientErrors,
   createEffect,
   createMemo,
   createSignal,
@@ -18,17 +19,18 @@ import {
 import { css, cx } from "styled-system/css";
 
 import { ApiClient } from "../api/client";
-import { appError } from "../api/errors";
+import { appError, reportFailure, supportRef, traceIdOf } from "../api/errors";
 import { runEffect, RuntimeContext } from "../api/solid-effect";
 import { Board } from "../dashboard/Board";
 import { goToCheckout, goToPortal } from "../dashboard/billing";
 import { createDeliveries } from "../dashboard/deliveries";
 import { DeliverySheet } from "../dashboard/DeliverySheet";
 import { SendCard } from "../dashboard/SendCard";
+import { SendDoneList } from "../dashboard/SendDone";
 import { TopBar } from "../dashboard/TopBar";
 import { inkStrokes } from "../landing/notebook";
 import { online, wireWindow } from "../uploads/store";
-import { chosenFiles, getDroppedFiles, invalidPaths } from "../uploads/uploads";
+import { chosenFiles, getDroppedFiles } from "../uploads/uploads";
 import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
 import { paidPlansOpen } from "../ui/support";
@@ -94,6 +96,14 @@ const welcome = async (plan: PaidPlanId) => {
   });
 };
 
+// A denied clipboard leaves the reference on screen to read out.
+const copyReference = async (reference: string) => {
+  await navigator.clipboard
+    .writeText(reference)
+    .then(() => true)
+    .catch(() => false);
+};
+
 const DeliveriesPage = () => {
   const runtime = useContext(RuntimeContext);
   const [searchParams, setSearchParams] = useSearchParams<{
@@ -106,9 +116,41 @@ const DeliveriesPage = () => {
     setSearchParams({ d: id });
   };
 
+  // The fallback below only says "didn't load". Solid hands the boundary's
+  // real error to this hook once, with the owner path of whatever threw. The
+  // report's trace id is the reference the card shows.
+  const [reference, setReference] = createSignal<string>();
+  onSettled(() => {
+    configureClientErrors({
+      onError: (error, { ownerPath }) => {
+        const traceId = traceIdOf(error);
+        setReference(supportRef(traceId));
+        runtime.runFork(reportFailure(error, ownerPath, traceId));
+      },
+    });
+    return () => {
+      configureClientErrors({});
+    };
+  });
+
   const me = createMemo(() => runEffect(ApiClient.use((api) => api.Me())));
-  const { billing, cancel, clear, deliveries, redeem, redeeming, send, sending } =
-    createDeliveries(runtime);
+  const {
+    billing,
+    cancel,
+    clear,
+    deliveries,
+    dismiss,
+    email,
+    emailed,
+    emailing,
+    finished,
+    redeem,
+    redeeming,
+    send,
+    sending,
+    setPassword,
+    update,
+  } = createDeliveries(runtime);
   const selected = () => {
     const id = searchParams.d;
     return id === undefined ? undefined : deliveries.find((delivery) => delivery.id === id);
@@ -128,11 +170,6 @@ const DeliveriesPage = () => {
     }
     const chosen = chosenFiles(picked);
     if (chosen.length === 0) {
-      return;
-    }
-    const bad = invalidPaths(chosen);
-    if (bad.length > 0) {
-      setProblems(bad.map((path) => `"${path}" isn't a path we can carry safely.`));
       return;
     }
     setProblems([]);
@@ -309,6 +346,22 @@ const DeliveriesPage = () => {
                     >
                       Try again
                     </button>
+                    <Show when={reference()}>
+                      {(ref) => (
+                        <p class={css({ color: "mut", mt: "4", textStyle: "xs" })}>
+                          Ref {ref()}{" "}
+                          <button
+                            class={css({ textDecoration: "underline" })}
+                            onClick={() => {
+                              void copyReference(ref());
+                            }}
+                            type="button"
+                          >
+                            Copy
+                          </button>
+                        </p>
+                      )}
+                    </Show>
                   </div>
                 </main>
               }
@@ -435,6 +488,16 @@ const DeliveriesPage = () => {
                 <Show when={!hasLive()}>
                   <Empty firstRun={deliveries.length === 0} />
                 </Show>
+                <SendDoneList
+                  deliveries={deliveries}
+                  dismiss={dismiss}
+                  email={email}
+                  emailed={emailed}
+                  emailing={emailing()}
+                  finished={finished()}
+                  setPassword={setPassword}
+                  update={update}
+                />
                 <Board
                   cancel={cancel}
                   clear={clear}
@@ -490,6 +553,7 @@ const DeliveriesPage = () => {
             }}
             delivery={selected()}
             online={online()}
+            setPassword={setPassword}
           />
         </Errored>
       </Loading>

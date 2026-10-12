@@ -1,4 +1,4 @@
-import type { Delivery, Transfer } from "@tranzfer/contracts";
+import type { Delivery, DeliveryEmail, Transfer } from "@tranzfer/contracts";
 import * as Match from "effect/Match";
 
 import type { TransferProgress } from "../uploads/store";
@@ -19,6 +19,8 @@ export const bytes = (size: number) => {
 
 export const files = (count: number) => `${count} ${count === 1 ? "file" : "files"}`;
 
+const DAY = 24 * 60 * 60 * 1000;
+
 const sentFormat = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   hour: "2-digit",
@@ -28,6 +30,75 @@ const sentFormat = new Intl.DateTimeFormat("en-GB", {
 
 export const sentAt = (date: Date) => sentFormat.format(date);
 
+const weekdayTime = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  weekday: "long",
+});
+
+/** "Tuesday 14:02" within the last week, "9 Oct, 14:02" before that. */
+const when = (date: Date) =>
+  Date.now() - date.getTime() < 6 * DAY
+    ? weekdayTime.format(date).replace(",", "")
+    : sentFormat.format(date);
+
+/**
+ * What the sender can honestly say about a download. The recipient's browser
+ * reports it, and only a folder save knows a file is whole, so a one-file
+ * download in the browser's own manager stays "started".
+ */
+export const downloadWords = (delivery: Delivery) => {
+  const { download } = delivery;
+  if (download === null) {
+    return "Not downloaded yet";
+  }
+  const total = delivery.transfers.length;
+  if (download.filesSaved === 0) {
+    return `Download started ${when(download.startedAt)}`;
+  }
+  return download.filesSaved >= total
+    ? `Downloaded, ${total} of ${files(total)}`
+    : `${download.filesSaved} of ${files(total)} downloaded, last ${when(download.lastAt)}`;
+};
+
+/** An email this page asked for, with the address it typed. The server keeps none. */
+export interface Emailed extends DeliveryEmail {
+  readonly to: string;
+}
+
+// Cloudflare's code for an address on its list of ones that bounced or complained.
+const bounced = "E_RECIPIENT_SUPPRESSED";
+
+/** What the sender can honestly say. Sent means the mail server took it, not that it reached an inbox. */
+export const emailWords = (row: Emailed) => {
+  if (row.status === "queued") {
+    return "Sending";
+  }
+  if (row.status === "sent") {
+    return "Sent";
+  }
+  if (row.errorCode === bounced) {
+    return "Not sent, this address bounced before";
+  }
+  if (row.errorCode === "held") {
+    return "Not sent, this site only emails approved addresses";
+  }
+  if (row.errorCode === "lost") {
+    return "Not sent, it didn't finish. Try again";
+  }
+  return "Not sent, the mail server refused it";
+};
+
+export const emailSummary = (rows: readonly Emailed[]) => {
+  const sent = rows.filter((row) => row.status === "sent").length;
+  const bounces = rows.filter((row) => row.errorCode === bounced).length;
+  const base = `Sent to ${sent} of ${rows.length}`;
+  if (bounces === 0) {
+    return base;
+  }
+  return `${base}, ${bounces === 1 ? "one address" : `${bounces} addresses`} bounced`;
+};
+
 const untilFormat = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   month: "long",
@@ -36,7 +107,6 @@ const untilFormat = new Intl.DateTimeFormat("en-GB", {
 
 export const untilDate = (date: Date) => untilFormat.format(date);
 
-const DAY = 24 * 60 * 60 * 1000;
 const relative = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto" });
 
 /** "in 3 days", "tomorrow", "in 5 hours": the expiry as a person says it. */
@@ -77,6 +147,7 @@ type TransferStatus =
   | { readonly _tag: "Active"; readonly progress: TransferProgress }
   | { readonly _tag: "Cancelled" }
   | { readonly _tag: "Complete" }
+  | { readonly _tag: "Elsewhere"; readonly progress: TransferProgress }
   | { readonly _tag: "Failed"; readonly progress: TransferProgress }
   | { readonly _tag: "Interrupted" }
   | { readonly _tag: "NeedsFile"; readonly progress: TransferProgress };
@@ -87,6 +158,10 @@ export const transferStatus = (transfer: Transfer, local: TransferProgress | und
     Match.when({ state: "complete" }, () => ({ _tag: "Complete" })),
     Match.when({ state: "cancelled" }, () => ({ _tag: "Cancelled" })),
     Match.when({ progress: { phase: "failed" } }, ({ progress }) => ({ _tag: "Failed", progress })),
+    Match.when({ progress: { phase: "elsewhere" } }, ({ progress }) => ({
+      _tag: "Elsewhere",
+      progress,
+    })),
     Match.when({ progress: { phase: "needsFile" } }, ({ progress }) => ({
       _tag: "NeedsFile",
       progress,
@@ -97,6 +172,7 @@ export const transferStatus = (transfer: Transfer, local: TransferProgress | und
 
 const idle = {
   confirmed: 0,
+  elsewhere: false,
   failed: false,
   inFlight: 0,
   interrupted: false,
@@ -120,6 +196,12 @@ const addTransfer = (roll: Rollup, transfer: Transfer, local: TransferProgress |
     Active: ({ progress }) => withProgress(roll, progress),
     Cancelled: () => roll,
     Complete: () => ({ ...roll, confirmed: roll.confirmed + transfer.size }),
+    // What the other tab sent when this one last looked; it only grows.
+    Elsewhere: ({ progress }) => ({
+      ...roll,
+      confirmed: roll.confirmed + progress.confirmed,
+      elsewhere: true,
+    }),
     Failed: ({ progress }) => ({ ...withProgress(roll, progress), failed: true }),
     Interrupted: () => ({ ...roll, interrupted: true }),
     NeedsFile: ({ progress }) => ({
@@ -143,6 +225,7 @@ export const rollup = (
 /** One state per delivery. It picks the board group, the icon and the words. */
 export type Kind =
   | "cancelled"
+  | "elsewhere"
   | "expired"
   | "failed"
   | "finishing"
@@ -168,6 +251,7 @@ export const kindOf = (status: Delivery["status"], roll: Rollup, online: boolean
     Match.when({ online: false, uploading: true }, () => "paused"),
     Match.when({ speed: (speed) => speed <= 0, uploading: true }, () => "starting"),
     Match.when({ uploading: true }, () => "moving"),
+    Match.when({ elsewhere: true }, () => "elsewhere"),
     Match.orElse(() => "finishing"),
   );
 
@@ -185,6 +269,10 @@ export const groupOf = (kind: Kind) =>
 /** What a person should know, and do next, in each state (RELIABILITY: what the user sees). */
 export const kindWords: Record<Kind, { readonly label: string; readonly detail: string }> = {
   cancelled: { detail: "Cancelled. The link no longer works.", label: "Cancelled" },
+  elsewhere: {
+    detail: "Another tab is uploading these files. This one updates when it finishes.",
+    label: "Sending in another tab",
+  },
   expired: { detail: "Expired. The files are deleted.", label: "Expired" },
   failed: {
     detail: "Something stopped the upload. Retry to keep going.",

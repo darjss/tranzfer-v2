@@ -11,6 +11,7 @@ import { transfers } from "../uploads/store";
 import { Uploads } from "../uploads/uploads";
 import {
   bytes,
+  downloadWords,
   etaAt,
   files,
   fromNow,
@@ -138,7 +139,11 @@ interface RowActions {
 const sameMembers = (a: readonly Delivery[], b: readonly Delivery[]) =>
   a.length === b.length && a.every((delivery, index) => delivery === b[index]);
 
-const sameGroups = (a: Record<Group, Delivery[]>, b: Record<Group, Delivery[]>) =>
+// Solid compares against undefined when the memo's first run threw (the list
+// failed to load) and a retry computes it. That must read as "changed", not
+// crash the retry.
+const sameGroups = (a: Record<Group, Delivery[]> | undefined, b: Record<Group, Delivery[]>) =>
+  a !== undefined &&
   sameMembers(a.ended, b.ended) &&
   sameMembers(a.interrupted, b.interrupted) &&
   sameMembers(a.moving, b.moving) &&
@@ -235,12 +240,15 @@ function Row(
           <Switch>
             <Match when={live.kind() === "ready" ? props.delivery.expiresAt : null}>
               {(expiresAt) => (
-                <span>
-                  expires {fromNow(expiresAt())}
-                  <span class={css({ display: { base: "none", sm: "inline" } })}>
-                    , {shortDate.format(expiresAt())}
+                <>
+                  <span>
+                    expires {fromNow(expiresAt())}
+                    <span class={css({ display: { base: "none", sm: "inline" } })}>
+                      , {shortDate.format(expiresAt())}
+                    </span>
                   </span>
-                </span>
+                  <span>{downloadWords(props.delivery)}</span>
+                </>
               )}
             </Match>
             <Match when={live.kind() === "moving"}>

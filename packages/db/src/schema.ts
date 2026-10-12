@@ -2,6 +2,7 @@ import type {
   DeliveryId,
   PaidPlanId,
   PlanId,
+  RequestId,
   RetentionDays,
   SubscriptionStatus,
   TransferId,
@@ -113,6 +114,35 @@ export const verification = sqliteTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
+// A link a signed-in user hands to someone without an account, who then
+// uploads straight into the owner's space (docs/PRODUCT.md, file requests). The
+// id is the token's payload. Closing sets closedAt; the token then reads as
+// unknown. expiresAt is when it stops accepting uploads.
+export const fileRequest = sqliteTable(
+  "file_request",
+  {
+    id: text("id").$type<RequestId>().primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id),
+    title: text("title").notNull(),
+    // Plain text for the uploader. Empty means none.
+    instructions: text("instructions").default("").notNull(),
+    // How long the request accepts uploads, and how long each upload is kept
+    // once it finishes.
+    retentionDays: integer("retention_days").$type<RetentionDays>().notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    // Total bytes the request may receive across its uploads. Null means only
+    // the owner's space limits it.
+    maxBytes: integer("max_bytes"),
+    closedAt: integer("closed_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [index("file_request_ownerId_createdAt_idx").on(table.ownerId, table.createdAt)],
+);
+
 export const delivery = sqliteTable(
   "delivery",
   {
@@ -122,6 +152,15 @@ export const delivery = sqliteTable(
       .notNull()
       .references(() => user.id),
     title: text("title").notNull(),
+    // What the sender tells the recipient, as plain text. Empty means no note.
+    note: text("note").default("").notNull(),
+    // Set when someone without an account sent this through a file request.
+    // senderId is then the request's owner, who holds the space it uses.
+    requestId: text("request_id")
+      .$type<RequestId>()
+      .references(() => fileRequest.id),
+    uploaderName: text("uploader_name"),
+    uploaderEmail: text("uploader_email"),
     status: text("status", { enum: ["open", "ready", "cancelled"] })
       .default("open")
       .notNull(),
@@ -140,7 +179,10 @@ export const delivery = sqliteTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => [index("delivery_senderId_createdAt_idx").on(table.senderId, table.createdAt)],
+  (table) => [
+    index("delivery_senderId_createdAt_idx").on(table.senderId, table.createdAt),
+    index("delivery_requestId_idx").on(table.requestId),
+  ],
 );
 
 export const transfer = sqliteTable(
@@ -184,11 +226,36 @@ export const link = sqliteTable(
       .notNull()
       .references(() => delivery.id),
     revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+    // The recipient's password, as `pbkdf2-sha256$<iterations>$<salt>$<hash>`
+    // (apps/api/src/passwords.ts). Null means anyone with the link gets in.
+    passwordHash: text("password_hash"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
   },
   (table) => [index("link_deliveryId_idx").on(table.deliveryId)],
+);
+
+// What a recipient's browser reported about one file of a delivery. Bytes go
+// from R2 to the recipient, so the server only hears these reports. One row per
+// file, upserted, so a retried or resumed download converges on the same row.
+export const download = sqliteTable(
+  "download",
+  {
+    transferId: text("transfer_id")
+      .$type<TransferId>()
+      .primaryKey()
+      .references(() => transfer.id),
+    deliveryId: text("delivery_id")
+      .$type<DeliveryId>()
+      .notNull()
+      .references(() => delivery.id),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+    lastAt: integer("last_at", { mode: "timestamp_ms" }).notNull(),
+    // Set once the folder save has the whole file on disk.
+    savedAt: integer("saved_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [index("download_deliveryId_idx").on(table.deliveryId)],
 );
 
 // No row means the Free plan. Webhooks rebuild a row from Polar's customer
@@ -270,5 +337,32 @@ export const planInterest = sqliteTable(
   (table) => [
     uniqueIndex("plan_interest_email_plan_unique").on(table.email, table.plan),
     index("plan_interest_notifyQueuedAt_idx").on(table.notifyQueuedAt),
+  ],
+);
+
+// One row per email a sender asked Tranzfer to send about a delivery. The
+// recipient's address is not stored: the send runs in the request's
+// waitUntil with the address in memory, and the sender's page already knows
+// what it typed. A row left queued means the isolate died mid-send; the
+// sweeper marks it failed.
+export const deliveryEmail = sqliteTable(
+  "delivery_email",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    deliveryId: text("delivery_id")
+      .$type<DeliveryId>()
+      .notNull()
+      .references(() => delivery.id),
+    status: text("status", { enum: ["queued", "sent", "failed"] })
+      .default("queued")
+      .notNull(),
+    // Cloudflare's error code, or `held` / `lost`. Never the address.
+    errorCode: text("error_code"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    sentAt: integer("sent_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("delivery_email_deliveryId_idx").on(table.deliveryId),
+    index("delivery_email_createdAt_idx").on(table.createdAt),
   ],
 );

@@ -16,7 +16,12 @@ import { bytes, untilDate } from "./format";
 import { Avatar } from "./parts";
 
 const signOut = async () => {
-  await authClient.signOut();
+  const { error } = await authClient.signOut();
+  if (error) {
+    const { toaster } = await import("../ui/Toasts");
+    toaster.warning({ title: "We couldn't sign you out. Try again." });
+    return;
+  }
   window.location.assign("/");
 };
 

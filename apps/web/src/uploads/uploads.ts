@@ -2,10 +2,18 @@ import type { AwsS3Options } from "@uppy/aws-s3";
 import AwsS3 from "@uppy/aws-s3";
 import { Uppy } from "@uppy/core";
 import type { Body, Meta } from "@uppy/core/utils";
-import { DeliveryId, partSize, RelativePath, TransferId } from "@tranzfer/contracts";
+import {
+  checkFiles,
+  DeliveryId,
+  isSinglePut,
+  maxTitleLength,
+  partSize,
+  TransferId,
+} from "@tranzfer/contracts";
 import type {
   Delivery,
   DeliveryConflict,
+  DeliveryRefused,
   OverPlanLimit,
   RateLimited,
   RetentionDays,
@@ -13,6 +21,7 @@ import type {
   Transfer,
   UploadRequest,
 } from "@tranzfer/contracts";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -22,9 +31,8 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
-import { md5 } from "hash-wasm";
-
 import { ApiClient } from "../api/client";
+import { MAX_TRANSPORT_RETRIES, RETRY_CAP, retryTransport, untilOnline } from "../api/retry";
 import {
   fingerprint,
   forget,
@@ -36,6 +44,8 @@ import {
 import type { RecoveryRecord } from "./recovery";
 import { makeUploadSpans } from "./spans";
 import { patchTransfer, transfers, wireWindow } from "./store";
+import { claim, letGo, sendingElsewhere } from "./tabs";
+import type { ListedPart, VerifyReply, VerifyRequest } from "./verify";
 
 type SignRequest = Extract<
   AwsS3Options<TransferMeta, Body>,
@@ -57,9 +67,10 @@ interface TransferMeta extends Meta {
 // start), so it never feeds speed or time left.
 const SPEED_WINDOW_MS = 30_000;
 // R2's S3 endpoint is HTTP/1.1, so Chromium opens at most 6 connections to
-// it; one part stream tops out near 20 MB/s. Four parts at once is rclone's
-// default and leaves room for a second file.
-const PART_CONCURRENCY = 4;
+// it, and each part stream tops out near 18 MiB/s. Six parts fill those
+// connections: 92 MiB/s against 62 at four (bench/upload, 10 GiB on staging).
+// A second big file's parts wait a few seconds for a free connection.
+const PART_CONCURRENCY = 6;
 
 /** Bytes of the given parts; only the last part is short. */
 const partBytes = (parts: ReadonlySet<number>, size: number) => {
@@ -97,8 +108,12 @@ export const chosenFiles = (files: Iterable<File>) => {
   return chosen;
 };
 
-export const invalidPaths = (files: readonly ChosenFile[]) =>
-  files.filter(({ path }) => !Schema.is(RelativePath)(path)).map(({ path }) => path);
+// A name can be longer than a title may be, so the title is cut to fit. A cut
+// through a surrogate pair would leave half a character, so the half goes too.
+const fitTitle = (title: string) =>
+  title.length <= maxTitleLength
+    ? title
+    : `${title.slice(0, maxTitleLength - 1).replace(/[\uD800-\uDBFF]$/u, "")}…`;
 
 export const deliveryTitle = (files: readonly ChosenFile[]) => {
   const [first] = files;
@@ -107,12 +122,12 @@ export const deliveryTitle = (files: readonly ChosenFile[]) => {
   }
   const [top] = first.path.split("/");
   if (files.length > 1 && files.every(({ path }) => path.startsWith(`${top}/`))) {
-    return top;
+    return fitTitle(top ?? "Delivery");
   }
   if (files.length === 1) {
-    return first.file.name;
+    return fitTitle(first.file.name);
   }
-  return `${first.file.name} and ${files.length - 1} more`;
+  return fitTitle(`${first.file.name} and ${files.length - 1} more`);
 };
 
 // Aborts are never signed: cancel is a server-side operation, and signing
@@ -156,42 +171,6 @@ export const retryWhileNotUploaded = <A, E extends { readonly _tag: string }, R>
     }),
   );
 
-// The 40-try cap counts failures, not elapsed time, so a sleep/wake clock
-// jump cannot end it early; each backoff delay is capped at 30 seconds.
-const RETRY_CAP = Duration.seconds(30);
-const MAX_TRANSPORT_RETRIES = 40;
-
-// Losing the network is a pause, not an error (law 7). Offline time waits on
-// the `online` event and burns no attempts.
-export const untilOnline: Effect.Effect<void> = Effect.suspend(() =>
-  navigator.onLine
-    ? Effect.void
-    : Effect.callback((resume) => {
-        const done = () => {
-          resume(Effect.void);
-        };
-        window.addEventListener("online", done, { once: true });
-        return Effect.sync(() => {
-          window.removeEventListener("online", done);
-        });
-      }),
-);
-
-// Transport failures retry; typed refusals (UploadClosed, InvalidUpload,
-// Unauthorized) are the server's answer and stand.
-export const retryTransport = <A, E extends { readonly _tag: string }, R>(
-  effect: Effect.Effect<A, E, R>,
-) =>
-  untilOnline.pipe(Effect.andThen(effect)).pipe(
-    Effect.retry({
-      schedule: Schedule.exponential("1 second").pipe(
-        Schedule.modifyDelay(({ duration }) => Effect.succeed(Duration.min(duration, RETRY_CAP))),
-      ),
-      times: MAX_TRANSPORT_RETRIES,
-      while: (error) => error._tag === "RpcClientError",
-    }),
-  );
-
 // Uppy's S3 errors aren't exported, and their names don't survive
 // minification (S3Error sets name from new.target), so match on fields:
 // S3NetworkError carries code "NETWORK", S3ServiceError a numeric status.
@@ -216,40 +195,46 @@ export const isTransientUploadError = (error: Error) => {
   );
 };
 
+// A single PUT is signed with If-None-Match: *, so 412 means the object is
+// already there: an earlier PUT landed and its response was lost, or the tab
+// died after it. That reconciles through FinalizeTransfer like a lost Complete.
+export const putAlreadyLanded = (error: Error) => Schema.is(s3Error)(error) && error.status === 412;
+
 const basename = (path: string) => path.split("/").pop() ?? path;
 
-/** One part R2 lists for an open upload. Its ETag is the part's MD5 hex. */
-export interface ListedPart {
-  readonly etag: string;
-  readonly partNumber: number;
-  readonly size: number;
-}
-
-/**
- * The fingerprint samples 16 spots, so an edit between samples could pass it.
- * Parts R2 already holds must hash to their ETags against the picked file, or
- * the resumed upload would seal an object mixing old and new bytes. Reads one
- * part at a time, so a partSize-worth of memory is the peak.
- */
-export const verifyParts = (file: Blob, parts: readonly ListedPart[], partSizeBytes: number) => {
-  // Sequential on purpose: parallel reads would hold every part in memory.
-  const check = async (index: number): Promise<boolean> => {
-    const part = parts[index];
-    if (part === undefined) {
-      return true;
-    }
-    const start = (part.partNumber - 1) * partSizeBytes;
-    const expected = Math.min(partSizeBytes, file.size - start);
-    if (part.partNumber < 1 || expected <= 0 || part.size !== expected) {
-      return false;
-    }
-    const digest = await md5(
-      new Uint8Array(await file.slice(start, start + partSizeBytes).arrayBuffer()),
-    );
-    return digest === part.etag && (await check(index + 1));
-  };
-  return Effect.tryPromise(async () => await check(0));
-};
+// The pick waits on this hashing, and it can run for minutes, so it lives in a
+// worker: on the page thread each 64 MiB part was a ~120 ms long task. Worker
+// events are the adapter edge; a read or hash failure becomes UnknownError and
+// the caller reports the file as unreadable.
+export const verifyInWorker = (
+  file: Blob,
+  parts: readonly ListedPart[],
+  partSizeBytes: number,
+  onChecked: (bytes: number) => void,
+) =>
+  Effect.callback<boolean, Cause.UnknownError>((resume) => {
+    const worker = new Worker(new URL("hash.worker.ts", import.meta.url), { type: "module" });
+    worker.addEventListener("message", ({ data }: MessageEvent<VerifyReply>) => {
+      if ("checked" in data) {
+        onChecked(data.checked);
+      } else if ("ok" in data) {
+        resume(Effect.succeed(data.ok));
+      } else {
+        resume(Effect.fail(new Cause.UnknownError(undefined, "hash worker failed")));
+      }
+    });
+    worker.addEventListener("error", (event) => {
+      resume(Effect.fail(new Cause.UnknownError(event, "hash worker crashed")));
+    });
+    // The options form: a worker takes a transfer list, not a target origin.
+    worker.postMessage({ file, partSize: partSizeBytes, parts } satisfies VerifyRequest, {
+      transfer: [],
+    });
+    // Interrupting the pick terminates the worker mid-hash.
+    return Effect.sync(() => {
+      worker.terminate();
+    });
+  });
 
 const make = Effect.gen(function* makeUploads() {
   const api = yield* ApiClient;
@@ -398,6 +383,7 @@ const make = Effect.gen(function* makeUploads() {
       doneParts.delete(transferId);
       uppy.removeFile(fileId);
       yield* forget([transferId]);
+      letGo(transferId);
     });
 
   // Once the bytes are in R2, finishing is the FinalizeTransfer retry loop.
@@ -437,9 +423,11 @@ const make = Effect.gen(function* makeUploads() {
         generateObjectKey: (file) => file.meta.objectKey,
         getChunkSize: ({ size }) => partSize(size),
         partConcurrency: PART_CONCURRENCY,
-        // Every file is multipart so finalize can seal its key (see
-        // RELIABILITY.md). Uppy still sends an empty file as a single PUT.
-        shouldUseMultipart: () => true,
+        // A file bigger than one part is multipart so finalize can seal its
+        // key (see RELIABILITY.md). A smaller one is a single guarded PUT:
+        // one sign and one request instead of three of each. A resumed file
+        // that already has an upload id stays multipart, whatever its size.
+        shouldUseMultipart: (file) => !isSinglePut(file.size ?? 0),
         // A part is signed once per 64 MiB or more, so a span (and a propagated
         // trace) per part would bury the file's own. The API still traces them.
         signRequest: async (request) =>
@@ -507,9 +495,10 @@ const make = Effect.gen(function* makeUploads() {
         const { transferId } = file.meta;
         // A retry measures speed afresh from its own first bytes.
         acks.delete(transferId);
-        // Complete was already signed, so the object may exist; reconcile
-        // through FinalizeTransfer instead of starting transport again.
-        if (completeSigned.has(transferId)) {
+        // Complete was already signed, or the guarded PUT found its object, so
+        // the object may exist; reconcile through FinalizeTransfer instead of
+        // starting transport again.
+        if (completeSigned.has(transferId) || putAlreadyLanded(error)) {
           patchTransfer(transferId, { bytesPerSecond: 0, inFlight: 0, phase: "finalizing" });
           runFork(finish(uppy, file.id, transferId));
           return;
@@ -582,6 +571,8 @@ const make = Effect.gen(function* makeUploads() {
     files: readonly ChosenFile[],
     retentionDays: RetentionDays,
   ) {
+    // Nothing is created for files the API would refuse.
+    yield* checkFiles(files);
     const uppy = yield* engine;
     // Fingerprints and ids are fixed before anything is sent, so a retried
     // CreateDelivery replays the same delivery instead of making a second.
@@ -625,13 +616,22 @@ const make = Effect.gen(function* makeUploads() {
         version: 1,
       })),
     );
-    const refused = (error: DeliveryConflict | OverPlanLimit | RateLimited | RetentionNotInPlan) =>
-      Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error));
-    yield* spans.beginDelivery(deliveryId, {
+    const refused = (
+      error: DeliveryConflict | DeliveryRefused | OverPlanLimit | RateLimited | RetentionNotInPlan,
+    ) => Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error));
+    const attributes = {
       "delivery.file_count": files.length,
       "delivery.retention_days": retentionDays,
       "delivery.total_bytes": files.reduce((total, { file }) => total + file.size, 0),
-    });
+    };
+    yield* spans.beginDelivery(deliveryId, attributes);
+    // Uploads.delivery and Uploads.file export only when they end, so a tab
+    // closed mid-upload takes them along. This one ends at once and stays.
+    yield* Effect.void.pipe(
+      Effect.withSpan("Uploads.start", {
+        attributes: { ...attributes, "delivery.id": deliveryId },
+      }),
+    );
     const delivery = yield* api.CreateDelivery(payload).pipe(
       spans.underDelivery(deliveryId),
       Effect.retry({
@@ -644,6 +644,7 @@ const make = Effect.gen(function* makeUploads() {
       // attempt exists to resume; its records go.
       Effect.catchTags({
         DeliveryConflict: refused,
+        DeliveryRefused: refused,
         OverPlanLimit: refused,
         RateLimited: refused,
         RetentionNotInPlan: refused,
@@ -663,6 +664,7 @@ const make = Effect.gen(function* makeUploads() {
           continue;
         }
         patchTransfer(transfer.id, { phase: "queued" });
+        claim(transfer.id);
         keys.set(transfer.objectKey, transfer.id);
         const fileId = uppy.addFile({
           data: file,
@@ -688,6 +690,7 @@ const make = Effect.gen(function* makeUploads() {
             completeSigned.delete(transfer.id);
             autoRetries.delete(transfer.id);
             patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
+            letGo(transfer.id);
           }
           yield* forget(delivery.transfers.map((transfer) => transfer.id));
           yield* spans.abandon(delivery.id, "files could not be queued");
@@ -713,6 +716,7 @@ const make = Effect.gen(function* makeUploads() {
     if (file === undefined) {
       return;
     }
+    autoRetries.delete(transferId);
     yield* spans.beginFile(file.meta.deliveryId, { id: transferId, size: file.size ?? 0 }, true);
     if (transfers[transferId]?.uploaded) {
       // Uppy finished, so the object exists and only FinalizeTransfer failed;
@@ -769,6 +773,7 @@ const make = Effect.gen(function* makeUploads() {
       completeSigned.delete(transfer.id);
       autoRetries.delete(transfer.id);
       patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
+      letGo(transfer.id);
       yield* spans.endFile(transfer.id, "cancelled");
     }
     yield* forget(cancelled.transfers.map((transfer) => transfer.id));
@@ -784,10 +789,12 @@ const make = Effect.gen(function* makeUploads() {
    * the server still sees as uploading becomes needsFile: the bytes are
    * there, but the resume needs the file picked again. Finalizing gets one
    * finalize attempt; any failure also lands on needsFile, since only a
-   * reselected file can push the missing parts.
+   * reselected file can push the missing parts. One that another live tab
+   * holds the lock for becomes elsewhere and is left to that tab.
    */
   const restore = Effect.fn("Uploads.restore")(function* restore(deliveries: readonly Delivery[]) {
     const records = yield* readAll();
+    const elsewhere = yield* sendingElsewhere();
     const byTransfer = new Map(
       deliveries.flatMap((delivery) =>
         delivery.transfers.map((transfer) => [transfer.id, transfer] as const),
@@ -803,11 +810,15 @@ const make = Effect.gen(function* makeUploads() {
         continue;
       }
       // A transfer already in the store belongs to this tab; leave it alone.
-      if (transfers[transfer.id] !== undefined) {
+      // One marked elsewhere is only waiting for the other tab to let go.
+      const local = transfers[transfer.id];
+      if (local !== undefined && local.phase !== "elsewhere") {
         continue;
       }
       if (transfer.state === "complete" || transfer.state === "cancelled") {
         forgotten.push(transfer.id);
+      } else if (elsewhere.has(transfer.id)) {
+        patchTransfer(transfer.id, { confirmed: record.confirmed, phase: "elsewhere" });
       } else if (transfer.state === "finalizing") {
         patchTransfer(transfer.id, { confirmed: record.confirmed, phase: "finalizing" });
         runFork(
@@ -843,6 +854,8 @@ const make = Effect.gen(function* makeUploads() {
   const resume = Effect.fn("Uploads.resume")(function* resume(
     delivery: Delivery,
     files: readonly File[],
+    // Bytes of stored parts hashed so far, out of those listed so far.
+    onChecking?: (progress: { readonly checked: number; readonly total: number }) => void,
   ) {
     const uppy = yield* engine;
     const records = yield* readAll();
@@ -851,6 +864,10 @@ const make = Effect.gen(function* makeUploads() {
       (transfer) => transfers[transfer.id]?.phase === "needsFile" && recordOf.has(transfer.id),
     );
     const claimed = new Set<TransferId>();
+    // Totals across every file of this pick: listed grows as each file's parts
+    // are listed, spent is what finished files already hashed.
+    let listedBytes = 0;
+    let spentBytes = 0;
     const problems: {
       name: string;
       problem: "changed" | "gone" | "policy" | "unreadable" | "unknown";
@@ -905,13 +922,21 @@ const make = Effect.gen(function* makeUploads() {
         if (problem === undefined && record.uploadId !== undefined) {
           const remote = yield* listRemoteParts(candidate.objectKey, record.uploadId);
           listed = remote === "gone" ? [] : remote;
+          const heldBytes = listed.reduce((total, part) => total + part.size, 0);
+          const before = spentBytes;
+          const total = listedBytes + heldBytes;
+          onChecking?.({ checked: before, total });
           problem =
             remote === "gone"
               ? "gone"
-              : yield* verifyParts(file, remote, record.partSize).pipe(
+              : yield* verifyInWorker(file, remote, record.partSize, (checked) => {
+                  onChecking?.({ checked: before + checked, total });
+                }).pipe(
                   Effect.map((ok) => (ok ? undefined : ("changed" as const))),
                   Effect.catch(() => Effect.succeed("unreadable" as const)),
                 );
+          listedBytes = total;
+          spentBytes = before + heldBytes;
         }
         if (problem === undefined) {
           matched = {
@@ -958,6 +983,7 @@ const make = Effect.gen(function* makeUploads() {
         error: undefined,
         phase: "queued",
       });
+      claim(transfer.id);
       yield* spans.beginFile(delivery.id, transfer, true);
       yield* spans.note(transfer.id, "resume.verified", {
         bytes: partBytes(done, transfer.size),

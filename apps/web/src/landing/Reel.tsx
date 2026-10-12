@@ -141,7 +141,7 @@ export default function Reel() {
                 class={css({ color: "mut", display: "flex", gap: "3" })}
                 style={`--k: reel-l${i() + 1}`}
               >
-                <span class={css({ color: "ink/40" })}>{time}</span>
+                <span class={css({ color: "mut" })}>{time}</span>
                 {line}
               </li>
             )}

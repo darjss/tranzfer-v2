@@ -5,7 +5,13 @@ import type { OxlintConfig } from "oxlint";
 import antiSlop from "ultracite/oxlint/anti-slop";
 import core from "ultracite/oxlint/core";
 
-const generatedIgnores = ["**/file-routes.d.ts", "docs/design/**", "**/styled-system/**"];
+// bench/ holds untyped Node scripts that drive staging by hand; they aren't app code.
+const generatedIgnores = [
+  "**/file-routes.d.ts",
+  "docs/design/**",
+  "**/styled-system/**",
+  "bench/**",
+];
 
 const effectErrorRules = {
   "effecttsgo/floating-effect": "error",

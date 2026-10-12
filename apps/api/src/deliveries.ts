@@ -1,4 +1,5 @@
 import {
+  checkFiles,
   Delivery,
   DeliveryConflict,
   DeliveryNotFound,
@@ -6,11 +7,22 @@ import {
   plans,
   RateLimited,
   rateLimits,
+  RequestFull,
+  RequestNotFound,
   RetentionNotInPlan,
 } from "@tranzfer/contracts";
-import type { DeliveryId, NewDelivery, PlanId, RetentionDays } from "@tranzfer/contracts";
-import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import type {
+  DeliveryDownload,
+  DeliveryId,
+  NewDelivery,
+  NewRequestUpload,
+  PlanId,
+  RequestId,
+  RetentionDays,
+  DeliveryRefused,
+} from "@tranzfer/contracts";
+import { Database, databaseFault, dieOnDatabaseError, schema } from "@tranzfer/db";
+import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -18,8 +30,10 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
+import * as Option from "effect/Option";
 
 import { LinkTokens, newLinkId } from "./link-tokens";
+import { hashPassword } from "./passwords";
 import { Plans } from "./plans";
 import { Storage, UPLOAD_URL_TTL } from "./storage";
 
@@ -65,15 +79,41 @@ const createdSince = (senderId: string, since: number) =>
 export const isExpired = (expiresAt: Date | null, now: number) =>
   expiresAt !== null && expiresAt.getTime() <= now;
 
+/** Where a delivery came from: nowhere special, or an uploader through a file request. */
+interface Origin {
+  readonly requestId: RequestId | null;
+  readonly uploaderEmail: string | null;
+  readonly uploaderName: string | null;
+}
+const direct: Origin = { requestId: null, uploaderEmail: null, uploaderName: null };
+
+/**
+ * An upload through a file request. `explain` runs when the delivery's
+ * statement inserted nothing and the owner's own limits do not explain it. It
+ * fails with why the request refused, or succeeds when nothing it can name did.
+ */
+interface Intake<E> {
+  readonly origin: {
+    readonly requestId: RequestId;
+    readonly uploaderEmail: string | null;
+    readonly uploaderName: string;
+  };
+  readonly explain: (requestedBytes: number) => Effect.Effect<void, E>;
+}
+
 // A retried create replays only when every field matches.
 const sameDelivery = (
   senderId: string,
   input: NewDelivery,
+  origin: Origin,
   row: typeof schema.delivery.$inferSelect & {
     readonly transfers: readonly (typeof schema.transfer.$inferSelect)[];
   },
 ) =>
   row.senderId === senderId &&
+  row.requestId === origin.requestId &&
+  row.uploaderName === origin.uploaderName &&
+  row.uploaderEmail === origin.uploaderEmail &&
   row.retentionDays === input.retentionDays &&
   row.title === input.title &&
   row.transfers.length === input.files.length &&
@@ -97,7 +137,7 @@ export class Deliveries extends Context.Service<
       input: NewDelivery,
     ) => Effect.Effect<
       Delivery,
-      DeliveryConflict | OverPlanLimit | RateLimited | RetentionNotInPlan
+      DeliveryConflict | DeliveryRefused | OverPlanLimit | RateLimited | RetentionNotInPlan
     >;
     /** Bytes of the sender's deliveries that are open, or ready and not yet expired. */
     readonly activeBytes: (senderId: string) => Effect.Effect<number>;
@@ -107,8 +147,44 @@ export class Deliveries extends Context.Service<
       senderId: string,
       deliveryId: DeliveryId,
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
+    /** The sender's own delivery as the dashboard shows it, whatever its status. */
+    readonly owned: (
+      senderId: string,
+      deliveryId: DeliveryId,
+    ) => Effect.Effect<Delivery, DeliveryNotFound>;
     /** Takes the sender's ended deliveries among these off their list; live ones stay. */
     readonly clear: (senderId: string, deliveryIds: readonly DeliveryId[]) => Effect.Effect<void>;
+    /** Replaces the title and note of the sender's own delivery, whatever its status. */
+    readonly update: (
+      senderId: string,
+      deliveryId: DeliveryId,
+      details: { readonly note: string; readonly title: string },
+    ) => Effect.Effect<Delivery, DeliveryNotFound>;
+    /**
+     * Creates the delivery for an upload through a file request. It belongs to
+     * the request's owner and counts against their plan, and the request's own
+     * limits are part of the statement that inserts it. The caller has checked
+     * the request is live; `RequestNotFound` here is a close or expiry that
+     * landed in between.
+     */
+    readonly receive: (
+      request: typeof schema.fileRequest.$inferSelect,
+      input: NewRequestUpload,
+    ) => Effect.Effect<
+      Delivery,
+      DeliveryConflict | DeliveryRefused | RateLimited | RequestFull | RequestNotFound
+    >;
+    /** The deliveries among these ids that came in through the request. */
+    readonly ofRequest: (
+      requestId: RequestId,
+      deliveryIds: readonly DeliveryId[],
+    ) => Effect.Effect<readonly Delivery[]>;
+    /** Sets, replaces or (with null) removes the password on the sender's own delivery's link. */
+    readonly setPassword: (
+      senderId: string,
+      deliveryId: DeliveryId,
+      password: string | null,
+    ) => Effect.Effect<Delivery, DeliveryNotFound>;
     readonly view: (deliveryId: DeliveryId) => Effect.Effect<Delivery>;
     /** Removes the objects of cancelled and expired deliveries. Returns how many it purged. */
     readonly purgeEnded: Effect.Effect<number>;
@@ -129,7 +205,36 @@ export class Deliveries extends Context.Service<
         });
       type Row = NonNullable<Effect.Success<ReturnType<typeof load>>>;
 
-      const toView = Effect.fn("Deliveries.toView")(function* toView(row: Row) {
+      // What recipients reported, per delivery; one with no reports has no entry.
+      const downloadsOf = Effect.fn("Deliveries.downloads")(function* downloadsOf(
+        ids: readonly DeliveryId[],
+      ) {
+        const rows = yield* db
+          .select({
+            deliveryId: schema.download.deliveryId,
+            filesSaved: sql<number>`count(${schema.download.savedAt})`,
+            lastAt: sql<number>`max(${schema.download.lastAt})`,
+            startedAt: sql<number>`min(${schema.download.startedAt})`,
+          })
+          .from(schema.download)
+          .where(inArray(schema.download.deliveryId, ids))
+          .groupBy(schema.download.deliveryId);
+        return new Map(
+          rows.map((row) => [
+            row.deliveryId,
+            {
+              filesSaved: row.filesSaved,
+              lastAt: new Date(row.lastAt),
+              startedAt: new Date(row.startedAt),
+            } satisfies DeliveryDownload,
+          ]),
+        );
+      });
+
+      const toView = Effect.fn("Deliveries.toView")(function* toView(
+        row: Row,
+        download: DeliveryDownload | null,
+      ) {
         if (row.link === null) {
           // The link is inserted in the delivery's own batch.
           return yield* Effect.die(new Error(`Delivery ${row.id} has no link`));
@@ -137,9 +242,12 @@ export class Deliveries extends Context.Service<
         const now = yield* Clock.currentTimeMillis;
         return Delivery.make({
           createdAt: row.createdAt,
+          download,
           expiresAt: row.expiresAt,
+          hasPassword: row.link.passwordHash !== null,
           id: row.id,
           link: `/d/${yield* tokens.issue(row.link.id)}`,
+          note: row.note,
           retentionDays: row.retentionDays,
           status: row.status === "ready" && isExpired(row.expiresAt, now) ? "expired" : row.status,
           title: row.title,
@@ -150,6 +258,8 @@ export class Deliveries extends Context.Service<
             size: transfer.size,
             state: transfer.state,
           })),
+          uploader:
+            row.uploaderName === null ? null : { email: row.uploaderEmail, name: row.uploaderName },
         });
       });
 
@@ -172,13 +282,18 @@ export class Deliveries extends Context.Service<
           ),
         );
 
+      const viewRow = Effect.fn("Deliveries.viewRow")(function* viewRow(row: Row) {
+        const downloads = yield* downloadsOf([row.id]);
+        return yield* toView(row, downloads.get(row.id) ?? null);
+      });
+
       const view = Effect.fn("Deliveries.view")(function* view(deliveryId: DeliveryId) {
         yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
         const row = yield* load(deliveryId);
         if (row === undefined) {
           return yield* Effect.die(new Error(`Delivery ${deliveryId} vanished`));
         }
-        return yield* toView(row);
+        return yield* viewRow(row);
       }, dieOnDatabaseError);
 
       const activeBytesAt = (senderId: string, now: number) =>
@@ -266,90 +381,57 @@ export class Deliveries extends Context.Service<
             : []),
         );
 
-      return Deliveries.of({
-        activeBytes,
-        cancel: Effect.fn("Deliveries.cancel")(function* cancel(
-          senderId: string,
-          deliveryId: DeliveryId,
-        ) {
-          const row = yield* load(deliveryId);
-          if (row === undefined || row.senderId !== senderId) {
-            return yield* new DeliveryNotFound();
-          }
-          yield* Effect.annotateCurrentSpan({
-            "delivery.file_count": row.transfers.length,
-            "delivery.id": deliveryId,
-            "delivery.status": row.status,
-          });
-          yield* batch([
-            db
-              .update(schema.delivery)
-              .set({ status: "cancelled" })
-              .where(eq(schema.delivery.id, deliveryId)),
-            db
-              .update(schema.transfer)
-              .set({ state: "cancelled" })
-              .where(eq(schema.transfer.deliveryId, deliveryId)),
-          ]);
-          yield* removeObjects(
-            deliveryId,
+      // A retried create finds its delivery again: the same one back, or a
+      // conflict when the id belongs to different content.
+      const replay = Effect.fn("Deliveries.replay")(function* replay(
+        senderId: string,
+        input: NewDelivery,
+        origin: Origin,
+      ) {
+        const existing = yield* load(input.id);
+        if (existing === undefined) {
+          return Option.none();
+        }
+        yield* Effect.annotateCurrentSpan("delivery.replayed", true);
+        return sameDelivery(senderId, input, origin, existing)
+          ? Option.some(yield* viewRow(existing))
+          : yield* new DeliveryConflict();
+      });
 
-            row.transfers.map((transfer) => transfer.objectKey),
+      // Bytes in a request's uploads that were not cancelled, as SQL.
+      const requestBytes = (requestId: RequestId) =>
+        db
+          .select({ total: sql<number>`coalesce(sum(${schema.transfer.size}), 0)` })
+          .from(schema.transfer)
+          .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
+          .where(
+            and(eq(schema.delivery.requestId, requestId), ne(schema.delivery.status, "cancelled")),
           );
-          return yield* view(deliveryId);
-        }, dieOnDatabaseError),
 
-        clear: Effect.fn("Deliveries.clear")(function* clear(
-          senderId: string,
-          deliveryIds: readonly DeliveryId[],
-        ) {
-          yield* Effect.annotateCurrentSpan("delivery.count", deliveryIds.length);
-          if (deliveryIds.length === 0) {
-            return;
-          }
-          const now = new Date(yield* Clock.currentTimeMillis);
-          yield* db
-            .update(schema.delivery)
-            .set({ clearedAt: now })
-            .where(
-              and(
-                eq(schema.delivery.senderId, senderId),
-                inArray(schema.delivery.id, deliveryIds),
-                isNull(schema.delivery.clearedAt),
-                or(
-                  eq(schema.delivery.status, "cancelled"),
-                  and(eq(schema.delivery.status, "ready"), lte(schema.delivery.expiresAt, now)),
-                ),
-              ),
-            );
-        }, dieOnDatabaseError),
+      // The request is open, unexpired and has room for these bytes. Part of
+      // the statement that inserts the delivery, so racing uploads and a close
+      // can't slip past it.
+      const requestAccepts = (requestId: RequestId, requestedBytes: number, now: number) =>
+        sql`exists (select 1 from ${schema.fileRequest} where ${and(
+          eq(schema.fileRequest.id, requestId),
+          isNull(schema.fileRequest.closedAt),
+          gt(schema.fileRequest.expiresAt, new Date(now)),
+          or(
+            isNull(schema.fileRequest.maxBytes),
+            sql`(${requestBytes(requestId)}) + ${requestedBytes} <= ${schema.fileRequest.maxBytes}`,
+          ),
+        )})`;
 
-        create: Effect.fn("Deliveries.create")(function* create(
-          senderId: string,
-          input: NewDelivery,
-        ) {
-          yield* Effect.annotateCurrentSpan({
-            "delivery.file_count": input.files.length,
-            "delivery.id": input.id,
-            "delivery.retention_days": input.retentionDays,
-            "delivery.total_bytes": input.files.reduce((total, file) => total + file.size, 0),
-          });
-          const existing = yield* load(input.id);
-          if (existing !== undefined) {
-            yield* Effect.annotateCurrentSpan("delivery.replayed", true);
-            return sameDelivery(senderId, input, existing)
-              ? yield* toView(existing)
-              : yield* new DeliveryConflict();
-          }
-
-          const { plan } = yield* userPlans.current(senderId);
-          if (input.retentionDays > plans[plan].maxRetentionDays) {
-            return yield* new RetentionNotInPlan({
-              maxRetentionDays: plans[plan].maxRetentionDays,
-              plan,
-              requestedDays: input.retentionDays,
-            });
-          }
+      // Everything create and receive share once the owner, title and
+      // retention are settled: admit, insert atomically, and name a refusal.
+      const place = <E = never>(
+        senderId: string,
+        plan: PlanId,
+        input: NewDelivery,
+        intake?: Intake<E>,
+      ) =>
+        Effect.gen(function* insertDelivery() {
+          const origin = intake?.origin ?? direct;
           const now = yield* Clock.currentTimeMillis;
           const requestedBytes = input.files.reduce((total, file) => total + file.size, 0);
           yield* admit(senderId, plan, requestedBytes, now);
@@ -365,15 +447,21 @@ export class Deliveries extends Context.Service<
                 qb
                   .select({
                     id: sql<DeliveryId>`${input.id}`.as("id"),
+                    requestId: sql<RequestId | null>`${origin.requestId}`.as("request_id"),
                     retentionDays: sql<RetentionDays>`${input.retentionDays}`.as("retention_days"),
                     senderId: schema.user.id,
                     title: sql<string>`${input.title}`.as("title"),
+                    uploaderEmail: sql<string | null>`${origin.uploaderEmail}`.as("uploader_email"),
+                    uploaderName: sql<string | null>`${origin.uploaderName}`.as("uploader_name"),
                   })
                   .from(schema.user)
                   .where(
                     and(
                       eq(schema.user.id, senderId),
                       withinLimits(senderId, plan, requestedBytes, now),
+                      origin.requestId === null
+                        ? undefined
+                        : requestAccepts(origin.requestId, requestedBytes, now),
                     ),
                   ),
               ),
@@ -413,22 +501,107 @@ export class Deliveries extends Context.Service<
             .limit(1);
           return yield* Match.value({ landed, taken: taken.length > 0 }).pipe(
             Match.when(
-              { landed: (row) => row !== undefined && sameDelivery(senderId, input, row) },
+              {
+                landed: (row) => row !== undefined && sameDelivery(senderId, input, origin, row),
+              },
               () => view(input.id),
             ),
             Match.whenOr({ landed: (row) => row !== undefined }, { taken: true }, () =>
               Effect.fail(new DeliveryConflict()),
             ),
             // A limit a concurrent create filled names the refusal; nothing
-            // naming it means a real database fault.
+            // naming it means the request refused, or a real database fault.
             Match.orElse(() =>
               admit(senderId, plan, requestedBytes, now).pipe(
-                Effect.andThen(Effect.die(inserted.failure)),
+                Effect.andThen(intake?.explain(requestedBytes) ?? Effect.void),
+                Effect.andThen(databaseFault(inserted.failure)),
               ),
             ),
           );
-        }, dieOnDatabaseError),
+        }).pipe(Effect.withSpan("Deliveries.place"));
 
+      return Deliveries.of({
+        activeBytes,
+        cancel: Effect.fn("Deliveries.cancel")(function* cancel(
+          senderId: string,
+          deliveryId: DeliveryId,
+        ) {
+          yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
+          const row = yield* load(deliveryId);
+          if (row === undefined || row.senderId !== senderId) {
+            return yield* new DeliveryNotFound();
+          }
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": row.transfers.length,
+            "delivery.status": row.status,
+          });
+          yield* batch([
+            db
+              .update(schema.delivery)
+              .set({ status: "cancelled" })
+              .where(eq(schema.delivery.id, deliveryId)),
+            db
+              .update(schema.transfer)
+              .set({ state: "cancelled" })
+              .where(eq(schema.transfer.deliveryId, deliveryId)),
+          ]);
+          yield* removeObjects(
+            deliveryId,
+
+            row.transfers.map((transfer) => transfer.objectKey),
+          );
+          return yield* view(deliveryId);
+        }, dieOnDatabaseError),
+        clear: Effect.fn("Deliveries.clear")(function* clear(
+          senderId: string,
+          deliveryIds: readonly DeliveryId[],
+        ) {
+          yield* Effect.annotateCurrentSpan("delivery.count", deliveryIds.length);
+          if (deliveryIds.length === 0) {
+            return;
+          }
+          const now = new Date(yield* Clock.currentTimeMillis);
+          yield* db
+            .update(schema.delivery)
+            .set({ clearedAt: now })
+            .where(
+              and(
+                eq(schema.delivery.senderId, senderId),
+                inArray(schema.delivery.id, deliveryIds),
+                isNull(schema.delivery.clearedAt),
+                or(
+                  eq(schema.delivery.status, "cancelled"),
+                  and(eq(schema.delivery.status, "ready"), lte(schema.delivery.expiresAt, now)),
+                ),
+              ),
+            );
+        }, dieOnDatabaseError),
+        create: Effect.fn("Deliveries.create")(function* create(
+          senderId: string,
+          input: NewDelivery,
+        ) {
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": input.files.length,
+            "delivery.id": input.id,
+            "delivery.retention_days": input.retentionDays,
+            "delivery.total_bytes": input.files.reduce((total, file) => total + file.size, 0),
+          });
+          const replayed = yield* replay(senderId, input, direct);
+          if (Option.isSome(replayed)) {
+            return replayed.value;
+          }
+          yield* checkFiles(input.files);
+
+          const { plan } = yield* userPlans.current(senderId);
+          if (input.retentionDays > plans[plan].maxRetentionDays) {
+            return yield* new RetentionNotInPlan({
+              maxRetentionDays: plans[plan].maxRetentionDays,
+              plan,
+              requestedDays: input.retentionDays,
+            });
+          }
+          return yield* place(senderId, plan, input);
+        }, dieOnDatabaseError),
         list: Effect.fn("Deliveries.list")(function* list(senderId: string) {
           const rows = yield* db.query.delivery.findMany({
             limit: 50,
@@ -437,7 +610,34 @@ export class Deliveries extends Context.Service<
             with: { link: true, transfers: { orderBy: { path: "asc" } } },
           });
           yield* Effect.annotateCurrentSpan("delivery.count", rows.length);
-          return yield* Effect.forEach(rows, toView);
+          const downloads = yield* downloadsOf(rows.map((row) => row.id));
+          return yield* Effect.forEach(rows, (row) => toView(row, downloads.get(row.id) ?? null));
+        }, dieOnDatabaseError),
+
+        ofRequest: Effect.fn("Deliveries.ofRequest")(function* ofRequest(
+          requestId: RequestId,
+          deliveryIds: readonly DeliveryId[],
+        ) {
+          if (deliveryIds.length === 0) {
+            return [];
+          }
+          const rows = yield* db.query.delivery.findMany({
+            where: { id: { in: [...deliveryIds] }, requestId },
+            with: { link: true, transfers: { orderBy: { path: "asc" } } },
+          });
+          return yield* Effect.forEach(rows, (row) => toView(row, null));
+        }, dieOnDatabaseError),
+
+        owned: Effect.fn("Deliveries.owned")(function* owned(
+          senderId: string,
+          deliveryId: DeliveryId,
+        ) {
+          yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
+          const row = yield* load(deliveryId);
+          if (row === undefined || row.senderId !== senderId) {
+            return yield* new DeliveryNotFound();
+          }
+          return yield* viewRow(row);
         }, dieOnDatabaseError),
 
         purgeEnded: Effect.gen(function* purgeEnded() {
@@ -477,6 +677,7 @@ export class Deliveries extends Context.Service<
           const ended = yield* db.query.delivery.findMany({
             columns: { id: true },
             limit: PURGE_BATCH,
+            orderBy: { updatedAt: "asc" },
             where: {
               OR: [
                 // Cancel removed the objects already. A Complete that was in
@@ -492,13 +693,22 @@ export class Deliveries extends Context.Service<
             },
             with: { transfers: { columns: { objectKey: true } } },
           });
+          // A failing row rotates to the back instead of filling every batch.
+          // For a cancelled one this also waits CANCEL_SETTLE before the retry.
+          const touch = (deliveryId: DeliveryId) =>
+            db
+              .update(schema.delivery)
+              .set({ updatedAt: new Date(now) })
+              .where(eq(schema.delivery.id, deliveryId));
           const purged = yield* Effect.forEach(
             ended,
             (delivery) =>
               removeObjects(
                 delivery.id,
                 delivery.transfers.map((transfer) => transfer.objectKey),
-              ).pipe(Effect.tap((removed) => (removed ? markPurged(delivery.id) : Effect.void))),
+              ).pipe(
+                Effect.tap((removed) => (removed ? markPurged(delivery.id) : touch(delivery.id))),
+              ),
             { concurrency: 4 },
           );
           const total = purged.filter(Boolean).length;
@@ -506,6 +716,100 @@ export class Deliveries extends Context.Service<
           return total;
         }).pipe(Effect.withSpan("Deliveries.purgeEnded"), dieOnDatabaseError),
 
+        receive: Effect.fn("Deliveries.receive")(function* receive(
+          request: typeof schema.fileRequest.$inferSelect,
+          input: NewRequestUpload,
+        ) {
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": input.files.length,
+            "delivery.id": input.id,
+            "delivery.total_bytes": input.files.reduce((total, file) => total + file.size, 0),
+            "request.id": request.id,
+          });
+          const { ownerId } = request;
+          const { plan } = yield* userPlans.current(ownerId);
+          // The owner's plan may have dropped since the request was made.
+          const retentionDays =
+            request.retentionDays <= plans[plan].maxRetentionDays
+              ? request.retentionDays
+              : plans[plan].maxRetentionDays;
+          const delivery = {
+            files: input.files,
+            id: input.id,
+            retentionDays,
+            title: `${request.title} from ${input.name}`,
+          };
+          const origin = {
+            requestId: request.id,
+            uploaderEmail: input.email,
+            uploaderName: input.name,
+          };
+          const replayed = yield* replay(ownerId, delivery, origin);
+          if (Option.isSome(replayed)) {
+            return replayed.value;
+          }
+          yield* checkFiles(input.files);
+          return yield* place(ownerId, plan, delivery, {
+            explain: Effect.fn("Deliveries.explain")(function* explain(requestedBytes: number) {
+              const row = yield* db.query.fileRequest.findFirst({ where: { id: request.id } });
+              const now = yield* Clock.currentTimeMillis;
+              if (row === undefined || row.closedAt !== null || row.expiresAt.getTime() <= now) {
+                return yield* new RequestNotFound();
+              }
+              const [used] = yield* requestBytes(row.id);
+              if (row.maxBytes !== null && (used?.total ?? 0) + requestedBytes > row.maxBytes) {
+                return yield* new RequestFull();
+              }
+              return yield* Effect.void;
+            }),
+            origin,
+          }).pipe(
+            // The uploader is told there is no room, not how big the owner's plan is.
+            Effect.catchTag("OverPlanLimit", () => Effect.fail(new RequestFull())),
+          );
+        }, dieOnDatabaseError),
+
+        setPassword: Effect.fn("Deliveries.setPassword")(function* setPassword(
+          senderId: string,
+          deliveryId: DeliveryId,
+          password: string | null,
+        ) {
+          yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
+          const passwordHash = password === null ? null : yield* hashPassword(password);
+          // The sender check is part of the statement, as in `update`.
+          const changed = yield* db
+            .update(schema.link)
+            .set({ passwordHash })
+            .where(
+              and(
+                eq(schema.link.deliveryId, deliveryId),
+                sql`EXISTS (SELECT 1 FROM delivery WHERE delivery.id = link.delivery_id AND delivery.sender_id = ${senderId})`,
+              ),
+            )
+            .returning({ id: schema.link.id });
+          if (changed.length === 0) {
+            return yield* new DeliveryNotFound();
+          }
+          return yield* view(deliveryId);
+        }, dieOnDatabaseError),
+        update: Effect.fn("Deliveries.update")(function* update(
+          senderId: string,
+          deliveryId: DeliveryId,
+          details: { readonly note: string; readonly title: string },
+        ) {
+          yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
+          // The sender check is part of the statement, so a foreign or missing
+          // id updates nothing and reads the same.
+          const updated = yield* db
+            .update(schema.delivery)
+            .set({ note: details.note, title: details.title })
+            .where(and(eq(schema.delivery.id, deliveryId), eq(schema.delivery.senderId, senderId)))
+            .returning({ id: schema.delivery.id });
+          if (updated.length === 0) {
+            return yield* new DeliveryNotFound();
+          }
+          return yield* view(deliveryId);
+        }, dieOnDatabaseError),
         view,
       });
     }),

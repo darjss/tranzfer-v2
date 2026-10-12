@@ -319,6 +319,7 @@
   .reel-status > *,
   .reel-log > li,
   .reel-night,
+  .reel-night span,
   .reel-copy {
     animation: none;
   }

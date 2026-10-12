@@ -8,6 +8,7 @@ import type {
   SubscriptionStatus,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
+import { eq } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -194,6 +195,7 @@ export class Billing extends Context.Service<
          * incomplete ones grant nothing. A comp row is never overwritten.
          */
         const reconcile = Effect.fn("Billing.reconcile")(function* reconcile(userId: string) {
+          yield* Effect.annotateCurrentSpan("user.id", userId);
           const current = yield* row(userId);
           if (current?.status === "comp") {
             return;
@@ -266,16 +268,31 @@ export class Billing extends Context.Service<
               orderBy: { currentPeriodEnd: "asc" },
               where: {
                 currentPeriodEnd: { lte: new Date(now) },
-                // Reconciling stamps updatedAt, so a row that stays past its
-                // period end (a failing charge) is retried every few minutes,
-                // not every run.
+                // Every attempt stamps updatedAt, so a row that stays past its
+                // period end (a failing charge) or whose Polar call fails is
+                // retried every few minutes, not every run.
                 updatedAt: { lte: new Date(now - Duration.toMillis(STALE_RETRY)) },
               },
             })
             .pipe(dieOnDatabaseError);
-          yield* Effect.forEach(stale, ({ userId }) => Effect.ignore(reconcile(userId)), {
-            discard: true,
-          });
+          yield* Effect.forEach(
+            stale,
+            ({ userId }) =>
+              reconcile(userId).pipe(
+                Effect.catchCause(() =>
+                  Effect.logError("billing reconcile failed").pipe(
+                    Effect.andThen(
+                      db
+                        .update(schema.subscription)
+                        .set({ updatedAt: new Date(now) })
+                        .where(eq(schema.subscription.userId, userId))
+                        .pipe(dieOnDatabaseError),
+                    ),
+                  ),
+                ),
+              ),
+            { discard: true },
+          );
           return stale.length;
         });
 
@@ -346,6 +363,7 @@ export class Billing extends Context.Service<
             if (user === undefined) {
               return;
             }
+            yield* Effect.annotateCurrentSpan("user.id", userId);
             yield* reconcile(userId);
           }),
         });

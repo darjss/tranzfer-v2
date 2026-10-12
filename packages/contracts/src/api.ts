@@ -18,16 +18,43 @@ import {
   Delivery,
   DeliveryConflict,
   DeliveryId,
+  DeliveryNote,
   DeliveryNotFound,
+  DeliveryRefused,
+  DeliveryTitle,
   NewDelivery,
   TransferId,
 } from "./delivery";
+import { DeliveryEmail, DeliveryNotShareable, SendDeliveryEmailPayload } from "./email";
 import { InterestJoined, JoinInterestPayload } from "./interest";
-import { LinkExpired, LinkNotFound, LinkNotReady, SharedDelivery } from "./link";
+import {
+  DownloadEvent,
+  LinkExpired,
+  LinkLocked,
+  LinkNotFound,
+  LinkNotReady,
+  LinkPassword,
+  SharedDelivery,
+  Unlocked,
+  WrongPassword,
+} from "./link";
+import {
+  FileRequest,
+  NewFileRequest,
+  NewRequestUpload,
+  OpenedRequest,
+  RequestFull,
+  RequestId,
+  RequestNotFound,
+  RequestTransferPayload,
+  RequestUpload,
+  RequestUploadsPayload,
+} from "./request";
 import {
   InvalidUpload,
   NotUploaded,
   SignedUrl,
+  SignRequestUploadPayload,
   SignUploadPayload,
   StorageUnavailable,
   UploadClosed,
@@ -36,7 +63,13 @@ import {
 export class Api extends RpcGroup.make(
   Rpc.make("Me", { error: Unauthorized, success: Principal }).middleware(Authenticated),
   Rpc.make("CreateDelivery", {
-    error: Schema.Union([DeliveryConflict, OverPlanLimit, RateLimited, RetentionNotInPlan]),
+    error: Schema.Union([
+      DeliveryConflict,
+      DeliveryRefused,
+      OverPlanLimit,
+      RateLimited,
+      RetentionNotInPlan,
+    ]),
     payload: NewDelivery,
     success: Delivery,
   }).middleware(Authenticated),
@@ -50,6 +83,33 @@ export class Api extends RpcGroup.make(
   // The dashboard lists at most 50, so one call never needs more.
   Rpc.make("ClearDeliveries", {
     payload: Schema.Struct({ deliveryIds: Schema.Array(DeliveryId).check(Schema.isMaxLength(50)) }),
+  }).middleware(Authenticated),
+  // Owner only. Both fields are replaced; an empty note removes it.
+  Rpc.make("UpdateDelivery", {
+    error: DeliveryNotFound,
+    payload: Schema.Struct({ deliveryId: DeliveryId, note: DeliveryNote, title: DeliveryTitle }),
+    success: Delivery,
+  }).middleware(Authenticated),
+  // Owner only. A password replaces the old one; null removes it. Unlocks
+  // issued under the old password stop working.
+  Rpc.make("SetLinkPassword", {
+    error: DeliveryNotFound,
+    payload: Schema.Struct({ deliveryId: DeliveryId, password: Schema.NullOr(LinkPassword) }),
+    success: Delivery,
+  }).middleware(Authenticated),
+  // Owner only; the delivery must be ready and unexpired. Answers at once with
+  // one queued row per distinct address, in request order; the mail goes out in
+  // the background and `DeliveryEmails` reports how each one ended.
+  Rpc.make("SendDeliveryEmail", {
+    error: Schema.Union([DeliveryNotFound, DeliveryNotShareable, RateLimited]),
+    payload: SendDeliveryEmailPayload,
+    success: Schema.Array(DeliveryEmail),
+  }).middleware(Authenticated),
+  // The sender's latest 50 emails for a delivery, newest first. Someone else's
+  // delivery reads as none.
+  Rpc.make("DeliveryEmails", {
+    payload: Schema.Struct({ deliveryId: DeliveryId }),
+    success: Schema.Array(DeliveryEmail),
   }).middleware(Authenticated),
   Rpc.make("SignUpload", {
     error: Schema.Union([DeliveryNotFound, InvalidUpload, RateLimited, UploadClosed]),
@@ -67,6 +127,66 @@ export class Api extends RpcGroup.make(
     payload: Schema.Struct({ transferId: TransferId }),
     success: Delivery,
   }).middleware(Authenticated),
+  // File requests: links the owner hands to people without an account.
+  Rpc.make("FileRequests", { success: Schema.Array(FileRequest) }).middleware(Authenticated),
+  Rpc.make("CreateFileRequest", {
+    error: RetentionNotInPlan,
+    payload: NewFileRequest,
+    success: FileRequest,
+  }).middleware(Authenticated),
+  // Closing is idempotent. The link stops working at once.
+  Rpc.make("CloseFileRequest", {
+    error: RequestNotFound,
+    payload: Schema.Struct({ requestId: RequestId }),
+    success: FileRequest,
+  }).middleware(Authenticated),
+  // The uploader's side is public: the token is the credential. Each call
+  // counts against the caller's IP and the request.
+  Rpc.make("OpenFileRequest", {
+    error: Schema.Union([RateLimited, RequestNotFound]),
+    payload: Schema.Struct({ token: Schema.String }),
+    success: OpenedRequest,
+  }),
+  Rpc.make("CreateRequestUpload", {
+    error: Schema.Union([
+      DeliveryConflict,
+      DeliveryRefused,
+      RateLimited,
+      RequestFull,
+      RequestNotFound,
+    ]),
+    payload: NewRequestUpload,
+    success: RequestUpload,
+  }),
+  Rpc.make("SignRequestUpload", {
+    error: Schema.Union([
+      DeliveryNotFound,
+      InvalidUpload,
+      RateLimited,
+      RequestNotFound,
+      UploadClosed,
+    ]),
+    payload: SignRequestUploadPayload,
+    success: SignedUrl,
+  }),
+  Rpc.make("FinalizeRequestTransfer", {
+    error: Schema.Union([
+      DeliveryNotFound,
+      InvalidUpload,
+      NotUploaded,
+      RateLimited,
+      RequestNotFound,
+      StorageUnavailable,
+      UploadClosed,
+    ]),
+    payload: RequestTransferPayload,
+    success: RequestUpload,
+  }),
+  Rpc.make("RequestUploads", {
+    error: Schema.Union([RateLimited, RequestNotFound]),
+    payload: RequestUploadsPayload,
+    success: Schema.Array(RequestUpload),
+  }),
   Rpc.make("GetBilling", { success: BillingSummary }).middleware(Authenticated),
   Rpc.make("StartCheckout", {
     error: BillingUnavailable,
@@ -88,9 +208,30 @@ export class Api extends RpcGroup.make(
     payload: JoinInterestPayload,
     success: InterestJoined,
   }),
+  // `unlock` is what UnlockLink returned; a link with a password needs it to
+  // show its files or sign their URLs.
   Rpc.make("OpenLink", {
-    error: Schema.Union([LinkExpired, LinkNotFound, LinkNotReady]),
-    payload: Schema.Struct({ token: Schema.String }),
+    error: Schema.Union([LinkExpired, LinkLocked, LinkNotFound, LinkNotReady]),
+    payload: Schema.Struct({ token: Schema.String, unlock: Schema.optional(Schema.String) }),
     success: SharedDelivery,
+  }),
+  // Public. Counted per client IP and per link, right and wrong passwords alike.
+  Rpc.make("UnlockLink", {
+    error: Schema.Union([LinkNotFound, RateLimited, WrongPassword]),
+    payload: Schema.Struct({
+      password: Schema.String.check(Schema.isMaxLength(128)),
+      token: Schema.String,
+    }),
+    success: Unlocked,
+  }),
+  // Public and best effort: a bad or dead link, or a locked one without its
+  // unlock, records nothing and says nothing.
+  Rpc.make("ReportDownload", {
+    payload: Schema.Struct({
+      event: DownloadEvent,
+      path: Schema.String,
+      token: Schema.String,
+      unlock: Schema.optional(Schema.String),
+    }),
   }),
 ) {}

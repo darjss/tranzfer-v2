@@ -8,6 +8,7 @@ import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 
 import { Deliveries } from "../src/deliveries";
+import { FileRequests } from "../src/file-requests";
 import { LinkTokens } from "../src/link-tokens";
 import { Plans } from "../src/plans";
 import { SharedLinks } from "../src/shared-links";
@@ -61,7 +62,19 @@ const counting = (limit: number) => {
 
 /** The domain over a fresh migrated local D1 and the given storage. */
 export const domainLayer = (storage: Layer.Layer<Storage>) =>
-  Layer.mergeAll(Transfers.layer, SharedLinks.layer).pipe(
+  Layer.mergeAll(
+    Layer.suspend(() =>
+      SharedLinks.layer({
+        allowIp: counting(rateLimits.passwordAttemptsPerIp.limit),
+        allowLink: counting(rateLimits.passwordAttemptsPerLink.limit),
+      }),
+    ),
+    FileRequests.layer({
+      callsPerIp: counting(rateLimits.portalCallsPerIp.limit),
+      callsPerRequest: counting(rateLimits.portalCallsPerRequest.limit),
+      uploadsPerIp: counting(rateLimits.portalUploadsPerIp.limit),
+    }).pipe(Layer.provideMerge(Transfers.layer)),
+  ).pipe(
     Layer.provideMerge(
       Layer.sync(SigningRate, () =>
         SigningRate.of({ allow: counting(rateLimits.uploadSigning.limit) }),

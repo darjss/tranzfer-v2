@@ -67,6 +67,7 @@
     "vfile": "^6.0.3",
     "vfile-matter": "^5.0.1",
     "vite": "catalog:",
+    "vite-imagetools": "^12.0.1",
     "vite-plus": "catalog:"
   }
 }

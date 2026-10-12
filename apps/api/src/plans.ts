@@ -6,7 +6,7 @@ import {
   rateLimits,
 } from "@tranzfer/contracts";
 import type { PlanGrant } from "@tranzfer/contracts";
-import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
+import { Database, databaseFault, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -216,9 +216,15 @@ export class Plans extends Context.Service<
               (a, b) => rank(b.plan) - rank(a.plan) || b.endsAt.getTime() - a.endsAt.getTime(),
             );
             const subscribed = subscription?.plan ?? "free";
-            return grant !== undefined && rank(grant.plan) > rank(subscribed)
-              ? { grantEndsAt: grant.endsAt, plan: grant.plan }
-              : { grantEndsAt: null, plan: subscribed };
+            const resolved =
+              grant !== undefined && rank(grant.plan) > rank(subscribed)
+                ? { grantEndsAt: grant.endsAt, plan: grant.plan }
+                : { grantEndsAt: null, plan: subscribed };
+            yield* Effect.annotateCurrentSpan({
+              plan: resolved.plan,
+              "plan.source": resolved.grantEndsAt === null ? "subscription" : "grant",
+            });
+            return resolved;
           }, dieOnDatabaseError),
 
           redeem: Effect.fn("Plans.redeem")(function* redeem(userId: string, input: string) {
@@ -272,8 +278,12 @@ export class Plans extends Context.Service<
               // Lost a race: the second look names why, and nothing naming
               // it means a real database fault.
               yield* redeemable(userId, code, now);
-              return yield* Effect.die(redeemed.failure);
+              return yield* databaseFault(redeemed.failure);
             }
+            yield* Effect.annotateCurrentSpan({
+              "plan.grant_days": row.days,
+              "plan.granted": row.plan,
+            });
             return grant;
           }, dieOnDatabaseError),
         });

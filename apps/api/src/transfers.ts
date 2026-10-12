@@ -1,6 +1,7 @@
 import {
   DeliveryNotFound,
   InvalidUpload,
+  isSinglePut,
   NotUploaded,
   partCount,
   RateLimited,
@@ -11,6 +12,7 @@ import {
 import type {
   Delivery,
   DeliveryId,
+  RequestId,
   SignedUrl,
   TransferId,
   UploadRequest,
@@ -69,14 +71,20 @@ export class SigningRate extends Context.Service<
 export class Transfers extends Context.Service<
   Transfers,
   {
+    /**
+     * With `requestId`, only transfers of deliveries that came in through that
+     * file request sign, and the owner's own signing rate is not spent.
+     */
     readonly sign: (
       senderId: string,
       key: string,
       request: UploadRequest,
+      requestId?: RequestId,
     ) => Effect.Effect<SignedUrl, DeliveryNotFound | InvalidUpload | RateLimited | UploadClosed>;
     readonly finalize: (
       senderId: string,
       transferId: TransferId,
+      requestId?: RequestId,
     ) => Effect.Effect<
       Delivery,
       DeliveryNotFound | InvalidUpload | NotUploaded | StorageUnavailable | UploadClosed
@@ -94,9 +102,16 @@ export class Transfers extends Context.Service<
       const signingRate = yield* SigningRate;
       const storage = yield* Storage;
 
-      const owned = (senderId: string, where: { id: TransferId } | { objectKey: string }) =>
+      const owned = (
+        senderId: string,
+        where: { id: TransferId } | { objectKey: string },
+        requestId?: RequestId,
+      ) =>
         db.query.transfer.findFirst({
-          where: { ...where, delivery: { senderId } },
+          where: {
+            ...where,
+            delivery: requestId === undefined ? { senderId } : { requestId, senderId },
+          },
           with: { delivery: true },
         });
 
@@ -188,9 +203,13 @@ export class Transfers extends Context.Service<
         finalize: Effect.fn("Transfers.finalize")(function* finalize(
           senderId: string,
           transferId: TransferId,
+          requestId?: RequestId,
         ) {
           yield* Effect.annotateCurrentSpan("transfer.id", transferId);
-          const transfer = yield* owned(senderId, { id: transferId });
+          if (requestId !== undefined) {
+            yield* Effect.annotateCurrentSpan("request.id", requestId);
+          }
+          const transfer = yield* owned(senderId, { id: transferId }, requestId);
           if (transfer === undefined) {
             return yield* new DeliveryNotFound();
           }
@@ -266,10 +285,16 @@ export class Transfers extends Context.Service<
           senderId: string,
           key: string,
           request: UploadRequest,
+          requestId?: RequestId,
         ) {
+          if (requestId !== undefined) {
+            yield* Effect.annotateCurrentSpan("request.id", requestId);
+          }
           // Every sender is counted, but only Free is held to it, so the plan
-          // is read only once the count runs over.
+          // is read only once the count runs over. An uploader through a file
+          // request is held to the portal limits instead (FileRequests).
           if (
+            requestId === undefined &&
             !(yield* signingRate.allow(senderId)) &&
             (yield* plans.current(senderId)).plan === "free"
           ) {
@@ -278,7 +303,7 @@ export class Transfers extends Context.Service<
               retryAfterSeconds: rateLimits.uploadSigning.windowSeconds,
             });
           }
-          const transfer = yield* owned(senderId, { objectKey: key });
+          const transfer = yield* owned(senderId, { objectKey: key }, requestId);
           if (transfer === undefined) {
             return yield* new DeliveryNotFound();
           }
@@ -305,7 +330,9 @@ export class Transfers extends Context.Service<
           if (transfer.state !== "uploading" && transfer.state !== "finalizing") {
             return yield* new UploadClosed();
           }
-          // An empty file is a single guarded PUT; anything else is multipart.
+          // A file of one part or less may be one guarded PUT; any non-empty
+          // file may be multipart, since transfers created before single PUTs
+          // can still resume theirs.
           const multipart = transfer.size > 0;
           const invalid = Effect.fail(new InvalidUpload());
           // From here the object may land without the browser living to say
@@ -334,7 +361,7 @@ export class Transfers extends Context.Service<
             List: () => (multipart ? Effect.void : invalid),
             Part: ({ partNumber }) =>
               multipart && partNumber <= partCount(transfer.size) ? Effect.void : invalid,
-            Put: () => (multipart ? invalid : markFinalizing),
+            Put: () => (isSinglePut(transfer.size) ? markFinalizing : invalid),
           });
           return yield* storage.signUpload(key, request);
         }, dieOnDatabaseError),

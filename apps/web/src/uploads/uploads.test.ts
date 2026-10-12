@@ -1,5 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
-import { DeliveryId, InvalidUpload, NotUploaded, TransferId } from "@tranzfer/contracts";
+import {
+  checkFiles,
+  DeliveryId,
+  maxTitleLength,
+  InvalidUpload,
+  NotUploaded,
+  RateLimited,
+  TransferId,
+} from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Tracer from "effect/Tracer";
@@ -9,22 +17,24 @@ import { md5 } from "hash-wasm";
 
 import { RpcClientDefect, RpcClientError } from "effect/rpc/RpcClientError";
 
+import { appError } from "../api/errors";
+import { retryTransport } from "../api/retry";
 import { fingerprint } from "./recovery";
 import { makeUploadSpans } from "./spans";
 import {
   chosenFiles,
   deliveryTitle,
   isTransientUploadError,
-  retryTransport,
+  putAlreadyLanded,
   retryWhileNotUploaded,
   toUploadRequest,
-  verifyParts,
 } from "./uploads";
+import { verifyParts } from "./verify";
 
 const file = (name: string, relativePath = "") =>
   Object.assign(new File(["x"], name), { relativePath });
 
-const etag = (bytes: readonly number[]) =>
+const etag = (bytes: ArrayLike<number>) =>
   Effect.promise(async () => await md5(Uint8Array.from(bytes)));
 
 // Fails with each error in turn, then succeeds; counts every call.
@@ -95,6 +105,22 @@ describe("transport", () => {
     }),
   );
 
+  it.effect("signing_rate_limits_wait_out_their_window_and_retry", () =>
+    Effect.gen(function* waitsOutTheLimit() {
+      let attempts = 0;
+      const call = Effect.suspend(() => {
+        attempts += 1;
+        return attempts <= 1
+          ? Effect.fail(new RateLimited({ limit: "uploadSigning", retryAfterSeconds: 10 }))
+          : Effect.succeed("signed");
+      });
+      const fiber = yield* Effect.forkChild(retryTransport(call));
+      yield* TestClock.adjust("1 second");
+      expect(yield* Fiber.join(fiber)).toBe("signed");
+      expect(attempts).toBe(2);
+    }),
+  );
+
   it.effect("typed_refusals_never_retry", () =>
     Effect.gen(function* noRetry() {
       let attempts = 0;
@@ -146,6 +172,12 @@ describe("isTransientUploadError", () => {
     for (const status of [403, 408, 429, 500, 503]) {
       expect(isTransientUploadError(s3ServiceError(status))).toBe(true);
     }
+  });
+
+  it("an_existing_object_under_a_guarded_put_is_a_412_to_reconcile", () => {
+    expect(putAlreadyLanded(s3ServiceError(412))).toBe(true);
+    expect(putAlreadyLanded(s3ServiceError(403))).toBe(false);
+    expect(putAlreadyLanded(new Error("plain"))).toBe(false);
   });
 
   it("remote_gone_and_refusals_stay_final", () => {
@@ -213,6 +245,9 @@ describe("fingerprint", () => {
   );
 });
 
+const verify = (...args: Parameters<typeof verifyParts>) =>
+  Effect.promise(async () => await verifyParts(...args));
+
 describe("verifyParts", () => {
   it.effect("passes matching parts and fails a flipped byte or a wrong size", () =>
     Effect.gen(function* verifying() {
@@ -223,20 +258,38 @@ describe("verifyParts", () => {
         // The last part is the remainder, shorter than the part size.
         { etag: yield* etag([9, 10]), partNumber: 3, size: 2 },
       ];
-      expect(yield* verifyParts(blob, parts, 4)).toBe(true);
+      const checked: number[] = [];
+      expect(
+        yield* verify(blob, parts, 4, (bytes) => {
+          checked.push(bytes);
+        }),
+      ).toBe(true);
+      // Progress counts the bytes of every part hashed so far.
+      expect(checked).toEqual([4, 8, 10]);
 
       const flippedEtag = yield* etag([5, 6, 7, 0]);
       const flipped = parts.map((part) =>
         part.partNumber === 2 ? { ...part, etag: flippedEtag } : part,
       );
-      expect(yield* verifyParts(blob, flipped, 4)).toBe(false);
+      expect(yield* verify(blob, flipped, 4)).toBe(false);
 
       const wrongSize = parts.map((part) => (part.partNumber === 2 ? { ...part, size: 5 } : part));
-      expect(yield* verifyParts(blob, wrongSize, 4)).toBe(false);
+      expect(yield* verify(blob, wrongSize, 4)).toBe(false);
 
       // A part number past partCount has no expected bytes left.
       const extra = [...parts, { etag: yield* etag([11]), partNumber: 4, size: 1 }];
-      expect(yield* verifyParts(blob, extra, 4)).toBe(false);
+      expect(yield* verify(blob, extra, 4)).toBe(false);
+    }),
+  );
+
+  it.effect("hashes a part larger than one read slice to the same MD5 as the whole part", () =>
+    Effect.gen(function* verifyingLarge() {
+      // 9 MiB + 3 crosses the 8 MiB slice boundary mid-part.
+      const bytes = Uint8Array.from({ length: 9 * 1024 * 1024 + 3 }, (_, index) => index % 251);
+      const blob = new Blob([bytes]);
+      const part = { etag: yield* etag(bytes), partNumber: 1, size: bytes.length };
+      expect(yield* verify(blob, [part], bytes.length)).toBe(true);
+      expect(yield* verify(blob, [{ ...part, etag: yield* etag([1]) }], bytes.length)).toBe(false);
     }),
   );
 });
@@ -259,6 +312,46 @@ describe("choosing files", () => {
       "a.mov and 2 more",
     );
   });
+});
+
+const refusal = (names: readonly string[]) =>
+  Effect.map(Effect.flip(checkFiles(names.map((path) => ({ path })))), (error) => appError(error));
+
+describe("refusing a selection", () => {
+  it("titles_stay_within_the_contract_whatever_the_names", () => {
+    const longName = "n".repeat(255);
+    const titles = [
+      deliveryTitle(chosenFiles([file(longName)])),
+      deliveryTitle(chosenFiles([file(longName), file("b.mov")])),
+      deliveryTitle(chosenFiles([file("😀".repeat(127))])),
+      deliveryTitle(chosenFiles([file("a", `${longName}/a`), file("b", `${longName}/b`)])),
+    ];
+    expect(titles.map((title) => title.length <= maxTitleLength)).toEqual([true, true, true, true]);
+    expect(titles[2]).not.toMatch(/[\uD800-\uDBFF]…$/u);
+  });
+
+  it.effect("255_byte_names_pass_and_the_next_byte_says_how_long_it_is", () =>
+    Effect.gen(function* refusals() {
+      yield* checkFiles([{ path: "a".repeat(255) }, { path: `d/${"日".repeat(85)}` }]);
+      const ascii = yield* refusal(["b".repeat(256)]);
+      expect(ascii.message).toBe(
+        `"${"b".repeat(80)}…" is 256 characters long. Names can be up to 255. Shorten it and try again.`,
+      );
+      const multibyte = yield* refusal(["日".repeat(86)]);
+      expect(multibyte.message).toContain("is 86 characters and 258 bytes long.");
+    }),
+  );
+
+  it.effect("too_many_files_says_the_count_and_the_way_out", () =>
+    Effect.gen(function* refusals() {
+      const tooMany = yield* refusal(Array.from({ length: 2000 }, (_, index) => `f${index}`));
+      expect(tooMany).toEqual({
+        message:
+          "That's 2,000 files. A delivery holds up to 1,000. Send them in two deliveries or zip a folder.",
+        tag: "DeliveryRefused",
+      });
+    }),
+  );
 });
 
 describe("upload spans", () => {

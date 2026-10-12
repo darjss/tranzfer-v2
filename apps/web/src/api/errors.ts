@@ -4,8 +4,11 @@ import {
   BillingUnavailable,
   DeliveryConflict,
   DeliveryNotFound,
+  DeliveryNotShareable,
+  DeliveryRefused,
   InvalidUpload,
   LinkExpired,
+  LinkLocked,
   LinkNotFound,
   LinkNotReady,
   NotUploaded,
@@ -13,15 +16,22 @@ import {
   PaidPlanId,
   plans,
   RateLimited,
+  rateLimits,
+  RequestFull,
+  RequestNotFound,
   RetentionNotInPlan,
   StorageUnavailable,
   Unauthorized,
   UploadClosed,
+  WrongPassword,
 } from "@tranzfer/contracts";
 import type { Api, RateLimitName } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
 import * as Match from "effect/Match";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
+import * as Tracer from "effect/Tracer";
 import type * as Rpc from "effect/rpc/Rpc";
 import { RpcClientError } from "effect/rpc/RpcClientError";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
@@ -38,18 +48,24 @@ const ApiErrors = Schema.Union([
   BillingUnavailable,
   DeliveryConflict,
   DeliveryNotFound,
+  DeliveryNotShareable,
+  DeliveryRefused,
   InvalidUpload,
   LinkExpired,
+  LinkLocked,
   LinkNotFound,
   LinkNotReady,
   NotUploaded,
   OverPlanLimit,
   RateLimited,
+  RequestFull,
+  RequestNotFound,
   RetentionNotInPlan,
   RpcClientError,
   StorageUnavailable,
   Unauthorized,
   UploadClosed,
+  WrongPassword,
 ]);
 
 // Typed against ApiError, so a new contract error that is missing here fails
@@ -69,8 +85,16 @@ const tooMany = {
   codeRedemptions: "Too many code attempts.",
   deliveriesPerDay: "Too many new deliveries in a day.",
   deliveriesPerHour: "Too many new deliveries in an hour.",
+  emailRequests: "Too many emails sent at once.",
+  emailsAccountPerDay: "Tranzfer has reached its email limit for today.",
+  emailsPerDay: `You've reached the limit of ${rateLimits.emailsPerDay.limit} emails a day.`,
   interestSignups: "Too many sign-ups from your network.",
   newAccounts: "Too many new accounts from your network today.",
+  passwordAttemptsPerIp: "Too many password attempts from your network.",
+  passwordAttemptsPerLink: "Too many password attempts on this delivery.",
+  portalCallsPerIp: "Too many requests from your network.",
+  portalCallsPerRequest: "This link is getting too many requests at once.",
+  portalUploadsPerIp: "Too many uploads started from your network.",
   uploadSigning: "Too many upload requests at once.",
 } satisfies Record<RateLimitName, string>;
 
@@ -86,6 +110,33 @@ const wait = (seconds: number) => {
   }
   return count(Math.ceil(seconds / (60 * 60)), "hour");
 };
+
+const number = (value: number) => value.toLocaleString("en-US");
+
+// A long name stays recognizable without filling the card.
+const quoted = (text: string) => {
+  const letters = text.match(/./gsu) ?? [];
+  return `"${letters.length > 80 ? `${letters.slice(0, 80).join("")}…` : text}"`;
+};
+
+const refusal = Match.type<DeliveryRefused["reason"]>().pipe(
+  Match.tagsExhaustive({
+    DuplicatePath: ({ path }) =>
+      `Two files are called ${quoted(path)} once capitals are ignored, so they would collide on the recipient's computer. Rename one.`,
+    NameTooLong: ({ bytes: size, max, name }) => {
+      const characters = (name.match(/./gsu) ?? []).length;
+      return characters === size
+        ? `${quoted(name)} is ${number(characters)} characters long. Names can be up to ${number(max)}. Shorten it and try again.`
+        : `${quoted(name)} is ${number(characters)} characters and ${number(size)} bytes long. Names can be up to ${number(max)} bytes, which is fewer characters outside plain English letters. Shorten it and try again.`;
+    },
+    PathTooLong: ({ bytes: size, max, path }) =>
+      `${quoted(path)} is ${number(size)} bytes long with its folders. A path can be up to ${number(max)}. Shorten the folder names or move the files up a level.`,
+    PathUnsafe: ({ path }) =>
+      `${quoted(path)} isn't a path we can carry safely. Names can't contain backslashes, control characters or text-direction marks, or be empty, "." or "..".`,
+    TooManyFiles: ({ count: total, max }) =>
+      `That's ${number(total)} files. A delivery holds up to ${number(max)}. Send them in two deliveries or zip a folder.`,
+  }),
+);
 
 const words = Match.type<ApiError>().pipe(
   Match.tagsExhaustive({
@@ -106,8 +157,12 @@ const words = Match.type<ApiError>().pipe(
         : `Our payment provider turned this down or didn't answer, so nothing changed and nothing was charged. Try again later, or write to ${supportEmail}.`,
     DeliveryConflict: () => "That delivery already exists. Refresh to see it.",
     DeliveryNotFound: () => "We can't find that delivery anymore.",
+    DeliveryNotShareable: () =>
+      "This delivery isn't ready or its link has ended, so there's nothing to email.",
+    DeliveryRefused: (error) => refusal(error.reason),
     InvalidUpload: () => "This file doesn't match what the delivery expects. Send it again.",
     LinkExpired: () => "This link has expired.",
+    LinkLocked: () => "This delivery has a password. Ask the sender for it.",
     LinkNotFound: () => "This link doesn't work. It may have been cancelled.",
     LinkNotReady: () => "Still uploading. The link starts working once every file is finished.",
     NotUploaded: () => "Still finishing up on our end. Retry in a moment.",
@@ -121,23 +176,108 @@ const words = Match.type<ApiError>().pipe(
     },
     RateLimited: (error) =>
       `${tooMany[error.limit]} Try again in ${wait(error.retryAfterSeconds)}.`,
+    RequestFull: () =>
+      "There isn't room for these files in this request right now. Try fewer or smaller files, or ask the person who sent you the link.",
+    RequestNotFound: () =>
+      "This link doesn't work. It may have expired or been closed. Ask the person who sent it for a new one.",
     RetentionNotInPlan: (error) =>
       `${plans[error.plan].name} links last up to ${error.maxRetentionDays} days. Choose a shorter time${paidPlansOpen ? ", or upgrade" : ""}.`,
     RpcClientError: () => "We couldn't reach Tranzfer. Check your connection and try again.",
     StorageUnavailable: () => "Storage didn't answer. Try again in a moment.",
     Unauthorized: () => "Your sign-in expired. Sign in again to continue.",
     UploadClosed: () => "This delivery was cancelled or has already finished.",
+    WrongPassword: () => "That password isn't right.",
   }),
 );
+
+// A trace id is 32 hex characters; a span id is 16.
+const hex = (characters: number) => crypto.randomUUID().replaceAll("-", "").slice(0, characters);
+
+/** Makes the id a failure's trace will carry, so the screen can show its reference first. */
+export const newTraceId = () => hex(32);
+
+/** What a person quotes to support: the first 8 characters of the trace id. */
+export const supportRef = (traceId: string) => traceId.slice(0, 8);
+
+// The trace id each caught error was given, so a message that is read again
+// keeps its reference and the failure is reported once.
+const traces = new WeakMap<object, string>();
+let reportUnexpected: ((cause: unknown, traceId: string) => void) | undefined;
+
+/** The app's runtime registers here to report failures that read as "Something went wrong". */
+export const onUnexpectedFailure = (report: typeof reportUnexpected) => {
+  reportUnexpected = report;
+};
+
+/** The trace id this error's report carries. A value that is not an object gets a new one each time. */
+export const traceIdOf = (cause: unknown) => {
+  if (!Predicate.isObject(cause)) {
+    return newTraceId();
+  }
+  const known = traces.get(cause);
+  if (known !== undefined) {
+    return known;
+  }
+  const traceId = newTraceId();
+  traces.set(cause, traceId);
+  return traceId;
+};
+
+const squashed = (cause: unknown) => (Cause.isCause(cause) ? Cause.squash(cause) : cause);
 
 /**
  * The one place failures become words. Takes whatever a boundary caught (an
  * error, a Cause or an Uppy transport failure); anything that is not a known
- * Api error reads as a generic, retryable problem.
+ * Api error reads as a generic, retryable problem with a support reference.
  */
 export const appError = (cause: unknown) => {
-  const error = Cause.isCause(cause) ? Cause.squash(cause) : cause;
-  return isApiError(error)
-    ? { message: words(error), tag: error._tag }
-    : { message: "Something went wrong. Try again.", tag: "Unknown" as const };
+  const error = squashed(cause);
+  if (isApiError(error)) {
+    return { message: words(error), tag: error._tag };
+  }
+  // Only an object can be remembered, so only an object gets a reference.
+  if (!Predicate.isObject(error)) {
+    return { message: "Something went wrong. Try again.", tag: "Unknown" as const };
+  }
+  const fresh = !traces.has(error);
+  const traceId = traceIdOf(error);
+  if (fresh) {
+    reportUnexpected?.(error, traceId);
+  }
+  return {
+    message: `Something went wrong. Try again. Ref ${supportRef(traceId)}`,
+    tag: "Unknown" as const,
+  };
+};
+
+// Origins and query strings go, so a stack or message never carries a URL, a
+// sign-in code or a link token into a trace (AGENTS.md: no URLs in spans).
+const withoutUrls = (text: string) =>
+  text.replaceAll(/https?:\/\/[^/\s)]+/gu, "").replaceAll(/\?[^\s):]*/gu, "");
+
+/**
+ * The one trace for a failure an error boundary caught. The fallback shows
+ * words only, so this is where the real error goes: its type, message and
+ * stack with URLs removed, and the owner path of what threw.
+ */
+export const reportFailure = (
+  cause: unknown,
+  ownerPath: readonly string[] = [],
+  traceId = newTraceId(),
+) => {
+  const thrown = Predicate.isError(cause) ? cause : undefined;
+  const caught = squashed(cause);
+  return Effect.logError("error boundary caught a failure").pipe(
+    Effect.withSpan("Web.errorBoundary", {
+      attributes: {
+        "error.message": withoutUrls(thrown?.message ?? String(cause)),
+        "error.stack": withoutUrls(thrown?.stack ?? ""),
+        "error.tag": isApiError(caught) ? caught._tag : "Unknown",
+        "error.type": thrown?.name ?? "NotAnError",
+        "owner.path": ownerPath.join(" > "),
+      },
+      // The screen already shows the first 8 characters of this id.
+      parent: Tracer.externalSpan({ sampled: true, spanId: hex(16), traceId }),
+    }),
+  );
 };

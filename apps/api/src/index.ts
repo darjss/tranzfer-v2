@@ -17,6 +17,7 @@ import * as RpcServer from "effect/rpc/RpcServer";
 import { Billing, InvalidWebhook } from "./billing";
 import { Deliveries } from "./deliveries";
 import { Emails } from "./emails";
+import { FileRequests } from "./file-requests";
 import { LinkTokens } from "./link-tokens";
 import { Plans } from "./plans";
 import { ApiHandlers, AuthenticatedLive } from "./rpc";
@@ -141,10 +142,59 @@ export default ApiWorker.make(
       },
     });
 
+    const emailRequests = yield* Cloudflare.RateLimit("EMAIL_REQUESTS", {
+      namespaceId: 1005,
+      simple: {
+        limit: rateLimits.emailRequests.limit,
+        period: rateLimits.emailRequests.windowSeconds,
+      },
+    });
+
+    const passwordAttemptsPerIp = yield* Cloudflare.RateLimit("PASSWORD_ATTEMPTS_IP", {
+      namespaceId: 1006,
+      simple: {
+        limit: rateLimits.passwordAttemptsPerIp.limit,
+        period: rateLimits.passwordAttemptsPerIp.windowSeconds,
+      },
+    });
+
+    const passwordAttemptsPerLink = yield* Cloudflare.RateLimit("PASSWORD_ATTEMPTS_LINK", {
+      namespaceId: 1007,
+      simple: {
+        limit: rateLimits.passwordAttemptsPerLink.limit,
+        period: rateLimits.passwordAttemptsPerLink.windowSeconds,
+      },
+    });
+
+    // File requests count uploader calls three ways, each with its own
+    // namespace: per client IP, per request, and new uploads per client IP.
+    const portalCallsPerIp = yield* Cloudflare.RateLimit("PORTAL_CALLS_PER_IP", {
+      namespaceId: 1008,
+      simple: {
+        limit: rateLimits.portalCallsPerIp.limit,
+        period: rateLimits.portalCallsPerIp.windowSeconds,
+      },
+    });
+    const portalCallsPerRequest = yield* Cloudflare.RateLimit("PORTAL_CALLS_PER_REQUEST", {
+      namespaceId: 1009,
+      simple: {
+        limit: rateLimits.portalCallsPerRequest.limit,
+        period: rateLimits.portalCallsPerRequest.windowSeconds,
+      },
+    });
+    const portalUploadsPerIp = yield* Cloudflare.RateLimit("PORTAL_UPLOADS_PER_IP", {
+      namespaceId: 1010,
+      simple: {
+        limit: rateLimits.portalUploadsPerIp.limit,
+        period: rateLimits.portalUploadsPerIp.windowSeconds,
+      },
+    });
+
     // Sends through Cloudflare Email Sending as hello@tranzfer.app. The
     // domain is onboarded on the account, so any recipient is allowed.
     const email = yield* Cloudflare.Email.Send(yield* Cloudflare.Email.SendEmail("EMAIL"));
     const mail = makeMail(stage, email, yield* emailAllowlist);
+    const execution = yield* Cloudflare.WorkerExecutionContext;
 
     const isolate = yield* Layer.build(
       Layer.mergeAll(
@@ -161,10 +211,24 @@ export default ApiWorker.make(
     // rebuilt per request (and per cron run) with a fresh memo map.
     const database = Layer.unwrap(Effect.map(handle, Database.fromD1));
     const domain = Layer.mergeAll(
-      Transfers.layer,
-      SharedLinks.layer,
+      SharedLinks.layer({
+        allowIp: limiter(passwordAttemptsPerIp),
+        allowLink: limiter(passwordAttemptsPerLink),
+      }),
       billing,
-      Emails.layer({ allowInterest: limiter(interestSignups), appUrl: origin }),
+      Emails.layer({
+        allowDeliveryEmail: limiter(emailRequests),
+        allowInterest: limiter(interestSignups),
+        appUrl: origin,
+        // Runs after the response, kept alive by the request's waitUntil.
+        background: (effect) =>
+          execution.waitUntil(effect).pipe(Effect.provide(RuntimeContext.phantom)),
+      }),
+      FileRequests.layer({
+        callsPerIp: limiter(portalCallsPerIp),
+        callsPerRequest: limiter(portalCallsPerRequest),
+        uploadsPerIp: limiter(portalUploadsPerIp),
+      }).pipe(Layer.provideMerge(Transfers.layer)),
     ).pipe(
       Layer.provideMerge(Deliveries.layer),
       Layer.provideMerge(Plans.layer(limiter(codeRedemptions))),

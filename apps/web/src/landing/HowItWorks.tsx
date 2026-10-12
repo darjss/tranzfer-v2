@@ -2,9 +2,11 @@ import { For } from "solid-js";
 import { css, cx } from "styled-system/css";
 import { Hand } from "./notebook";
 import { eyebrow, section, smallTitle } from "./styles";
-import filmmaker from "./assets/filmmaker.webp";
-import loftPacking from "./assets/loft-packing.webp";
-import videoEdit from "./assets/video-edit.webp";
+import { photos } from "./photos";
+
+const filmmaker = photos["./assets/filmmaker.webp"];
+const loftPacking = photos["./assets/loft-packing.webp"];
+const videoEdit = photos["./assets/video-edit.webp"];
 
 const steps = [
   {
@@ -102,9 +104,14 @@ export default function HowItWorks() {
                 transitionProperty: "[scale]",
                 transitionTimingFunction: "smooth",
               })}
-              src={s.src}
+              src={s.src.src}
+              srcset={s.src.srcset}
+              sizes="(min-width: 1024px) 280px, (min-width: 768px) 240px, 100vw"
+              width={s.src.w}
+              height={s.src.h}
               alt=""
               loading="lazy"
+              decoding="async"
             />
             <div class={css({ color: "paper", p: "5", pos: "relative", zIndex: 1 })}>
               <span

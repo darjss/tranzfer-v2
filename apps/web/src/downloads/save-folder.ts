@@ -5,7 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 
 import { ApiClient } from "../api/client";
-import { retryTransport, untilOnline } from "../uploads/uploads";
+import { retryTransport, untilOnline } from "../api/retry";
 
 // The parts of the File System Access API a save touches. A picked folder
 // satisfies them; so does the in-memory folder the tests use.
@@ -211,12 +211,12 @@ const isTransient = (error: { readonly _tag: string }) =>
  */
 export const saveFolder = Effect.fn("SaveFolder.save")(function* saveFolder(
   root: Folder,
-  token: string,
+  link: { readonly token: string; readonly unlock: string | undefined },
   report: (progress: { bytes: number; current: string; files: number }) => void,
 ) {
   const api = yield* ApiClient;
   const urls = new Map<string, string>();
-  const open = api.OpenLink({ token }).pipe(
+  const open = api.OpenLink(link).pipe(
     Effect.map(({ files }) => {
       for (const file of files) {
         urls.set(file.path, file.url);
@@ -239,9 +239,15 @@ export const saveFolder = Effect.fn("SaveFolder.save")(function* saveFolder(
     }
   };
 
+  // Tells the sender, and never holds the save up: a lost report only leaves
+  // the sender's count low, and picking the same folder again reports it anew.
+  const tell = (path: string, event: "saved" | "started") =>
+    api.ReportDownload({ event, path, ...link }).pipe(Effect.ignore, Effect.forkDetach);
+
   const saveOne = Effect.fn("SaveFolder.file")(function* saveOne(file: SharedFile) {
     progress.current = file.path;
     show(true);
+    yield* tell(file.path, "started");
     const folder = folders.get(parent(file.path)) ?? root;
     const target = yield* disk(
       file.path,
@@ -267,6 +273,7 @@ export const saveFolder = Effect.fn("SaveFolder.save")(function* saveFolder(
         while: isTransient,
       }),
     );
+    yield* tell(file.path, "saved");
     progress.files += 1;
     show(true);
   });

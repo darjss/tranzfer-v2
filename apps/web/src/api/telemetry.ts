@@ -35,6 +35,8 @@ const flushOnHide = Layer.effectDiscard(
   }),
 );
 
+const build = import.meta.env.VITE_GIT_SHA;
+
 /**
  * Browser spans, exported to the API worker's relay at the same origin. The
  * relay holds the Axiom token and sets the service name; nothing here can
@@ -44,6 +46,9 @@ export const BrowserTracing = flushOnHide.pipe(
   Layer.provideMerge(
     OtlpTracer.layer({
       exportInterval: "5 seconds",
+      // The relay stamps the stage and the environment; the build travels in
+      // a header it validates, because a tab can outlive a deploy.
+      headers: build === undefined ? undefined : { "x-tranzfer-build": build },
       maxBatchSize: 50,
       resource: { serviceName: "tranzfer-web" },
       url: "/api/telemetry/traces",

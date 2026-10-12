@@ -5,6 +5,7 @@ import { fileRoutes } from "filesystem-routing/vite";
 import { sitemap } from "prerender-crawler";
 import { prerender } from "prerender-crawler/vite";
 import Icons from "unplugin-icons/vite";
+import { imagetools } from "vite-imagetools";
 import { defineConfig } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
 import { webLint } from "../../lint.config";
@@ -85,6 +86,7 @@ export default defineConfig({
     }),
     fileRoutes({ codeSplitting: false, httpMethods: true, types: true }),
     Icons({ compiler: "solid" }),
+    imagetools(),
     markdown(),
     ogImage(),
     // The public pages ship as static HTML; everything else stays live SSR.

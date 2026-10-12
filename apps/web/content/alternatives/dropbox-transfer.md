@@ -66,7 +66,7 @@ To see how long your own upload will run, put the size and your upload speed int
 ## When is Dropbox Transfer still the better pick?
 
 - Your team already pays for Dropbox and your deliveries stay under your plan's cap. Adding another bill for the same job makes little sense.
-- You want branded transfers. Dropbox lets Standard and higher plans add logos and backgrounds to a transfer, and set passwords. Tranzfer has no password-protected links.
+- You want branded transfers. Dropbox lets Standard and higher plans add logos and backgrounds to a transfer, and set passwords. Tranzfer has passwords but no branding.
 - You want links to last longer than 14 days. On Dropbox's business plans you pick the expiry date. Tranzfer links last 14 days at most, then the files are deleted.
 - You want team seats and shared storage in the same place. Tranzfer has neither.
 

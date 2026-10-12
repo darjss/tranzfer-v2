@@ -32,7 +32,7 @@ import {
   untilDate,
 } from "./format";
 import type { Kind } from "./format";
-import { CopyLink, KindIcon, kindText, Progress } from "./parts";
+import { CopyLink, KindIcon, kindText, LinkPassword, Progress } from "./parts";
 import "./dashboard.css";
 
 const block = css({
@@ -47,6 +47,7 @@ const fileKind = {
   Active: "moving",
   Cancelled: "cancelled",
   Complete: "ready",
+  Elsewhere: "elsewhere",
   Failed: "failed",
   Interrupted: "interrupted",
   NeedsFile: "needsFile",
@@ -75,13 +76,14 @@ function Details(props: {
   cancel: (deliveryId: DeliveryId) => Promise<string | undefined>;
   delivery: Delivery;
   online: boolean;
+  setPassword: (deliveryId: DeliveryId, password: string | null) => Promise<string | undefined>;
 }) {
   const runtime = useContext(RuntimeContext);
   const live = liveDelivery(props);
   const [confirming, setConfirming] = createSignal(false);
   const [problem, setProblem] = createSignal<string>();
   const [resumeProblems, setResumeProblems] = createSignal<readonly string[]>([]);
-  const [checking, setChecking] = createSignal(false);
+  const [checking, setChecking] = createSignal<{ checked: number; total: number }>();
   const shareable = () => props.delivery.status === "open" || props.delivery.status === "ready";
   // Folder picks matter only when a transfer actually sits in one.
   const hasNestedPaths = () =>
@@ -98,11 +100,15 @@ function Details(props: {
     const { delivery } = props;
     // Verifying a reselected file hashes every stored part, so a big file can
     // hold the pick for minutes; the block must say why it is waiting.
-    setChecking(true);
+    setChecking({ checked: 0, total: 0 });
     const exit = await runtime.runPromiseExit(
-      Uploads.use((uploads) => uploads.resume(delivery, picked)),
+      Uploads.use((uploads) =>
+        uploads.resume(delivery, picked, (progress) => {
+          setChecking(progress);
+        }),
+      ),
     );
-    setChecking(false);
+    setChecking(undefined);
     setResumeProblems(
       Exit.isSuccess(exit)
         ? exit.value.map(({ name, problem: tag }) => resumeProblem(tag, name))
@@ -198,7 +204,7 @@ function Details(props: {
           </p>
           <div class={css({ display: "flex", flexWrap: "wrap", gap: "2.5", mt: "3" })}>
             <Button
-              disabled={checking()}
+              disabled={checking() !== undefined}
               onClick={() => {
                 resumeFiles?.click();
               }}
@@ -208,7 +214,7 @@ function Details(props: {
             </Button>
             <Show when={hasNestedPaths()}>
               <Button
-                disabled={checking()}
+                disabled={checking() !== undefined}
                 onClick={() => {
                   resumeFolder?.click();
                 }}
@@ -220,9 +226,21 @@ function Details(props: {
             </Show>
           </div>
           <Show when={checking()}>
-            <p class={css({ color: "mut", mt: "2.5", textStyle: "sm" })} role="status">
-              Checking the file against the parts already uploaded…
-            </p>
+            {(progress) => (
+              <p
+                class={css({
+                  color: "mut",
+                  fontVariantNumeric: "tabular-nums",
+                  mt: "2.5",
+                  textStyle: "sm",
+                })}
+                role="status"
+              >
+                {progress().total === 0
+                  ? "Checking the file against the parts already uploaded…"
+                  : `Checking ${bytes(progress().checked)} of ${bytes(progress().total)} you already sent`}
+              </p>
+            )}
           </Show>
           <input
             class={css({ display: "none" })}
@@ -297,6 +315,11 @@ function Details(props: {
           <p class={css({ color: "mut", mt: "2", textStyle: "sm" })}>
             Share it now. It starts working once every file is finished.
           </p>
+        </Show>
+        <Show when={shareable()}>
+          <div class={css({ display: "grid", gap: "2.5", mt: "4" })}>
+            <LinkPassword delivery={props.delivery} setPassword={props.setPassword} />
+          </div>
         </Show>
       </section>
 
@@ -470,6 +493,7 @@ export function DeliverySheet(props: {
   close: () => void;
   delivery: Delivery | undefined;
   online: boolean;
+  setPassword: (deliveryId: DeliveryId, password: string | null) => Promise<string | undefined>;
 }) {
   let dialog: HTMLDialogElement | undefined;
   // Keep the last delivery on screen while the sheet slides away.
@@ -584,7 +608,12 @@ export function DeliverySheet(props: {
                 <PhXBold class={css({ boxSize: "4" })} />
               </button>
             </header>
-            <Details cancel={props.cancel} delivery={delivery()} online={props.online} />
+            <Details
+              cancel={props.cancel}
+              delivery={delivery()}
+              online={props.online}
+              setPassword={props.setPassword}
+            />
           </div>
         )}
       </Show>

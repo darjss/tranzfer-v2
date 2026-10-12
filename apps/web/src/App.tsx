@@ -4,6 +4,7 @@ import { Loading } from "solid-js";
 
 import { serverLayer } from "./api/binding";
 import { WebLayer } from "./api/client";
+import { onUnexpectedFailure, reportFailure } from "./api/errors";
 import { createRuntime, RuntimeContext } from "./api/solid-effect";
 import { Router } from "./router";
 import { Uploads } from "./uploads/uploads";
@@ -37,8 +38,16 @@ export default function App() {
     : WebLayer;
   // Uploads stays in the SSR runtime so both share one type; it touches
   // nothing browser-only until the first upload.
+  const runtime = createRuntime(Uploads.layer.pipe(Layer.provideMerge(api)));
+  if (!isServer) {
+    // A message that says "Something went wrong" carries a reference; this
+    // is the report that reference points to.
+    onUnexpectedFailure((cause, traceId) => {
+      runtime.runFork(reportFailure(cause, [], traceId));
+    });
+  }
   return (
-    <RuntimeContext value={createRuntime(Uploads.layer.pipe(Layer.provideMerge(api)))}>
+    <RuntimeContext value={runtime}>
       <Router>{(props) => <Loading fallback={<main />}>{props.children}</Loading>}</Router>
       <Toasts />
     </RuntimeContext>
