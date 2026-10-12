@@ -254,6 +254,9 @@ export const makeAuth = (
       onAPIError: { errorURL: `${origin}/sign-in` },
       // Its stores are per isolate or per path; allowRequest limits instead.
       rateLimit: { enabled: false },
+      // Skips the session and user reads for 5 minutes. A revoked session
+      // keeps working in a browser that still holds its cookie until then.
+      session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },
       trustedOrigins: [origin],
     }).pipe(Effect.provide(authDatabase));
 
