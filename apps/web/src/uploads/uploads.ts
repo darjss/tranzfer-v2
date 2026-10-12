@@ -32,6 +32,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
 import { ApiClient } from "../api/client";
+import { MAX_TRANSPORT_RETRIES, RETRY_CAP, retryTransport, untilOnline } from "../api/retry";
 import {
   fingerprint,
   forget,
@@ -167,43 +168,6 @@ export const retryWhileNotUploaded = <A, E extends { readonly _tag: string }, R>
       schedule: Schedule.exponential("800 millis"),
       times: 3,
       while: (error) => error._tag === "NotUploaded",
-    }),
-  );
-
-// The 40-try cap counts failures, not elapsed time, so a sleep/wake clock
-// jump cannot end it early; each backoff delay is capped at 30 seconds.
-const RETRY_CAP = Duration.seconds(30);
-const MAX_TRANSPORT_RETRIES = 40;
-
-// Losing the network is a pause, not an error (law 7). Offline time waits on
-// the `online` event and burns no attempts.
-export const untilOnline: Effect.Effect<void> = Effect.suspend(() =>
-  navigator.onLine
-    ? Effect.void
-    : Effect.callback((resume) => {
-        const done = () => {
-          resume(Effect.void);
-        };
-        window.addEventListener("online", done, { once: true });
-        return Effect.sync(() => {
-          window.removeEventListener("online", done);
-        });
-      }),
-);
-
-// Transport failures retry, and so does a signing rate limit, which clears
-// within its window; other typed refusals (UploadClosed, InvalidUpload,
-// Unauthorized) are the server's answer and stand.
-export const retryTransport = <A, E extends { readonly _tag: string }, R>(
-  effect: Effect.Effect<A, E, R>,
-) =>
-  untilOnline.pipe(Effect.andThen(effect)).pipe(
-    Effect.retry({
-      schedule: Schedule.exponential("1 second").pipe(
-        Schedule.modifyDelay(({ duration }) => Effect.succeed(Duration.min(duration, RETRY_CAP))),
-      ),
-      times: MAX_TRANSPORT_RETRIES,
-      while: (error) => error._tag === "RpcClientError" || error._tag === "RateLimited",
     }),
   );
 

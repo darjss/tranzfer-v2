@@ -26,7 +26,7 @@ import { SaveAll } from "../../downloads/SaveAll";
 import { Unlock } from "../../downloads/Unlock";
 import Brand from "../../landing/Brand";
 import Loader, { linkQuips } from "../../ui/Loader";
-import { retryTransport } from "../../uploads/uploads";
+import { retryTransport } from "../../api/retry";
 
 const ghost = css({
   bg: "panel",

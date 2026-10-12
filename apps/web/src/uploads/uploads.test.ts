@@ -18,6 +18,7 @@ import { md5 } from "hash-wasm";
 import { RpcClientDefect, RpcClientError } from "effect/rpc/RpcClientError";
 
 import { appError } from "../api/errors";
+import { retryTransport } from "../api/retry";
 import { fingerprint } from "./recovery";
 import { makeUploadSpans } from "./spans";
 import {
@@ -25,7 +26,6 @@ import {
   deliveryTitle,
   isTransientUploadError,
   putAlreadyLanded,
-  retryTransport,
   retryWhileNotUploaded,
   toUploadRequest,
 } from "./uploads";
