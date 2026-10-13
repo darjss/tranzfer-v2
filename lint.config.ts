@@ -217,7 +217,7 @@ export const lintConfig = (
 
 export const rootLint = lintConfig(
   {
-    api: ["apps/api/**", "e2e/**", "packages/contracts/**"],
+    api: ["apps/api/**", "apps/web/src/**", "e2e/**", "packages/contracts/**", "packages/db/**"],
     components: ["apps/web/**/*.tsx"],
     web: ["apps/web/**"],
   },

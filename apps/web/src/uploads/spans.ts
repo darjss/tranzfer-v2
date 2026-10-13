@@ -1,6 +1,7 @@
 import type { DeliveryId, TransferId } from "@tranzfer/contracts";
 import { partCount, partSize } from "@tranzfer/contracts";
 import * as Clock from "effect/Clock";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import type * as Tracer from "effect/Tracer";
@@ -8,10 +9,12 @@ import type * as Tracer from "effect/Tracer";
 type Outcome = "cancelled" | "done" | "failed";
 type Attributes = Record<string, boolean | number | string | undefined>;
 
+class UploadFailed extends Data.TaggedError("UploadFailed")<{ readonly reason: string }> {}
+
 const defined = (attributes: Attributes) =>
   Object.entries(attributes).filter(([, value]) => value !== undefined);
 
-const finish = (span: Tracer.Span, exit: Exit.Exit<void, Error>) =>
+const finish = (span: Tracer.Span, exit: Exit.Exit<void, UploadFailed>) =>
   Effect.flatMap(Clock.currentTimeNanos, (now) =>
     Effect.sync(() => {
       span.end(now, exit);
@@ -48,7 +51,9 @@ export const makeUploadSpans = Effect.sync(() => {
       Effect.suspend(() => {
         const entry = deliveries.get(deliveryId);
         deliveries.delete(deliveryId);
-        return entry === undefined ? Effect.void : finish(entry.span, Exit.fail(new Error(reason)));
+        return entry === undefined
+          ? Effect.void
+          : finish(entry.span, Exit.fail(new UploadFailed({ reason })));
       }),
 
     beginDelivery,
@@ -101,7 +106,9 @@ export const makeUploadSpans = Effect.sync(() => {
         }
         yield* finish(
           file.span,
-          outcome === "failed" ? Exit.fail(new Error("upload failed")) : Exit.void,
+          outcome === "failed"
+            ? Exit.fail(new UploadFailed({ reason: "upload failed" }))
+            : Exit.void,
         );
         const delivery = deliveries.get(file.deliveryId);
         if (delivery === undefined) {
@@ -116,7 +123,9 @@ export const makeUploadSpans = Effect.sync(() => {
           delivery.span.attribute("delivery.files_failed", delivery.failed);
           yield* finish(
             delivery.span,
-            delivery.failed > 0 ? Exit.fail(new Error("files failed")) : Exit.void,
+            delivery.failed > 0
+              ? Exit.fail(new UploadFailed({ reason: "files failed" }))
+              : Exit.void,
           );
         }
       }),

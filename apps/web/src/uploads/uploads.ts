@@ -857,8 +857,8 @@ const make = Effect.gen(function* makeUploads() {
     // The file request the deliveries came in through, for an uploader.
     token?: string,
   ) {
-    const records = yield* readAll();
-    const elsewhere = yield* sendingElsewhere();
+    const records = yield* readAll;
+    const elsewhere = yield* sendingElsewhere;
     const byTransfer = new Map(
       deliveries.flatMap((delivery) =>
         delivery.transfers.map((transfer) => [transfer.id, transfer] as const),
@@ -932,7 +932,7 @@ const make = Effect.gen(function* makeUploads() {
         requestTokens.set(transfer.id, token);
       }
     }
-    const records = yield* readAll();
+    const records = yield* readAll;
     const recordOf = new Map(records.map((record) => [record.transferId, record]));
     const candidates = delivery.transfers.filter(
       (transfer) => transfers[transfer.id]?.phase === "needsFile" && recordOf.has(transfer.id),
@@ -1082,7 +1082,7 @@ const make = Effect.gen(function* makeUploads() {
     token: string,
     sentHere: readonly DeliveryId[],
   ) {
-    const records = yield* readAll();
+    const records = yield* readAll;
     const remembered = records
       .toSorted((a, b) => b.createdAt - a.createdAt)
       .map((record) => record.deliveryId);
