@@ -12,11 +12,6 @@ import * as Schema from "effect/Schema";
 export class MailError extends Data.TaggedError("MailError")<{ readonly code: string }> {}
 
 /**
- * One email to one person, from hello@. Replies go to support@ unless the
- * message names another `replyTo`. Resolves to `sent` once Cloudflare took the
- * message, or `held` when this stage's allowlist kept it back.
- */
-/**
  * Addresses a staging or preview stage may email, comma-separated, read at
  * deploy time like every other Worker config. Unset, those stages email no one.
  */
@@ -37,6 +32,11 @@ export const emailAllowlist = Config.String("EMAIL_ALLOWLIST").pipe(
 // part worth keeping, since the message can repeat the address.
 const ErrorCode = Schema.Struct({ code: Schema.String });
 
+/**
+ * One email to one person, from hello@. Replies go to support@ unless the
+ * message names another `replyTo`. Resolves to `sent` once Cloudflare took the
+ * message, or `held` when this stage's allowlist kept it back.
+ */
 export class Mail extends Context.Service<
   Mail,
   {

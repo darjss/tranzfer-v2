@@ -185,10 +185,6 @@ export class Auth extends Context.Service<
    * `allowRequest` answers whether a client IP still fits
    * `rateLimits.authRequests`; it is checked before Better Auth sees a request.
    */
-  /**
-   * `allowRequest` answers whether a client IP still fits
-   * `rateLimits.authRequests`; it is checked before Better Auth sees a request.
-   */
   static readonly layer = (
     stage: "production" | "staging" | "dev",
     d1: Effect.Effect<D1Database>,
