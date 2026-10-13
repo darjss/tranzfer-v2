@@ -34,6 +34,34 @@ import { relayConfig, relayTraces, telemetry } from "./infrastructure/telemetry"
 import { App } from "./resources";
 import { ApiWorker } from "./worker";
 
+// Cloudflare rate-limit namespace ids are unique per account, and every stage
+// shares them. The id is the key, so two limits that take the same id do not
+// compile. Take the next number; never reuse or renumber one.
+const rateLimitBindings = {
+  1001: "AUTH_REQUESTS",
+  1002: "UPLOAD_SIGNING",
+  1003: "CODE_REDEMPTIONS",
+  1004: "INTEREST_SIGNUPS",
+  1005: "EMAIL_REQUESTS",
+  1006: "PASSWORD_ATTEMPTS_IP",
+  1007: "PASSWORD_ATTEMPTS_LINK",
+  1008: "PORTAL_CALLS_PER_IP",
+  1009: "PORTAL_CALLS_PER_REQUEST",
+  1010: "PORTAL_UPLOADS_PER_IP",
+} as const;
+
+const rateLimit = (
+  namespaceId: keyof typeof rateLimitBindings,
+  {
+    limit,
+    windowSeconds,
+  }: { limit: number; windowSeconds: Cloudflare.RateLimitProps["simple"]["period"] },
+) =>
+  Cloudflare.RateLimit(rateLimitBindings[namespaceId], {
+    namespaceId,
+    simple: { limit, period: windowSeconds },
+  });
+
 const productProps = (plan: PaidPlanId) => ({
   name: `Tranzfer ${plans[plan].name}`,
   plan,
@@ -111,84 +139,24 @@ export default ApiWorker.make(
         ),
         Effect.provide(RuntimeContext.phantom),
       );
-    const authRequests = yield* Cloudflare.RateLimit("AUTH_REQUESTS", {
-      namespaceId: 1001,
-      simple: {
-        limit: rateLimits.authRequests.limit,
-        period: rateLimits.authRequests.windowSeconds,
-      },
-    });
-    const uploadSigning = yield* Cloudflare.RateLimit("UPLOAD_SIGNING", {
-      namespaceId: 1002,
-      simple: {
-        limit: rateLimits.uploadSigning.limit,
-        period: rateLimits.uploadSigning.windowSeconds,
-      },
-    });
+    const authRequests = yield* rateLimit(1001, rateLimits.authRequests);
+    const uploadSigning = yield* rateLimit(1002, rateLimits.uploadSigning);
 
-    const codeRedemptions = yield* Cloudflare.RateLimit("CODE_REDEMPTIONS", {
-      namespaceId: 1003,
-      simple: {
-        limit: rateLimits.codeRedemptions.limit,
-        period: rateLimits.codeRedemptions.windowSeconds,
-      },
-    });
+    const codeRedemptions = yield* rateLimit(1003, rateLimits.codeRedemptions);
 
-    const interestSignups = yield* Cloudflare.RateLimit("INTEREST_SIGNUPS", {
-      namespaceId: 1004,
-      simple: {
-        limit: rateLimits.interestSignups.limit,
-        period: rateLimits.interestSignups.windowSeconds,
-      },
-    });
+    const interestSignups = yield* rateLimit(1004, rateLimits.interestSignups);
 
-    const emailRequests = yield* Cloudflare.RateLimit("EMAIL_REQUESTS", {
-      namespaceId: 1005,
-      simple: {
-        limit: rateLimits.emailRequests.limit,
-        period: rateLimits.emailRequests.windowSeconds,
-      },
-    });
+    const emailRequests = yield* rateLimit(1005, rateLimits.emailRequests);
 
-    const passwordAttemptsPerIp = yield* Cloudflare.RateLimit("PASSWORD_ATTEMPTS_IP", {
-      namespaceId: 1006,
-      simple: {
-        limit: rateLimits.passwordAttemptsPerIp.limit,
-        period: rateLimits.passwordAttemptsPerIp.windowSeconds,
-      },
-    });
+    const passwordAttemptsPerIp = yield* rateLimit(1006, rateLimits.passwordAttemptsPerIp);
 
-    const passwordAttemptsPerLink = yield* Cloudflare.RateLimit("PASSWORD_ATTEMPTS_LINK", {
-      namespaceId: 1007,
-      simple: {
-        limit: rateLimits.passwordAttemptsPerLink.limit,
-        period: rateLimits.passwordAttemptsPerLink.windowSeconds,
-      },
-    });
+    const passwordAttemptsPerLink = yield* rateLimit(1007, rateLimits.passwordAttemptsPerLink);
 
     // File requests count uploader calls three ways, each with its own
     // namespace: per client IP, per request, and new uploads per client IP.
-    const portalCallsPerIp = yield* Cloudflare.RateLimit("PORTAL_CALLS_PER_IP", {
-      namespaceId: 1008,
-      simple: {
-        limit: rateLimits.portalCallsPerIp.limit,
-        period: rateLimits.portalCallsPerIp.windowSeconds,
-      },
-    });
-    const portalCallsPerRequest = yield* Cloudflare.RateLimit("PORTAL_CALLS_PER_REQUEST", {
-      namespaceId: 1009,
-      simple: {
-        limit: rateLimits.portalCallsPerRequest.limit,
-        period: rateLimits.portalCallsPerRequest.windowSeconds,
-      },
-    });
-    const portalUploadsPerIp = yield* Cloudflare.RateLimit("PORTAL_UPLOADS_PER_IP", {
-      namespaceId: 1010,
-      simple: {
-        limit: rateLimits.portalUploadsPerIp.limit,
-        period: rateLimits.portalUploadsPerIp.windowSeconds,
-      },
-    });
+    const portalCallsPerIp = yield* rateLimit(1008, rateLimits.portalCallsPerIp);
+    const portalCallsPerRequest = yield* rateLimit(1009, rateLimits.portalCallsPerRequest);
+    const portalUploadsPerIp = yield* rateLimit(1010, rateLimits.portalUploadsPerIp);
 
     // Sends through Cloudflare Email Sending as hello@tranzfer.app. The
     // domain is onboarded on the account, so any recipient is allowed.
