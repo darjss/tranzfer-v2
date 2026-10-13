@@ -22,22 +22,22 @@ export const isSinglePut = (size: number) => partCount(size) <= 1;
  * `isSinglePut`) is a single `Put`, signed to only create the object, never
  * replace it. Aborts are not here: cancel is server-side.
  */
-export const UploadRequest = Schema.Union([
-  Schema.TaggedStruct("Put", {}),
-  Schema.TaggedStruct("Create", {}),
-  Schema.TaggedStruct("Part", {
-    partNumber: Schema.Int.check(Schema.isBetween({ maximum: MAX_PARTS, minimum: 1 })),
-    uploadId: Schema.String,
-  }),
-  Schema.TaggedStruct("List", {
+export const UploadRequest = Schema.TaggedUnion({
+  Complete: { uploadId: Schema.String },
+  Create: {},
+  List: {
     // ListParts pages at 1,000 parts; the marker continues to the next page.
     partNumberMarker: Schema.optional(
       Schema.Int.check(Schema.isBetween({ maximum: MAX_PARTS, minimum: 0 })),
     ),
     uploadId: Schema.String,
-  }),
-  Schema.TaggedStruct("Complete", { uploadId: Schema.String }),
-]);
+  },
+  Part: {
+    partNumber: Schema.Int.check(Schema.isBetween({ maximum: MAX_PARTS, minimum: 1 })),
+    uploadId: Schema.String,
+  },
+  Put: {},
+});
 export type UploadRequest = typeof UploadRequest.Type;
 
 /** Uppy signs by object key; the server resolves the transfer from it. */

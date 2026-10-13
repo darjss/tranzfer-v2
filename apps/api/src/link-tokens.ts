@@ -6,6 +6,7 @@ import * as Base64Url from "effect/encoding/Base64Url";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
+import * as Result from "effect/Result";
 
 const encoder = new TextEncoder();
 
@@ -90,7 +91,7 @@ export class LinkTokens extends Context.Service<
               return Option.none();
             }
             const decoded = Base64Url.decode(signature);
-            if (decoded._tag === "Failure") {
+            if (Result.isFailure(decoded)) {
               return Option.none();
             }
             const hmac = yield* key;
@@ -112,7 +113,7 @@ export class LinkTokens extends Context.Service<
             if (
               rest.length > 0 ||
               !Number.isSafeInteger(expiresAt) ||
-              decoded._tag === "Failure" ||
+              Result.isFailure(decoded) ||
               expiresAt <= (yield* Clock.currentTimeMillis)
             ) {
               return false;

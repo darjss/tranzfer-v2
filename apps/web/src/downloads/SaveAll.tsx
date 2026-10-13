@@ -2,6 +2,7 @@ import type { SharedDelivery } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import { createSignal, createStore, onSettled, Show, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
@@ -22,17 +23,21 @@ import type { Folder, SaveStopped } from "./save-folder";
 const note = css({ color: "mut", mt: "2.5", textStyle: "sm" });
 const mono = css({ fontFamily: "mono", fontSize: "13", fontVariantNumeric: "tabular-nums" });
 
-const stoppedWords = (error: ApiError | SaveStopped) => {
-  if (error._tag === "SaveStopped") {
-    return error.reason === "disk"
-      ? `Couldn't save ${error.path}. Check the folder has space, then resume.`
-      : "We lost the connection. Resume when you're back online.";
-  }
-  // The page's unlock lasts a day; a save that outlives it has to unlock again.
-  return error._tag === "LinkLocked"
-    ? "The password unlock has run out. Reload this page and enter the password again, then choose the same folder to carry on."
-    : appError(error).message;
-};
+const stoppedWords = (error: ApiError | SaveStopped) =>
+  Match.value(error).pipe(
+    Match.tag("SaveStopped", (stopped) =>
+      stopped.reason === "disk"
+        ? `Couldn't save ${stopped.path}. Check the folder has space, then resume.`
+        : "We lost the connection. Resume when you're back online.",
+    ),
+    // The page's unlock lasts a day; a save that outlives it has to unlock again.
+    Match.tag(
+      "LinkLocked",
+      () =>
+        "The password unlock has run out. Reload this page and enter the password again, then choose the same folder to carry on.",
+    ),
+    Match.orElse((other) => appError(other).message),
+  );
 
 /** Saves every file into one picked folder, subfolders included. Chromium only. */
 export const SaveAll = (props: {

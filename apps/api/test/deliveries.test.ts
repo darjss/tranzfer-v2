@@ -1,10 +1,18 @@
 import { expect, layer, vi } from "@effect/vitest";
 import {
+  AccessCodeRefused,
   DeliveryId,
+  DeliveryNotFound,
+  DeliveryNotShareable,
   DeliveryNote,
+  DeliveryRefusal,
+  DeliveryRefused,
   DeliveryTitle,
   LinkPassword,
+  OverPlanLimit,
+  RateLimited,
   rateLimits,
+  RetentionNotInPlan,
 } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { eq, sql } from "drizzle-orm";
@@ -15,6 +23,7 @@ import * as Effect from "effect/Effect";
 import { Base64 } from "effect/encoding";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
@@ -25,6 +34,8 @@ import { Emails, queueOpenings, sendWelcome } from "../src/emails";
 import { Mail, MailError } from "../src/infrastructure/email";
 import { admitSignup } from "../src/infrastructure/auth";
 import {
+  AccessCodeExists,
+  AccessCodeNotLive,
   createAccessCode,
   listAccessCodes,
   NewAccessCode,
@@ -290,34 +301,27 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
           deliveries.create("erin-refused", newDelivery(paths.map((path) => newFile(path, 1)))),
         );
       const tooMany = yield* refusal(Array.from({ length: 1001 }, (_, index) => `f/${index}`));
+      expect(tooMany).toBeInstanceOf(DeliveryRefused);
       expect(tooMany).toMatchObject({
-        _tag: "DeliveryRefused",
-        reason: { _tag: "TooManyFiles", count: 1001, max: 1000 },
+        reason: DeliveryRefusal.cases.TooManyFiles.make({ count: 1001, max: 1000 }),
       });
-      const ascii = yield* refusal(["a".repeat(256)]);
-      expect(ascii).toMatchObject({
-        reason: { _tag: "NameTooLong", bytes: 256, max: 255 },
+      const tooLongNames = ["a".repeat(256), "é".repeat(128), "😀".repeat(64)];
+      for (const name of tooLongNames) {
+        expect(yield* refusal([`d/${name}`])).toMatchObject({
+          reason: DeliveryRefusal.cases.NameTooLong.make({ bytes: 256, max: 255, name }),
+        });
+      }
+      const deepPath = Array.from({ length: 5 }, () => "d".repeat(250)).join("/");
+      expect(yield* refusal([deepPath])).toMatchObject({
+        reason: DeliveryRefusal.cases.PathTooLong.make({ bytes: 1254, max: 1024, path: deepPath }),
       });
-      const accents = yield* refusal([`d/${"é".repeat(128)}`]);
-      expect(accents).toMatchObject({
-        reason: { _tag: "NameTooLong", bytes: 256, max: 255 },
-      });
-      const emoji = yield* refusal(["😀".repeat(64)]);
-      expect(emoji).toMatchObject({
-        reason: { _tag: "NameTooLong", bytes: 256, max: 255 },
-      });
-      const deep = yield* refusal([Array.from({ length: 5 }, () => "d".repeat(250)).join("/")]);
-      expect(deep).toMatchObject({
-        reason: { _tag: "PathTooLong", bytes: 1254, max: 1024 },
-      });
-      const unsafe = yield* Effect.all(
-        ["a\\b", "../up", "a//b", "tab\tname"].map((path) => refusal([path])),
+      const unsafePaths = ["a\\b", "../up", "a//b", "tab\tname"];
+      expect(yield* Effect.all(unsafePaths.map((path) => refusal([path])))).toMatchObject(
+        unsafePaths.map((path) => ({ reason: DeliveryRefusal.cases.PathUnsafe.make({ path }) })),
       );
-      expect(unsafe).toMatchObject(
-        Array.from({ length: 4 }, () => ({ reason: { _tag: "PathUnsafe" } })),
-      );
-      const clash = yield* refusal(["Photo.JPG", "photo.jpg"]);
-      expect(clash).toMatchObject({ reason: { _tag: "DuplicatePath", path: "photo.jpg" } });
+      expect(yield* refusal(["Photo.JPG", "photo.jpg"])).toMatchObject({
+        reason: DeliveryRefusal.cases.DuplicatePath.make({ path: "photo.jpg" }),
+      });
       expect(yield* deliveries.list("erin-refused")).toEqual([]);
     }),
   );
@@ -432,8 +436,8 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       const refused = yield* Effect.flip(
         deliveries.create("iris", newDelivery([newFile("b.bin", 6 * GB)])),
       );
+      expect(refused).toBeInstanceOf(OverPlanLimit);
       expect(refused).toMatchObject({
-        _tag: "OverPlanLimit",
         limitBytes: 20 * GB,
         plan: "free",
         requestedBytes: 6 * GB,
@@ -481,12 +485,8 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       const tooLong = yield* Effect.flip(
         deliveries.create("lena", newDelivery([newFile("w.bin", 25 * GB)], "Week", 7)),
       );
-      expect(tooLong).toMatchObject({
-        _tag: "RetentionNotInPlan",
-        maxRetentionDays: 3,
-        plan: "free",
-        requestedDays: 7,
-      });
+      expect(tooLong).toBeInstanceOf(RetentionNotInPlan);
+      expect(tooLong).toMatchObject({ maxRetentionDays: 3, plan: "free", requestedDays: 7 });
 
       yield* subscribe("lena", "starter");
       const created = yield* deliveries.create(
@@ -497,7 +497,8 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       const tooLongForStarter = yield* Effect.flip(
         deliveries.create("lena", newDelivery([newFile("f.bin", 1)], "Fortnight", 14)),
       );
-      expect(tooLongForStarter).toMatchObject({ _tag: "RetentionNotInPlan", plan: "starter" });
+      expect(tooLongForStarter).toBeInstanceOf(RetentionNotInPlan);
+      expect(tooLongForStarter).toMatchObject({ plan: "starter" });
     }),
   );
 
@@ -554,8 +555,8 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       const refused = yield* Effect.flip(
         deliveries.create("olga", newDelivery([newFile("over.bin", 1)])),
       );
+      expect(refused).toBeInstanceOf(RateLimited);
       expect(refused).toMatchObject({
-        _tag: "RateLimited",
         limit: "deliveriesPerDay",
         retryAfterSeconds: (24 * 60 - (limit - 1) * 12) * 60,
       });
@@ -683,10 +684,9 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
       );
       expect(created.retentionDays).toBe(14);
 
-      expect(yield* Effect.flip(plans.redeem("ada", "BETA-PRO"))).toMatchObject({
-        _tag: "AccessCodeRefused",
-        reason: "alreadyRedeemed",
-      });
+      const accessCodeRefused = yield* Effect.flip(plans.redeem("ada", "BETA-PRO"));
+      expect(accessCodeRefused).toBeInstanceOf(AccessCodeRefused);
+      expect(accessCodeRefused).toMatchObject({ reason: "alreadyRedeemed" });
       expect(yield* usesOf("BETA-PRO")).toEqual({ uses: 1 });
 
       // The grant ends on its day and the plan falls back to Free.
@@ -712,7 +712,7 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
       const plans = yield* Plans;
       const reason = (userId: string, code: string) =>
         Effect.map(Effect.flip(plans.redeem(userId, code)), (error) =>
-          error._tag === "AccessCodeRefused" ? error.reason : error._tag,
+          Predicate.isTagged(error, "AccessCodeRefused") ? error.reason : error._tag,
         );
 
       expect(yield* reason("bo", "NOPE")).toBe("unknown");
@@ -813,7 +813,8 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
           ),
         ),
       );
-      expect(refused).toMatchObject({ _tag: "AccessCodeRefused", reason: "expired" });
+      expect(refused).toBeInstanceOf(AccessCodeRefused);
+      expect(refused).toMatchObject({ reason: "expired" });
       expect(yield* usesOf("LATE")).toEqual({ uses: 0 });
       expect(yield* (yield* Plans).current("hal")).toEqual({ grantEndsAt: null, plan: "free" });
     }),
@@ -838,9 +839,7 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
         maxUses: 3,
         uses: 0,
       });
-      expect(yield* Effect.flip(createAccessCode(input))).toMatchObject({
-        _tag: "AccessCodeExists",
-      });
+      expect(yield* Effect.flip(createAccessCode(input))).toBeInstanceOf(AccessCodeExists);
       yield* (yield* Plans).redeem("ivy", "beta-studio");
       expect(yield* listAccessCodes()).toContainEqual(
         expect.objectContaining({ code: "BETA-STUDIO", uses: 1 }),
@@ -851,12 +850,8 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
       expect(yield* Effect.flip((yield* Plans).redeem("jo", "BETA-STUDIO"))).toMatchObject({
         reason: "expired",
       });
-      expect(yield* Effect.flip(revokeAccessCode("BETA-STUDIO"))).toMatchObject({
-        _tag: "AccessCodeNotLive",
-      });
-      expect(yield* Effect.flip(revokeAccessCode("NOPE"))).toMatchObject({
-        _tag: "AccessCodeNotLive",
-      });
+      expect(yield* Effect.flip(revokeAccessCode("BETA-STUDIO"))).toBeInstanceOf(AccessCodeNotLive);
+      expect(yield* Effect.flip(revokeAccessCode("NOPE"))).toBeInstanceOf(AccessCodeNotLive);
       // Grants already made keep their end.
       expect(yield* (yield* Plans).current("ivy")).toMatchObject({ plan: "studio" });
     }),
@@ -1174,12 +1169,11 @@ layer(emailsLayer)("Emails", (it) => {
       yield* Effect.forEach(Arr.range(1, limit), (n) =>
         emails.joinInterest({ email: `n${n}@example.com`, plan: "pro", userId: null }, "3.3.3.3"),
       );
-      expect(
-        yield* Effect.flip(
-          emails.joinInterest({ email: "late@example.com", plan: "pro", userId: null }, "3.3.3.3"),
-        ),
-      ).toMatchObject({
-        _tag: "RateLimited",
+      const rateLimited = yield* Effect.flip(
+        emails.joinInterest({ email: "late@example.com", plan: "pro", userId: null }, "3.3.3.3"),
+      );
+      expect(rateLimited).toBeInstanceOf(RateLimited);
+      expect(rateLimited).toMatchObject({
         limit: "interestSignups",
         retryAfterSeconds: windowSeconds,
       });
@@ -1334,24 +1328,24 @@ layer(emailsLayer)("Emails", (it) => {
         yield* Effect.flip(
           emails.sendDelivery({ ...owner, id: "other" }, { ...to, deliveryId: ready.id }),
         ),
-      ).toMatchObject({ _tag: "DeliveryNotFound" });
+      ).toBeInstanceOf(DeliveryNotFound);
       expect(yield* emails.deliveryEmails("other", ready.id)).toEqual([]);
 
       const open = yield* deliveries.create("own", newDelivery([newFile("x", 1)], "Still going"));
       expect(
         yield* Effect.flip(emails.sendDelivery(owner, { ...to, deliveryId: open.id })),
-      ).toMatchObject({ _tag: "DeliveryNotShareable" });
+      ).toBeInstanceOf(DeliveryNotShareable);
 
       const cancelled = yield* readyDelivery("own", [3], "Cancelled");
       yield* deliveries.cancel("own", cancelled.id);
       expect(
         yield* Effect.flip(emails.sendDelivery(owner, { ...to, deliveryId: cancelled.id })),
-      ).toMatchObject({ _tag: "DeliveryNotShareable" });
+      ).toBeInstanceOf(DeliveryNotShareable);
 
       yield* TestClock.adjust("4 days");
       expect(
         yield* Effect.flip(emails.sendDelivery(owner, { ...to, deliveryId: ready.id })),
-      ).toMatchObject({ _tag: "DeliveryNotShareable" });
+      ).toBeInstanceOf(DeliveryNotShareable);
       expect(background).toEqual([]);
     }),
   );
@@ -1372,8 +1366,9 @@ layer(emailsLayer)("Emails", (it) => {
       for (const round of Arr.range(1, 5)) {
         yield* emails.sendDelivery(sender, many(`r${round}-`, 10));
       }
-      expect(yield* Effect.flip(emails.sendDelivery(sender, many("late-", 1)))).toMatchObject({
-        _tag: "RateLimited",
+      const rateLimited2 = yield* Effect.flip(emails.sendDelivery(sender, many("late-", 1)));
+      expect(rateLimited2).toBeInstanceOf(RateLimited);
+      expect(rateLimited2).toMatchObject({
         limit: "emailsPerDay",
         retryAfterSeconds: rateLimits.emailsPerDay.windowSeconds,
       });
@@ -1386,8 +1381,9 @@ layer(emailsLayer)("Emails", (it) => {
       for (const _ of Arr.range(1, rateLimits.emailRequests.limit - 7)) {
         yield* emails.sendDelivery(sender, many("x-", 1));
       }
-      expect(yield* Effect.flip(emails.sendDelivery(sender, many("y-", 1)))).toMatchObject({
-        _tag: "RateLimited",
+      const rateLimited3 = yield* Effect.flip(emails.sendDelivery(sender, many("y-", 1)));
+      expect(rateLimited3).toBeInstanceOf(RateLimited);
+      expect(rateLimited3).toMatchObject({
         limit: "emailRequests",
         retryAfterSeconds: rateLimits.emailRequests.windowSeconds,
       });
@@ -1416,10 +1412,9 @@ layer(emailsLayer)("Emails", (it) => {
         deliveryId: ready.id,
         recipients: Arr.range(1, count).map((n) => `w${n}@example.com`),
       });
-      expect(yield* Effect.flip(emails.sendDelivery(sender, many(6)))).toMatchObject({
-        _tag: "RateLimited",
-        limit: "emailsAccountPerDay",
-      });
+      const rateLimited4 = yield* Effect.flip(emails.sendDelivery(sender, many(6)));
+      expect(rateLimited4).toBeInstanceOf(RateLimited);
+      expect(rateLimited4).toMatchObject({ limit: "emailsAccountPerDay" });
       expect(yield* emails.sendDelivery(sender, many(5))).toHaveLength(5);
       background.length = 0;
     }),

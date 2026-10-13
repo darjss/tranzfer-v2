@@ -9,15 +9,9 @@ import {
   maxTitleLength,
   partSize,
   TransferId,
-} from "@tranzfer/contracts";
-import type {
-  Delivery,
-  NewFile,
-  RetentionDays,
-  SignedUrl,
-  Transfer,
   UploadRequest,
 } from "@tranzfer/contracts";
+import type { Delivery, NewFile, RetentionDays, SignedUrl, Transfer } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
@@ -25,6 +19,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
+import * as Predicate from "effect/Predicate";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
@@ -40,7 +35,7 @@ import {
   remember,
 } from "./recovery";
 import type { RecoveryRecord } from "./recovery";
-import { makeUploadSpans } from "./spans";
+import { UploadSpans } from "./spans";
 import { patchTransfer, transfers, wireWindow } from "./store";
 import { claim, letGo, sendingElsewhere } from "./tabs";
 import type { ListedPart, VerifyReply, VerifyRequest } from "./verify";
@@ -136,24 +131,24 @@ export const deliveryTitle = (files: readonly ChosenFile[]) => {
 export const toUploadRequest = (request: PresignableRequest): UploadRequest | null => {
   if (!("uploadId" in request)) {
     if (request.method === "POST") {
-      return { _tag: "Create" };
+      return UploadRequest.cases.Create.make({});
     }
-    return request.method === "PUT" ? { _tag: "Put" } : null;
+    return request.method === "PUT" ? UploadRequest.cases.Put.make({}) : null;
   }
   if (request.method === "PUT") {
-    return { _tag: "Part", partNumber: request.partNumber, uploadId: request.uploadId };
+    return UploadRequest.cases.Part.make({
+      partNumber: request.partNumber,
+      uploadId: request.uploadId,
+    });
   }
   if (request.method === "GET") {
-    return request.partNumberMarker === undefined
-      ? { _tag: "List", uploadId: request.uploadId }
-      : {
-          _tag: "List",
-          partNumberMarker: request.partNumberMarker,
-          uploadId: request.uploadId,
-        };
+    return UploadRequest.cases.List.make({
+      partNumberMarker: request.partNumberMarker,
+      uploadId: request.uploadId,
+    });
   }
   if (request.method === "POST") {
-    return { _tag: "Complete", uploadId: request.uploadId };
+    return UploadRequest.cases.Complete.make({ uploadId: request.uploadId });
   }
   return null;
 };
@@ -167,7 +162,7 @@ export const retryWhileNotUploaded = <A, E extends { readonly _tag: string }, R>
     Effect.retry({
       schedule: Schedule.exponential("800 millis"),
       times: 3,
-      while: (error) => error._tag === "NotUploaded",
+      while: Predicate.isTagged("NotUploaded"),
     }),
   );
 
@@ -238,7 +233,7 @@ export const verifyInWorker = (
 
 const make = Effect.gen(function* makeUploads() {
   const api = yield* ApiClient;
-  const spans = yield* makeUploadSpans;
+  const spans = yield* UploadSpans;
   // Background work (finalize, per-file starts) runs in fibers owned by this
   // layer, so it belongs to the app runtime rather than to a component.
   const runFork = yield* FiberSet.makeRuntime();
@@ -332,7 +327,7 @@ const make = Effect.gen(function* makeUploads() {
       yield* recordUploadId(transferId, request.uploadId);
     }
     const signed = yield* retryTransport(signFor(transferId, request.key, upload));
-    if (upload._tag === "Complete" && transferId !== undefined) {
+    if (Predicate.isTagged(upload, "Complete") && transferId !== undefined) {
       completeSigned.add(transferId);
       yield* spans.note(transferId, "complete.signed");
     }
@@ -356,9 +351,7 @@ const make = Effect.gen(function* makeUploads() {
         signFor(
           transferId,
           objectKey,
-          marker === undefined
-            ? { _tag: "List", uploadId }
-            : { _tag: "List", partNumberMarker: marker, uploadId },
+          UploadRequest.cases.List.make({ partNumberMarker: marker, uploadId }),
         ),
       );
       const response = yield* Effect.tryPromise(
@@ -663,19 +656,14 @@ const make = Effect.gen(function* makeUploads() {
         Effect.retry({
           schedule: Schedule.exponential("1 second"),
           times: 5,
-          while: (error) => error._tag === "RpcClientError",
+          while: Predicate.isTagged("RpcClientError"),
         }),
         // A conflict means these ids already belong to different content, and a
         // plan, request or rate refusal means no delivery was made. Either way
         // nothing from this attempt exists to resume; its records go. Only a
         // dropped connection leaves them, since that create may have landed.
-        Effect.catchIf(
-          (error) => error._tag !== "RpcClientError",
-          (error) =>
-            Effect.andThen(
-              forget(prepared.map(({ transferId }) => transferId)),
-              Effect.fail(error),
-            ),
+        Effect.catchIf(Predicate.not(Predicate.isTagged("RpcClientError")), (error) =>
+          Effect.andThen(forget(prepared.map(({ transferId }) => transferId)), Effect.fail(error)),
         ),
         Effect.tapError((error) => spans.abandon(deliveryId, error._tag)),
       );
@@ -798,7 +786,7 @@ const make = Effect.gen(function* makeUploads() {
           Effect.matchEffect({
             onFailure: (error) =>
               Effect.suspend(() => {
-                if (error._tag === "NotUploaded") {
+                if (Predicate.isTagged(error, "NotUploaded")) {
                   patchTransfer(transferId, { phase: "uploading" });
                   runFork(start(uppy, file.id, transferId));
                   return Effect.void;
@@ -857,8 +845,8 @@ const make = Effect.gen(function* makeUploads() {
     // The file request the deliveries came in through, for an uploader.
     token?: string,
   ) {
-    const records = yield* readAll();
-    const elsewhere = yield* sendingElsewhere();
+    const records = yield* readAll;
+    const elsewhere = yield* sendingElsewhere;
     const byTransfer = new Map(
       deliveries.flatMap((delivery) =>
         delivery.transfers.map((transfer) => [transfer.id, transfer] as const),
@@ -932,7 +920,7 @@ const make = Effect.gen(function* makeUploads() {
         requestTokens.set(transfer.id, token);
       }
     }
-    const records = yield* readAll();
+    const records = yield* readAll;
     const recordOf = new Map(records.map((record) => [record.transferId, record]));
     const candidates = delivery.transfers.filter(
       (transfer) => transfers[transfer.id]?.phase === "needsFile" && recordOf.has(transfer.id),
@@ -1082,7 +1070,7 @@ const make = Effect.gen(function* makeUploads() {
     token: string,
     sentHere: readonly DeliveryId[],
   ) {
-    const records = yield* readAll();
+    const records = yield* readAll;
     const remembered = records
       .toSorted((a, b) => b.createdAt - a.createdAt)
       .map((record) => record.deliveryId);

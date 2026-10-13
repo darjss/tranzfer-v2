@@ -1,5 +1,6 @@
 import type { Delivery, DeliveryId } from "@tranzfer/contracts";
 import * as Exit from "effect/Exit";
+import * as Predicate from "effect/Predicate";
 import {
   createEffect,
   createMemo,
@@ -356,7 +357,13 @@ function Details(props: {
                       {transfer.path}
                     </p>
                     <Switch>
-                      <Match when={status()._tag === "Active" ? transfers[transfer.id] : undefined}>
+                      <Match
+                        when={
+                          Predicate.isTagged(status(), "Active")
+                            ? transfers[transfer.id]
+                            : undefined
+                        }
+                      >
                         {(progress) => (
                           <Progress
                             class={css({ mt: "1.5" })}
@@ -368,7 +375,13 @@ function Details(props: {
                           />
                         )}
                       </Match>
-                      <Match when={status()._tag === "Failed" ? transfers[transfer.id] : undefined}>
+                      <Match
+                        when={
+                          Predicate.isTagged(status(), "Failed")
+                            ? transfers[transfer.id]
+                            : undefined
+                        }
+                      >
                         {(progress) => (
                           <p class={css({ color: "rust", fontSize: "13", mt: "0.5" })}>
                             {appError(progress().error).message}
@@ -376,7 +389,11 @@ function Details(props: {
                         )}
                       </Match>
                       <Match
-                        when={status()._tag === "NeedsFile" ? transfers[transfer.id] : undefined}
+                        when={
+                          Predicate.isTagged(status(), "NeedsFile")
+                            ? transfers[transfer.id]
+                            : undefined
+                        }
                       >
                         {(progress) => (
                           <Show
@@ -393,7 +410,7 @@ function Details(props: {
                           </Show>
                         )}
                       </Match>
-                      <Match when={status()._tag !== "Complete"}>
+                      <Match when={!Predicate.isTagged(status(), "Complete")}>
                         <p class={cx(css({ fontSize: "13", mt: "0.5" }), kindText(kind()))}>
                           {kindWords[kind()].label}
                         </p>
@@ -401,7 +418,7 @@ function Details(props: {
                     </Switch>
                   </div>
                   <div class={css({ alignItems: "center", display: "flex", gap: "3" })}>
-                    <Show when={status()._tag === "Failed"}>
+                    <Show when={Predicate.isTagged(status(), "Failed")}>
                       <Button
                         onClick={() => {
                           runtime.runFork(Uploads.use((uploads) => uploads.retry(transfer.id)));

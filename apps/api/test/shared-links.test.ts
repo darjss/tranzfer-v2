@@ -1,4 +1,5 @@
 import { expect, layer } from "@effect/vitest";
+import { LinkLocked, LinkNotReady, RateLimited } from "@tranzfer/contracts";
 import { Database } from "@tranzfer/db";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
@@ -50,7 +51,8 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
       const token = tokenOf(created.link);
 
       const notReady = yield* Effect.flip(links.open(token));
-      expect(notReady).toMatchObject({ _tag: "LinkNotReady", senderName: "Sam", title: "Clips" });
+      expect(notReady).toBeInstanceOf(LinkNotReady);
+      expect(notReady).toMatchObject({ senderName: "Sam", title: "Clips" });
 
       const file = first(created.transfers);
       storage.objects.set(file.objectKey, { etag: "m", size: 3 });
@@ -160,7 +162,8 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
 
       // Neither the title nor any URL leaks; only the sender's name does.
       const locked = yield* Effect.flip(links.open(token));
-      expect(locked).toMatchObject({ _tag: "LinkLocked", senderName: "Sam" });
+      expect(locked).toBeInstanceOf(LinkLocked);
+      expect(locked).toMatchObject({ senderName: "Sam" });
       expect(JSON.stringify(locked)).not.toContain("Secret cut");
       const forged = yield* Effect.flip(links.open(token, "9999999999999.AAAA"));
       expect(forged._tag).toBe("LinkLocked");
@@ -227,11 +230,8 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
         expect(wrong._tag).toBe("WrongPassword");
       }
       const limited = yield* Effect.flip(links.unlock(one.token, "the right one", "ip-link-f"));
-      expect(limited).toMatchObject({
-        _tag: "RateLimited",
-        limit: "passwordAttemptsPerLink",
-        retryAfterSeconds: 60,
-      });
+      expect(limited).toBeInstanceOf(RateLimited);
+      expect(limited).toMatchObject({ limit: "passwordAttemptsPerLink", retryAfterSeconds: 60 });
       // Another link is untouched.
       yield* links.unlock(two.token, "the right one", "ip-link-g");
 
@@ -245,7 +245,8 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
         yield* Effect.flip(links.unlock(token, "nope nope", "ip-busy"));
       }
       const blocked = yield* Effect.flip(links.unlock(four.token, "the right one", "ip-busy"));
-      expect(blocked).toMatchObject({ _tag: "RateLimited", limit: "passwordAttemptsPerIp" });
+      expect(blocked).toBeInstanceOf(RateLimited);
+      expect(blocked).toMatchObject({ limit: "passwordAttemptsPerIp" });
       yield* links.unlock(four.token, "the right one", "ip-calm");
     }),
   );
