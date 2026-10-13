@@ -15,7 +15,7 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 - Tests, scenarios or lint guardrails: [docs/TESTING.md](docs/TESTING.md). Remaining work: [docs/plan/03-testing-and-guardrails.md](docs/plan/03-testing-and-guardrails.md).
 - Tool choices: [docs/STACK.md](docs/STACK.md). Code placement and request scope: [docs/STRUCTURE.md](docs/STRUCTURE.md). Effect reads in Solid: [docs/SOLID-EFFECT-BINDING.md](docs/SOLID-EFFECT-BINDING.md).
 - Traces, with log lines as span events: Axiom, described in the STACK.md observability lines. Never put a URL, query string, cookie, email or link token in a span attribute or log. Planned but not built: PostHog and Sentry, and other deferred tools in the STACK.md "Later" list.
-- Next milestone: [docs/plan/01-foundation.md](docs/plan/01-foundation.md). Optional follow-up: [docs/plan/02-pre-upload-readiness.md](docs/plan/02-pre-upload-readiness.md).
+- Next milestone: [docs/plan/01-foundation.md](docs/plan/01-foundation.md). Optional follow-up: [docs/plan/02-pre-upload-readiness.md](docs/plan/02-pre-upload-readiness.md). Code-quality work: [docs/plan/deslop/00-index.md](docs/plan/deslop/00-index.md).
 - External precedent: `~/dev/tranzfer2-references/README.md`. Those checkouts can use different prereleases; verify syntax locally.
 
 ## Change and verify
