@@ -5,13 +5,15 @@ import { defineConfig } from "oxlint";
 import type { OxlintConfig } from "oxlint";
 
 // bench/ holds untyped Node scripts that drive staging by hand; they aren't app code.
-// tools/oxlint/anti-slop is vendored upstream source (github.com/dmmulroy/anti-slop).
+// tools/oxlint/anti-slop is vendored upstream source (github.com/dmmulroy/anti-slop), except
+// tools/oxlint/anti-slop/tranzfer, which is ours.
 const generatedIgnores = [
   "**/file-routes.d.ts",
   "docs/design/**",
   "**/styled-system/**",
   "bench/**",
-  "tools/oxlint/anti-slop/**",
+  "tools/oxlint/anti-slop/*.ts",
+  "tools/oxlint/anti-slop/{effect,rules,shared,vendor}/**",
 ];
 
 // Absolute, because apps/web/vite.config.ts loads this file too and a
@@ -80,6 +82,12 @@ const antiSlopRules: OxlintConfig["rules"] = {
   "oxc/no-accumulating-spread": "error",
 };
 
+// Rules we wrote, in tools/oxlint/anti-slop/tranzfer.
+const tranzferRules: OxlintConfig["rules"] = {
+  "tranzfer/no-debug-markers-in-tests": "error",
+  "tranzfer/no-import-then-reexport": "error",
+};
+
 const effectErrorRules = {
   "effecttsgo/floating-effect": "error",
   "effecttsgo/floating-effect-in-vitest": "error",
@@ -143,6 +151,7 @@ export const lintConfig = (
       vitePlusPlugin,
       { name: "anti-slop", specifier: antiSlopPath("index.ts") },
       { name: "anti-slop-effect", specifier: antiSlopPath("effect/index.ts") },
+      { name: "tranzfer", specifier: antiSlopPath("tranzfer/index.ts") },
     ],
     overrides: [
       {
@@ -169,6 +178,15 @@ export const lintConfig = (
           "func-style": ["error", "declaration", { allowArrowFunctions: true }],
           "unicorn/filename-case": ["error", { cases: { kebabCase: true, pascalCase: true } }],
         },
+      },
+      {
+        files: ["**/*.{test,spec}.{ts,tsx}"],
+        rules: { "vitest/no-focused-tests": "error" },
+      },
+      {
+        // The rule's own fixtures hold the markers it looks for.
+        files: ["tools/oxlint/anti-slop/tranzfer/rules/no-debug-markers-in-tests.test.ts"],
+        rules: { "tranzfer/no-debug-markers-in-tests": "off" },
       },
       ...effectOverride,
       {
@@ -199,11 +217,16 @@ export const lintConfig = (
         },
       },
     ],
-    plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "effecttsgo"],
+    plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "effecttsgo", "vitest"],
     rules: {
       ...baseRules,
       ...antiSlopRules,
+      ...tranzferRules,
       "vite-plus/prefer-vite-plus-imports": "error",
+      // The vitest plugin is on for no-focused-tests alone. Its default rules
+      // misread @effect/vitest's layer() blocks.
+      "vitest/no-standalone-expect": "off",
+      "vitest/require-mock-type-parameters": "off",
     },
     settings: solidV2Strict.settings,
   });
