@@ -14,6 +14,7 @@ import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
@@ -274,7 +275,7 @@ export class Plans extends Context.Service<
                   .where(eq(schema.accessCode.code, code)),
               ]),
             );
-            if (redeemed._tag === "Failure") {
+            if (Result.isFailure(redeemed)) {
               // Lost a race: the second look names why, and nothing naming
               // it means a real database fault.
               yield* redeemable(userId, code, now);

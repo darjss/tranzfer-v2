@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "@solidjs/router";
 import { clientOnly } from "@solidjs/web";
 import { AccessCodeInput, defaultRetentionDays, PaidPlanId, plans } from "@tranzfer/contracts";
 import type { RetentionDays } from "@tranzfer/contracts";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
   configureClientErrors,
@@ -225,7 +226,7 @@ const DeliveriesPage = () => {
   // link can carry one while paid plans are closed; it is dropped.
   onSettled(() => {
     const plan = Schema.decodeUnknownOption(PaidPlanId)(searchParams.plan);
-    if (plan._tag === "Some") {
+    if (Option.isSome(plan)) {
       setSearchParams({ plan: undefined });
       if (paidPlansOpen) {
         void upgrade(plan.value);
@@ -237,7 +238,7 @@ const DeliveriesPage = () => {
   // address first so a reload doesn't try it again.
   onSettled(() => {
     const code = Schema.decodeUnknownOption(AccessCodeInput)(searchParams.code);
-    if (code._tag === "Some") {
+    if (Option.isSome(code)) {
       setSearchParams({ code: undefined });
       void redeem(code.value);
     }

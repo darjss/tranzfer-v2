@@ -7,9 +7,11 @@ import {
   NotUploaded,
   RateLimited,
   TransferId,
+  UploadRequest,
 } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as Tracer from "effect/Tracer";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -191,29 +193,23 @@ describe("isTransientUploadError", () => {
 
 describe("signing", () => {
   it("signs_uploads_but_never_aborts", () => {
-    expect(toUploadRequest({ key: "k", method: "POST" })).toEqual({ _tag: "Create" });
-    expect(toUploadRequest({ key: "k", method: "PUT", partNumber: 3, uploadId: "u" })).toEqual({
-      _tag: "Part",
-      partNumber: 3,
-      uploadId: "u",
-    });
-    expect(toUploadRequest({ key: "k", method: "GET", uploadId: "u" })).toEqual({
-      _tag: "List",
-      uploadId: "u",
-    });
+    expect(toUploadRequest({ key: "k", method: "POST" })).toEqual(
+      UploadRequest.cases.Create.make({}),
+    );
+    expect(toUploadRequest({ key: "k", method: "PUT", partNumber: 3, uploadId: "u" })).toEqual(
+      UploadRequest.cases.Part.make({ partNumber: 3, uploadId: "u" }),
+    );
+    expect(toUploadRequest({ key: "k", method: "GET", uploadId: "u" })).toEqual(
+      UploadRequest.cases.List.make({ uploadId: "u" }),
+    );
     // A continued ListParts page carries its marker into the signed request.
     expect(
       toUploadRequest({ key: "k", method: "GET", partNumberMarker: 1000, uploadId: "u" }),
-    ).toEqual({
-      _tag: "List",
-      partNumberMarker: 1000,
-      uploadId: "u",
-    });
-    expect(toUploadRequest({ key: "k", method: "POST", uploadId: "u" })).toEqual({
-      _tag: "Complete",
-      uploadId: "u",
-    });
-    expect(toUploadRequest({ key: "k", method: "PUT" })).toEqual({ _tag: "Put" });
+    ).toEqual(UploadRequest.cases.List.make({ partNumberMarker: 1000, uploadId: "u" }));
+    expect(toUploadRequest({ key: "k", method: "POST", uploadId: "u" })).toEqual(
+      UploadRequest.cases.Complete.make({ uploadId: "u" }),
+    );
+    expect(toUploadRequest({ key: "k", method: "PUT" })).toEqual(UploadRequest.cases.Put.make({}));
     expect(toUploadRequest({ key: "k", method: "DELETE", uploadId: "u" })).toBeNull();
   });
 });
@@ -370,7 +366,7 @@ describe("upload spans", () => {
               ended.push({
                 attributes: this.attributes,
                 name: this.name,
-                parent: this.parent._tag === "Some" ? this.parent.value.spanId : undefined,
+                parent: Option.isSome(this.parent) ? this.parent.value.spanId : undefined,
               });
             }
           })(options),

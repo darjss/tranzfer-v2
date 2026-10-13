@@ -1,5 +1,5 @@
 import { expect, layer } from "@effect/vitest";
-import { partSize, rateLimits } from "@tranzfer/contracts";
+import { partSize, rateLimits, RateLimited, UploadRequest } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
 import * as Arr from "effect/Array";
@@ -40,41 +40,52 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       const transfers = yield* Transfers;
       const [{ objectKey: bigKey }, { objectKey: smallKey }] = firstTwo(created.transfers);
 
-      const create = yield* transfers.sign("ann", smallKey, { _tag: "Create" });
+      const create = yield* transfers.sign("ann", smallKey, UploadRequest.cases.Create.make({}));
       expect(create.url).toBe(`memory://Create/${smallKey}`);
       const tooFar = yield* Effect.flip(
-        transfers.sign("ann", bigKey, {
-          _tag: "Part",
-          partNumber: Math.ceil((200 * MIB) / partSize(200 * MIB)) + 1,
-          uploadId: "u",
-        }),
+        transfers.sign(
+          "ann",
+          bigKey,
+          UploadRequest.cases.Part.make({
+            partNumber: Math.ceil((200 * MIB) / partSize(200 * MIB)) + 1,
+            uploadId: "u",
+          }),
+        ),
       );
       expect(tooFar._tag).toBe("InvalidUpload");
-      const stranger = yield* Effect.flip(transfers.sign("someone", smallKey, { _tag: "Create" }));
+      const stranger = yield* Effect.flip(
+        transfers.sign("someone", smallKey, UploadRequest.cases.Create.make({})),
+      );
       expect(stranger._tag).toBe("DeliveryNotFound");
 
       // Signing Complete moves the transfer to finalizing: retries of the last
       // steps still sign, and parts on the existing upload id sign too, so a
       // lost Complete with missing parts can finish. A new upload cannot.
-      yield* transfers.sign("ann", smallKey, { _tag: "Complete", uploadId: "u" });
-      yield* transfers.sign("ann", smallKey, { _tag: "Complete", uploadId: "u" });
-      yield* transfers.sign("ann", smallKey, { _tag: "List", uploadId: "u" });
+      yield* transfers.sign("ann", smallKey, UploadRequest.cases.Complete.make({ uploadId: "u" }));
+      yield* transfers.sign("ann", smallKey, UploadRequest.cases.Complete.make({ uploadId: "u" }));
+      yield* transfers.sign("ann", smallKey, UploadRequest.cases.List.make({ uploadId: "u" }));
       // ListParts pagination signs again with the page marker.
-      yield* transfers.sign("ann", smallKey, {
-        _tag: "List",
-        partNumberMarker: 1000,
-        uploadId: "u",
-      });
-      const reopen = yield* Effect.flip(transfers.sign("ann", smallKey, { _tag: "Create" }));
+      yield* transfers.sign(
+        "ann",
+        smallKey,
+        UploadRequest.cases.List.make({ partNumberMarker: 1000, uploadId: "u" }),
+      );
+      const reopen = yield* Effect.flip(
+        transfers.sign("ann", smallKey, UploadRequest.cases.Create.make({})),
+      );
       expect(reopen._tag).toBe("UploadClosed");
-      const morePart = yield* transfers.sign("ann", smallKey, {
-        _tag: "Part",
-        partNumber: 1,
-        uploadId: "u",
-      });
+      const morePart = yield* transfers.sign(
+        "ann",
+        smallKey,
+        UploadRequest.cases.Part.make({ partNumber: 1, uploadId: "u" }),
+      );
       expect(morePart.url).toBe(`memory://Part/${smallKey}`);
       const tooMany = yield* Effect.flip(
-        transfers.sign("ann", smallKey, { _tag: "Part", partNumber: 2, uploadId: "u" }),
+        transfers.sign(
+          "ann",
+          smallKey,
+          UploadRequest.cases.Part.make({ partNumber: 2, uploadId: "u" }),
+        ),
       );
       expect(tooMany._tag).toBe("InvalidUpload");
     }),
@@ -119,7 +130,9 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       const [one] = firstTwo(created.transfers);
       yield* deliveries.cancel("cat", created.id);
 
-      const sign = yield* Effect.flip(transfers.sign("cat", one.objectKey, { _tag: "Create" }));
+      const sign = yield* Effect.flip(
+        transfers.sign("cat", one.objectKey, UploadRequest.cases.Create.make({})),
+      );
       expect(sign._tag).toBe("UploadClosed");
       storage.objects.set(one.objectKey, { etag: "x", size: 1 });
       const finalize = yield* Effect.flip(transfers.finalize("cat", one.id));
@@ -135,8 +148,16 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       const [left, stays] = firstTwo(created.transfers);
 
       // Signing Complete marks the transfer finalizing; the browser then vanishes.
-      yield* transfers.sign("dan", left.objectKey, { _tag: "Complete", uploadId: "u" });
-      yield* transfers.sign("dan", stays.objectKey, { _tag: "Complete", uploadId: "u" });
+      yield* transfers.sign(
+        "dan",
+        left.objectKey,
+        UploadRequest.cases.Complete.make({ uploadId: "u" }),
+      );
+      yield* transfers.sign(
+        "dan",
+        stays.objectKey,
+        UploadRequest.cases.Complete.make({ uploadId: "u" }),
+      );
       storage.objects.set(left.objectKey, { etag: "l", size: 7 });
 
       expect(yield* transfers.recoverFinalizing).toBe(0);
@@ -194,12 +215,14 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       const transfers = yield* Transfers;
       const { objectKey } = first(created.transfers);
 
-      const wrongKind = yield* Effect.flip(transfers.sign("gus", objectKey, { _tag: "Create" }));
+      const wrongKind = yield* Effect.flip(
+        transfers.sign("gus", objectKey, UploadRequest.cases.Create.make({})),
+      );
       expect(wrongKind._tag).toBe("InvalidUpload");
       // The first response is lost; the retry still gets a URL. If-None-Match
       // (signed by the real storage) is what stops a second write.
-      yield* transfers.sign("gus", objectKey, { _tag: "Put" });
-      yield* transfers.sign("gus", objectKey, { _tag: "Put" });
+      yield* transfers.sign("gus", objectKey, UploadRequest.cases.Put.make({}));
+      yield* transfers.sign("gus", objectKey, UploadRequest.cases.Put.make({}));
     }),
   );
 
@@ -219,22 +242,24 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
         return found.objectKey;
       };
 
-      const put = yield* transfers.sign("hal", key("small.bin"), { _tag: "Put" });
+      const put = yield* transfers.sign("hal", key("small.bin"), UploadRequest.cases.Put.make({}));
       expect(put.url).toBe(`memory://Put/${key("small.bin")}`);
       // Signing the Put is the point the object may land unseen, so the
       // sweeper's state is set and no multipart upload can start after it.
       const reopen = yield* Effect.flip(
-        transfers.sign("hal", key("small.bin"), { _tag: "Create" }),
+        transfers.sign("hal", key("small.bin"), UploadRequest.cases.Create.make({})),
       );
       expect(reopen._tag).toBe("UploadClosed");
       // A lost response signs again; If-None-Match makes the second write fail.
-      yield* transfers.sign("hal", key("small.bin"), { _tag: "Put" });
-      yield* transfers.sign("hal", key("edge.bin"), { _tag: "Put" });
+      yield* transfers.sign("hal", key("small.bin"), UploadRequest.cases.Put.make({}));
+      yield* transfers.sign("hal", key("edge.bin"), UploadRequest.cases.Put.make({}));
 
-      const tooBig = yield* Effect.flip(transfers.sign("hal", key("big.bin"), { _tag: "Put" }));
+      const tooBig = yield* Effect.flip(
+        transfers.sign("hal", key("big.bin"), UploadRequest.cases.Put.make({})),
+      );
       expect(tooBig._tag).toBe("InvalidUpload");
       // Transfers that began as multipart before single PUTs existed still can.
-      yield* transfers.sign("hal", key("big.bin"), { _tag: "Create" });
+      yield* transfers.sign("hal", key("big.bin"), UploadRequest.cases.Create.make({}));
     }),
   );
 
@@ -249,11 +274,12 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       const transfers = yield* Transfers;
       const { limit, windowSeconds } = rateLimits.uploadSigning;
       const create = (sender: string, key: string) =>
-        transfers.sign(sender, key, { _tag: "Create" });
+        transfers.sign(sender, key, UploadRequest.cases.Create.make({}));
 
       yield* Effect.forEach(Arr.range(1, limit), () => create("fern", free.objectKey));
-      expect(yield* Effect.flip(create("fern", free.objectKey))).toMatchObject({
-        _tag: "RateLimited",
+      const rateLimited = yield* Effect.flip(create("fern", free.objectKey));
+      expect(rateLimited).toBeInstanceOf(RateLimited);
+      expect(rateLimited).toMatchObject({
         limit: "uploadSigning",
         retryAfterSeconds: windowSeconds,
       });
@@ -269,9 +295,11 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       const { objectKey } = first(created.transfers);
 
       yield* TestClock.adjust("6 days");
-      yield* transfers.sign("ivy", objectKey, { _tag: "Create" });
+      yield* transfers.sign("ivy", objectKey, UploadRequest.cases.Create.make({}));
       yield* TestClock.adjust("2 days");
-      const late = yield* Effect.flip(transfers.sign("ivy", objectKey, { _tag: "Create" }));
+      const late = yield* Effect.flip(
+        transfers.sign("ivy", objectKey, UploadRequest.cases.Create.make({})),
+      );
       expect(late._tag).toBe("UploadClosed");
     }),
   );

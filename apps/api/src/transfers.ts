@@ -26,6 +26,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 
 import { Deliveries, UPLOAD_WINDOW } from "./deliveries";
 import { Plans } from "./plans";
@@ -315,7 +316,7 @@ export class Transfers extends Context.Service<
             "transfer.state": transfer.state,
             "upload.request": request._tag,
           });
-          if (request._tag === "Part") {
+          if (Predicate.isTagged(request, "Part")) {
             yield* Effect.annotateCurrentSpan("upload.part_number", request.partNumber);
           }
           if (transfer.delivery.status !== "open") {

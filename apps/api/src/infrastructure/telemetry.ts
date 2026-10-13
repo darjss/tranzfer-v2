@@ -297,11 +297,9 @@ export const relayTraces = ({ client, origin, target }: Effect.Success<typeof re
     Effect.timeout("5 seconds"),
     // Only the failure's tag is logged: an HttpClientError carries the
     // request, and the request carries the token.
-    Effect.catch((error) =>
-      Effect.logWarning("telemetry relay failed", { error: error._tag }).pipe(
-        Effect.as(status(error._tag === "SchemaError" ? 400 : 502)),
-      ),
-    ),
+    Effect.tapError((error) => Effect.logWarning("telemetry relay failed", { error: error._tag })),
+    Effect.catchTag("SchemaError", () => Effect.succeed(status(400))),
+    Effect.catch(() => Effect.succeed(status(502))),
     // No client span or traceparent for the hop to Axiom.
     Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
   );

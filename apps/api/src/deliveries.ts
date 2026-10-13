@@ -31,6 +31,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
+import * as Result from "effect/Result";
 
 import { LinkTokens, newLinkId } from "./link-tokens";
 import { hashPassword } from "./passwords";
@@ -481,7 +482,7 @@ export class Deliveries extends Context.Service<
               db.insert(schema.link).values({ deliveryId: input.id, id: linkId }),
             ]),
           );
-          if (inserted._tag === "Success") {
+          if (Result.isSuccess(inserted)) {
             return yield* view(input.id);
           }
 

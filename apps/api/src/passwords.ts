@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
+import * as Result from "effect/Result";
 
 const encoder = new TextEncoder();
 
@@ -49,8 +50,8 @@ export const checkPassword = Effect.fn("Passwords.check")(function* checkPasswor
     rest.length > 0 ||
     !Number.isSafeInteger(iterations) ||
     iterations < 1 ||
-    salt._tag === "Failure" ||
-    expected._tag === "Failure"
+    Result.isFailure(salt) ||
+    Result.isFailure(expected)
   ) {
     // Only hashPassword writes this column.
     return yield* Effect.die(new Error("Stored password hash is malformed"));

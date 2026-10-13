@@ -26,20 +26,17 @@ export const letGo = (transferId: string) => {
 };
 
 /** Ids of the transfers another live tab is sending. */
-export const sendingElsewhere = () =>
-  Effect.tryPromise(async () => {
-    const snapshot = await navigator.locks.query();
-    return new Set(
-      (snapshot.held ?? [])
-        .flatMap(({ name }) =>
-          name?.startsWith(PREFIX) === true ? [name.slice(PREFIX.length)] : [],
-        )
-        .filter((transferId) => !release.has(transferId)),
-    );
-  }).pipe(
-    // No Web Locks (an insecure context) reads as no other tab, the old behavior.
-    Effect.catch(() => Effect.succeed(new Set<string>())),
+export const sendingElsewhere = Effect.tryPromise(async () => {
+  const snapshot = await navigator.locks.query();
+  return new Set(
+    (snapshot.held ?? [])
+      .flatMap(({ name }) => (name?.startsWith(PREFIX) === true ? [name.slice(PREFIX.length)] : []))
+      .filter((transferId) => !release.has(transferId)),
   );
+}).pipe(
+  // No Web Locks (an insecure context) reads as no other tab, the old behavior.
+  Effect.catch(() => Effect.succeed(new Set<string>())),
+);
 
 /** Resolves true once no tab holds the transfer, false if the wait was aborted. */
 export const untilFree = async (transferId: string, signal: AbortSignal) =>

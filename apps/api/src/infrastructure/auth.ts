@@ -35,23 +35,6 @@ import { stagingLogin } from "./staging-login";
 /** The session lookup failed inside better-auth. Its cause can hold tokens: never log it. */
 export class AuthError extends Data.TaggedError("AuthError")<{ readonly cause: unknown }> {}
 
-export class Auth extends Context.Service<
-  Auth,
-  {
-    readonly fetch: Effect.Effect<
-      HttpServerResponse.HttpServerResponse,
-      HttpServerError.HttpServerError | HttpBody.HttpBodyError,
-      Database | HttpServerRequest.HttpServerRequest | Mail | Scope.Scope
-    >;
-    readonly session: (
-      headers: Headers,
-    ) => Effect.Effect<
-      { readonly cookies: Cookies.Cookies; readonly principal: Option.Option<Principal> },
-      AuthError
-    >;
-  }
->()("tranzfer/Auth") {}
-
 // Cloudflare sets this on every request at the edge; a client can't forge it,
 // and the web Worker forwards the original headers over the service binding.
 const ipAddress = { ipAddressHeaders: ["cf-connecting-ip"] };
@@ -182,121 +165,142 @@ const providers = (stage: "production" | "staging" | "dev", d1: Effect.Effect<D1
     ),
   );
 
-/**
- * `allowRequest` answers whether a client IP still fits
- * `rateLimits.authRequests`; it is checked before Better Auth sees a request.
- */
-export const makeAuth = (
-  stage: "production" | "staging" | "dev",
-  d1: Effect.Effect<D1Database>,
-  allowRequest: (ip: string) => Effect.Effect<boolean>,
-) =>
-  Effect.gen(function* auth() {
-    const configured = yield* providers(stage, d1);
-    const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
+export class Auth extends Context.Service<
+  Auth,
+  {
+    readonly fetch: Effect.Effect<
+      HttpServerResponse.HttpServerResponse,
+      HttpServerError.HttpServerError | HttpBody.HttpBodyError,
+      Database | HttpServerRequest.HttpServerRequest | Mail | Scope.Scope
+    >;
+    readonly session: (
+      headers: Headers,
+    ) => Effect.Effect<
+      { readonly cookies: Cookies.Cookies; readonly principal: Option.Option<Principal> },
+      AuthError
+    >;
+  }
+>()("tranzfer/Auth") {
+  /**
+   * `allowRequest` answers whether a client IP still fits
+   * `rateLimits.authRequests`; it is checked before Better Auth sees a request.
+   */
+  static readonly layer = (
+    stage: "production" | "staging" | "dev",
+    d1: Effect.Effect<D1Database>,
+    allowRequest: (ip: string) => Effect.Effect<boolean>,
+  ) =>
+    Layer.effect(
+      Auth,
+      Effect.gen(function* auth() {
+        const configured = yield* providers(stage, d1);
+        const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
 
-    // Our snake_case, integer-ms columns rule out the plugin's Kysely D1 layer.
-    const authDatabase = Layer.succeed(AuthDatabase, {
-      provider: "sqlite",
-      runtime: d1.pipe(
-        Effect.map((handle) => drizzleAdapter(drizzle(handle), { provider: "sqlite", schema })),
-      ),
-    } satisfies DatabaseService);
+        // Our snake_case, integer-ms columns rule out the plugin's Kysely D1 layer.
+        const authDatabase = Layer.succeed(AuthDatabase, {
+          provider: "sqlite",
+          runtime: d1.pipe(
+            Effect.map((handle) => drizzleAdapter(drizzle(handle), { provider: "sqlite", schema })),
+          ),
+        } satisfies DatabaseService);
 
-    const instance = yield* BetterAuth({
-      ...configured,
-      advanced: { database: { validateSchema: false }, ipAddress },
-      basePath: "/api/auth",
-      baseURL: origin,
-      databaseHooks: {
-        user: {
-          create: {
-            // The plugin hands Better Auth's background tasks to the
-            // request's waitUntil, so sign-up never waits on the welcome
-            // email, and the welcome never fails.
-            after: async (user, context) => {
-              await context?.context.runInBackgroundOrAwait(
-                runAuthCallback(sendWelcome(user.email, origin)),
-              );
-            },
-            // New accounts per client IP. A creation outside a request has no
-            // IP and is not counted. The OAuth callback turns this error into
-            // a redirect to the error URL with the code and description.
-            before: async (_user, context) => {
-              const headers = context?.headers;
-              const ip = headers === undefined ? null : getIP(headers, { advanced: { ipAddress } });
-              if (ip !== null) {
-                await runAuthCallback(
-                  admitSignup(ip).pipe(
-                    Effect.catchTag("RateLimited", ({ retryAfterSeconds }) =>
-                      Effect.fail(
-                        new APIError("TOO_MANY_REQUESTS", {
-                          code: "RateLimited",
-                          message: String(retryAfterSeconds),
-                        }),
+        const instance = yield* BetterAuth({
+          ...configured,
+          advanced: { database: { validateSchema: false }, ipAddress },
+          basePath: "/api/auth",
+          baseURL: origin,
+          databaseHooks: {
+            user: {
+              create: {
+                // The plugin hands Better Auth's background tasks to the
+                // request's waitUntil, so sign-up never waits on the welcome
+                // email, and the welcome never fails.
+                after: async (user, context) => {
+                  await context?.context.runInBackgroundOrAwait(
+                    runAuthCallback(sendWelcome(user.email, origin)),
+                  );
+                },
+                // New accounts per client IP. A creation outside a request has no
+                // IP and is not counted. The OAuth callback turns this error into
+                // a redirect to the error URL with the code and description.
+                before: async (_user, context) => {
+                  const headers = context?.headers;
+                  const ip =
+                    headers === undefined ? null : getIP(headers, { advanced: { ipAddress } });
+                  if (ip !== null) {
+                    await runAuthCallback(
+                      admitSignup(ip).pipe(
+                        Effect.catchTag("RateLimited", ({ retryAfterSeconds }) =>
+                          Effect.fail(
+                            new APIError("TOO_MANY_REQUESTS", {
+                              code: "RateLimited",
+                              message: String(retryAfterSeconds),
+                            }),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                );
-              }
+                    );
+                  }
+                },
+              },
             },
           },
-        },
-      },
-      logger: {
-        // Adapter error arguments can contain session tokens in SQL parameters.
-        log: (level, message) => {
-          console.error("Better Auth", level, message);
-        },
-      },
-      migrate: false,
-      // Sign-in errors land on the sign-in page, which shows the words.
-      onAPIError: { errorURL: `${origin}/sign-in` },
-      // Its stores are per isolate or per path; allowRequest limits instead.
-      rateLimit: { enabled: false },
-      // Skips the session and user reads for 5 minutes. A revoked session
-      // keeps working in a browser that still holds its cookie until then.
-      session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },
-      trustedOrigins: [origin],
-    }).pipe(Effect.provide(authDatabase));
+          logger: {
+            // Adapter error arguments can contain session tokens in SQL parameters.
+            log: (level, message) => {
+              console.error("Better Auth", level, message);
+            },
+          },
+          migrate: false,
+          // Sign-in errors land on the sign-in page, which shows the words.
+          onAPIError: { errorURL: `${origin}/sign-in` },
+          // Its stores are per isolate or per path; allowRequest limits instead.
+          rateLimit: { enabled: false },
+          // Skips the session and user reads for 5 minutes. A revoked session
+          // keeps working in a browser that still holds its cookie until then.
+          session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },
+          trustedOrigins: [origin],
+        }).pipe(Effect.provide(authDatabase));
 
-    return Auth.of({
-      fetch: Effect.gen(function* fetch() {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        if (!(yield* allowRequest(clientIp(new Headers(request.headers))))) {
-          const { windowSeconds } = rateLimits.authRequests;
-          return yield* HttpServerResponse.schemaJson(RateLimited)(
-            new RateLimited({ limit: "authRequests", retryAfterSeconds: windowSeconds }),
-            { headers: { "retry-after": String(windowSeconds) }, status: 429 },
-          );
-        }
-        const native = yield* instance.auth.pipe(Effect.provide(RuntimeContext.phantom));
-        const web = yield* HttpServerRequest.toWeb(request).pipe(Effect.orDie);
-        const context = yield* Effect.context<Database | Mail>();
-        // Better Auth answers API errors as responses; it rejects only on defects.
-        const response = yield* Effect.promise(
-          async (signal) =>
-            await authRequests.run({ context, signal }, async () => await native.handler(web)),
-        );
-        return HttpServerResponse.fromWeb(response);
-      }).pipe(Effect.withSpan("Auth.fetch")),
-      session: Effect.fn("Auth.session")(function* session(headers: Headers) {
-        const native = yield* instance.auth.pipe(Effect.provide(RuntimeContext.phantom));
-        // getSession through the plugin can't return the renewed Set-Cookie.
-        const result = yield* Effect.tryPromise({
-          catch: (cause) => new AuthError({ cause }),
-          try: async () => await native.api.getSession({ headers, returnHeaders: true }),
+        return Auth.of({
+          fetch: Effect.gen(function* fetch() {
+            const request = yield* HttpServerRequest.HttpServerRequest;
+            if (!(yield* allowRequest(clientIp(new Headers(request.headers))))) {
+              const { windowSeconds } = rateLimits.authRequests;
+              return yield* HttpServerResponse.schemaJson(RateLimited)(
+                new RateLimited({ limit: "authRequests", retryAfterSeconds: windowSeconds }),
+                { headers: { "retry-after": String(windowSeconds) }, status: 429 },
+              );
+            }
+            const native = yield* instance.auth.pipe(Effect.provide(RuntimeContext.phantom));
+            const web = yield* HttpServerRequest.toWeb(request).pipe(Effect.orDie);
+            const context = yield* Effect.context<Database | Mail>();
+            // Better Auth answers API errors as responses; it rejects only on defects.
+            const response = yield* Effect.promise(
+              async (signal) =>
+                await authRequests.run({ context, signal }, async () => await native.handler(web)),
+            );
+            return HttpServerResponse.fromWeb(response);
+          }).pipe(Effect.withSpan("Auth.fetch")),
+          session: Effect.fn("Auth.session")(function* session(headers: Headers) {
+            const native = yield* instance.auth.pipe(Effect.provide(RuntimeContext.phantom));
+            // getSession through the plugin can't return the renewed Set-Cookie.
+            const result = yield* Effect.tryPromise({
+              catch: (cause) => new AuthError({ cause }),
+              try: async () => await native.api.getSession({ headers, returnHeaders: true }),
+            });
+            const principal = Option.map(Option.fromNullishOr(result.response), ({ user }) => ({
+              email: user.email,
+              id: user.id,
+              image: user.image ?? null,
+              name: user.name,
+            }));
+            if (Option.isSome(principal)) {
+              yield* Effect.annotateCurrentSpan("user.id", principal.value.id);
+            }
+            return { cookies: Cookies.fromSetCookie(result.headers.getSetCookie()), principal };
+          }),
         });
-        const principal = Option.map(Option.fromNullishOr(result.response), ({ user }) => ({
-          email: user.email,
-          id: user.id,
-          image: user.image ?? null,
-          name: user.name,
-        }));
-        if (Option.isSome(principal)) {
-          yield* Effect.annotateCurrentSpan("user.id", principal.value.id);
-        }
-        return { cookies: Cookies.fromSetCookie(result.headers.getSetCookie()), principal };
       }),
-    });
-  });
+    );
+}
