@@ -39,6 +39,8 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
   - `ASYNC_WATERFALL`: read every async source before using any, so they start together.
   - `SILENT_HOLD`, `LONG_HOLD`: add feedback with `isPending`, `latest` or an optimistic write. Never remove the hold; past 500 ms show a `Loading` fallback.
 - Keep lint enabled. An exception needs user approval, a file-scoped override and a one-line reason.
+- `vp check` fails on warnings as well as errors, so a new rule goes in at error with every existing hit fixed, never as a warning.
+- New lint rules go in `tools/oxlint/anti-slop/tranzfer/` at error, each with a RuleTester test next to it, in the same PR that fixes every existing hit. That is the only exception to the no-new-test-files rule.
 - Comments explain runtime quirks and non-obvious constraints.
 - When a check fails, reproduce it on unchanged `origin/main` before blaming the current diff.
 - After the same step fails twice, stop and report the exact error and evidence.
