@@ -1,5 +1,6 @@
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Predicate from "effect/Predicate";
 import * as Schedule from "effect/Schedule";
 
 // The 40-try cap counts failures, not elapsed time, so a sleep/wake clock
@@ -35,6 +36,6 @@ export const retryTransport = <A, E extends { readonly _tag: string }, R>(
         Schedule.modifyDelay(({ duration }) => Effect.succeed(Duration.min(duration, RETRY_CAP))),
       ),
       times: MAX_TRANSPORT_RETRIES,
-      while: (error) => error._tag === "RpcClientError" || error._tag === "RateLimited",
+      while: Predicate.or(Predicate.isTagged("RpcClientError"), Predicate.isTagged("RateLimited")),
     }),
   );

@@ -1,9 +1,11 @@
 import type { DeliveryId, TransferId } from "@tranzfer/contracts";
 import { partCount, partSize } from "@tranzfer/contracts";
 import * as Clock from "effect/Clock";
+import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Layer from "effect/Layer";
 import type * as Tracer from "effect/Tracer";
 
 type Outcome = "cancelled" | "done" | "failed";
@@ -151,3 +153,10 @@ export const makeUploadSpans = Effect.sync(() => {
         attach(id === undefined ? undefined : files.get(id)?.span, effect),
   };
 });
+
+export class UploadSpans extends Context.Service<
+  UploadSpans,
+  Effect.Success<typeof makeUploadSpans>
+>()("tranzfer/UploadSpans") {
+  static readonly layer = Layer.effect(UploadSpans, makeUploadSpans);
+}

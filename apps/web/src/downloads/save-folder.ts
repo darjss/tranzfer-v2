@@ -2,6 +2,7 @@ import type { SharedFile } from "@tranzfer/contracts";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Predicate from "effect/Predicate";
 import * as Schedule from "effect/Schedule";
 
 import { ApiClient } from "../api/client";
@@ -203,7 +204,8 @@ const writeFile = Effect.fn("SaveFolder.write")(function* writeFile(
 });
 
 const isTransient = (error: { readonly _tag: string }) =>
-  error._tag === "RpcClientError" || (error instanceof SaveStopped && error.reason === "network");
+  Predicate.isTagged(error, "RpcClientError") ||
+  (error instanceof SaveStopped && error.reason === "network");
 
 /**
  * Saves every file of a shared delivery into a picked folder, recreating its

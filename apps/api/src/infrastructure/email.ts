@@ -4,6 +4,7 @@ import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -26,7 +27,13 @@ export class Mail extends Context.Service<
       readonly replyTo?: string;
     }) => Effect.Effect<"sent" | "held", MailError>;
   }
->()("tranzfer/Mail") {}
+>()("tranzfer/Mail") {
+  static readonly layer = (
+    stage: "production" | "staging" | "dev",
+    client: Cloudflare.Email.SendClient,
+    allowlist: ReadonlySet<string>,
+  ) => Layer.succeed(Mail, makeMail(stage, client, allowlist));
+}
 
 /**
  * Addresses a staging or preview stage may email, comma-separated, read at
@@ -55,7 +62,7 @@ const ErrorCode = Schema.Struct({ code: Schema.String });
  * nothing. Staging and previews hold real people's sign-ups, so they email
  * only `allowlist` and log the rest. Logs never carry the address.
  */
-export const makeMail = (
+const makeMail = (
   stage: "production" | "staging" | "dev",
   client: Cloudflare.Email.SendClient,
   allowlist: ReadonlySet<string>,

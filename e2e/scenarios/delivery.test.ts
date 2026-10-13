@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { expect, layer } from "@effect/vitest";
-import { DeliveryId, partSize, TransferId } from "@tranzfer/contracts";
+import { DeliveryId, partSize, TransferId, UploadRequest } from "@tranzfer/contracts";
 import type { NewDelivery } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
+import * as Predicate from "effect/Predicate";
 import * as Schedule from "effect/Schedule";
 
 import { Target } from "../src/target";
@@ -41,7 +42,7 @@ const uploadId = (body: Buffer) =>
 
 const createUpload = (api: Api, key: string) =>
   Effect.gen(function* startUpload() {
-    const signed = yield* api.SignUpload({ key, request: { _tag: "Create" } });
+    const signed = yield* api.SignUpload({ key, request: UploadRequest.cases.Create.make({}) });
     const created = yield* Effect.promise(
       async () => await send("POST", signed.url, new Uint8Array(0)),
     );
@@ -53,7 +54,7 @@ const putPart = (api: Api, key: string, mpuId: string, partNumber: number, chunk
   Effect.gen(function* uploadPart() {
     const signed = yield* api.SignUpload({
       key,
-      request: { _tag: "Part", partNumber, uploadId: mpuId },
+      request: UploadRequest.cases.Part.make({ partNumber, uploadId: mpuId }),
     });
     const result = yield* Effect.promise(async () => await send("PUT", signed.url, chunk));
     expect(result.status).toBe(200);
@@ -75,7 +76,10 @@ const uploadWhole = (api: Api, key: string, bytes: Buffer) =>
   Effect.gen(function* uploadFile() {
     const mpuId = yield* createUpload(api, key);
     const etag = yield* putPart(api, key, mpuId, 1, bytes);
-    const complete = yield* api.SignUpload({ key, request: { _tag: "Complete", uploadId: mpuId } });
+    const complete = yield* api.SignUpload({
+      key,
+      request: UploadRequest.cases.Complete.make({ uploadId: mpuId }),
+    });
     const completed = yield* Effect.promise(
       async () => await send("POST", complete.url, completeXml([etag]), "application/xml"),
     );
@@ -89,7 +93,7 @@ const finalize = (api: Api, transferId: TransferId) =>
     Effect.retry({
       schedule: Schedule.exponential("800 millis"),
       times: 3,
-      while: (error) => error._tag === "NotUploaded",
+      while: Predicate.isTagged("NotUploaded"),
     }),
   );
 
@@ -167,7 +171,7 @@ layer(Target.layer)("staging deliveries", (it) => {
         // can't replace the object once it exists.
         const emptyPut = yield* api.SignUpload({
           key: emptyTransfer.objectKey,
-          request: { _tag: "Put" },
+          request: UploadRequest.cases.Put.make({}),
         });
         expect(emptyPut.headers).toEqual({ "if-none-match": "*" });
         const putEmpty = yield* Effect.promise(
@@ -207,12 +211,12 @@ layer(Target.layer)("staging deliveries", (it) => {
         );
         const rogueComplete = yield* api.SignUpload({
           key: bigTransfer.objectKey,
-          request: { _tag: "Complete", uploadId: rogueId },
+          request: UploadRequest.cases.Complete.make({ uploadId: rogueId }),
         });
 
         const list = yield* api.SignUpload({
           key: bigTransfer.objectKey,
-          request: { _tag: "List", uploadId: mpuId },
+          request: UploadRequest.cases.List.make({ uploadId: mpuId }),
         });
         const listed = yield* Effect.promise(async () => await send("GET", list.url));
         expect(listed.status).toBe(200);
@@ -223,7 +227,7 @@ layer(Target.layer)("staging deliveries", (it) => {
 
         const complete = yield* api.SignUpload({
           key: bigTransfer.objectKey,
-          request: { _tag: "Complete", uploadId: mpuId },
+          request: UploadRequest.cases.Complete.make({ uploadId: mpuId }),
         });
         const completed = yield* Effect.promise(
           async () => await send("POST", complete.url, completeXml(etags), "application/xml"),
@@ -241,7 +245,10 @@ layer(Target.layer)("staging deliveries", (it) => {
         );
         expect(replayed.status).not.toBe(200);
         const reopened = yield* Effect.flip(
-          api.SignUpload({ key: bigTransfer.objectKey, request: { _tag: "Create" } }),
+          api.SignUpload({
+            key: bigTransfer.objectKey,
+            request: UploadRequest.cases.Create.make({}),
+          }),
         );
         expect(reopened._tag).toBe("UploadClosed");
         const expiresAt = yield* required(ready.expiresAt, "ready delivery has no expiresAt");
@@ -316,13 +323,13 @@ layer(Target.layer)("staging deliveries", (it) => {
         const part4 = yield* Effect.flip(
           api.SignUpload({
             key,
-            request: { _tag: "Part", partNumber: 4, uploadId: "x" },
+            request: UploadRequest.cases.Part.make({ partNumber: 4, uploadId: "x" }),
           }),
         );
         expect(part4._tag).toBe("InvalidUpload");
 
         const unknown = yield* Effect.flip(
-          api.SignUpload({ key: "d/nope/nope", request: { _tag: "Create" } }),
+          api.SignUpload({ key: "d/nope/nope", request: UploadRequest.cases.Create.make({}) }),
         );
         expect(unknown._tag).toBe("DeliveryNotFound");
 
@@ -355,7 +362,7 @@ layer(Target.layer)("staging deliveries", (it) => {
       yield* Effect.gen(function* aborted() {
         const key = delivery.transfers[0].objectKey;
 
-        const create = yield* api.SignUpload({ key, request: { _tag: "Create" } });
+        const create = yield* api.SignUpload({ key, request: UploadRequest.cases.Create.make({}) });
         const created = yield* Effect.promise(
           async () => await send("POST", create.url, new Uint8Array(0)),
         );
@@ -367,7 +374,7 @@ layer(Target.layer)("staging deliveries", (it) => {
 
         const part1 = yield* api.SignUpload({
           key,
-          request: { _tag: "Part", partNumber: 1, uploadId: mpuId },
+          request: UploadRequest.cases.Part.make({ partNumber: 1, uploadId: mpuId }),
         });
         const put1 = yield* Effect.promise(
           async () => await send("PUT", part1.url, Buffer.alloc(partSize(70 * MIB), 0x63)),
@@ -376,7 +383,7 @@ layer(Target.layer)("staging deliveries", (it) => {
 
         const presigned2 = yield* api.SignUpload({
           key,
-          request: { _tag: "Part", partNumber: 2, uploadId: mpuId },
+          request: UploadRequest.cases.Part.make({ partNumber: 2, uploadId: mpuId }),
         });
 
         const cancelled = yield* api.CancelDelivery({ deliveryId });
@@ -390,7 +397,9 @@ layer(Target.layer)("staging deliveries", (it) => {
         expect(orphan.status).not.toBe(200);
         expect(orphan.body.toString("utf-8")).toContain("NoSuchUpload");
 
-        const closed = yield* Effect.flip(api.SignUpload({ key, request: { _tag: "Create" } }));
+        const closed = yield* Effect.flip(
+          api.SignUpload({ key, request: UploadRequest.cases.Create.make({}) }),
+        );
         expect(closed._tag).toBe("UploadClosed");
 
         const again = yield* api.CancelDelivery({ deliveryId });

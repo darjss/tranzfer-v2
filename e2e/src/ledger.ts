@@ -83,8 +83,7 @@ export const summarize = (requests: readonly R2Request[], fileSize: number) => {
   // A part the browser already saw acknowledged and sent again: bytes the
   // product could have proven were on R2 and resent anyway.
   const avoidable = [...acks]
-    .filter(([, acked]) => acked > 1)
-    .map(([partNumber, acked]) => ({ partNumber, resent: acked - 1 }))
+    .flatMap(([partNumber, acked]) => (acked > 1 ? [{ partNumber, resent: acked - 1 }] : []))
     .toSorted((a, b) => a.partNumber - b.partNumber);
   const unanswered = parts.filter((part) => part.status === null);
   const failed = parts.filter((part) => part.status !== null && !isAcked(part));

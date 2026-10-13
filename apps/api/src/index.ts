@@ -25,8 +25,8 @@ import { SharedLinks } from "./shared-links";
 import { Storage } from "./storage";
 import { sweep } from "./sweeper";
 import { SigningRate, Transfers } from "./transfers";
-import { Auth, makeAuth } from "./infrastructure/auth";
-import { emailAllowlist, Mail, makeMail } from "./infrastructure/email";
+import { Auth } from "./infrastructure/auth";
+import { emailAllowlist, Mail } from "./infrastructure/email";
 import { PolarProduct, PolarWebhook, paidPlansOpen, polarAccess } from "./infrastructure/polar";
 import { filesStorage, lazy } from "./infrastructure/r2";
 import { deployStage, stageName } from "./infrastructure/stage";
@@ -161,16 +161,15 @@ export default ApiWorker.make(
     // Sends through Cloudflare Email Sending as hello@tranzfer.app. The
     // domain is onboarded on the account, so any recipient is allowed.
     const email = yield* Cloudflare.Email.Send(yield* Cloudflare.Email.SendEmail("EMAIL"));
-    const mail = makeMail(stage, email, yield* emailAllowlist);
     const execution = yield* Cloudflare.WorkerExecutionContext;
 
     const isolate = yield* Layer.build(
       Layer.mergeAll(
         yield* filesStorage,
         LinkTokens.layer((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom))),
-        Layer.effect(Auth, makeAuth(stage, handle, limiter(authRequests))),
+        Auth.layer(stage, handle, limiter(authRequests)),
         Layer.succeed(SigningRate, SigningRate.of({ allow: limiter(uploadSigning) })),
-        Layer.succeed(Mail, mail),
+        Mail.layer(stage, email, yield* emailAllowlist),
         RpcSerialization.layerJson,
       ),
     );

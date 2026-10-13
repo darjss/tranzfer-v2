@@ -50,7 +50,17 @@ export class Auth extends Context.Service<
       AuthError
     >;
   }
->()("tranzfer/Auth") {}
+>()("tranzfer/Auth") {
+  /**
+   * `allowRequest` answers whether a client IP still fits
+   * `rateLimits.authRequests`; it is checked before Better Auth sees a request.
+   */
+  static readonly layer = (
+    stage: "production" | "staging" | "dev",
+    d1: Effect.Effect<D1Database>,
+    allowRequest: (ip: string) => Effect.Effect<boolean>,
+  ) => Layer.effect(Auth, makeAuth(stage, d1, allowRequest));
+}
 
 // Cloudflare sets this on every request at the edge; a client can't forge it,
 // and the web Worker forwards the original headers over the service binding.
@@ -182,11 +192,7 @@ const providers = (stage: "production" | "staging" | "dev", d1: Effect.Effect<D1
     ),
   );
 
-/**
- * `allowRequest` answers whether a client IP still fits
- * `rateLimits.authRequests`; it is checked before Better Auth sees a request.
- */
-export const makeAuth = (
+const makeAuth = (
   stage: "production" | "staging" | "dev",
   d1: Effect.Effect<D1Database>,
   allowRequest: (ip: string) => Effect.Effect<boolean>,

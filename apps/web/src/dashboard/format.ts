@@ -1,4 +1,5 @@
 import type { Delivery, DeliveryEmail, Transfer } from "@tranzfer/contracts";
+import * as Data from "effect/Data";
 import * as Match from "effect/Match";
 
 import type { TransferProgress } from "../uploads/store";
@@ -143,31 +144,29 @@ export const totalSize = (delivery: Pick<Delivery, "transfers">) =>
 // for a transfer this tab still owns. needsFile is a transfer this tab can
 // continue once the file is picked again; Interrupted means this browser
 // holds no record at all, so only cancel and resend remains.
-type TransferStatus =
-  | { readonly _tag: "Active"; readonly progress: TransferProgress }
-  | { readonly _tag: "Cancelled" }
-  | { readonly _tag: "Complete" }
-  | { readonly _tag: "Elsewhere"; readonly progress: TransferProgress }
-  | { readonly _tag: "Failed"; readonly progress: TransferProgress }
-  | { readonly _tag: "Interrupted" }
-  | { readonly _tag: "NeedsFile"; readonly progress: TransferProgress };
+type TransferStatus = Data.TaggedEnum<{
+  Active: { readonly progress: TransferProgress };
+  Cancelled: {};
+  Complete: {};
+  Elsewhere: { readonly progress: TransferProgress };
+  Failed: { readonly progress: TransferProgress };
+  Interrupted: {};
+  NeedsFile: { readonly progress: TransferProgress };
+}>;
+
+const { Active, Cancelled, Complete, Elsewhere, Failed, Interrupted, NeedsFile } =
+  Data.taggedEnum<TransferStatus>();
 
 export const transferStatus = (transfer: Transfer, local: TransferProgress | undefined) =>
   Match.value({ progress: local, state: transfer.state }).pipe(
     Match.withReturnType<TransferStatus>(),
-    Match.when({ state: "complete" }, () => ({ _tag: "Complete" })),
-    Match.when({ state: "cancelled" }, () => ({ _tag: "Cancelled" })),
-    Match.when({ progress: { phase: "failed" } }, ({ progress }) => ({ _tag: "Failed", progress })),
-    Match.when({ progress: { phase: "elsewhere" } }, ({ progress }) => ({
-      _tag: "Elsewhere",
-      progress,
-    })),
-    Match.when({ progress: { phase: "needsFile" } }, ({ progress }) => ({
-      _tag: "NeedsFile",
-      progress,
-    })),
-    Match.when({ progress: Match.defined }, ({ progress }) => ({ _tag: "Active", progress })),
-    Match.orElse(() => ({ _tag: "Interrupted" })),
+    Match.when({ state: "complete" }, () => Complete()),
+    Match.when({ state: "cancelled" }, () => Cancelled()),
+    Match.when({ progress: { phase: "failed" } }, ({ progress }) => Failed({ progress })),
+    Match.when({ progress: { phase: "elsewhere" } }, ({ progress }) => Elsewhere({ progress })),
+    Match.when({ progress: { phase: "needsFile" } }, ({ progress }) => NeedsFile({ progress })),
+    Match.when({ progress: Match.defined }, ({ progress }) => Active({ progress })),
+    Match.orElse(() => Interrupted()),
   );
 
 const idle = {

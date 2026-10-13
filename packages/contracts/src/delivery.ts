@@ -137,6 +137,14 @@ export class DeliveryNotFound extends Schema.TaggedError<DeliveryNotFound>()(
   {},
 ) {}
 
+export const DeliveryRefusal = Schema.TaggedUnion({
+  DuplicatePath: { path: Schema.String },
+  NameTooLong: { bytes: Schema.Int, max: Schema.Int, name: Schema.String },
+  PathTooLong: { bytes: Schema.Int, max: Schema.Int, path: Schema.String },
+  PathUnsafe: { path: Schema.String },
+  TooManyFiles: { count: Schema.Int, max: Schema.Int },
+});
+
 /**
  * The files can't be sent as picked, and sending again won't change that. The
  * reason carries the numbers; `checkFiles` is the one place that decides it.
@@ -144,13 +152,7 @@ export class DeliveryNotFound extends Schema.TaggedError<DeliveryNotFound>()(
  * folder name. `DuplicatePath`: two paths that differ only by case.
  */
 export class DeliveryRefused extends Schema.TaggedError<DeliveryRefused>()("DeliveryRefused", {
-  reason: Schema.Union([
-    Schema.TaggedStruct("TooManyFiles", { count: Schema.Int, max: Schema.Int }),
-    Schema.TaggedStruct("NameTooLong", { bytes: Schema.Int, max: Schema.Int, name: Schema.String }),
-    Schema.TaggedStruct("PathTooLong", { bytes: Schema.Int, max: Schema.Int, path: Schema.String }),
-    Schema.TaggedStruct("PathUnsafe", { path: Schema.String }),
-    Schema.TaggedStruct("DuplicatePath", { path: Schema.String }),
-  ]),
+  reason: DeliveryRefusal,
 }) {}
 
 // Bidirectional controls reorder how a name displays. Zero-width joiners stay: emoji and several scripts need them.
@@ -158,7 +160,7 @@ const bidiControl = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
 
 const firstRefusal = (files: readonly { readonly path: string }[]) => {
   if (files.length > maxFiles) {
-    return { _tag: "TooManyFiles", count: files.length, max: maxFiles } as const;
+    return DeliveryRefusal.cases.TooManyFiles.make({ count: files.length, max: maxFiles });
   }
   const seen = new Set<string>();
   for (const { path } of files) {
@@ -168,24 +170,24 @@ const firstRefusal = (files: readonly { readonly path: string }[]) => {
       /\p{Cc}/u.test(path) ||
       bidiControl.test(path)
     ) {
-      return { _tag: "PathUnsafe", path } as const;
+      return DeliveryRefusal.cases.PathUnsafe.make({ path });
     }
     for (const name of path.split("/")) {
       if (name === "" || name === "." || name === "..") {
-        return { _tag: "PathUnsafe", path } as const;
+        return DeliveryRefusal.cases.PathUnsafe.make({ path });
       }
       const bytes = byteLength(name);
       if (bytes > maxNameBytes) {
-        return { _tag: "NameTooLong", bytes, max: maxNameBytes, name } as const;
+        return DeliveryRefusal.cases.NameTooLong.make({ bytes, max: maxNameBytes, name });
       }
     }
     const bytes = byteLength(path);
     if (bytes > maxPathBytes) {
-      return { _tag: "PathTooLong", bytes, max: maxPathBytes, path } as const;
+      return DeliveryRefusal.cases.PathTooLong.make({ bytes, max: maxPathBytes, path });
     }
     // Case-variant paths would collide on the recipient's disk.
     if (seen.has(path.toLowerCase())) {
-      return { _tag: "DuplicatePath", path } as const;
+      return DeliveryRefusal.cases.DuplicatePath.make({ path });
     }
     seen.add(path.toLowerCase());
   }
