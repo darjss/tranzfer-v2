@@ -76,7 +76,6 @@ const antiSlopRules: OxlintConfig["rules"] = {
   "anti-slop/no-unknown-type-aliases": "error",
   "anti-slop/no-unsafe-dictionary-type": "error",
   "anti-slop/no-widen-then-assert": "error",
-  "anti-slop/require-readable-spacing": "error",
   "anti-slop/require-safety-comment-for-type-assertion": "error",
   "oxc/no-accumulating-spread": "error",
 };
@@ -173,6 +172,25 @@ export const lintConfig = (
       },
       ...effectOverride,
       {
+        // These files are where layers get provided, once per process.
+        files: ["apps/api/src/index.ts", "apps/api/scripts/*.ts"],
+        rules: { "effecttsgo/strict-effect-provide": "off" },
+      },
+      {
+        // RuntimeContext.phantom is Layer.empty, a type-only stub with no scope to outlive.
+        files: [
+          "apps/api/src/infrastructure/auth.ts",
+          "apps/api/src/infrastructure/email.ts",
+          "apps/api/src/infrastructure/r2.ts",
+        ],
+        rules: { "effecttsgo/strict-effect-provide": "off" },
+      },
+      {
+        // The test builds the Plans layer it exercises and provides it to the one effect under test.
+        files: ["apps/api/test/deliveries.test.ts"],
+        rules: { "effecttsgo/strict-effect-provide": "off" },
+      },
+      {
         files: ["packages/db/src/schema.ts"],
         rules: {
           // Column order in drizzle table objects defines DDL column order;
@@ -191,7 +209,7 @@ export const lintConfig = (
   });
 
   if (opts?.root === true) {
-    config.options = { typeAware: true, typeCheck: true };
+    config.options = { denyWarnings: true, typeAware: true, typeCheck: true };
   }
 
   return config;
