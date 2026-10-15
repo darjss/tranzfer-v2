@@ -40,7 +40,7 @@ A closed stage:
 - fails checkout and the billing portal with `BillingUnavailable` reason `notOpen`, and rejects Polar webhooks
 - builds the web with `VITE_PAID_PLANS_OPEN=false`: pricing keeps the prices and each paid plan offers "Tell me when it opens", the dashboard shows no upgrade or Manage billing, and a `?plan=` from sign-in doesn't start a checkout
 
-"Tell me when it opens" puts the visitor on that plan's interest list (`plan_interest`, one row per address and plan) through the public `JoinInterest` RPC. A signed-in visitor joins in one click with their account's address; anyone else types one. Each new row gets one "You're on the list" email. Asking again changes nothing and sends nothing.
+"Tell me when it opens" puts the visitor on that plan's interest list (`plan_interest`, one row per address and plan) through the public `JoinInterest` RPC. A signed-in visitor joins in one click with their account's address; anyone else types one. Each new row from a signed-in visitor gets one "You're on the list" email. A typed address is stored and gets nothing until the plan opens, because anyone can type anyone's address. Asking again changes nothing and sends nothing.
 
 To open production once Polar clears verification:
 
@@ -90,9 +90,9 @@ A new delivery that would push active space past the plan's limit is refused bef
 Tranzfer sends four emails, all from `Tranzfer <hello@tranzfer.app>`, as plain text with a simple HTML copy. Replies go to support@tranzfer.app, except on the last one:
 
 - A welcome when an account is created, with what Free gives and how to send the first file. Better Auth's user-created hook hands it to the request's `waitUntil`, so sign-up never waits on it, and a failed send is logged and dropped.
-- "You're on the list" when someone joins a plan's interest list.
+- "You're on the list" when a signed-in visitor joins a plan's interest list.
 - "Pro is open" (or Starter, Studio) once per person, queued by `interest:notify` above.
-- A sender's own delivery link, from "Email it" on the finished-send card. The subject is "<sender name> sent you <title>" and Reply-To is the sender's account email. The body has the note, file count, size, the expiry in UTC and the link. No tracking pixel, and the sender's text is escaped in the HTML.
+- A sender's own delivery link, from "Email it" on the finished-send card. The subject is "<sender name> sent you <title>", with the name cut to 60 characters and the title to 100, and Reply-To is the sender's account email. The body has the note, file count, size, the expiry in UTC and the link. No tracking pixel, and the sender's text is escaped in the HTML.
 
 ### Emailing a delivery
 
