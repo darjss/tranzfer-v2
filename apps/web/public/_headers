@@ -3,6 +3,13 @@
 https://:sub.tranzfer.app/*
   X-Robots-Tag: noindex
 
+# Static pages skip the Worker; src/middleware.ts sets the same headers on
+# everything the Worker serves.
+/*
+  X-Content-Type-Options: nosniff
+  Content-Security-Policy: frame-ancestors 'none'
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
 # Build output under /assets carries a content hash in each filename, so a
 # changed file gets a new URL and the old one can stay cached for a year.
 /assets/*
