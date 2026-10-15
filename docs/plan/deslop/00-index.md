@@ -4,7 +4,7 @@ Written against `origin/dev` at commit `0a61bc5` (2026-10-12). Each plan is self
 
 Plan numbers are identifiers, not an order. Run them by wave. Plans in the same wave touch different files unless the "Conflicts" column says otherwise. Line numbers drift: re-find each `file:line` before editing.
 
-Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167).
+Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168).
 
 ## Every plan ships its constraint
 
@@ -22,7 +22,6 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 
 | Wave | Plan | Title                                                                                | Priority | Size | Depends on            | Status |
 | ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | --------------------- | ------ |
-| A    | 24   | Production guards in CI and infra (destroy script, tests before deploy, retain)      | P2       | S    | none                  | TODO   |
 | B    | 10   | Smart Placement on the API Worker, measured on staging                               | P2       | S    | none                  | TODO   |
 | B    | 20   | Security headers and a cross-site check on `/rpc`                                    | P2       | S    | none                  | TODO   |
 | B    | 13   | Rate-limit and bound the browser telemetry relay                                     | P2       | S    | none                  | TODO   |
