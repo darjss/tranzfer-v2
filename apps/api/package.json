@@ -12,12 +12,12 @@
     "interest:notify": "node --import ./node_modules/alchemy/bin/register-oxc.js scripts/interest-notify.ts"
   },
   "dependencies": {
-    "@alchemy.run/better-auth": "2.0.0-beta.81",
-    "@distilled.cloud/aws": "1.0.0-rc.13",
-    "@distilled.cloud/polar": "1.0.0-rc.13",
+    "@alchemy.run/better-auth": "2.0.0-beta.83",
+    "@distilled.cloud/aws": "1.0.0-rc.15",
+    "@distilled.cloud/polar": "1.0.0-rc.15",
     "@tranzfer/contracts": "workspace:*",
     "@tranzfer/db": "workspace:*",
-    "alchemy": "2.0.0-beta.81",
+    "alchemy": "2.0.0-beta.83",
     "better-auth": "1.7.7",
     "drizzle-orm": "catalog:",
     "effect": "catalog:"

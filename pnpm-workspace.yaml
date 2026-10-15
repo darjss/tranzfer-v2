@@ -15,30 +15,17 @@ packages:
 minimumReleaseAgeExclude:
   - solid-js
   - "@solidjs/*"
-  - "@effect/platform-node@4.0.1"
-  - "@effect/tsgo-darwin-arm64@0.48.1"
-  - "@effect/tsgo-darwin-x64@0.48.1"
-  - "@effect/tsgo-linux-arm64@0.48.1"
-  - "@effect/tsgo-linux-arm@0.48.1"
-  - "@effect/tsgo-linux-x64@0.48.1"
-  - "@effect/tsgo-win32-arm64@0.48.1"
-  - "@effect/tsgo-win32-x64@0.48.1"
-  - "@effect/tsgo@0.48.1"
-  - "@alchemy.run/better-auth@2.0.0-beta.81"
-  - "@alchemy.run/cloudflare-runtime@2.0.0-beta.81"
-  - "@alchemy.run/floci@2.0.0-beta.81"
-  - "@alchemy.run/node-utils@2.0.0-beta.81"
-  - alchemy@2.0.0-beta.81
-  - "@cloudflare/workers-types@5.20261006.1"
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0
   vite-plus: 1.0.0
   solid-js: 2.0.0-rc.13
   "@solidjs/web": 2.0.0-rc.13
   "@solidjs/diagnostics": 2.0.0-rc.13
-  effect: 4.0.1
-  "@effect/platform-node": 4.0.1
-  "@effect/vitest": 4.0.1
+  effect: 4.0.4
+  "@effect/platform-node": 4.0.4
+  "@effect/vitest": 4.0.4
+  "@effect/sql-d1": 4.0.4
+  "@effect/sql-sqlite-do": 4.0.4
   # vite-plus 1.0.0 bundles vitest 5.0.1. A second copy splits the test runner.
   vitest: 5.0.1
   typescript: 7.0.2

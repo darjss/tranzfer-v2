@@ -27,7 +27,12 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        "allowedUnstableApis": ["effect/http", "effect/observability", "effect/rpc"]
+        "allowedUnstableApis": [
+          "effect/http",
+          "effect/observability",
+          "effect/rpc",
+          "@effect/vitest"
+        ]
       }
     ]
   }
