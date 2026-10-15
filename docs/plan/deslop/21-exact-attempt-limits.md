@@ -32,7 +32,7 @@ const [admitted] =
     .returning();
 ```
 
-(plan 02 rewrites the count as `db.$count`.)
+(The count is now `db.$count(schema.signup, recent)`.)
 
 ## Target design
 

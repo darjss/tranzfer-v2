@@ -2,11 +2,11 @@
 
 > **Executor instructions**: Follow step by step; run each verification; STOP on any STOP condition. No new test files without approval. Work in a worktree off current `origin/dev`. Behavior must not change; the atomic insert in `place` is the reliability core (docs/RELIABILITY.md).
 >
-> **Drift check (run first)**: `git diff --stat 0a61bc5..HEAD -- apps/api/src/deliveries.ts apps/api/src/file-requests.ts apps/api/src/transfers.ts apps/api/test`. Changed (plan 02 will have touched `requestAccepts`): re-read the live code against the excerpts; structural mismatch = STOP.
+> **Drift check (run first)**: `git diff --stat 0a61bc5..HEAD -- apps/api/src/deliveries.ts apps/api/src/file-requests.ts apps/api/src/transfers.ts apps/api/test`. Changed (the SQL cleanup rewrote `requestAccepts`): re-read the live code against the excerpts; structural mismatch = STOP.
 
 ## Status
 
-- **Priority**: P3 | **Effort**: M (~150 lines moved, ~20 changed) | **Risk**: MED | **Depends on**: plan 02 (same SQL) | **Category**: tech-debt (deepening: locality)
+- **Priority**: P3 | **Effort**: M (~150 lines moved, ~20 changed) | **Risk**: MED | **Depends on**: none | **Category**: tech-debt (deepening: locality)
 - **Planned at**: commit `0a61bc5`, 2026-10-12
 
 ## Why this matters
@@ -49,7 +49,7 @@ with `Intake` extended by a `condition: SQL` field (what `requestAccepts` return
 ## Scope
 
 **In scope**: `apps/api/src/deliveries.ts`, `apps/api/src/file-requests.ts`.
-**Out of scope**: `transfers.ts` (the `requestId?` parameter stays; its replacement is a separate design), the SQL itself (plan 02), contracts, new tests.
+**Out of scope**: `transfers.ts` (the `requestId?` parameter stays; its replacement is a separate design), the SQL itself, contracts, new tests.
 
 ## Steps
 
