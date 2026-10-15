@@ -191,7 +191,11 @@ export const lintConfig = (
       ...effectOverride,
       {
         files: ["apps/api/src/**", "packages/db/src/**"],
-        rules: { "tranzfer/one-clock-expression": "error" },
+        rules: {
+          "tranzfer/no-count-subquery-string": "error",
+          "tranzfer/no-table-names-in-sql": "error",
+          "tranzfer/one-clock-expression": "error",
+        },
       },
       {
         // These files are where layers get provided, once per process.

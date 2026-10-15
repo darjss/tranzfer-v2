@@ -231,8 +231,23 @@ export class Emails extends Context.Service<
         // inserts, so racing sends can't pass a cap.
         const reserve = (senderId: string, deliveryId: DeliveryId, needed: number, now: number) => {
           const since = new Date(now - rateLimits.emailsPerDay.windowSeconds * 1000);
-          const mine = sql`(select count(*) from ${schema.deliveryEmail} inner join ${schema.delivery} on ${schema.delivery.id} = ${schema.deliveryEmail.deliveryId} where ${and(eq(schema.delivery.senderId, senderId), gt(schema.deliveryEmail.createdAt, since))})`;
-          const everyone = sql`(select count(*) from ${schema.deliveryEmail} where ${gt(schema.deliveryEmail.createdAt, since)})`;
+          const mine = db.$count(
+            schema.deliveryEmail,
+            and(
+              gt(schema.deliveryEmail.createdAt, since),
+              inArray(
+                schema.deliveryEmail.deliveryId,
+                db
+                  .select({ id: schema.delivery.id })
+                  .from(schema.delivery)
+                  .where(eq(schema.delivery.senderId, senderId)),
+              ),
+            ),
+          );
+          const everyone = db.$count(
+            schema.deliveryEmail,
+            gt(schema.deliveryEmail.createdAt, since),
+          );
           return db
             .insert(schema.deliveryEmail)
             .select((qb) =>

@@ -6,7 +6,7 @@
 
 ## Status
 
-- **Priority**: P2 | **Effort**: M (one PR for the plugin + config, then one tiny PR per rule flipped to `error`) | **Risk**: LOW | **Depends on**: land last. Rules R1-R2 should flip to `error` after plan 02; R4-R5 after 05; R6 after the founder picks a style; R8a after 07; others anytime | **Category**: dx
+- **Priority**: P2 | **Effort**: M (one PR for the plugin + config, then one tiny PR per rule flipped to `error`) | **Risk**: LOW | **Depends on**: land last. R4-R5 after 05; R6 after the founder picks a style; R8a after 07; others anytime | **Category**: dx
 - **Planned at**: commit `0a61bc5`, 2026-10-12
 
 ## Why this matters
@@ -28,8 +28,6 @@ The repo already lints hard: `lint.config.ts` extends `ultracite` core and the v
 
 | ID  | Rule and pattern                                                                                                                                                                                                                                                                                                                     | Hits today (command)                                                                                                                | Fix it points to                        |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| R1  | `tranzfer/no-table-names-in-sql`: a `sql` tagged template whose text has `FROM <bare identifier>` (not `${...}`, `json_each`, or `(select 1)`)                                                                                                                                                                                       | 4: `rg -n 'FROM [a-z_]+' apps/api/src \| rg 'sql' ` (`transfers.ts:196,197`, `deliveries.ts:669,775`)                               | `exists(db.select(...))` (plan 02)      |
-| R2  | `tranzfer/no-count-subquery-string`: `sql` template containing `select count(*)`                                                                                                                                                                                                                                                     | 4 (`deliveries.ts:74`, `emails.ts:233,234`, `infrastructure/auth.ts:108`)                                                           | `db.$count(...)`                        |
 | R4  | `tranzfer/branded-user-id`: an identifier or property named `senderId`, `ownerId` or `userId` annotated `: string` (excluding `*.test.ts` and `apps/api/scripts`)                                                                                                                                                                    | 53 (`rg -c '(senderId\|ownerId\|userId): string' apps/api/src`)                                                                     | `UserId` (plan 05)                      |
 | R5  | `tranzfer/branded-link-token`: in `packages/contracts/src`, an object property named `token` or `unlock` whose value is a bare `Schema.String`                                                                                                                                                                                       | 10 (`api.ts` x6, `request.ts` x3, `upload.ts`, `link.ts`)                                                                           | `LinkToken`/`UnlockToken` (plan 05)     |
 | R6  | `tranzfer/schema-type-style`: `interface X extends Schema.Schema.Type<typeof X>`; autofix to `type X = typeof X.Type`. **Founder decision**: `docs/CONVENTIONS.md` ("Types come from values") and the executor reference use the `type` form, 20 files here use `interface`; either change the doc or the code, then lint the winner | 20 (`rg -n 'interface \w+ extends Schema.Schema.Type' apps packages`)                                                               | `type X = typeof X.Type`                |
@@ -44,32 +42,9 @@ Not proposed, deliberately: a rule against `Effect.die(new Error(...))` (10 site
 ## Steps
 
 1. `vp add -D -w @oxlint/plugins`. Create `lint/tranzfer-plugin.mjs` exporting a plugin object `{ meta: { name: "tranzfer" }, rules: { ... } }` (use `eslintCompatPlugin` as the anti-slop bundle does if rules use `create` rather than `createOnce`).
-2. Implement R1-R3 first, as in this sketch (R1):
-   ```js
-   import { defineRule } from "@oxlint/plugins";
-   const FROM_BARE = /\bfrom\s+(?!json_each\b|\(|\$\{)["`]?[a-z_]+/i;
-   export const noTableNamesInSql = defineRule({
-     meta: {
-       type: "problem",
-       docs: { description: "Table names inside sql strings break silently on rename." },
-       messages: {
-         bare: "Use exists()/notExists() or a query builder so the table name is checked by the type system.",
-       },
-     },
-     createOnce(context) {
-       return {
-         TaggedTemplateExpression(node) {
-           if (node.tag.type !== "Identifier" || node.tag.name !== "sql") return;
-           if (node.quasi.quasis.some((q) => FROM_BARE.test(q.value.cooked ?? q.value.raw)))
-             context.report({ node, messageId: "bare" });
-         },
-       };
-     },
-   });
-   ```
-   R2, R3 are the same shape with different regexes (`/select\s+count\(\*\)/i`, `/unixepoch\(/i` with an allowlist for the file that defines `nowMs`).
+2. R1-R3 shipped in the plan 02 and 03 PRs (`rules/no-table-names-in-sql.ts`, `no-count-subquery-string.ts`, `one-clock-expression.ts`); copy their shape.
 3. Implement R4-R7 on the AST: R4 matches `Identifier` params and `TSPropertySignature`/`PropertyDefinition` with `typeAnnotation.typeAnnotation.type === "TSStringKeyword"` and a name regex; R5 matches `Property` nodes with key `token`/`unlock` and value `MemberExpression Schema.String`; R6 matches `TSInterfaceDeclaration` whose `extends[0]` is `Schema.Schema.Type<typeof X>`; R7 matches `CallExpression` of `Effect.ignore` or `.pipe(Effect.ignore)`.
-4. Register the plugin and rules in `lint.config.ts` at `warn`, scoped with `overrides[].files` (R4 `apps/api/src/**`, R5 `packages/contracts/src/**`, R1-R3 `apps/api/src/**` and `packages/db/src/**`). Add R8-R9 with the built-in rules in the same overrides block.
+4. Register the plugin and rules in `lint.config.ts` at `warn`, scoped with `overrides[].files` (R4 `apps/api/src/**`, R5 `packages/contracts/src/**`). Add R8-R9 with the built-in rules in the same overrides block.
 5. **Verify**: `vp lint` prints exactly the "hits today" counts (+/- the files you excluded). Paste the per-rule counts in the PR.
 6. As each cleanup plan lands, flip its rules to `error` in a one-line PR (the count must be 0). Never add a blanket disable; an exception is a file-scoped override with a reason, approved by the user.
 
@@ -81,7 +56,7 @@ No test files (AGENTS.md). Each rule is checked by its "hits today" count and by
 
 - [ ] `vp lint` exits 0 (all new rules at `warn`) and prints the expected per-rule counts
 - [ ] `vp check` exits 0
-- [ ] `rg -n "tranzfer/" lint.config.ts` lists R1-R7; R8-R9 appear as built-in rules
+- [ ] `rg -n "tranzfer/" lint.config.ts` lists R4-R7 next to the shipped R1-R3; R8-R9 appear as built-in rules
 
 ## STOP conditions
 
