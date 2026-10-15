@@ -27,7 +27,7 @@ import type {
   DeliveryId,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, countDistinct, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -149,7 +149,7 @@ export class FileRequests extends Context.Service<
             .select({
               receivedBytes: sql<number>`coalesce(sum(${schema.transfer.size}), 0)`,
               requestId: schema.delivery.requestId,
-              uploads: sql<number>`count(distinct ${schema.delivery.id})`,
+              uploads: countDistinct(schema.delivery.id),
             })
             .from(schema.delivery)
             .leftJoin(schema.transfer, eq(schema.transfer.deliveryId, schema.delivery.id))
