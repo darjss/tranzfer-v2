@@ -6,7 +6,7 @@
 
 ## Status
 
-- **Priority**: P2 | **Effort**: M (A: ~250 lines, mostly type annotations; B: ~120 lines) | **Risk**: LOW (compile-time only) | **Depends on**: none (do after plan 03 to avoid schema.ts conflicts; no logical dependency) | **Category**: tech-debt (type safety)
+- **Priority**: P2 | **Effort**: M (A: ~250 lines, mostly type annotations; B: ~120 lines) | **Risk**: LOW (compile-time only) | **Depends on**: none | **Category**: tech-debt (type safety)
 - **Planned at**: commit `0a61bc5`, 2026-10-12
 
 ## Why this matters

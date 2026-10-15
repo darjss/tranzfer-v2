@@ -30,9 +30,8 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 | B    | 23   | Privacy page matches the schema; purge sign-up IPs; encrypt OAuth tokens             | P2       | S-M  | none (soft: 01)       | TODO   |
 | B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none                  | TODO   |
 | B    | 02   | Replace SQL strings with Drizzle builders where possible                             | P2       | M    | none                  | TODO   |
-| B    | 03   | One clock default, one timestamps helper, enums from contracts                       | P2       | S    | none                  | TODO   |
 | C    | 04   | One `RateLimiter` service replaces six injection shapes                              | P2       | M    | none                  | TODO   |
-| C    | 05   | Brand `UserId`, `LinkToken`, `UnlockToken`                                           | P2       | M    | soft: 03              | TODO   |
+| C    | 05   | Brand `UserId`, `LinkToken`, `UnlockToken`                                           | P2       | M    | none                  | TODO   |
 | C    | 06   | RPC surface: shared error fragments, one session path, IP helper (B: renames)        | P2/P3    | S+S  | soft: 05              | TODO   |
 | C    | 09   | Uploads: per-transfer ledger, transport module, typed upload failure                 | P2       | M    | none                  | TODO   |
 | C    | 21   | Exact D1 counters for password and code attempts, fail closed                        | P2       | M    | soft: 04, 01          | TODO   |
@@ -40,7 +39,7 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 | C    | 15   | File-request rules move from `deliveries.ts` to `file-requests.ts`                   | P3       | M    | 02                    | TODO   |
 | C    | 07   | Split the waitlist from delivery emails; move pure helpers                           | P3       | M    | 04                    | TODO   |
 | C    | 14   | SSR API client: decide, then delete or give it a reader                              | P3       | S    | none                  | TODO   |
-| D    | 16   | Custom lint rule specs; each rule lands with the plan that clears its hits           | P2       | M    | 02, 03, 05, 07        | TODO   |
+| D    | 16   | Custom lint rule specs; each rule lands with the plan that clears its hits           | P2       | M    | 02, 05, 07            | TODO   |
 | D    | 12   | D1 read replication with Sessions API                                                | P3       | L    | 10, 11 measured first | TODO   |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale).
@@ -50,7 +49,7 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
 - All of wave A in parallel. Overlaps are small: 17 and 01 both touch `deliveries.ts` (different functions: 17 `place` line 517 and `removeObjects` line 281; 01 `purgeEnded`); 11 and 23 both add one option to the `BetterAuth({...})` call in `infrastructure/auth.ts` (merge order: 11 then 23).
 - `apps/api/src/index.ts` is touched by 04, 10, 12, 13, 20, 21 and 07. Land them one at a time in this order: 10, 20, 13, 21, 04, 07, 12. Everything else in a wave can be parallel.
 - Web plans (08, 09, 14, 25) and API plans do not share files except `apps/web/src/api/errors.ts` (09 adds a branch, 13 adds one line to `tooMany`, 18 edits one string).
-- `packages/contracts` is touched by 03, 05, 06, 13, 17, 18, 22, 25; each edit is local, but rebase before opening the PR.
+- `packages/contracts` is touched by 05, 06, 13, 17, 18, 22, 25; each edit is local, but rebase before opening the PR.
 
 ## Dependencies, with the reason
 

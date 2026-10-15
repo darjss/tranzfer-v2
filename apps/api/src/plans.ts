@@ -20,13 +20,10 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 
 const rank = (plan: PlanId) => PlanId.literals.indexOf(plan);
 
-// The database's clock, in the integer milliseconds every timestamp column
-// holds. A revoke stamps it, and a redemption's write compares against it, so
-// a redemption can't commit after a revoke that landed first.
-const databaseNow = sql`cast(unixepoch('subsecond') * 1000 as integer)`;
-
-// A code is over at `now` by the request's clock or by the database's.
-const latest = (now: number) => sql`max(${now}, ${databaseNow})`;
+// A revoke stamps the database's clock (schema.nowMs), and a redemption's write
+// compares against it, so a redemption can't commit after a revoke that landed
+// first. A code is over at `now` by the request's clock or by the database's.
+const latest = (now: number) => sql`max(${now}, ${schema.nowMs})`;
 
 /** A calendar day like 2026-12-31, as its UTC midnight. A day that doesn't exist fails. */
 export const AccessCodeDay = Schema.String.check(
@@ -126,11 +123,11 @@ export const revokeAccessCode = Effect.fn("AccessCodes.revoke")(function* revoke
   const { db } = yield* Database;
   const [row] = yield* db
     .update(schema.accessCode)
-    .set({ expiresAt: databaseNow })
+    .set({ expiresAt: schema.nowMs })
     .where(
       and(
         eq(schema.accessCode.code, code),
-        or(isNull(schema.accessCode.expiresAt), gt(schema.accessCode.expiresAt, databaseNow)),
+        or(isNull(schema.accessCode.expiresAt), gt(schema.accessCode.expiresAt, schema.nowMs)),
       ),
     )
     .returning();

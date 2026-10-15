@@ -75,7 +75,10 @@ export const NewDelivery = Schema.Struct({
 });
 export interface NewDelivery extends Schema.Schema.Type<typeof NewDelivery> {}
 
-export const DeliveryStatus = Schema.Literals(["open", "ready", "cancelled", "expired"]);
+/** What the delivery table stores. `expired` is derived on read from `expiresAt`. */
+export const StoredDeliveryStatus = Schema.Literals(["open", "ready", "cancelled"]);
+
+export const DeliveryStatus = Schema.Literals([...StoredDeliveryStatus.literals, "expired"]);
 export type DeliveryStatus = typeof DeliveryStatus.Type;
 
 export const TransferState = Schema.Literals(["uploading", "finalizing", "complete", "cancelled"]);
