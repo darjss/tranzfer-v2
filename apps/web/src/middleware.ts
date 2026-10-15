@@ -11,6 +11,12 @@ const securityHeaders: FetchMiddleware = async (_request, next) => {
   headers?.set("X-Content-Type-Options", "nosniff");
   headers?.set("Content-Security-Policy", "frame-ancestors 'none'");
   headers?.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  // Report-only: the browser console lists violations and blocks nothing.
+  // Hydration injects an inline script, so script-src is still open.
+  headers?.set(
+    "Content-Security-Policy-Report-Only",
+    "default-src 'self'; img-src 'self' data: https://*.r2.cloudflarestorage.com; media-src 'self' blob: https://*.r2.cloudflarestorage.com; connect-src 'self' https://*.r2.cloudflarestorage.com; base-uri 'self'; form-action 'self'",
+  );
   return await next();
 };
 
