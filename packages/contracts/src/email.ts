@@ -14,12 +14,15 @@ export const maxRecipients = 10;
 export const EmailStatus = Schema.Literals(["queued", "sent", "failed"]);
 export type EmailStatus = typeof EmailStatus.Type;
 
+/** Codes the API writes itself: this stage emails only an allowlist, or a send never finished. */
+export const emailHeld = "held";
+export const emailLost = "lost";
+
 /**
  * One email to one recipient. The address is not stored, so the sender's page
  * pairs a row with the address it typed by its place in the request.
  * `errorCode` is Cloudflare's, like `E_RECIPIENT_SUPPRESSED` for an address
- * that bounced before, or `held` when this stage emails only an allowlist,
- * or `lost` when a send never finished.
+ * that bounced before, or `emailHeld` or `emailLost`.
  */
 export const DeliveryEmail = Schema.Struct({
   errorCode: Schema.NullOr(Schema.String),

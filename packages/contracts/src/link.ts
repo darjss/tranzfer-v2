@@ -34,8 +34,12 @@ export class LinkExpired extends Schema.TaggedError<LinkExpired>()("LinkExpired"
   title: Schema.String,
 }) {}
 
+export const passwordLength = { max: 128, min: 8 } as const;
+
 /** A link password. Spaces count, so the length is the only rule. */
-export const LinkPassword = Schema.String.check(Schema.isBetweenLength(8, 128));
+export const LinkPassword = Schema.String.check(
+  Schema.isBetweenLength(passwordLength.min, passwordLength.max),
+);
 
 /** The link has a password and the request carried no valid unlock. Names the sender, never the files. */
 export class LinkLocked extends Schema.TaggedError<LinkLocked>()("LinkLocked", {

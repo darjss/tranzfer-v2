@@ -1,3 +1,4 @@
+import { emailHeld } from "@tranzfer/contracts";
 import { RuntimeContext } from "alchemy";
 import type * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
@@ -46,7 +47,7 @@ export class Mail extends Context.Service<
       readonly text: string;
       readonly html: string;
       readonly replyTo?: string;
-    }) => Effect.Effect<"sent" | "held", MailError>;
+    }) => Effect.Effect<"sent" | typeof emailHeld, MailError>;
   }
 >()("tranzfer/Mail") {
   /**
@@ -68,8 +69,8 @@ export class Mail extends Context.Service<
             yield* Effect.logInfo(
               "email held because the recipient is not on this stage's allowlist",
             );
-            yield* Effect.annotateCurrentSpan("mail.result", "held");
-            return "held" as const;
+            yield* Effect.annotateCurrentSpan("mail.result", emailHeld);
+            return emailHeld;
           }
           yield* client
             .send({

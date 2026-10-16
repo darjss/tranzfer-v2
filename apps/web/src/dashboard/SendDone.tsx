@@ -1,9 +1,9 @@
-import { EmailAddress, maxRecipients } from "@tranzfer/contracts";
+import { EmailAddress, maxNoteLength, maxRecipients, maxTitleLength } from "@tranzfer/contracts";
 import type { Delivery, DeliveryId } from "@tranzfer/contracts";
 import * as Arr from "effect/Array";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { createSignal, For, onCleanup, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 
 import PhArrowSquareOutBold from "~icons/ph/arrow-square-out-bold";
@@ -13,7 +13,7 @@ import { Button, button } from "../ui/Button";
 import type { Finished } from "./deliveries";
 import { bytes, emailSummary, emailWords, files, totalSize, untilDate } from "./format";
 import type { Emailed } from "./format";
-import { CopyLink, field, fieldLabel, LinkPassword } from "./parts";
+import { CopyLink, createCopy, field, fieldLabel, LinkPassword } from "./parts";
 import "./dashboard.css";
 
 type SetPassword = (deliveryId: DeliveryId, password: string | null) => Promise<string | undefined>;
@@ -43,22 +43,7 @@ export const tookAt = (ms: number) => {
 
 /** Copies a ready-to-paste message with the link and the last day it works. */
 function CopyMessage(props: { text: string }) {
-  const [state, setState] = createSignal<"idle" | "copied" | "failed">("idle");
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => {
-    clearTimeout(timer);
-  });
-  const copy = async () => {
-    const copied = await navigator.clipboard
-      .writeText(props.text)
-      .then(() => true)
-      .catch(() => false);
-    setState(copied ? "copied" : "failed");
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      setState("idle");
-    }, 1800);
-  };
+  const { copy, state } = createCopy(() => props.text);
   return (
     <>
       <Button
@@ -124,7 +109,7 @@ function EditDetails(props: { delivery: Delivery; update: Update }) {
           Title
           <input
             class={field}
-            maxlength={200}
+            maxlength={maxTitleLength}
             name="title"
             onInput={(event) => {
               setTitle(event.currentTarget.value);
@@ -137,7 +122,7 @@ function EditDetails(props: { delivery: Delivery; update: Update }) {
           Note for the recipient, optional
           <textarea
             class={field}
-            maxlength={500}
+            maxlength={maxNoteLength}
             name="note"
             onInput={(event) => {
               setNote(event.currentTarget.value);
