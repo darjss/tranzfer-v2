@@ -1,5 +1,8 @@
 import { createRoot, createSignal, createStore, runWithOwner } from "solid-js";
 
+import type { ApiError } from "../api/errors";
+import type { UploadFailed } from "./failure";
+
 // Module state, not component state, so uploads survive navigation (law 11).
 export type TransferPhase =
   | "queued"
@@ -16,7 +19,7 @@ export interface TransferProgress {
   readonly bytesPerSecond: number;
   readonly confirmed: number;
   /** What stopped a failed transfer; the UI turns it into words with appError. */
-  readonly error: unknown;
+  readonly error: ApiError | UploadFailed | undefined;
   readonly inFlight: number;
   readonly phase: TransferPhase;
   /** Uppy finished the upload, so the object exists and only finalize is left. */

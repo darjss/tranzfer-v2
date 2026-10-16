@@ -37,6 +37,7 @@ import { RpcClientError } from "effect/rpc/RpcClientError";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 import { bytes } from "../dashboard/format";
+import { UploadFailed } from "../uploads/failure";
 import { paidPlansOpen, supportEmail } from "../ui/support";
 
 /** Every error an Api call can fail with, middleware and transport included. */
@@ -138,7 +139,7 @@ const refusal = Match.type<DeliveryRefused["reason"]>().pipe(
   }),
 );
 
-const words = Match.type<ApiError>().pipe(
+const words = Match.type<ApiError | UploadFailed>().pipe(
   Match.tagsExhaustive({
     AccessCodeRefused: (error) =>
       Match.value(error.reason).pipe(
@@ -186,6 +187,23 @@ const words = Match.type<ApiError>().pipe(
     StorageUnavailable: () => "Storage didn't answer. Try again in a moment.",
     Unauthorized: () => "Your sign-in expired. Sign in again to continue.",
     UploadClosed: () => "This delivery was cancelled or has already finished.",
+    UploadFailed: (error) =>
+      Match.value(error.reason).pipe(
+        Match.when(
+          "gone",
+          () => "Storage no longer holds this upload's parts, so send the file again.",
+        ),
+        Match.when(
+          "denied",
+          () => "Storage refused the upload's permission. Retry to get a fresh one.",
+        ),
+        Match.when(
+          "network",
+          () => "We lost the connection to storage. Check your connection and retry.",
+        ),
+        Match.when("unknown", () => "This upload stopped. Retry it."),
+        Match.exhaustive,
+      ),
     WrongPassword: () => "That password isn't right.",
   }),
 );
@@ -232,7 +250,7 @@ const squashed = (cause: unknown) => (Cause.isCause(cause) ? Cause.squash(cause)
  */
 export const appError = (cause: unknown) => {
   const error = squashed(cause);
-  if (isApiError(error)) {
+  if (isApiError(error) || error instanceof UploadFailed) {
     return { message: words(error), tag: error._tag };
   }
   // Only an object can be remembered, so only an object gets a reference.

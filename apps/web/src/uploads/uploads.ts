@@ -36,6 +36,7 @@ import {
   remember,
 } from "./recovery";
 import type { RecoveryRecord } from "./recovery";
+import { UploadFailed } from "./failure";
 import { ledger } from "./ledger";
 import { UploadSpans } from "./spans";
 import { patchTransfer, transfers, wireWindow } from "./store";
@@ -192,6 +193,21 @@ export const isTransientUploadError = (error: Error) => {
   );
 };
 
+// What the row says about a failure isTransientUploadError gave up on. Only a
+// status-less error can be the connection, as above.
+const uploadFailed = ({ code, status }: typeof s3Error.Type) => {
+  if (status === 404) {
+    return new UploadFailed({ reason: "gone", status });
+  }
+  if (status === 403) {
+    return new UploadFailed({ reason: "denied", status });
+  }
+  return new UploadFailed({
+    reason: status === undefined && code === "NETWORK" ? "network" : "unknown",
+    status,
+  });
+};
+
 // A single PUT is signed with If-None-Match: *, so 412 means the object is
 // already there: an earlier PUT landed and its response was lost, or the tab
 // died after it. That reconciles through FinalizeTransfer like a lost Complete.
@@ -260,10 +276,14 @@ const make = Effect.gen(function* makeUploads() {
   // abort the upload: the promise has no signal.
   const start = (uppy: Uppy<TransferMeta, Body>, fileId: string, transferId: TransferId) =>
     Effect.tryPromise(async () => await uppy.retryUpload(fileId)).pipe(
-      Effect.catch((error) =>
+      Effect.catch(() =>
         Effect.andThen(
           Effect.sync(() => {
-            patchTransfer(transferId, { bytesPerSecond: 0, error: error.cause, phase: "failed" });
+            patchTransfer(transferId, {
+              bytesPerSecond: 0,
+              error: uploadFailed({}),
+              phase: "failed",
+            });
           }),
           spans.endFile(transferId, "failed", { "error.tag": "StartFailed" }),
         ),
@@ -335,7 +355,7 @@ const make = Effect.gen(function* makeUploads() {
         return "gone" as const;
       }
       if (!response.ok) {
-        return yield* Effect.die(new Error(`ListParts returned ${response.status}`));
+        return yield* uploadFailed({ status: response.status });
       }
       const doc = new DOMParser().parseFromString(xml, "text/xml");
       for (const element of doc.querySelectorAll("Part")) {
@@ -536,15 +556,16 @@ const make = Effect.gen(function* makeUploads() {
           );
           return;
         }
+        const failed = uploadFailed(Schema.is(s3Error)(error) ? error : {});
         patchTransfer(transferId, {
           bytesPerSecond: 0,
-          error,
+          error: failed,
           inFlight: 0,
           phase: "failed",
         });
         runFork(
           spans.endFile(transferId, "failed", {
-            "error.status": Schema.is(s3Error)(error) ? error.status : undefined,
+            "error.status": failed.status,
             "error.tag": "UploadError",
           }),
         );
