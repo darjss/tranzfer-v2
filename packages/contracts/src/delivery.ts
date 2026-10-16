@@ -22,6 +22,9 @@ export const maxNameBytes = 255;
 export const maxPathBytes = 1024;
 export const maxTitleLength = 200;
 
+/** The last name in a delivery path: the file name, without its folders. */
+export const basename = (path: string) => path.split("/").at(-1) ?? path;
+
 // This package's lib has no TextEncoder. A lone surrogate counts 3, as its
 // replacement character encodes.
 const byteLength = (text: string) => {

@@ -1,3 +1,4 @@
+import { basename } from "@tranzfer/contracts";
 import type { SharedFile } from "@tranzfer/contracts";
 import { createSignal, For, Show } from "solid-js";
 import { css } from "styled-system/css";
@@ -32,8 +33,6 @@ export const previewKind = (file: SharedFile) => {
   const kind = kinds.get(file.path.split(".").at(-1)?.toLowerCase() ?? "");
   return kind !== undefined && file.size <= largest[kind] ? kind : undefined;
 };
-
-const basename = (path: string) => path.split("/").at(-1) ?? path;
 
 const caption = css({ color: "mut", fontFamily: "mono", fontSize: "13", truncate: true });
 
