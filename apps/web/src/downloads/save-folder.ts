@@ -1,12 +1,16 @@
+import { basename } from "@tranzfer/contracts";
 import type { SharedFile } from "@tranzfer/contracts";
 import * as Data from "effect/Data";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Predicate from "effect/Predicate";
-import * as Schedule from "effect/Schedule";
 
 import { ApiClient } from "../api/client";
-import { retryTransport, untilOnline } from "../api/retry";
+import {
+  MAX_TRANSPORT_RETRIES,
+  retryTransport,
+  transportSchedule,
+  untilOnline,
+} from "../api/retry";
 
 // The parts of the File System Access API a save touches. A picked folder
 // satisfies them; so does the in-memory folder the tests use.
@@ -62,10 +66,7 @@ const network = <A>(path: string, run: (signal: AbortSignal) => Promise<A>) =>
 // most half the file, and the copying adds up to less than one file size.
 const CHECKPOINT = 256 * 1024 * 1024;
 const PARALLEL_FILES = 3;
-const RETRY_CAP = Duration.seconds(30);
-const MAX_RETRIES = 40;
 
-const basename = (path: string) => path.split("/").at(-1) ?? path;
 const parent = (path: string) => path.split("/").slice(0, -1).join("/");
 
 // One at a time, so parallel files never race to create the same folder.
@@ -268,10 +269,8 @@ export const saveFolder = Effect.fn("SaveFolder.save")(function* saveFolder(
         isTransient(error) ? untilOnline.pipe(Effect.andThen(open)) : Effect.void,
       ),
       Effect.retry({
-        schedule: Schedule.exponential("1 second").pipe(
-          Schedule.modifyDelay(({ duration }) => Effect.succeed(Duration.min(duration, RETRY_CAP))),
-        ),
-        times: MAX_RETRIES,
+        schedule: transportSchedule,
+        times: MAX_TRANSPORT_RETRIES,
         while: isTransient,
       }),
     );

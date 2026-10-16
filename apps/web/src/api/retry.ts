@@ -7,6 +7,9 @@ import * as Schedule from "effect/Schedule";
 // jump cannot end it early; each backoff delay is capped at 30 seconds.
 export const RETRY_CAP = Duration.seconds(30);
 export const MAX_TRANSPORT_RETRIES = 40;
+export const transportSchedule = Schedule.exponential("1 second").pipe(
+  Schedule.modifyDelay(({ duration }) => Effect.succeed(Duration.min(duration, RETRY_CAP))),
+);
 
 // Losing the network is a pause, not an error (law 7). Offline time waits on
 // the `online` event and burns no attempts.
@@ -32,9 +35,7 @@ export const retryTransport = <A, E extends { readonly _tag: string }, R>(
 ) =>
   untilOnline.pipe(Effect.andThen(effect)).pipe(
     Effect.retry({
-      schedule: Schedule.exponential("1 second").pipe(
-        Schedule.modifyDelay(({ duration }) => Effect.succeed(Duration.min(duration, RETRY_CAP))),
-      ),
+      schedule: transportSchedule,
       times: MAX_TRANSPORT_RETRIES,
       while: Predicate.or(Predicate.isTagged("RpcClientError"), Predicate.isTagged("RateLimited")),
     }),
