@@ -1,11 +1,18 @@
 import { Meta, Title } from "@solidjs/meta";
 import { useParams } from "@solidjs/router";
 import { clientOnly, getRequestEvent, isServer } from "@solidjs/web";
-import { LinkExpired, LinkLocked, LinkNotReady } from "@tranzfer/contracts";
-import type { SharedDelivery } from "@tranzfer/contracts";
+import {
+  LinkExpired,
+  LinkLocked,
+  LinkNotFound,
+  LinkNotReady,
+  LinkToken,
+} from "@tranzfer/contracts";
+import type { LinkAccess, SharedDelivery, UnlockToken } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { createMemo, createSignal, Errored, For, Loading, Show, useContext } from "solid-js";
 import { css, cx } from "styled-system/css";
@@ -92,9 +99,8 @@ const LinkError = (props: { error: unknown }) => {
 
 const Delivery = (props: {
   delivery: SharedDelivery;
+  access: LinkAccess;
   download: (path: string) => void;
-  token: string;
-  unlock: string | undefined;
 }) => {
   const total = () => props.delivery.files.reduce((sum, file) => sum + file.size, 0);
   return (
@@ -165,7 +171,7 @@ const Delivery = (props: {
         )}
       </Show>
       <Show when={props.delivery.files.length > 1}>
-        <SaveAll delivery={props.delivery} token={props.token} unlock={props.unlock} />
+        <SaveAll access={props.access} delivery={props.delivery} />
       </Show>
       <Previews files={props.delivery.files} />
 
@@ -247,18 +253,18 @@ const Opening = () => (
   </Paper>
 );
 
-export const LinkPage = (props: { token: string }) => {
+export const LinkPage = (props: { token: LinkToken }) => {
   const runtime = useContext(RuntimeContext);
   // What UnlockLink returned. It lives in this page only, so a reload asks
   // for the password again, and it stops working after a day.
-  const [unlock, setUnlock] = createSignal<string>();
+  const [unlock, setUnlock] = createSignal<UnlockToken>();
+  const access = () => ({ token: props.token, unlock: unlock() });
   const opened = createMemo(() => {
     // Read here so a new unlock re-opens the link; the effect runs untracked.
-    const current = unlock();
-    const { token } = props;
+    const current = access();
     return runEffect(
       ApiClient.use((api) =>
-        retryTransport(api.OpenLink({ token, unlock: current })).pipe(
+        retryTransport(api.OpenLink(current)).pipe(
           Effect.map((shared) => ({ locked: undefined, shared })),
           Effect.catchTag("LinkLocked", (locked) => Effect.succeed({ locked, shared: undefined })),
         ),
@@ -270,11 +276,8 @@ export const LinkPage = (props: { token: string }) => {
   // surfaces a dead link the same way the load-time boundary does.
   const [linkError, setLinkError] = createSignal<unknown>();
   const download = async (path: string) => {
-    const current = unlock();
-    const { token } = props;
-    const exit = await runtime.runPromiseExit(
-      ApiClient.use((api) => api.OpenLink({ token, unlock: current })),
-    );
+    const current = access();
+    const exit = await runtime.runPromiseExit(ApiClient.use((api) => api.OpenLink(current)));
     if (Exit.isFailure(exit)) {
       const error = Cause.squash(exit.cause);
       if (Schema.is(LinkLocked)(error)) {
@@ -296,9 +299,9 @@ export const LinkPage = (props: { token: string }) => {
     if (file !== undefined) {
       // Only the click is known; the browser's download manager takes it from here.
       runtime.runFork(
-        ApiClient.use((api) =>
-          api.ReportDownload({ event: "started", path, token, unlock: current }),
-        ).pipe(Effect.ignore),
+        ApiClient.use((api) => api.ReportDownload({ ...current, event: "started", path })).pipe(
+          Effect.ignore,
+        ),
       );
       location.assign(file.url);
     }
@@ -330,12 +333,11 @@ export const LinkPage = (props: { token: string }) => {
             >
               {(shared) => (
                 <Delivery
+                  access={access()}
                   delivery={shared()}
                   download={(path) => {
                     void download(path);
                   }}
-                  token={props.token}
-                  unlock={unlock()}
                 />
               )}
             </Show>
@@ -387,7 +389,13 @@ export default function PublicDelivery() {
         <Brand />
       </nav>
       <main class={css({ pt: { base: "10", sm: "16" } })}>
-        <LazyLink fallback={<Opening />} token={params.token} />
+        {/* The router hands over a plain string; one that can't be a token is a dead link. */}
+        <Show
+          when={Option.getOrUndefined(Schema.decodeOption(LinkToken)(params.token))}
+          fallback={<LinkError error={new LinkNotFound()} />}
+        >
+          {(token) => <LazyLink fallback={<Opening />} token={token()} />}
+        </Show>
       </main>
     </div>
   );

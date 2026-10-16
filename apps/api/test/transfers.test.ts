@@ -1,5 +1,5 @@
 import { expect, layer } from "@effect/vitest";
-import { partSize, rateLimits, RateLimited, UploadRequest } from "@tranzfer/contracts";
+import { partSize, rateLimits, RateLimited, UploadRequest, UserId } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
 import * as Arr from "effect/Array";
@@ -26,9 +26,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // D1 stamps updatedAt from the wall clock; start the test clock there too.
 const atWallClock = TestClock.setTime(Date.now());
 
-const seed = (sender: string, files: ReturnType<typeof newFile>[]) =>
+const seed = (sender: UserId, files: ReturnType<typeof newFile>[]) =>
   Effect.gen(function* seedDelivery() {
-    yield* addUser(sender);
     const deliveries = yield* Deliveries;
     return yield* deliveries.create(sender, newDelivery(files));
   });
@@ -36,15 +35,16 @@ const seed = (sender: string, files: ReturnType<typeof newFile>[]) =>
 layer(domainLayer(storage.layer))("Transfers", (it) => {
   it.effect("signs uploads while open, then only the final steps once finalizing", () =>
     Effect.gen(function* scenario() {
-      const created = yield* seed("ann", [newFile("big.bin", 200 * MIB), newFile("small.txt", 10)]);
+      const ann = yield* addUser("ann");
+      const created = yield* seed(ann, [newFile("big.bin", 200 * MIB), newFile("small.txt", 10)]);
       const transfers = yield* Transfers;
       const [{ objectKey: bigKey }, { objectKey: smallKey }] = firstTwo(created.transfers);
 
-      const create = yield* transfers.sign("ann", smallKey, UploadRequest.cases.Create.make({}));
+      const create = yield* transfers.sign(ann, smallKey, UploadRequest.cases.Create.make({}));
       expect(create.url).toBe(`memory://Create/${smallKey}`);
       const tooFar = yield* Effect.flip(
         transfers.sign(
-          "ann",
+          ann,
           bigKey,
           UploadRequest.cases.Part.make({
             partNumber: Math.ceil((200 * MIB) / partSize(200 * MIB)) + 1,
@@ -54,35 +54,35 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       );
       expect(tooFar._tag).toBe("InvalidUpload");
       const stranger = yield* Effect.flip(
-        transfers.sign("someone", smallKey, UploadRequest.cases.Create.make({})),
+        transfers.sign(UserId.make("someone"), smallKey, UploadRequest.cases.Create.make({})),
       );
       expect(stranger._tag).toBe("DeliveryNotFound");
 
       // Signing Complete moves the transfer to finalizing: retries of the last
       // steps still sign, and parts on the existing upload id sign too, so a
       // lost Complete with missing parts can finish. A new upload cannot.
-      yield* transfers.sign("ann", smallKey, UploadRequest.cases.Complete.make({ uploadId: "u" }));
-      yield* transfers.sign("ann", smallKey, UploadRequest.cases.Complete.make({ uploadId: "u" }));
-      yield* transfers.sign("ann", smallKey, UploadRequest.cases.List.make({ uploadId: "u" }));
+      yield* transfers.sign(ann, smallKey, UploadRequest.cases.Complete.make({ uploadId: "u" }));
+      yield* transfers.sign(ann, smallKey, UploadRequest.cases.Complete.make({ uploadId: "u" }));
+      yield* transfers.sign(ann, smallKey, UploadRequest.cases.List.make({ uploadId: "u" }));
       // ListParts pagination signs again with the page marker.
       yield* transfers.sign(
-        "ann",
+        ann,
         smallKey,
         UploadRequest.cases.List.make({ partNumberMarker: 1000, uploadId: "u" }),
       );
       const reopen = yield* Effect.flip(
-        transfers.sign("ann", smallKey, UploadRequest.cases.Create.make({})),
+        transfers.sign(ann, smallKey, UploadRequest.cases.Create.make({})),
       );
       expect(reopen._tag).toBe("UploadClosed");
       const morePart = yield* transfers.sign(
-        "ann",
+        ann,
         smallKey,
         UploadRequest.cases.Part.make({ partNumber: 1, uploadId: "u" }),
       );
       expect(morePart.url).toBe(`memory://Part/${smallKey}`);
       const tooMany = yield* Effect.flip(
         transfers.sign(
-          "ann",
+          ann,
           smallKey,
           UploadRequest.cases.Part.make({ partNumber: 2, uploadId: "u" }),
         ),
@@ -95,18 +95,19 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
     Effect.gen(function* scenario() {
       yield* atWallClock;
       const start = yield* Clock.currentTimeMillis;
-      const created = yield* seed("ben", [newFile("one.txt", 4), newFile("two.txt", 6)]);
+      const ben = yield* addUser("ben");
+      const created = yield* seed(ben, [newFile("one.txt", 4), newFile("two.txt", 6)]);
       const transfers = yield* Transfers;
       const [one, two] = firstTwo(created.transfers);
 
-      const missing = yield* Effect.flip(transfers.finalize("ben", one.id));
+      const missing = yield* Effect.flip(transfers.finalize(ben, one.id));
       expect(missing._tag).toBe("NotUploaded");
 
       // Signing the Put marks it finalizing; a wrong size is deleted and the
       // transfer reopens, so a correct Put can land on the free key.
-      yield* transfers.sign("ben", one.objectKey, UploadRequest.cases.Put.make({}));
+      yield* transfers.sign(ben, one.objectKey, UploadRequest.cases.Put.make({}));
       storage.objects.set(one.objectKey, { etag: "a", size: 99 });
-      const wrongSize = yield* Effect.flip(transfers.finalize("ben", one.id));
+      const wrongSize = yield* Effect.flip(transfers.finalize(ben, one.id));
       expect(wrongSize._tag).toBe("InvalidUpload");
       expect(storage.objects.has(one.objectKey)).toBe(false);
       const deliveries = yield* Deliveries;
@@ -117,16 +118,16 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       ]);
 
       storage.objects.set(one.objectKey, { etag: "a", size: 4 });
-      const halfway = yield* transfers.finalize("ben", one.id);
+      const halfway = yield* transfers.finalize(ben, one.id);
       expect(halfway.status).toBe("open");
-      expect(yield* transfers.finalize("ben", one.id)).toEqual(halfway);
+      expect(yield* transfers.finalize(ben, one.id)).toEqual(halfway);
 
       expect(storage.sealed).toContain(one.objectKey);
       // A missing object is never sealed, so an upload still running survives.
       expect(storage.sealed).not.toContain(two.objectKey);
 
       storage.objects.set(two.objectKey, { etag: "b", size: 6 });
-      const ready = yield* transfers.finalize("ben", two.id);
+      const ready = yield* transfers.finalize(ben, two.id);
       expect(ready.status).toBe("ready");
       expect(ready.expiresAt?.getTime()).toBe(start + 3 * DAY_MS);
     }),
@@ -134,18 +135,19 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
 
   it.effect("closes signing and finalize once the delivery is cancelled", () =>
     Effect.gen(function* scenario() {
-      const created = yield* seed("cat", [newFile("a.txt", 1), newFile("b.txt", 1)]);
+      const cat = yield* addUser("cat");
+      const created = yield* seed(cat, [newFile("a.txt", 1), newFile("b.txt", 1)]);
       const deliveries = yield* Deliveries;
       const transfers = yield* Transfers;
       const [one] = firstTwo(created.transfers);
-      yield* deliveries.cancel("cat", created.id);
+      yield* deliveries.cancel(cat, created.id);
 
       const sign = yield* Effect.flip(
-        transfers.sign("cat", one.objectKey, UploadRequest.cases.Create.make({})),
+        transfers.sign(cat, one.objectKey, UploadRequest.cases.Create.make({})),
       );
       expect(sign._tag).toBe("UploadClosed");
       storage.objects.set(one.objectKey, { etag: "x", size: 1 });
-      const finalize = yield* Effect.flip(transfers.finalize("cat", one.id));
+      const finalize = yield* Effect.flip(transfers.finalize(cat, one.id));
       expect(finalize._tag).toBe("UploadClosed");
     }),
   );
@@ -153,18 +155,19 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
   it.effect("the sweeper finishes a transfer whose browser left after upload", () =>
     Effect.gen(function* scenario() {
       yield* atWallClock;
-      const created = yield* seed("dan", [newFile("left.txt", 7), newFile("stays.txt", 3)]);
+      const dan = yield* addUser("dan");
+      const created = yield* seed(dan, [newFile("left.txt", 7), newFile("stays.txt", 3)]);
       const transfers = yield* Transfers;
       const [left, stays] = firstTwo(created.transfers);
 
       // Signing Complete marks the transfer finalizing; the browser then vanishes.
       yield* transfers.sign(
-        "dan",
+        dan,
         left.objectKey,
         UploadRequest.cases.Complete.make({ uploadId: "u" }),
       );
       yield* transfers.sign(
-        "dan",
+        dan,
         stays.objectKey,
         UploadRequest.cases.Complete.make({ uploadId: "u" }),
       );
@@ -184,12 +187,13 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
   it.effect("expired deliveries read as expired and get purged", () =>
     Effect.gen(function* scenario() {
       yield* atWallClock;
-      const created = yield* seed("eve", [newFile("only.txt", 2)]);
+      const eve = yield* addUser("eve");
+      const created = yield* seed(eve, [newFile("only.txt", 2)]);
       const transfers = yield* Transfers;
       const deliveries = yield* Deliveries;
       const only = first(created.transfers);
       storage.objects.set(only.objectKey, { etag: "o", size: 2 });
-      yield* transfers.finalize("eve", only.id);
+      yield* transfers.finalize(eve, only.id);
 
       yield* TestClock.adjust("4 days");
       expect((yield* deliveries.view(created.id)).status).toBe("expired");
@@ -202,7 +206,8 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
     Effect.gen(function* scenario() {
       yield* atWallClock;
       const start = yield* Clock.currentTimeMillis;
-      const created = yield* seed("fay", [newFile("done.txt", 5)]);
+      const fay = yield* addUser("fay");
+      const created = yield* seed(fay, [newFile("done.txt", 5)]);
       const transfers = yield* Transfers;
       const { db } = yield* Database;
       // The transfer write landed; the delivery flip never ran.
@@ -221,24 +226,26 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
 
   it.effect("an empty file re-signs its guarded Put after a lost response", () =>
     Effect.gen(function* scenario() {
-      const created = yield* seed("gus", [newFile("empty.txt", 0)]);
+      const gus = yield* addUser("gus");
+      const created = yield* seed(gus, [newFile("empty.txt", 0)]);
       const transfers = yield* Transfers;
       const { objectKey } = first(created.transfers);
 
       const wrongKind = yield* Effect.flip(
-        transfers.sign("gus", objectKey, UploadRequest.cases.Create.make({})),
+        transfers.sign(gus, objectKey, UploadRequest.cases.Create.make({})),
       );
       expect(wrongKind._tag).toBe("InvalidUpload");
       // The first response is lost; the retry still gets a URL. If-None-Match
       // (signed by the real storage) is what stops a second write.
-      yield* transfers.sign("gus", objectKey, UploadRequest.cases.Put.make({}));
-      yield* transfers.sign("gus", objectKey, UploadRequest.cases.Put.make({}));
+      yield* transfers.sign(gus, objectKey, UploadRequest.cases.Put.make({}));
+      yield* transfers.sign(gus, objectKey, UploadRequest.cases.Put.make({}));
     }),
   );
 
   it.effect("a file of one part or less signs a guarded Put; a bigger one does not", () =>
     Effect.gen(function* scenario() {
-      const created = yield* seed("hal", [
+      const hal = yield* addUser("hal");
+      const created = yield* seed(hal, [
         newFile("small.bin", 3 * MIB),
         newFile("edge.bin", partSize(0)),
         newFile("big.bin", partSize(0) + 1),
@@ -252,63 +259,66 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
         return found.objectKey;
       };
 
-      const put = yield* transfers.sign("hal", key("small.bin"), UploadRequest.cases.Put.make({}));
+      const put = yield* transfers.sign(hal, key("small.bin"), UploadRequest.cases.Put.make({}));
       expect(put.url).toBe(`memory://Put/${key("small.bin")}`);
       // Signing the Put is the point the object may land unseen, so the
       // sweeper's state is set and no multipart upload can start after it.
       const reopen = yield* Effect.flip(
-        transfers.sign("hal", key("small.bin"), UploadRequest.cases.Create.make({})),
+        transfers.sign(hal, key("small.bin"), UploadRequest.cases.Create.make({})),
       );
       expect(reopen._tag).toBe("UploadClosed");
       // A lost response signs again; If-None-Match makes the second write fail.
-      yield* transfers.sign("hal", key("small.bin"), UploadRequest.cases.Put.make({}));
-      yield* transfers.sign("hal", key("edge.bin"), UploadRequest.cases.Put.make({}));
+      yield* transfers.sign(hal, key("small.bin"), UploadRequest.cases.Put.make({}));
+      yield* transfers.sign(hal, key("edge.bin"), UploadRequest.cases.Put.make({}));
 
       const tooBig = yield* Effect.flip(
-        transfers.sign("hal", key("big.bin"), UploadRequest.cases.Put.make({})),
+        transfers.sign(hal, key("big.bin"), UploadRequest.cases.Put.make({})),
       );
       expect(tooBig._tag).toBe("InvalidUpload");
       // Transfers that began as multipart before single PUTs existed still can.
-      yield* transfers.sign("hal", key("big.bin"), UploadRequest.cases.Create.make({}));
+      yield* transfers.sign(hal, key("big.bin"), UploadRequest.cases.Create.make({}));
     }),
   );
 
   it.effect("holds Free senders to the signing rate, and paid plans not at all", () =>
     Effect.gen(function* scenario() {
-      const free = first((yield* seed("fern", [newFile("a.bin", 200 * MIB)])).transfers);
-      const comp = first((yield* seed("cole", [newFile("a.bin", 200 * MIB)])).transfers);
+      const fern = yield* addUser("fern");
+      const free = first((yield* seed(fern, [newFile("a.bin", 200 * MIB)])).transfers);
+      const cole = yield* addUser("cole");
+      const comp = first((yield* seed(cole, [newFile("a.bin", 200 * MIB)])).transfers);
       const { db } = yield* Database;
       yield* db
         .insert(schema.subscription)
-        .values({ plan: "studio", status: "comp", userId: "cole" });
+        .values({ plan: "studio", status: "comp", userId: cole });
       const transfers = yield* Transfers;
       const { limit, windowSeconds } = rateLimits.uploadSigning;
-      const create = (sender: string, key: string) =>
+      const create = (sender: UserId, key: string) =>
         transfers.sign(sender, key, UploadRequest.cases.Create.make({}));
 
-      yield* Effect.forEach(Arr.range(1, limit), () => create("fern", free.objectKey));
-      const rateLimited = yield* Effect.flip(create("fern", free.objectKey));
+      yield* Effect.forEach(Arr.range(1, limit), () => create(fern, free.objectKey));
+      const rateLimited = yield* Effect.flip(create(fern, free.objectKey));
       expect(rateLimited).toBeInstanceOf(RateLimited);
       expect(rateLimited).toMatchObject({
         limit: "uploadSigning",
         retryAfterSeconds: windowSeconds,
       });
-      yield* Effect.forEach(Arr.range(1, limit + 1), () => create("cole", comp.objectKey));
+      yield* Effect.forEach(Arr.range(1, limit + 1), () => create(cole, comp.objectKey));
     }),
   );
 
   it.effect("stops signing once the delivery is past its upload window", () =>
     Effect.gen(function* scenario() {
       yield* atWallClock;
-      const created = yield* seed("ivy", [newFile("slow.bin", 9)]);
+      const ivy = yield* addUser("ivy");
+      const created = yield* seed(ivy, [newFile("slow.bin", 9)]);
       const transfers = yield* Transfers;
       const { objectKey } = first(created.transfers);
 
       yield* TestClock.adjust("6 days");
-      yield* transfers.sign("ivy", objectKey, UploadRequest.cases.Create.make({}));
+      yield* transfers.sign(ivy, objectKey, UploadRequest.cases.Create.make({}));
       yield* TestClock.adjust("2 days");
       const late = yield* Effect.flip(
-        transfers.sign("ivy", objectKey, UploadRequest.cases.Create.make({})),
+        transfers.sign(ivy, objectKey, UploadRequest.cases.Create.make({})),
       );
       expect(late._tag).toBe("UploadClosed");
     }),

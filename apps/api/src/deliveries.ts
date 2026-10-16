@@ -14,12 +14,13 @@ import {
 import type {
   DeliveryDownload,
   DeliveryId,
+  DeliveryRefused,
   NewDelivery,
   NewRequestUpload,
   PlanId,
   RequestId,
   RetentionDays,
-  DeliveryRefused,
+  UserId,
 } from "@tranzfer/contracts";
 import { Database, databaseFault, dieOnDatabaseError, schema } from "@tranzfer/db";
 import {
@@ -98,7 +99,7 @@ interface Intake<E> {
 
 // A retried create replays only when every field matches.
 const sameDelivery = (
-  senderId: string,
+  senderId: UserId,
   input: NewDelivery,
   origin: Origin,
   row: typeof schema.delivery.$inferSelect & {
@@ -128,30 +129,30 @@ export class Deliveries extends Context.Service<
   Deliveries,
   {
     readonly create: (
-      senderId: string,
+      senderId: UserId,
       input: NewDelivery,
     ) => Effect.Effect<
       Delivery,
       DeliveryConflict | DeliveryRefused | OverPlanLimit | RateLimited | RetentionNotInPlan
     >;
     /** Bytes of the sender's deliveries that are open, or ready and not yet expired. */
-    readonly activeBytes: (senderId: string) => Effect.Effect<number>;
-    readonly list: (senderId: string) => Effect.Effect<readonly Delivery[]>;
+    readonly activeBytes: (senderId: UserId) => Effect.Effect<number>;
+    readonly list: (senderId: UserId) => Effect.Effect<readonly Delivery[]>;
     /** Stops signing, kills the link, aborts uploads and removes the objects; the sweeper confirms later. */
     readonly cancel: (
-      senderId: string,
+      senderId: UserId,
       deliveryId: DeliveryId,
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
     /** The sender's own delivery as the dashboard shows it, whatever its status. */
     readonly owned: (
-      senderId: string,
+      senderId: UserId,
       deliveryId: DeliveryId,
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
     /** Takes the sender's ended deliveries among these off their list; live ones stay. */
-    readonly clear: (senderId: string, deliveryIds: readonly DeliveryId[]) => Effect.Effect<void>;
+    readonly clear: (senderId: UserId, deliveryIds: readonly DeliveryId[]) => Effect.Effect<void>;
     /** Replaces the title and note of the sender's own delivery, whatever its status. */
     readonly update: (
-      senderId: string,
+      senderId: UserId,
       deliveryId: DeliveryId,
       details: { readonly note: string; readonly title: string },
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
@@ -176,7 +177,7 @@ export class Deliveries extends Context.Service<
     ) => Effect.Effect<readonly Delivery[]>;
     /** Sets, replaces or (with null) removes the password on the sender's own delivery's link. */
     readonly setPassword: (
-      senderId: string,
+      senderId: UserId,
       deliveryId: DeliveryId,
       password: string | null,
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
@@ -298,7 +299,7 @@ export class Deliveries extends Context.Service<
         return yield* viewRow(row);
       }, dieOnDatabaseError);
 
-      const activeBytesAt = (senderId: string, now: number) =>
+      const activeBytesAt = (senderId: UserId, now: number) =>
         db
           .select({ total: sql<number>`coalesce(sum(${schema.transfer.size}), 0)` })
           .from(schema.transfer)
@@ -317,7 +318,7 @@ export class Deliveries extends Context.Service<
           );
 
       const activeBytes = Effect.fn("Deliveries.activeBytes")(function* activeBytes(
-        senderId: string,
+        senderId: UserId,
       ) {
         const [row] = yield* activeBytesAt(senderId, yield* Clock.currentTimeMillis);
         return row?.total ?? 0;
@@ -327,7 +328,7 @@ export class Deliveries extends Context.Service<
       // use; else the sender's active bytes. Cancelled deliveries count
       // toward the Free caps, so create-and-cancel can't loop.
       const admit = Effect.fn("Deliveries.admit")(function* admit(
-        senderId: string,
+        senderId: UserId,
         plan: PlanId,
         requestedBytes: number,
         now: number,
@@ -370,7 +371,7 @@ export class Deliveries extends Context.Service<
 
       // The same rules as `admit`, checked by the statement that inserts the
       // delivery, so they hold when creates race.
-      const withinLimits = (senderId: string, plan: PlanId, requestedBytes: number, now: number) =>
+      const withinLimits = (senderId: UserId, plan: PlanId, requestedBytes: number, now: number) =>
         and(
           sql`(${activeBytesAt(senderId, now)}) + ${requestedBytes} <= ${plans[plan].activeBytes}`,
           ...(plan === "free"
@@ -396,7 +397,7 @@ export class Deliveries extends Context.Service<
       // A retried create finds its delivery again: the same one back, or a
       // conflict when the id belongs to different content.
       const replay = Effect.fn("Deliveries.replay")(function* replay(
-        senderId: string,
+        senderId: UserId,
         input: NewDelivery,
         origin: Origin,
       ) {
@@ -444,7 +445,7 @@ export class Deliveries extends Context.Service<
       // Everything create and receive share once the owner, title and
       // retention are settled: admit, insert atomically, and name a refusal.
       const place = <E = never>(
-        senderId: string,
+        senderId: UserId,
         plan: PlanId,
         input: NewDelivery,
         intake?: Intake<E>,
@@ -542,7 +543,7 @@ export class Deliveries extends Context.Service<
       return Deliveries.of({
         activeBytes,
         cancel: Effect.fn("Deliveries.cancel")(function* cancel(
-          senderId: string,
+          senderId: UserId,
           deliveryId: DeliveryId,
         ) {
           yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
@@ -572,7 +573,7 @@ export class Deliveries extends Context.Service<
           return yield* view(deliveryId);
         }, dieOnDatabaseError),
         clear: Effect.fn("Deliveries.clear")(function* clear(
-          senderId: string,
+          senderId: UserId,
           deliveryIds: readonly DeliveryId[],
         ) {
           yield* Effect.annotateCurrentSpan("delivery.count", deliveryIds.length);
@@ -596,7 +597,7 @@ export class Deliveries extends Context.Service<
             );
         }, dieOnDatabaseError),
         create: Effect.fn("Deliveries.create")(function* create(
-          senderId: string,
+          senderId: UserId,
           input: NewDelivery,
         ) {
           yield* Effect.annotateCurrentSpan({
@@ -621,7 +622,7 @@ export class Deliveries extends Context.Service<
           }
           return yield* place(senderId, plan, input);
         }, dieOnDatabaseError),
-        list: Effect.fn("Deliveries.list")(function* list(senderId: string) {
+        list: Effect.fn("Deliveries.list")(function* list(senderId: UserId) {
           const rows = yield* db.query.delivery.findMany({
             limit: 50,
             orderBy: { createdAt: "desc" },
@@ -648,7 +649,7 @@ export class Deliveries extends Context.Service<
         }, dieOnDatabaseError),
 
         owned: Effect.fn("Deliveries.owned")(function* owned(
-          senderId: string,
+          senderId: UserId,
           deliveryId: DeliveryId,
         ) {
           yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
@@ -799,7 +800,7 @@ export class Deliveries extends Context.Service<
         }, dieOnDatabaseError),
 
         setPassword: Effect.fn("Deliveries.setPassword")(function* setPassword(
-          senderId: string,
+          senderId: UserId,
           deliveryId: DeliveryId,
           password: string | null,
         ) {
@@ -832,7 +833,7 @@ export class Deliveries extends Context.Service<
           return yield* view(deliveryId);
         }, dieOnDatabaseError),
         update: Effect.fn("Deliveries.update")(function* update(
-          senderId: string,
+          senderId: UserId,
           deliveryId: DeliveryId,
           details: { readonly note: string; readonly title: string },
         ) {

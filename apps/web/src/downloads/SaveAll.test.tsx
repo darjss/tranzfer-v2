@@ -7,6 +7,9 @@ import {
   Authenticated,
   CurrentPrincipal,
   LinkLocked,
+  LinkToken,
+  UnlockToken,
+  UserId,
   WrongPassword,
 } from "@tranzfer/contracts";
 import type { SharedDelivery } from "@tranzfer/contracts";
@@ -89,7 +92,8 @@ const makeDisk = () => {
 };
 
 // A link with a password: the right one trades for this unlock, and only it opens the link.
-const UNLOCK = "unlock-token";
+const UNLOCK = UnlockToken.make("unlock-token");
+const TOKEN = LinkToken.make("token");
 
 const makeWorld = (options: { locked?: boolean } = {}) => {
   const reports: string[] = [];
@@ -150,7 +154,7 @@ const makeWorld = (options: { locked?: boolean } = {}) => {
           effect.pipe(
             Effect.provideService(CurrentPrincipal, {
               email: "s@test",
-              id: "s",
+              id: UserId.make("s"),
               image: null,
               name: "Sender",
             }),
@@ -216,7 +220,7 @@ describe("SaveAll", () => {
       const { opens, reports, reportUnlocks, runtime } = makeWorld({ locked });
       render(() => (
         <RuntimeContext value={runtime}>
-          <SaveAll delivery={delivery} token="token" unlock={unlock} />
+          <SaveAll access={{ token: TOKEN, unlock }} delivery={delivery} />
         </RuntimeContext>
       ));
 
@@ -264,7 +268,10 @@ describe("SaveAll", () => {
     const { reports, runtime } = makeWorld({ locked: true });
     render(() => (
       <RuntimeContext value={runtime}>
-        <SaveAll delivery={delivery} token="token" unlock="an-old-unlock" />
+        <SaveAll
+          access={{ token: TOKEN, unlock: UnlockToken.make("an-old-unlock") }}
+          delivery={delivery}
+        />
       </RuntimeContext>
     ));
     screen.getByRole("button", { name: "Download all" }).click();
@@ -277,7 +284,7 @@ describe("SaveAll", () => {
     const { runtime } = makeWorld();
     render(() => (
       <RuntimeContext value={runtime}>
-        <SaveAll delivery={delivery} token="token" unlock={undefined} />
+        <SaveAll access={{ token: TOKEN }} delivery={delivery} />
       </RuntimeContext>
     ));
     flush();
@@ -295,7 +302,7 @@ describe("SaveAll", () => {
             unlocked.push(unlock);
           }}
           senderName="Sender"
-          token="token"
+          token={TOKEN}
         />
       </RuntimeContext>
     ));
@@ -405,7 +412,7 @@ describe("SaveAll", () => {
     const { opens, reports, reportUnlocks, runtime } = makeWorld({ locked: true });
     render(() => (
       <RuntimeContext value={runtime}>
-        <LinkPage token="token" />
+        <LinkPage token={TOKEN} />
       </RuntimeContext>
     ));
     const { artifact } = await captureArtifact(

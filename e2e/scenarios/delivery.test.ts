@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { expect, layer } from "@effect/vitest";
-import { DeliveryId, partSize, TransferId, UploadRequest } from "@tranzfer/contracts";
+import { DeliveryId, LinkToken, partSize, TransferId, UploadRequest } from "@tranzfer/contracts";
 import type { NewDelivery } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Predicate from "effect/Predicate";
@@ -275,7 +275,7 @@ layer(Target.layer)("staging deliveries", (it) => {
         expect(conflict._tag).toBe("DeliveryConflict");
 
         // Anonymous link: downloads verify byte-for-byte, no session cookie.
-        const token = delivery.link.slice("/d/".length);
+        const token = LinkToken.make(delivery.link.slice("/d/".length));
         const shared = yield* anon.OpenLink({ token });
         expect(shared.files).toHaveLength(3);
         const digests = new Map([
@@ -293,7 +293,7 @@ layer(Target.layer)("staging deliveries", (it) => {
           }),
         );
 
-        const tampered = `${token.split(".")[0]}.${"A".repeat(43)}`;
+        const tampered = LinkToken.make(`${token.split(".")[0]}.${"A".repeat(43)}`);
         const badLink = yield* Effect.flip(anon.OpenLink({ token: tampered }));
         expect(badLink._tag).toBe("LinkNotFound");
       }).pipe(Effect.ensuring(cleanup(api, delivery.id)));
@@ -334,7 +334,7 @@ layer(Target.layer)("staging deliveries", (it) => {
         expect(unknown._tag).toBe("DeliveryNotFound");
 
         const link = yield* Effect.flip(
-          anon.OpenLink({ token: delivery.link.slice("/d/".length) }),
+          anon.OpenLink({ token: LinkToken.make(delivery.link.slice("/d/".length)) }),
         );
         expect(link._tag).toBe("LinkNotReady");
       }).pipe(Effect.ensuring(cleanup(api, delivery.id)));

@@ -7,10 +7,13 @@ import {
   RetentionNotInPlan,
 } from "@tranzfer/contracts";
 import type {
-  DeliveryNotFound,
+  Delivery,
   DeliveryConflict,
+  DeliveryId,
+  DeliveryNotFound,
   DeliveryRefused,
   InvalidUpload,
+  LinkToken,
   NewFileRequest,
   NewRequestUpload,
   NotUploaded,
@@ -22,8 +25,7 @@ import type {
   TransferId,
   UploadClosed,
   UploadRequest,
-  Delivery,
-  DeliveryId,
+  UserId,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, countDistinct, desc, eq, inArray, ne, sql } from "drizzle-orm";
@@ -67,17 +69,17 @@ export class FileRequests extends Context.Service<
   FileRequests,
   {
     readonly create: (
-      ownerId: string,
+      ownerId: UserId,
       input: NewFileRequest,
     ) => Effect.Effect<FileRequest, RetentionNotInPlan>;
-    readonly list: (ownerId: string) => Effect.Effect<readonly FileRequest[]>;
+    readonly list: (ownerId: UserId) => Effect.Effect<readonly FileRequest[]>;
     /** Ends the request now. Closing again changes nothing. */
     readonly close: (
-      ownerId: string,
+      ownerId: UserId,
       requestId: RequestId,
     ) => Effect.Effect<FileRequest, RequestNotFound>;
     readonly open: (
-      token: string,
+      token: LinkToken,
       ip: string,
     ) => Effect.Effect<OpenedRequest, RateLimited | RequestNotFound>;
     readonly receive: (
@@ -88,7 +90,7 @@ export class FileRequests extends Context.Service<
       DeliveryConflict | DeliveryRefused | RateLimited | RequestFull | RequestNotFound
     >;
     readonly sign: (
-      token: string,
+      token: LinkToken,
       ip: string,
       key: string,
       request: UploadRequest,
@@ -97,7 +99,7 @@ export class FileRequests extends Context.Service<
       DeliveryNotFound | InvalidUpload | RateLimited | RequestNotFound | UploadClosed
     >;
     readonly finalize: (
-      token: string,
+      token: LinkToken,
       ip: string,
       transferId: TransferId,
     ) => Effect.Effect<
@@ -112,7 +114,7 @@ export class FileRequests extends Context.Service<
     >;
     /** The uploads among these ids that came in through the token's request. */
     readonly uploads: (
-      token: string,
+      token: LinkToken,
       ip: string,
       deliveryIds: readonly DeliveryId[],
     ) => Effect.Effect<readonly RequestUpload[], RateLimited | RequestNotFound>;
@@ -182,7 +184,7 @@ export class FileRequests extends Context.Service<
       // first, so floods of bad tokens are limited too, then the token must
       // verify and name a request that is open and unexpired, then the
       // request is counted.
-      const live = Effect.fn("FileRequests.live")(function* live(token: string, ip: string) {
+      const live = Effect.fn("FileRequests.live")(function* live(token: LinkToken, ip: string) {
         yield* limiter.check("portalCallsPerIp", ip);
         const id = yield* tokens.verify(token);
         if (Option.isNone(id)) {
@@ -207,7 +209,7 @@ export class FileRequests extends Context.Service<
 
       return FileRequests.of({
         close: Effect.fn("FileRequests.close")(function* close(
-          ownerId: string,
+          ownerId: UserId,
           requestId: RequestId,
         ) {
           yield* Effect.annotateCurrentSpan("request.id", requestId);
@@ -229,7 +231,7 @@ export class FileRequests extends Context.Service<
         }, dieOnDatabaseError),
 
         create: Effect.fn("FileRequests.create")(function* create(
-          ownerId: string,
+          ownerId: UserId,
           input: NewFileRequest,
         ) {
           const { plan } = yield* userPlans.current(ownerId);
@@ -265,7 +267,7 @@ export class FileRequests extends Context.Service<
         }, dieOnDatabaseError),
 
         finalize: Effect.fn("FileRequests.finalize")(function* finalize(
-          token: string,
+          token: LinkToken,
           ip: string,
           transferId: TransferId,
         ) {
@@ -274,7 +276,7 @@ export class FileRequests extends Context.Service<
           return toUpload(yield* transfers.finalize(request.ownerId, transferId, request.id));
         }),
 
-        list: Effect.fn("FileRequests.list")(function* list(ownerId: string) {
+        list: Effect.fn("FileRequests.list")(function* list(ownerId: UserId) {
           const rows = yield* db
             .select()
             .from(schema.fileRequest)
@@ -285,7 +287,7 @@ export class FileRequests extends Context.Service<
           return yield* views(rows);
         }, dieOnDatabaseError),
 
-        open: Effect.fn("FileRequests.open")(function* open(token: string, ip: string) {
+        open: Effect.fn("FileRequests.open")(function* open(token: LinkToken, ip: string) {
           const request = yield* live(token, ip);
           yield* Effect.annotateCurrentSpan("request.id", request.id);
           return OpenedRequest.make({
@@ -307,7 +309,7 @@ export class FileRequests extends Context.Service<
         }),
 
         sign: Effect.fn("FileRequests.sign")(function* sign(
-          token: string,
+          token: LinkToken,
           ip: string,
           key: string,
           request: UploadRequest,
@@ -318,7 +320,7 @@ export class FileRequests extends Context.Service<
         }),
 
         uploads: Effect.fn("FileRequests.uploads")(function* uploads(
-          token: string,
+          token: LinkToken,
           ip: string,
           deliveryIds: readonly DeliveryId[],
         ) {

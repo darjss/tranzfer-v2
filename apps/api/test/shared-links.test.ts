@@ -1,5 +1,5 @@
 import { expect, layer } from "@effect/vitest";
-import { LinkLocked, LinkNotReady, RateLimited } from "@tranzfer/contracts";
+import { LinkLocked, LinkNotReady, LinkToken, RateLimited, UnlockToken } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
@@ -15,39 +15,39 @@ import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } 
 
 const storage = makeMemoryStorage();
 
-const tokenOf = (link: string) => link.slice("/d/".length);
+const tokenOf = (link: string) => LinkToken.make(link.slice("/d/".length));
 
 // A ready delivery of one file, with a password if given.
 const lockedDelivery = Effect.fn("lockedDelivery")(function* lockedDelivery(
   sender: string,
   password: string | null,
 ) {
-  yield* addUser(sender, "Sam");
+  const senderId = yield* addUser(sender, "Sam");
   const deliveries = yield* Deliveries;
   const transfers = yield* Transfers;
   const created = yield* deliveries.create(
-    sender,
+    senderId,
     newDelivery([newFile("secret/a.mov", 3)], "Secret cut"),
   );
   const file = first(created.transfers);
   storage.objects.set(file.objectKey, { etag: "m", size: 3 });
-  yield* transfers.finalize(sender, file.id);
+  yield* transfers.finalize(senderId, file.id);
   if (password !== null) {
-    yield* deliveries.setPassword(sender, created.id, password);
+    yield* deliveries.setPassword(senderId, created.id, password);
   }
-  return { created, file, token: tokenOf(created.link) };
+  return { created, file, sender: senderId, token: tokenOf(created.link) };
 });
 
 layer(domainLayer(storage.layer))("SharedLinks", (it) => {
   it.effect("walks a link from not ready to ready to expired", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("sam", "Sam");
+      const sam = yield* addUser("sam", "Sam");
       const deliveries = yield* Deliveries;
       const transfers = yield* Transfers;
       const links = yield* SharedLinks;
       const created = yield* deliveries.create(
-        "sam",
+        sam,
         newDelivery([newFile("clips/a.mov", 3)], "Clips"),
       );
       const token = tokenOf(created.link);
@@ -58,7 +58,7 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
 
       const file = first(created.transfers);
       storage.objects.set(file.objectKey, { etag: "m", size: 3 });
-      yield* transfers.finalize("sam", file.id);
+      yield* transfers.finalize(sam, file.id);
 
       const shared = yield* links.open(token);
       expect(shared.title).toBe("Clips");
@@ -74,17 +74,18 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
 
   it.effect("tampered, unknown and cancelled links all read as not found", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("tom");
+      const tom = yield* addUser("tom");
       const deliveries = yield* Deliveries;
       const links = yield* SharedLinks;
-      const created = yield* deliveries.create("tom", newDelivery([newFile("x", 1)]));
+      const created = yield* deliveries.create(tom, newDelivery([newFile("x", 1)]));
       const token = tokenOf(created.link);
 
-      for (const bad of [`${token}x`, "nope", "a.b.c", ""]) {
-        const error = yield* Effect.flip(links.open(bad));
+      // An empty token fails LinkToken's decode before it reaches the service.
+      for (const bad of [`${token}x`, "nope", "a.b.c"]) {
+        const error = yield* Effect.flip(links.open(LinkToken.make(bad)));
         expect(error._tag).toBe("LinkNotFound");
       }
-      yield* deliveries.cancel("tom", created.id);
+      yield* deliveries.cancel(tom, created.id);
       const cancelled = yield* Effect.flip(links.open(token));
       expect(cancelled._tag).toBe("LinkNotFound");
     }),
@@ -93,22 +94,22 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
   it.effect("reports downloads to the owner, once per file, and ignores what it can't place", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("dee");
-      yield* addUser("eve");
+      const dee = yield* addUser("dee");
+      const eve = yield* addUser("eve");
       const deliveries = yield* Deliveries;
       const transfers = yield* Transfers;
       const links = yield* SharedLinks;
       const created = yield* deliveries.create(
-        "dee",
+        dee,
         newDelivery([newFile("a.mov", 3), newFile("b.mov", 4)], "Two"),
       );
       const token = tokenOf(created.link);
       for (const file of created.transfers) {
         storage.objects.set(file.objectKey, { etag: "m", size: file.size });
-        yield* transfers.finalize("dee", file.id);
+        yield* transfers.finalize(dee, file.id);
       }
       expect(
-        (yield* deliveries.list("dee")).find((row) => row.id === created.id)?.download,
+        (yield* deliveries.list(dee)).find((row) => row.id === created.id)?.download,
       ).toBeNull();
 
       // Opening the link is not a download.
@@ -126,11 +127,11 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
       const lastAt = new Date(yield* Clock.currentTimeMillis);
       // Nothing to place: wrong path, tampered token, another sender's view.
       yield* links.report(token, "nope.mov", "saved");
-      yield* links.report(`${token}x`, "b.mov", "saved");
+      yield* links.report(LinkToken.make(`${token}x`), "b.mov", "saved");
 
-      const [row] = yield* deliveries.list("dee");
+      const [row] = yield* deliveries.list(dee);
       expect(row?.download).toEqual({ filesSaved: 1, lastAt, startedAt });
-      expect((yield* deliveries.list("eve")).length).toBe(0);
+      expect((yield* deliveries.list(eve)).length).toBe(0);
 
       yield* links.report(token, "b.mov", "saved");
       expect((yield* deliveries.view(created.id)).download?.filesSaved).toBe(2);
@@ -149,7 +150,7 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
       const { file, token } = yield* lockedDelivery("open-sam", null);
       const expected = [{ path: "secret/a.mov", size: 3, url: `memory://get/${file.objectKey}` }];
       expect((yield* links.open(token)).files).toEqual(expected);
-      expect((yield* links.open(token, "junk")).files).toEqual(expected);
+      expect((yield* links.open(token, UnlockToken.make("junk"))).files).toEqual(expected);
       // Any password "unlocks" it, and the unlock changes nothing.
       const { unlock } = yield* links.unlock(token, "anything", "ip-open");
       expect((yield* links.open(token, unlock)).files).toEqual(expected);
@@ -167,12 +168,14 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
       expect(locked).toBeInstanceOf(LinkLocked);
       expect(locked).toMatchObject({ senderName: "Sam" });
       expect(JSON.stringify(locked)).not.toContain("Secret cut");
-      const forged = yield* Effect.flip(links.open(token, "9999999999999.AAAA"));
+      const forged = yield* Effect.flip(links.open(token, UnlockToken.make("9999999999999.AAAA")));
       expect(forged._tag).toBe("LinkLocked");
 
       const wrong = yield* Effect.flip(links.unlock(token, "correct hors", "ip-lock"));
       expect(wrong._tag).toBe("WrongPassword");
-      const notFound = yield* Effect.flip(links.unlock(`${token}x`, "correct horse", "ip-lock"));
+      const notFound = yield* Effect.flip(
+        links.unlock(LinkToken.make(`${token}x`), "correct horse", "ip-lock"),
+      );
       expect(notFound._tag).toBe("LinkNotFound");
 
       const { expiresAt, unlock } = yield* links.unlock(token, "correct horse", "ip-lock");
@@ -208,10 +211,10 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
         // A new password ends unlocks issued under the old one, even the same text.
         const fresh = yield* links.unlock(one.token, "shared password", "ip-scope");
         expect((yield* links.open(one.token, fresh.unlock)).title).toBe("Secret cut");
-        yield* deliveries.setPassword("scope-one", one.created.id, "shared password");
+        yield* deliveries.setPassword(one.sender, one.created.id, "shared password");
         expect((yield* Effect.flip(links.open(one.token, fresh.unlock)))._tag).toBe("LinkLocked");
         // Removing it opens the link to everyone.
-        yield* deliveries.setPassword("scope-one", one.created.id, null);
+        yield* deliveries.setPassword(one.sender, one.created.id, null);
         expect((yield* links.open(one.token)).title).toBe("Secret cut");
       }),
   );
@@ -276,7 +279,7 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
 
       // Without the unlock a report is dropped, like one for a bad token.
       yield* links.report(token, "secret/a.mov", "started");
-      yield* links.report(token, "secret/a.mov", "started", "9999999999999.AAAA");
+      yield* links.report(token, "secret/a.mov", "started", UnlockToken.make("9999999999999.AAAA"));
       expect((yield* deliveries.view(created.id)).download).toBeNull();
 
       const { unlock } = yield* links.unlock(token, "report secret", "ip-report");

@@ -1,4 +1,5 @@
 import { passwordLength } from "@tranzfer/contracts";
+import type { LinkToken, UnlockToken } from "@tranzfer/contracts";
 import * as Exit from "effect/Exit";
 import { action, createOptimistic, createSignal, Show, useContext } from "solid-js";
 import { css } from "styled-system/css";
@@ -13,9 +14,9 @@ import { Button } from "../ui/Button";
 
 /** Asks for a link's password. A right one hands the page its unlock; a wrong one says so here. */
 export const Unlock = (props: {
-  onUnlock: (unlock: string) => void;
+  onUnlock: (unlock: UnlockToken) => void;
   senderName: string;
-  token: string;
+  token: LinkToken;
 }) => {
   const runtime = useContext(RuntimeContext);
   const [password, setPassword] = createSignal("");

@@ -1,5 +1,5 @@
 import { basename } from "@tranzfer/contracts";
-import type { SharedFile } from "@tranzfer/contracts";
+import type { LinkAccess, SharedFile } from "@tranzfer/contracts";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Predicate from "effect/Predicate";
@@ -214,7 +214,7 @@ const isTransient = (error: { readonly _tag: string }) =>
  */
 export const saveFolder = Effect.fn("SaveFolder.save")(function* saveFolder(
   root: Folder,
-  link: { readonly token: string; readonly unlock: string | undefined },
+  link: LinkAccess,
   report: (progress: { bytes: number; current: string; files: number }) => void,
 ) {
   const api = yield* ApiClient;

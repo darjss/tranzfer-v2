@@ -16,6 +16,7 @@ import type {
   SignedUrl,
   TransferId,
   UploadRequest,
+  UserId,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, eq, exists, inArray, ne, notExists, sql } from "drizzle-orm";
@@ -52,13 +53,13 @@ export class Transfers extends Context.Service<
      * file request sign, and the owner's own signing rate is not spent.
      */
     readonly sign: (
-      senderId: string,
+      senderId: UserId,
       key: string,
       request: UploadRequest,
       requestId?: RequestId,
     ) => Effect.Effect<SignedUrl, DeliveryNotFound | InvalidUpload | RateLimited | UploadClosed>;
     readonly finalize: (
-      senderId: string,
+      senderId: UserId,
       transferId: TransferId,
       requestId?: RequestId,
     ) => Effect.Effect<
@@ -115,7 +116,7 @@ export class Transfers extends Context.Service<
         );
 
       const owned = (
-        senderId: string,
+        senderId: UserId,
         where: { id: TransferId } | { objectKey: string },
         requestId?: RequestId,
       ) =>
@@ -228,7 +229,7 @@ export class Transfers extends Context.Service<
 
       return Transfers.of({
         finalize: Effect.fn("Transfers.finalize")(function* finalize(
-          senderId: string,
+          senderId: UserId,
           transferId: TransferId,
           requestId?: RequestId,
         ) {
@@ -309,7 +310,7 @@ export class Transfers extends Context.Service<
         }).pipe(Effect.withSpan("Transfers.recoverFinalizing"), dieOnDatabaseError),
 
         sign: Effect.fn("Transfers.sign")(function* sign(
-          senderId: string,
+          senderId: UserId,
           key: string,
           request: UploadRequest,
           requestId?: RequestId,

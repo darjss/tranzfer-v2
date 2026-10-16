@@ -12,7 +12,14 @@ import {
   TransferId,
   UploadRequest,
 } from "@tranzfer/contracts";
-import type { Delivery, NewFile, RetentionDays, SignedUrl, Transfer } from "@tranzfer/contracts";
+import type {
+  Delivery,
+  LinkToken,
+  NewFile,
+  RetentionDays,
+  SignedUrl,
+  Transfer,
+} from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
@@ -585,7 +592,7 @@ const make = Effect.gen(function* makeUploads() {
       readonly id: DeliveryId;
     }) => Effect.Effect<D, E>,
     attributes: Record<string, boolean | number>,
-    token?: string,
+    token?: LinkToken,
   ) =>
     Effect.gen(function* placeDelivery() {
       // Nothing is created for files the API would refuse.
@@ -734,7 +741,7 @@ const make = Effect.gen(function* makeUploads() {
   /** An uploader without an account sends into a file request; its token signs everything after. */
   const sendToRequest = Effect.fn("Uploads.sendToRequest")(function* sendToRequest(
     files: readonly ChosenFile[],
-    via: { readonly email: string | null; readonly name: string; readonly token: string },
+    via: { readonly email: string | null; readonly name: string; readonly token: LinkToken },
   ) {
     return yield* place(
       files,
@@ -829,7 +836,7 @@ const make = Effect.gen(function* makeUploads() {
   const restore = Effect.fn("Uploads.restore")(function* restore(
     deliveries: readonly Pick<Delivery, "transfers">[],
     // The file request the deliveries came in through, for an uploader.
-    token?: string,
+    token?: LinkToken,
   ) {
     const records = yield* readAll;
     const elsewhere = yield* sendingElsewhere;
@@ -898,7 +905,7 @@ const make = Effect.gen(function* makeUploads() {
     // Bytes of stored parts hashed so far, out of those listed so far.
     onChecking?: (progress: { readonly checked: number; readonly total: number }) => void,
     // The file request the delivery came in through, for an uploader.
-    token?: string,
+    token?: LinkToken,
   ) {
     const uppy = yield* engine;
     if (token !== undefined) {
@@ -1052,7 +1059,7 @@ const make = Effect.gen(function* makeUploads() {
    * back through the token. Unfinished ones are restored like the owner's.
    */
   const recoverRequest = Effect.fn("Uploads.recoverRequest")(function* recoverRequest(
-    token: string,
+    token: LinkToken,
     sentHere: readonly DeliveryId[],
   ) {
     const records = yield* readAll;

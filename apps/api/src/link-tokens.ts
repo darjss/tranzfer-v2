@@ -1,3 +1,4 @@
+import { LinkToken, UnlockToken } from "@tranzfer/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -30,18 +31,22 @@ const unlockMessage = (linkId: string, binding: string, expiresAt: number) =>
  * stored password hash, so setting, changing or clearing the password ends
  * every unlock issued before. Link tokens MAC the bare link id, which can't
  * equal a message that starts with "unlock\n".
+ *
+ * File request tokens come from the same `issue` and key. Link and request ids
+ * are disjoint random values; separating the two would change the format and
+ * break every shared link.
  */
 export class LinkTokens extends Context.Service<
   LinkTokens,
   {
-    readonly issue: (linkId: string) => Effect.Effect<string>;
-    readonly verify: (token: string) => Effect.Effect<Option.Option<string>>;
+    readonly issue: (linkId: string) => Effect.Effect<LinkToken>;
+    readonly verify: (token: LinkToken) => Effect.Effect<Option.Option<string>>;
     readonly issueUnlock: (
       linkId: string,
       binding: string,
-    ) => Effect.Effect<{ readonly expiresAt: Date; readonly unlock: string }>;
+    ) => Effect.Effect<{ readonly expiresAt: Date; readonly unlock: UnlockToken }>;
     readonly verifyUnlock: (
-      unlock: string,
+      unlock: UnlockToken,
       linkId: string,
       binding: string,
     ) => Effect.Effect<boolean>;
@@ -75,7 +80,7 @@ export class LinkTokens extends Context.Service<
 
         return LinkTokens.of({
           issue: Effect.fn("LinkTokens.issue")(function* issue(linkId: string) {
-            return `${linkId}.${yield* sign(linkId)}`;
+            return LinkToken.make(`${linkId}.${yield* sign(linkId)}`);
           }),
           issueUnlock: Effect.fn("LinkTokens.issueUnlock")(function* issueUnlock(
             linkId: string,
@@ -83,9 +88,12 @@ export class LinkTokens extends Context.Service<
           ) {
             const expiresAt = (yield* Clock.currentTimeMillis) + Duration.toMillis(UNLOCK_TTL);
             const mac = yield* sign(unlockMessage(linkId, binding, expiresAt));
-            return { expiresAt: new Date(expiresAt), unlock: `${expiresAt}.${mac}` };
+            return {
+              expiresAt: new Date(expiresAt),
+              unlock: UnlockToken.make(`${expiresAt}.${mac}`),
+            };
           }),
-          verify: Effect.fn("LinkTokens.verify")(function* verify(token: string) {
+          verify: Effect.fn("LinkTokens.verify")(function* verify(token: LinkToken) {
             const [linkId, signature, ...rest] = token.split(".");
             if (!linkId || signature === undefined || rest.length > 0) {
               return Option.none();
@@ -103,7 +111,7 @@ export class LinkTokens extends Context.Service<
             return valid ? Option.some(linkId) : Option.none();
           }),
           verifyUnlock: Effect.fn("LinkTokens.verifyUnlock")(function* verifyUnlock(
-            unlock: string,
+            unlock: UnlockToken,
             linkId: string,
             binding: string,
           ) {

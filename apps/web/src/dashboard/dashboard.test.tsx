@@ -10,6 +10,7 @@ import {
   DeliveryId,
   TransferId,
   Unauthorized,
+  UserId,
 } from "@tranzfer/contracts";
 import type { BillingSummary, Delivery, DeliveryEmail } from "@tranzfer/contracts";
 import * as Deferred from "effect/Deferred";
@@ -209,7 +210,7 @@ const makeWorld = (
           effect.pipe(
             Effect.provideService(CurrentPrincipal, {
               email: "s@test",
-              id: "s",
+              id: UserId.make("s"),
               image: null,
               name: "Sender",
             }),
@@ -560,7 +561,7 @@ describe("dashboard reactivity", () => {
           <TopBar
             billing={state.billing()}
             manage={noop}
-            principal={{ email: "s@test", id: "s", image: null, name: "Sender" }}
+            principal={{ email: "s@test", id: UserId.make("s"), image: null, name: "Sender" }}
             redeem={state.redeem}
             redeeming={state.redeeming()}
             send={noop}
@@ -626,7 +627,7 @@ describe("dashboard reactivity", () => {
           <TopBar
             billing={state.billing()}
             manage={noop}
-            principal={{ email: "s@test", id: "s", image: null, name: "Sender" }}
+            principal={{ email: "s@test", id: UserId.make("s"), image: null, name: "Sender" }}
             redeem={state.redeem}
             redeeming={state.redeeming()}
             send={noop}

@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { BetterAuth, Database as AuthDatabase } from "@alchemy.run/better-auth";
 import type { BetterAuthProps, DatabaseService } from "@alchemy.run/better-auth";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { RateLimited, rateLimits } from "@tranzfer/contracts";
+import { RateLimited, UserId, rateLimits } from "@tranzfer/contracts";
 import type { Principal } from "@tranzfer/contracts";
 import { RuntimeContext } from "alchemy";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -308,7 +308,8 @@ export class Auth extends Context.Service<
             });
             const principal = Option.map(Option.fromNullishOr(result.response), ({ user }) => ({
               email: user.email,
-              id: user.id,
+              // Better Auth generates user ids; this is where its string becomes a UserId.
+              id: UserId.make(user.id),
               image: user.image ?? null,
               name: user.name,
             }));

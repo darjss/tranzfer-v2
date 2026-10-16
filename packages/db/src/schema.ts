@@ -7,6 +7,7 @@ import type {
   RetentionDays,
   SubscriptionStatus,
   TransferId,
+  UserId,
 } from "@tranzfer/contracts";
 import { sql } from "drizzle-orm";
 import {
@@ -32,7 +33,7 @@ const timestamps = {
 };
 
 export const user = sqliteTable("user", {
-  id: text("id").primaryKey(),
+  id: text("id").$type<UserId>().primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
@@ -84,6 +85,7 @@ export const session = sqliteTable(
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
     userId: text("user_id")
+      .$type<UserId>()
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
   },
@@ -97,6 +99,7 @@ export const account = sqliteTable(
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
     userId: text("user_id")
+      .$type<UserId>()
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     accessToken: text("access_token"),
@@ -139,6 +142,7 @@ export const fileRequest = sqliteTable(
   {
     id: text("id").$type<RequestId>().primaryKey(),
     ownerId: text("owner_id")
+      .$type<UserId>()
       .notNull()
       .references(() => user.id),
     title: text("title").notNull(),
@@ -163,6 +167,7 @@ export const delivery = sqliteTable(
     id: text("id").$type<DeliveryId>().primaryKey(),
     // No cascade: account deletion needs an R2 object cleanup path first.
     senderId: text("sender_id")
+      .$type<UserId>()
       .notNull()
       .references(() => user.id),
     title: text("title").notNull(),
@@ -258,6 +263,7 @@ export const download = sqliteTable(
 // state, so it is a cache of Polar and never the source of truth.
 export const subscription = sqliteTable("subscription", {
   userId: text("user_id")
+    .$type<UserId>()
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
   plan: text("plan").$type<PlanId>().notNull(),
@@ -297,6 +303,7 @@ export const planGrant = sqliteTable(
   "plan_grant",
   {
     userId: text("user_id")
+      .$type<UserId>()
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     code: text("code")
@@ -319,7 +326,9 @@ export const planInterest = sqliteTable(
     email: text("email").notNull(),
     plan: text("plan").$type<PaidPlanId>().notNull(),
     // Set when the sign-up came from a signed-in account.
-    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    userId: text("user_id")
+      .$type<UserId>()
+      .references(() => user.id, { onDelete: "set null" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(nowMs).notNull(),
     notifyQueuedAt: integer("notify_queued_at", { mode: "timestamp_ms" }),
     notifiedAt: integer("notified_at", { mode: "timestamp_ms" }),

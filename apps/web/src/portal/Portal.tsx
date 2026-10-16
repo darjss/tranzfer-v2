@@ -1,7 +1,8 @@
 import { Meta, Title } from "@solidjs/meta";
-import { EmailAddress } from "@tranzfer/contracts";
+import { EmailAddress, LinkToken, RequestNotFound } from "@tranzfer/contracts";
 import type { RequestUpload } from "@tranzfer/contracts";
 import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
   createSignal,
@@ -88,7 +89,7 @@ const resumeProblem = (
   return `"${name}" was started by an older version of Tranzfer and can't continue. Send it again.`;
 };
 
-function UploadRow(props: { token: string; upload: RequestUpload }) {
+function UploadRow(props: { token: LinkToken; upload: RequestUpload }) {
   const runtime = useContext(RuntimeContext);
   const live = liveDelivery({
     get delivery() {
@@ -287,7 +288,7 @@ function UploadRow(props: { token: string; upload: RequestUpload }) {
   );
 }
 
-function Request(props: { token: string }) {
+function Request(props: { token: LinkToken }) {
   const runtime = useContext(RuntimeContext);
   const portal = createPortal(runtime, () => props.token);
   const [name, setName] = createSignal("");
@@ -574,7 +575,13 @@ export function Portal(props: { token: string }) {
       <Meta name="robots" content="noindex" />
       <Loading fallback={<Loader quips={linkQuips} />}>
         <Errored fallback={(error) => <RequestError error={error()} />}>
-          <Request token={props.token} />
+          {/* The router hands over a plain string; one that can't be a token is a dead link. */}
+          <Show
+            when={Option.getOrUndefined(Schema.decodeOption(LinkToken)(props.token))}
+            fallback={<RequestError error={new RequestNotFound()} />}
+          >
+            {(token) => <Request token={token()} />}
+          </Show>
         </Errored>
       </Loading>
     </Paper>

@@ -1,4 +1,4 @@
-import { DeliveryId, TransferId } from "@tranzfer/contracts";
+import { DeliveryId, TransferId, UserId } from "@tranzfer/contracts";
 import type { NewDelivery, NewFile, RetentionDays } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { testDatabase } from "@tranzfer/db/testing";
@@ -80,10 +80,13 @@ export const domainLayer = (storage: Layer.Layer<Storage>) =>
     Layer.provideMerge(testDatabase),
   );
 
-export const addUser = (id: string, name = "Sender") =>
-  Effect.flatMap(Effect.service(Database), ({ db }) =>
-    db.insert(schema.user).values({ email: `${id}@test`, id, name }),
-  ).pipe(Effect.orDie);
+/** Inserts a user and returns its id. */
+export const addUser = (id: string, name = "Sender") => {
+  const userId = UserId.make(id);
+  return Effect.flatMap(Effect.service(Database), ({ db }) =>
+    db.insert(schema.user).values({ email: `${id}@test`, id: userId, name }),
+  ).pipe(Effect.as(userId), Effect.orDie);
+};
 
 export const newFile = (path: string, size: number): NewFile => ({
   contentType: null,

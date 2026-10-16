@@ -9,6 +9,7 @@ import {
   TransferId,
 } from "./delivery";
 import { EmailAddress } from "./interest";
+import { LinkToken } from "./link";
 
 export const RequestId = Schema.String.check(Schema.isMinLength(1)).pipe(Schema.brand("RequestId"));
 export type RequestId = typeof RequestId.Type;
@@ -72,7 +73,7 @@ export const NewRequestUpload = Schema.Struct({
   files: NewDelivery.fields.files,
   id: DeliveryId,
   name: UploaderName,
-  token: Schema.String,
+  token: LinkToken,
 });
 export interface NewRequestUpload extends Schema.Schema.Type<typeof NewRequestUpload> {}
 
@@ -91,11 +92,11 @@ export interface RequestUpload extends Schema.Schema.Type<typeof RequestUpload> 
 /** Delivery ids the uploader's browser remembers; only this request's come back. */
 export const RequestUploadsPayload = Schema.Struct({
   deliveryIds: Schema.Array(DeliveryId).check(Schema.isMaxLength(50)),
-  token: Schema.String,
+  token: LinkToken,
 });
 
 export const RequestTransferPayload = Schema.Struct({
-  token: Schema.String,
+  token: LinkToken,
   transferId: TransferId,
 });
 

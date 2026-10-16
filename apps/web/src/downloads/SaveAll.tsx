@@ -1,4 +1,4 @@
-import type { SharedDelivery } from "@tranzfer/contracts";
+import type { LinkAccess, SharedDelivery } from "@tranzfer/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -40,11 +40,7 @@ const stoppedWords = (error: ApiError | SaveStopped) =>
   );
 
 /** Saves every file into one picked folder, subfolders included. Chromium only. */
-export const SaveAll = (props: {
-  delivery: SharedDelivery;
-  token: string;
-  unlock: string | undefined;
-}) => {
+export const SaveAll = (props: { access: LinkAccess; delivery: SharedDelivery }) => {
   const runtime = useContext(RuntimeContext);
   const total = () => props.delivery.files.reduce((sum, file) => sum + file.size, 0);
   const [status, setStatus] = createSignal<"done" | "idle" | "saving">("idle");
@@ -77,7 +73,7 @@ export const SaveAll = (props: {
     });
     stop = new AbortController();
     const exit = await runtime.runPromiseExit(
-      saveFolder(root, { token: props.token, unlock: props.unlock }, (next) => {
+      saveFolder(root, props.access, (next) => {
         setProgress((draft) => {
           draft.bytes = next.bytes;
           draft.current = next.current;
