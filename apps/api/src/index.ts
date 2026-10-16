@@ -239,11 +239,26 @@ export default ApiWorker.make(
 
     yield* Cloudflare.Workers.cron("* * * * *", () => perInvocation(sweep));
 
+    // The deploy gate reads this route (deploy.yml, preview.yml), so a failing
+    // probe names the dependency and the error's tag. The cause can hold SQL and
+    // its bound values, so nothing else is kept.
     const health = Effect.gen(function* health() {
       const { db } = yield* Database;
-      yield* db.run(sql`SELECT 1`);
+      yield* db
+        .run(sql`SELECT 1`)
+        .pipe(
+          Effect.tapError((error) =>
+            Effect.logError("health probe failed", { error: error._tag, probe: "database" }),
+          ),
+        );
       const storage = yield* Storage;
-      yield* storage.head("health/probe");
+      yield* storage
+        .head("health/probe")
+        .pipe(
+          Effect.tapError((error) =>
+            Effect.logError("health probe failed", { error: error._tag, probe: "storage" }),
+          ),
+        );
       return HttpServerResponse.jsonUnsafe({ ok: true });
     }).pipe(
       Effect.catch(() =>
