@@ -31,6 +31,10 @@ const unlockMessage = (linkId: string, binding: string, expiresAt: number) =>
  * stored password hash, so setting, changing or clearing the password ends
  * every unlock issued before. Link tokens MAC the bare link id, which can't
  * equal a message that starts with "unlock\n".
+ *
+ * File request tokens come from the same `issue` and key. Link and request ids
+ * are disjoint random values; separating the two would change the format and
+ * break every shared link.
  */
 export class LinkTokens extends Context.Service<
   LinkTokens,
