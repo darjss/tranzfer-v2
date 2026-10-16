@@ -8,7 +8,7 @@
 
 - **Priority**: P2 | **Effort**: M (two PRs: 1 add service + adapters and migrate callers; 2 delete leftovers) | **Risk**: MED (Alchemy resource identity) | **Depends on**: none | **Category**: tech-debt (deepening)
 - **Planned at**: commit `0a61bc5`, 2026-10-12
-- **Drift from plan 21**: `codeRedemptions`, `passwordAttemptsPerIp` and `passwordAttemptsPerLink` are now counted exactly in D1 by `Attempts` (`apps/api/src/attempts.ts`). Their bindings (1003, 1006, 1007) are gone, `SharedLinks.layer` and `Plans.layer` take no limiter, and seven bindings remain for this plan.
+- **Drift from plan 21**: `codeRedemptions`, `passwordAttemptsPerIp` and `passwordAttemptsPerLink` are now counted exactly in D1 by `Attempts` (`apps/api/src/attempts.ts`). Their bindings (1003, 1006, 1007) are gone, `SharedLinks.layer` and `Plans.layer` take no limiter, and this plan covers only the bindings left in `rateLimitBindings`.
 
 ## Why this matters
 
