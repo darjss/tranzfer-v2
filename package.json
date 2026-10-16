@@ -26,6 +26,7 @@
     "@effect/tsgo": "0.51.1",
     "@effect/vitest": "catalog:",
     "@oxlint/plugins": "1.85.0",
+    "@types/node": "catalog:",
     "effect": "catalog:",
     "eslint-plugin-solid": "0.18.1",
     "oxlint": "1.85.0",
