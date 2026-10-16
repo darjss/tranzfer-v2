@@ -34,6 +34,7 @@ import {
   LinkNotFound,
   LinkNotReady,
   LinkPassword,
+  passwordLength,
   SharedDelivery,
   Unlocked,
   WrongPassword,
@@ -219,7 +220,7 @@ export class Api extends RpcGroup.make(
   Rpc.make("UnlockLink", {
     error: Schema.Union([LinkNotFound, RateLimited, WrongPassword]),
     payload: Schema.Struct({
-      password: Schema.String.check(Schema.isMaxLength(128)),
+      password: Schema.String.check(Schema.isMaxLength(passwordLength.max)),
       token: Schema.String,
     }),
     success: Unlocked,

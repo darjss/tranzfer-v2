@@ -1,4 +1,11 @@
-import { DeliveryNotShareable, plans, RateLimited, rateLimits } from "@tranzfer/contracts";
+import {
+  DeliveryNotShareable,
+  emailHeld,
+  emailLost,
+  plans,
+  RateLimited,
+  rateLimits,
+} from "@tranzfer/contracts";
 import type {
   Delivery,
   DeliveryEmail,
@@ -364,7 +371,7 @@ export class Emails extends Context.Service<
             const now = yield* Clock.currentTimeMillis;
             const lost = yield* db
               .update(schema.deliveryEmail)
-              .set({ errorCode: "lost", status: "failed" })
+              .set({ errorCode: emailLost, status: "failed" })
               .where(
                 and(
                   eq(schema.deliveryEmail.status, "queued"),
@@ -439,7 +446,7 @@ export class Emails extends Context.Service<
                     Effect.map((result) =>
                       result === "sent"
                         ? ({ code: null, status: "sent" } as const)
-                        : ({ code: "held", status: "failed" } as const),
+                        : ({ code: emailHeld, status: "failed" } as const),
                     ),
                     Effect.catchTag("MailError", ({ code }) =>
                       Effect.succeed({ code, status: "failed" } as const),
