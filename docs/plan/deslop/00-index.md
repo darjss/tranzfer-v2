@@ -24,7 +24,6 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 | ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | --------------------- | ------------------------- |
 | B    | 10   | Smart Placement on the API Worker, measured on staging                               | P2       | S    | none                  | IN PROGRESS (#174)        |
 | B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none                  | IN PROGRESS (step 1 #179) |
-| C    | 04   | One `RateLimiter` service replaces six injection shapes                              | P2       | M    | none                  | TODO                      |
 | C    | 05   | Brand `UserId`, `LinkToken`, `UnlockToken`                                           | P2       | M    | none                  | TODO                      |
 | C    | 06   | RPC surface: shared error fragments, one session path, IP helper (B: renames)        | P2/P3    | S+S  | soft: 05              | TODO                      |
 | C    | 15   | File-request rules move from `deliveries.ts` to `file-requests.ts`                   | P3       | M    | none                  | TODO                      |
