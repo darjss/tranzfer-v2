@@ -22,6 +22,7 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Cookies from "effect/http/Cookies";
+import type { Headers as HttpHeaders } from "effect/http/Headers";
 import type * as HttpBody from "effect/http/HttpBody";
 import type * as HttpServerError from "effect/http/HttpServerError";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
@@ -41,8 +42,8 @@ export class AuthError extends Data.TaggedError("AuthError")<{ readonly cause: u
 const ipAddress = { ipAddressHeaders: ["cf-connecting-ip"] };
 
 /** The caller's IP as the rate limits count it: an IPv6 address by its /64. */
-export const clientIp = (headers: Headers) =>
-  getIP(headers, { advanced: { ipAddress } }) ?? "unknown";
+export const clientIp = (headers: HttpHeaders) =>
+  getIP(new Headers(headers), { advanced: { ipAddress } }) ?? "unknown";
 
 // Better Auth calls hooks and plugin endpoints as Promise callbacks. Each auth
 // request runs Better Auth inside its own store, so a callback reaches the
@@ -282,7 +283,7 @@ export class Auth extends Context.Service<
         return Auth.of({
           fetch: Effect.gen(function* fetch() {
             const request = yield* HttpServerRequest.HttpServerRequest;
-            if (!(yield* limiter.allow("authRequests", clientIp(new Headers(request.headers))))) {
+            if (!(yield* limiter.allow("authRequests", clientIp(request.headers)))) {
               const { windowSeconds } = rateLimits.authRequests;
               return yield* HttpServerResponse.schemaJson(RateLimited)(
                 new RateLimited({ limit: "authRequests", retryAfterSeconds: windowSeconds }),
