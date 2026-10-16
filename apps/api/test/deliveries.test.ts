@@ -1102,19 +1102,9 @@ const memoryMail = Layer.succeed(
     },
   }),
 );
-// Counts per key and never resets, like the other fake limiters here.
-const counts = new Map<string, number>();
-const underLimit = (limit: number) => (key: string) =>
-  Effect.sync(() => {
-    const count = (counts.get(key) ?? 0) + 1;
-    counts.set(key, count);
-    return count <= limit;
-  });
 // Background work waits here until a test runs it, as waitUntil runs it after the response.
 const background: Effect.Effect<void>[] = [];
 const emailsLayer = Emails.layer({
-  allowDeliveryEmail: underLimit(rateLimits.emailRequests.limit),
-  allowInterest: underLimit(rateLimits.interestSignups.limit),
   appUrl: "https://app.test",
   background: (effect) =>
     Effect.sync(() => {
