@@ -48,6 +48,7 @@ const rateLimitBindings = {
   1008: "PORTAL_CALLS_PER_IP",
   1009: "PORTAL_CALLS_PER_REQUEST",
   1010: "PORTAL_UPLOADS_PER_IP",
+  1011: "TELEMETRY_RELAY",
 } as const;
 
 const rateLimit = (
@@ -157,6 +158,8 @@ export default ApiWorker.make(
     const portalCallsPerIp = yield* rateLimit(1008, rateLimits.portalCallsPerIp);
     const portalCallsPerRequest = yield* rateLimit(1009, rateLimits.portalCallsPerRequest);
     const portalUploadsPerIp = yield* rateLimit(1010, rateLimits.portalUploadsPerIp);
+
+    const telemetryRelay = yield* rateLimit(1011, rateLimits.telemetryRelay);
 
     // Sends through Cloudflare Email Sending as hello@tranzfer.app. The
     // domain is onboarded on the account, so any recipient is allowed.
@@ -276,7 +279,11 @@ export default ApiWorker.make(
         ),
       ),
       HttpRouter.add("GET", "/health", perInvocation(health)),
-      HttpRouter.add("POST", "/api/telemetry/traces", relayTraces(yield* relayConfig)),
+      HttpRouter.add(
+        "POST",
+        "/api/telemetry/traces",
+        relayTraces(yield* relayConfig, limiter(telemetryRelay)),
+      ),
     );
     const handle_ = yield* routes.pipe(
       Layer.provide(HttpServer.layerServices),
