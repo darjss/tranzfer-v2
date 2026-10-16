@@ -31,9 +31,10 @@ jobs:
           node-version: "24"
           cache: true
       - run: vp check
+      - run: vp run test
       - name: Deploy production
         if: github.ref == 'refs/heads/main'
-        run: vp run deploy
+        run: vp run --filter @tranzfer/infra deploy:production --yes
         env:
           APP_URL: https://tranzfer.app
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}

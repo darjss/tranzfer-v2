@@ -12,7 +12,7 @@ Run `vp check`, `vp run test` and `vp run build` before committing. An empty tes
 
 ## Deployment
 
-From the main checkout, run `vp run build`, inspect `vp run plan`, then run `vp run deploy`. The production workflow declares its required GitHub secrets in [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
+From the main checkout, run `vp run build`, inspect `vp run plan:production`, then run `vp run deploy:production`. The deploy asks for approval after it prints the plan. The production workflow declares its required GitHub secrets in [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
 
 Production and staging deploys create Axiom datasets and an ingest token, so they need `AXIOM_TOKEN` and `AXIOM_ORG_ID` ([.env.example](.env.example)). Both are GitHub secrets in `deploy.yml`. PR previews export into staging's datasets and need no Axiom credentials. Dev stages ship no telemetry.
 

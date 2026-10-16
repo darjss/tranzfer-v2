@@ -1111,7 +1111,7 @@ const interestRows = Effect.flatMap(Effect.service(Database), ({ db }) =>
 ).pipe(Effect.orDie);
 
 layer(emailsLayer)("Emails", (it) => {
-  it.effect("keeps one row per address and plan, and confirms only the first ask", () =>
+  it.effect("keeps one row per address and plan, and confirms only a signed-in first ask", () =>
     Effect.gen(function* scenario() {
       yield* addUser("kai");
       const emails = yield* Emails;
@@ -1131,6 +1131,7 @@ layer(emailsLayer)("Emails", (it) => {
         "1.1.1.1",
       );
       yield* emails.joinInterest({ email: "kai@test", plan: "pro", userId: "kai" }, "1.1.1.2");
+      yield* emails.joinInterest({ email: "kai@test", plan: "pro", userId: "kai" }, "1.1.1.2");
       expect(
         (yield* interestRows).map(({ email, plan, userId }) => ({ email, plan, userId })),
       ).toEqual([
@@ -1138,11 +1139,7 @@ layer(emailsLayer)("Emails", (it) => {
         { email: "ana@example.com", plan: "studio", userId: null },
         { email: "kai@test", plan: "pro", userId: "kai" },
       ]);
-      expect(sent).toEqual([
-        { subject: "You're on the list for Pro", to: "ana@example.com" },
-        { subject: "You're on the list for Studio", to: "ana@example.com" },
-        { subject: "You're on the list for Pro", to: "kai@test" },
-      ]);
+      expect(sent).toEqual([{ subject: "You're on the list for Pro", to: "kai@test" }]);
     }),
   );
 
@@ -1152,7 +1149,7 @@ layer(emailsLayer)("Emails", (it) => {
       const emails = yield* Emails;
       expect(
         yield* emails.joinInterest(
-          { email: "gone@example.com", plan: "starter", userId: null },
+          { email: "gone@example.com", plan: "starter", userId: "kai" },
           "2.2.2.2",
         ),
       ).toEqual({ email: "gone@example.com" });
