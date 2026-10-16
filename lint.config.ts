@@ -84,6 +84,7 @@ const antiSlopRules: OxlintConfig["rules"] = {
 
 // Rules we wrote, in tools/oxlint/anti-slop/tranzfer.
 const tranzferRules: OxlintConfig["rules"] = {
+  "tranzfer/branded-link-token": "error",
   "tranzfer/branded-user-id": "error",
   "tranzfer/no-debug-markers-in-tests": "error",
   "tranzfer/no-import-then-reexport": "error",
