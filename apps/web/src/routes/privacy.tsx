@@ -67,12 +67,14 @@ export default function Privacy() {
         </li>
         <li>
           <strong>Rate limits.</strong> Some limits count requests per IP address. Cloudflare keeps
-          those counts for a minute at most.
+          those counts for a minute at most. Link password and access code attempts are counted in
+          our database instead: each records when it happened, the link or account, and for a
+          password the IP address it came from.
         </li>
       </ul>
       <p>
         Recipients who open a link don't create an account. We don't track them beyond the download
-        reports and request diagnostics above.
+        reports, password attempts and request diagnostics above.
       </p>
 
       <h2>How long it lives</h2>
@@ -87,6 +89,7 @@ export default function Privacy() {
           history until you delete your account.
         </li>
         <li>The IP address you signed up from is deleted 24 hours after you sign up.</li>
+        <li>Password and access code attempts are deleted within a few minutes.</li>
         <li>A waitlist address stays on the list until you ask us to remove it.</li>
         <li>Diagnostics are kept for up to 30 days.</li>
         <li>Your account stays until you ask us to delete it.</li>

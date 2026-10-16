@@ -27,7 +27,7 @@ import type * as HttpServerError from "effect/http/HttpServerError";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
-import { secondsUntilRoom } from "../deliveries";
+import { secondsUntilRoom } from "../attempts";
 import { sendWelcome } from "../emails";
 import type { Mail } from "./email";
 import { stagingLogin } from "./staging-login";

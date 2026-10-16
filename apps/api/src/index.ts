@@ -14,6 +14,7 @@ import * as Schema from "effect/Schema";
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
 import * as RpcServer from "effect/rpc/RpcServer";
 
+import { Attempts } from "./attempts";
 import { Billing, InvalidWebhook } from "./billing";
 import { Deliveries } from "./deliveries";
 import { Emails } from "./emails";
@@ -40,11 +41,8 @@ import { ApiWorker } from "./worker";
 const rateLimitBindings = {
   1001: "AUTH_REQUESTS",
   1002: "UPLOAD_SIGNING",
-  1003: "CODE_REDEMPTIONS",
   1004: "INTEREST_SIGNUPS",
   1005: "EMAIL_REQUESTS",
-  1006: "PASSWORD_ATTEMPTS_IP",
-  1007: "PASSWORD_ATTEMPTS_LINK",
   1008: "PORTAL_CALLS_PER_IP",
   1009: "PORTAL_CALLS_PER_REQUEST",
   1010: "PORTAL_UPLOADS_PER_IP",
@@ -143,15 +141,9 @@ export default ApiWorker.make(
     const authRequests = yield* rateLimit(1001, rateLimits.authRequests);
     const uploadSigning = yield* rateLimit(1002, rateLimits.uploadSigning);
 
-    const codeRedemptions = yield* rateLimit(1003, rateLimits.codeRedemptions);
-
     const interestSignups = yield* rateLimit(1004, rateLimits.interestSignups);
 
     const emailRequests = yield* rateLimit(1005, rateLimits.emailRequests);
-
-    const passwordAttemptsPerIp = yield* rateLimit(1006, rateLimits.passwordAttemptsPerIp);
-
-    const passwordAttemptsPerLink = yield* rateLimit(1007, rateLimits.passwordAttemptsPerLink);
 
     // File requests count uploader calls three ways, each with its own
     // namespace: per client IP, per request, and new uploads per client IP.
@@ -181,10 +173,7 @@ export default ApiWorker.make(
     // rebuilt per request (and per cron run) with a fresh memo map.
     const database = Layer.unwrap(Effect.map(handle, Database.fromD1));
     const domain = Layer.mergeAll(
-      SharedLinks.layer({
-        allowIp: limiter(passwordAttemptsPerIp),
-        allowLink: limiter(passwordAttemptsPerLink),
-      }),
+      SharedLinks.layer,
       billing,
       Emails.layer({
         allowDeliveryEmail: limiter(emailRequests),
@@ -201,7 +190,8 @@ export default ApiWorker.make(
       }).pipe(Layer.provideMerge(Transfers.layer)),
     ).pipe(
       Layer.provideMerge(Deliveries.layer),
-      Layer.provideMerge(Plans.layer(limiter(codeRedemptions))),
+      Layer.provideMerge(Plans.layer),
+      Layer.provideMerge(Attempts.layer),
       Layer.provideMerge(database),
     );
     const perInvocation = <A, E, R>(effect: Effect.Effect<A, E, R>) =>

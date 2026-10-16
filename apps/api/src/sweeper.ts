@@ -1,6 +1,7 @@
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 
+import { Attempts } from "./attempts";
 import { Billing } from "./billing";
 import { Deliveries } from "./deliveries";
 import { Emails } from "./emails";
@@ -30,18 +31,29 @@ export const sweep = Effect.gen(function* sweep() {
   const transfers = yield* Transfers;
   const billing = yield* Billing;
   const emails = yield* Emails;
-  const [recovered, purged, reconciled, announced, lost, pruned] = yield* Effect.all(
-    [
-      isolated("recoverFinalizing", transfers.recoverFinalizing),
-      isolated("purgeEnded", deliveries.purgeEnded),
-      isolated("reconcileStale", billing.reconcileStale),
-      isolated("sendOpenings", emails.sendOpenings),
-      isolated("failLost", emails.failLost),
-      isolated("pruneSignups", pruneSignups),
-    ],
-    { concurrency: 4 },
-  );
-  if (recovered + purged + reconciled + announced + lost + pruned > 0) {
-    yield* Effect.logInfo("sweep", { announced, lost, pruned, purged, reconciled, recovered });
+  const attempts = yield* Attempts;
+  const [recovered, purged, reconciled, announced, lost, pruned, prunedAttempts] =
+    yield* Effect.all(
+      [
+        isolated("recoverFinalizing", transfers.recoverFinalizing),
+        isolated("purgeEnded", deliveries.purgeEnded),
+        isolated("reconcileStale", billing.reconcileStale),
+        isolated("sendOpenings", emails.sendOpenings),
+        isolated("failLost", emails.failLost),
+        isolated("pruneSignups", pruneSignups),
+        isolated("pruneAttempts", attempts.prune),
+      ],
+      { concurrency: 4 },
+    );
+  if (recovered + purged + reconciled + announced + lost + pruned + prunedAttempts > 0) {
+    yield* Effect.logInfo("sweep", {
+      announced,
+      lost,
+      pruned,
+      prunedAttempts,
+      purged,
+      reconciled,
+      recovered,
+    });
   }
 }).pipe(Effect.withSpan("sweep"));

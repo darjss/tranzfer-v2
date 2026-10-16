@@ -1,11 +1,5 @@
-import {
-  AccessCodeRefused,
-  PaidPlanId,
-  PlanId,
-  RateLimited,
-  rateLimits,
-} from "@tranzfer/contracts";
-import type { PlanGrant } from "@tranzfer/contracts";
+import { AccessCodeRefused, PaidPlanId, PlanId } from "@tranzfer/contracts";
+import type { PlanGrant, RateLimited } from "@tranzfer/contracts";
 import { Database, databaseFault, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
@@ -17,6 +11,8 @@ import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
+
+import { Attempts } from "./attempts";
 
 const rank = (plan: PlanId) => PlanId.literals.indexOf(plan);
 
@@ -154,137 +150,131 @@ export class Plans extends Context.Service<
     ) => Effect.Effect<PlanGrant, AccessCodeRefused | RateLimited>;
   }
 >()("tranzfer/Plans") {
-  /** `allowRedeem` counts one code attempt for the user, true while under `codeRedemptions`. */
-  static readonly layer = (allowRedeem: (userId: string) => Effect.Effect<boolean>) =>
-    Layer.effect(
-      Plans,
-      Effect.gen(function* makePlans() {
-        const { batch, db } = yield* Database;
+  static readonly layer = Layer.effect(
+    Plans,
+    Effect.gen(function* makePlans() {
+      const attempts = yield* Attempts;
+      const { batch, db } = yield* Database;
 
-        // The code's row when this user can redeem it now, else why not.
-        const redeemable = Effect.fn("Plans.redeemable")(function* redeemable(
-          userId: string,
-          code: string,
-          now: number,
-        ) {
-          const [row] = yield* db
-            .select({
-              days: schema.accessCode.days,
-              expired: sql`coalesce(${schema.accessCode.expiresAt} <= ${latest(now)}, 0)`.mapWith(
-                Boolean,
-              ),
-              maxUses: schema.accessCode.maxUses,
-              plan: schema.accessCode.plan,
-              uses: schema.accessCode.uses,
-            })
-            .from(schema.accessCode)
-            .where(eq(schema.accessCode.code, code));
-          const held = yield* db.query.planGrant.findFirst({
-            columns: { code: true },
-            where: { code, userId },
+      // The code's row when this user can redeem it now, else why not.
+      const redeemable = Effect.fn("Plans.redeemable")(function* redeemable(
+        userId: string,
+        code: string,
+        now: number,
+      ) {
+        const [row] = yield* db
+          .select({
+            days: schema.accessCode.days,
+            expired: sql`coalesce(${schema.accessCode.expiresAt} <= ${latest(now)}, 0)`.mapWith(
+              Boolean,
+            ),
+            maxUses: schema.accessCode.maxUses,
+            plan: schema.accessCode.plan,
+            uses: schema.accessCode.uses,
+          })
+          .from(schema.accessCode)
+          .where(eq(schema.accessCode.code, code));
+        const held = yield* db.query.planGrant.findFirst({
+          columns: { code: true },
+          where: { code, userId },
+        });
+        if (row === undefined) {
+          return yield* new AccessCodeRefused({ reason: "unknown" });
+        }
+        if (held !== undefined) {
+          return yield* new AccessCodeRefused({ reason: "alreadyRedeemed" });
+        }
+        if (row.expired) {
+          return yield* new AccessCodeRefused({ reason: "expired" });
+        }
+        if (row.uses >= row.maxUses) {
+          return yield* new AccessCodeRefused({ reason: "usedUp" });
+        }
+        return row;
+      });
+
+      return Plans.of({
+        current: Effect.fn("Plans.current")(function* current(userId: string) {
+          const now = yield* Clock.currentTimeMillis;
+          const subscription = yield* db.query.subscription.findFirst({
+            columns: { plan: true },
+            where: { userId },
           });
-          if (row === undefined) {
-            return yield* new AccessCodeRefused({ reason: "unknown" });
-          }
-          if (held !== undefined) {
-            return yield* new AccessCodeRefused({ reason: "alreadyRedeemed" });
-          }
-          if (row.expired) {
-            return yield* new AccessCodeRefused({ reason: "expired" });
-          }
-          if (row.uses >= row.maxUses) {
-            return yield* new AccessCodeRefused({ reason: "usedUp" });
-          }
-          return row;
-        });
+          const grants = yield* db.query.planGrant.findMany({
+            columns: { endsAt: true, plan: true },
+            where: { endsAt: { gt: new Date(now) }, userId },
+          });
+          // The highest granted plan, and of those the one that runs longest.
+          const [grant] = grants.toSorted(
+            (a, b) => rank(b.plan) - rank(a.plan) || b.endsAt.getTime() - a.endsAt.getTime(),
+          );
+          const subscribed = subscription?.plan ?? "free";
+          const resolved =
+            grant !== undefined && rank(grant.plan) > rank(subscribed)
+              ? { grantEndsAt: grant.endsAt, plan: grant.plan }
+              : { grantEndsAt: null, plan: subscribed };
+          yield* Effect.annotateCurrentSpan({
+            plan: resolved.plan,
+            "plan.source": resolved.grantEndsAt === null ? "subscription" : "grant",
+          });
+          return resolved;
+        }, dieOnDatabaseError),
 
-        return Plans.of({
-          current: Effect.fn("Plans.current")(function* current(userId: string) {
-            const now = yield* Clock.currentTimeMillis;
-            const subscription = yield* db.query.subscription.findFirst({
-              columns: { plan: true },
-              where: { userId },
-            });
-            const grants = yield* db.query.planGrant.findMany({
-              columns: { endsAt: true, plan: true },
-              where: { endsAt: { gt: new Date(now) }, userId },
-            });
-            // The highest granted plan, and of those the one that runs longest.
-            const [grant] = grants.toSorted(
-              (a, b) => rank(b.plan) - rank(a.plan) || b.endsAt.getTime() - a.endsAt.getTime(),
-            );
-            const subscribed = subscription?.plan ?? "free";
-            const resolved =
-              grant !== undefined && rank(grant.plan) > rank(subscribed)
-                ? { grantEndsAt: grant.endsAt, plan: grant.plan }
-                : { grantEndsAt: null, plan: subscribed };
-            yield* Effect.annotateCurrentSpan({
-              plan: resolved.plan,
-              "plan.source": resolved.grantEndsAt === null ? "subscription" : "grant",
-            });
-            return resolved;
-          }, dieOnDatabaseError),
-
-          redeem: Effect.fn("Plans.redeem")(function* redeem(userId: string, input: string) {
-            if (!(yield* allowRedeem(userId))) {
-              return yield* new RateLimited({
-                limit: "codeRedemptions",
-                retryAfterSeconds: rateLimits.codeRedemptions.windowSeconds,
-              });
-            }
-            const code = input.trim().toUpperCase();
-            const now = yield* Clock.currentTimeMillis;
-            const row = yield* redeemable(userId, code, now);
-            const grant = {
-              endsAt: new Date(now + Duration.toMillis(Duration.days(row.days))),
-              plan: row.plan,
-            };
-            // One transaction: the grant and the use land together or not at
-            // all. The grant reads its plan from the code only while the code
-            // is still open as the batch runs. A code revoked, expired or used
-            // up since the read gives null, the grant's NOT NULL plan fails
-            // and nothing lands. A second redemption by this user fails the
-            // grant's primary key.
-            const stillOpen = db
-              .select({ plan: schema.accessCode.plan })
-              .from(schema.accessCode)
-              .where(
-                and(
-                  eq(schema.accessCode.code, code),
-                  or(
-                    isNull(schema.accessCode.expiresAt),
-                    gt(schema.accessCode.expiresAt, latest(now)),
-                  ),
-                  lt(schema.accessCode.uses, schema.accessCode.maxUses),
+        redeem: Effect.fn("Plans.redeem")(function* redeem(userId: string, input: string) {
+          yield* attempts.take({ key: userId, kind: "code" });
+          const code = input.trim().toUpperCase();
+          const now = yield* Clock.currentTimeMillis;
+          const row = yield* redeemable(userId, code, now);
+          const grant = {
+            endsAt: new Date(now + Duration.toMillis(Duration.days(row.days))),
+            plan: row.plan,
+          };
+          // One transaction: the grant and the use land together or not at
+          // all. The grant reads its plan from the code only while the code
+          // is still open as the batch runs. A code revoked, expired or used
+          // up since the read gives null, the grant's NOT NULL plan fails
+          // and nothing lands. A second redemption by this user fails the
+          // grant's primary key.
+          const stillOpen = db
+            .select({ plan: schema.accessCode.plan })
+            .from(schema.accessCode)
+            .where(
+              and(
+                eq(schema.accessCode.code, code),
+                or(
+                  isNull(schema.accessCode.expiresAt),
+                  gt(schema.accessCode.expiresAt, latest(now)),
                 ),
-              );
-            const redeemed = yield* Effect.result(
-              batch([
-                db.insert(schema.planGrant).values({
-                  code,
-                  endsAt: grant.endsAt,
-                  plan: sql`(${stillOpen})`,
-                  userId,
-                }),
-                db
-                  .update(schema.accessCode)
-                  .set({ uses: sql`${schema.accessCode.uses} + 1` })
-                  .where(eq(schema.accessCode.code, code)),
-              ]),
+                lt(schema.accessCode.uses, schema.accessCode.maxUses),
+              ),
             );
-            if (Result.isFailure(redeemed)) {
-              // Lost a race: the second look names why, and nothing naming
-              // it means a real database fault.
-              yield* redeemable(userId, code, now);
-              return yield* databaseFault(redeemed.failure);
-            }
-            yield* Effect.annotateCurrentSpan({
-              "plan.grant_days": row.days,
-              "plan.granted": row.plan,
-            });
-            return grant;
-          }, dieOnDatabaseError),
-        });
-      }),
-    );
+          const redeemed = yield* Effect.result(
+            batch([
+              db.insert(schema.planGrant).values({
+                code,
+                endsAt: grant.endsAt,
+                plan: sql`(${stillOpen})`,
+                userId,
+              }),
+              db
+                .update(schema.accessCode)
+                .set({ uses: sql`${schema.accessCode.uses} + 1` })
+                .where(eq(schema.accessCode.code, code)),
+            ]),
+          );
+          if (Result.isFailure(redeemed)) {
+            // Lost a race: the second look names why, and nothing naming
+            // it means a real database fault.
+            yield* redeemable(userId, code, now);
+            return yield* databaseFault(redeemed.failure);
+          }
+          yield* Effect.annotateCurrentSpan({
+            "plan.grant_days": row.days,
+            "plan.granted": row.plan,
+          });
+          return grant;
+        }, dieOnDatabaseError),
+      });
+    }),
+  );
 }

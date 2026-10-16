@@ -1,7 +1,9 @@
 import { expect, layer } from "@effect/vitest";
 import { LinkLocked, LinkNotReady, RateLimited } from "@tranzfer/contracts";
-import { Database } from "@tranzfer/db";
+import { Database, schema } from "@tranzfer/db";
+import { sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
@@ -223,12 +225,17 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
       const three = yield* lockedDelivery("rate-three", "the right one");
       const four = yield* lockedDelivery("rate-four", "the right one");
 
-      // Five attempts on one link from five networks; the sixth is refused
-      // even with the right password.
-      for (const ip of ["a", "b", "c", "d", "e"]) {
-        const wrong = yield* Effect.flip(links.unlock(one.token, "nope nope", `ip-link-${ip}`));
-        expect(wrong._tag).toBe("WrongPassword");
-      }
+      // Six attempts at once on one link from six networks: exactly five are
+      // counted, and the next is refused even with the right password.
+      const racing = yield* Effect.forEach(
+        ["a", "b", "c", "d", "e", "z"],
+        (ip) => Effect.flip(links.unlock(one.token, "nope nope", `ip-link-${ip}`)),
+        { concurrency: "unbounded" },
+      );
+      expect(racing.map((error) => error._tag).toSorted()).toEqual([
+        "RateLimited",
+        ...Arr.makeBy(5, () => "WrongPassword"),
+      ]);
       const limited = yield* Effect.flip(links.unlock(one.token, "the right one", "ip-link-f"));
       expect(limited).toBeInstanceOf(RateLimited);
       expect(limited).toMatchObject({ limit: "passwordAttemptsPerLink", retryAfterSeconds: 60 });
@@ -248,6 +255,15 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
       expect(blocked).toBeInstanceOf(RateLimited);
       expect(blocked).toMatchObject({ limit: "passwordAttemptsPerIp" });
       yield* links.unlock(four.token, "the right one", "ip-calm");
+
+      // The windows roll: a refused attempt isn't counted, and a minute after
+      // the attempts the link and the network have room again.
+      yield* TestClock.adjust("20 seconds");
+      const later = yield* Effect.flip(links.unlock(one.token, "the right one", "ip-link-f"));
+      expect(later).toMatchObject({ limit: "passwordAttemptsPerLink", retryAfterSeconds: 40 });
+      yield* TestClock.adjust("40 seconds");
+      yield* links.unlock(one.token, "the right one", "ip-link-f");
+      yield* links.unlock(three.token, "the right one", "ip-busy");
     }),
   );
 
@@ -274,6 +290,22 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
       const { db } = yield* Database;
       const rows = yield* db.query.download.findMany({ where: { deliveryId: created.id } });
       expect(rows).toHaveLength(1);
+    }),
+  );
+});
+
+// Its own database, so the dropped table leaves the other tests alone.
+layer(domainLayer(storage.layer))("SharedLinks over a failing database", (it) => {
+  it.effect("refuses an unlock instead of letting it through uncounted", () =>
+    Effect.gen(function* scenario() {
+      const links = yield* SharedLinks;
+      const { token } = yield* lockedDelivery("broken-sam", "the right one");
+      const { db } = yield* Database;
+      yield* db.run(sql`drop table ${schema.attempt}`);
+      const cause = yield* Effect.flip(
+        Effect.sandbox(links.unlock(token, "the right one", "ip-broken")),
+      );
+      expect(Cause.hasDies(cause)).toBe(true);
     }),
   );
 });

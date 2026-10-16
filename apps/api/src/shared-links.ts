@@ -4,11 +4,9 @@ import {
   LinkLocked,
   LinkNotFound,
   LinkNotReady,
-  RateLimited,
-  rateLimits,
   WrongPassword,
 } from "@tranzfer/contracts";
-import type { DownloadEvent, SharedDelivery, Unlocked } from "@tranzfer/contracts";
+import type { DownloadEvent, SharedDelivery, Unlocked, RateLimited } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
@@ -18,6 +16,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
+import { Attempts } from "./attempts";
 import { isExpired } from "./deliveries";
 import { LinkTokens } from "./link-tokens";
 import { checkPassword } from "./passwords";
@@ -56,213 +55,194 @@ export class SharedLinks extends Context.Service<
     ) => Effect.Effect<void>;
   }
 >()("tranzfer/SharedLinks") {
-  /** Each `allow` counts one password attempt and says whether it is under its limit. */
-  static readonly layer = (attempts: {
-    readonly allowIp: (ip: string) => Effect.Effect<boolean>;
-    readonly allowLink: (linkId: string) => Effect.Effect<boolean>;
-  }) =>
-    Layer.effect(
-      SharedLinks,
-      Effect.gen(function* makeSharedLinks() {
-        const { db } = yield* Database;
-        const tokens = yield* LinkTokens;
-        const storage = yield* Storage;
+  static readonly layer = Layer.effect(
+    SharedLinks,
+    Effect.gen(function* makeSharedLinks() {
+      const attempts = yield* Attempts;
+      const { db } = yield* Database;
+      const tokens = yield* LinkTokens;
+      const storage = yield* Storage;
 
-        // The unlock is tied to the stored hash, so a changed or removed
-        // password ends every unlock issued before.
-        const isOpen = Effect.fn("SharedLinks.isOpen")(function* isOpen(
-          link: { readonly id: string; readonly passwordHash: string | null },
-          unlock: string | undefined,
-        ) {
-          return (
-            link.passwordHash === null ||
-            (unlock !== undefined &&
-              (yield* tokens.verifyUnlock(unlock, link.id, link.passwordHash)))
-          );
-        });
+      // The unlock is tied to the stored hash, so a changed or removed
+      // password ends every unlock issued before.
+      const isOpen = Effect.fn("SharedLinks.isOpen")(function* isOpen(
+        link: { readonly id: string; readonly passwordHash: string | null },
+        unlock: string | undefined,
+      ) {
+        return (
+          link.passwordHash === null ||
+          (unlock !== undefined && (yield* tokens.verifyUnlock(unlock, link.id, link.passwordHash)))
+        );
+      });
 
-        return SharedLinks.of({
-          open: Effect.fn("SharedLinks.open")(function* open(token: string, unlock?: string) {
-            const linkId = yield* tokens.verify(token);
-            if (Option.isNone(linkId)) {
-              yield* Effect.annotateCurrentSpan("link.refused", "badToken");
-              return yield* new LinkNotFound();
-            }
-            yield* Effect.annotateCurrentSpan("link.id", linkId.value);
-            const link = yield* db.query.link.findFirst({
-              where: { id: linkId.value },
-              with: {
-                delivery: { with: { sender: true, transfers: { orderBy: { path: "asc" } } } },
-              },
-            });
-            if (link === undefined) {
-              yield* Effect.annotateCurrentSpan("link.refused", "unknown");
-              return yield* new LinkNotFound();
-            }
-            const { delivery } = link;
-            yield* Effect.annotateCurrentSpan("delivery.id", delivery.id);
-            if (link.revokedAt !== null) {
-              yield* Effect.annotateCurrentSpan("link.refused", "revoked");
-              return yield* new LinkNotFound();
-            }
-            if (delivery.status === "cancelled") {
-              yield* Effect.annotateCurrentSpan("link.refused", "cancelled");
-              return yield* new LinkNotFound();
-            }
-            // Before anything else is said about the delivery, its title included.
-            if (!(yield* isOpen(link, unlock))) {
-              yield* Effect.annotateCurrentSpan("link.refused", "locked");
-              return yield* new LinkLocked({ senderName: delivery.sender.name });
-            }
-            yield* Effect.annotateCurrentSpan({
-              "delivery.file_count": delivery.transfers.length,
-              "delivery.status": delivery.status,
-              "delivery.total_bytes": delivery.transfers.reduce((sum, file) => sum + file.size, 0),
-            });
-            if (delivery.status === "open") {
-              yield* Effect.annotateCurrentSpan("link.refused", "notReady");
-              return yield* new LinkNotReady({
-                senderName: delivery.sender.name,
-                title: delivery.title,
-              });
-            }
-            const now = yield* Clock.currentTimeMillis;
-            if (delivery.expiresAt === null) {
-              // Finalize sets status and expiry in one statement.
-              return yield* Effect.die(new Error(`Ready delivery ${delivery.id} has no expiry`));
-            }
-            if (isExpired(delivery.expiresAt, now)) {
-              yield* Effect.annotateCurrentSpan("link.refused", "expired");
-              return yield* new LinkExpired({
-                expiredAt: delivery.expiresAt,
-                title: delivery.title,
-              });
-            }
-            // A download URL never outlives the link that issued it.
-            const ttl = Duration.min(
-              DOWNLOAD_URL_TTL,
-              Duration.millis(delivery.expiresAt.getTime() - now),
-            );
-            const files = yield* Effect.forEach(delivery.transfers, (transfer) =>
-              storage
-                .signDownload(transfer.objectKey, basename(transfer.path), ttl)
-                .pipe(Effect.map(({ url }) => ({ path: transfer.path, size: transfer.size, url }))),
-            );
-            return {
-              expiresAt: delivery.expiresAt,
-              files,
-              note: delivery.note,
+      return SharedLinks.of({
+        open: Effect.fn("SharedLinks.open")(function* open(token: string, unlock?: string) {
+          const linkId = yield* tokens.verify(token);
+          if (Option.isNone(linkId)) {
+            yield* Effect.annotateCurrentSpan("link.refused", "badToken");
+            return yield* new LinkNotFound();
+          }
+          yield* Effect.annotateCurrentSpan("link.id", linkId.value);
+          const link = yield* db.query.link.findFirst({
+            where: { id: linkId.value },
+            with: {
+              delivery: { with: { sender: true, transfers: { orderBy: { path: "asc" } } } },
+            },
+          });
+          if (link === undefined) {
+            yield* Effect.annotateCurrentSpan("link.refused", "unknown");
+            return yield* new LinkNotFound();
+          }
+          const { delivery } = link;
+          yield* Effect.annotateCurrentSpan("delivery.id", delivery.id);
+          if (link.revokedAt !== null) {
+            yield* Effect.annotateCurrentSpan("link.refused", "revoked");
+            return yield* new LinkNotFound();
+          }
+          if (delivery.status === "cancelled") {
+            yield* Effect.annotateCurrentSpan("link.refused", "cancelled");
+            return yield* new LinkNotFound();
+          }
+          // Before anything else is said about the delivery, its title included.
+          if (!(yield* isOpen(link, unlock))) {
+            yield* Effect.annotateCurrentSpan("link.refused", "locked");
+            return yield* new LinkLocked({ senderName: delivery.sender.name });
+          }
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": delivery.transfers.length,
+            "delivery.status": delivery.status,
+            "delivery.total_bytes": delivery.transfers.reduce((sum, file) => sum + file.size, 0),
+          });
+          if (delivery.status === "open") {
+            yield* Effect.annotateCurrentSpan("link.refused", "notReady");
+            return yield* new LinkNotReady({
               senderName: delivery.sender.name,
               title: delivery.title,
-            };
-          }, dieOnDatabaseError),
-
-          // One upsert per file. "started" sets the first time and bumps the
-          // last one; "saved" also stamps the file once and keeps that stamp.
-          report: Effect.fn("SharedLinks.report")(function* report(
-            token: string,
-            path: string,
-            event: DownloadEvent,
-            unlock?: string,
-          ) {
-            yield* Effect.annotateCurrentSpan("download.event", event);
-            const linkId = yield* tokens.verify(token);
-            if (Option.isNone(linkId)) {
-              return;
-            }
-            yield* Effect.annotateCurrentSpan("link.id", linkId.value);
-            const link = yield* db.query.link.findFirst({
-              columns: { id: true, passwordHash: true },
-              where: { id: linkId.value },
             });
-            if (link === undefined || !(yield* isOpen(link, unlock))) {
-              return;
-            }
-            const now = new Date(yield* Clock.currentTimeMillis);
-            yield* db
-              .insert(schema.download)
-              .select((qb) =>
-                qb
-                  .select({
-                    deliveryId: schema.transfer.deliveryId,
-                    lastAt: sql<Date>`${now.getTime()}`.as("last_at"),
-                    savedAt: sql<Date | null>`${event === "saved" ? now.getTime() : null}`.as(
-                      "saved_at",
-                    ),
-                    startedAt: sql<Date>`${now.getTime()}`.as("started_at"),
-                    transferId: schema.transfer.id,
-                  })
-                  .from(schema.link)
-                  .innerJoin(schema.delivery, eq(schema.delivery.id, schema.link.deliveryId))
-                  .innerJoin(schema.transfer, eq(schema.transfer.deliveryId, schema.delivery.id))
-                  .where(
-                    and(
-                      eq(schema.link.id, linkId.value),
-                      isNull(schema.link.revokedAt),
-                      eq(schema.delivery.status, "ready"),
-                      gt(schema.delivery.expiresAt, now),
-                      eq(schema.transfer.path, path),
-                    ),
+          }
+          const now = yield* Clock.currentTimeMillis;
+          if (delivery.expiresAt === null) {
+            // Finalize sets status and expiry in one statement.
+            return yield* Effect.die(new Error(`Ready delivery ${delivery.id} has no expiry`));
+          }
+          if (isExpired(delivery.expiresAt, now)) {
+            yield* Effect.annotateCurrentSpan("link.refused", "expired");
+            return yield* new LinkExpired({
+              expiredAt: delivery.expiresAt,
+              title: delivery.title,
+            });
+          }
+          // A download URL never outlives the link that issued it.
+          const ttl = Duration.min(
+            DOWNLOAD_URL_TTL,
+            Duration.millis(delivery.expiresAt.getTime() - now),
+          );
+          const files = yield* Effect.forEach(delivery.transfers, (transfer) =>
+            storage
+              .signDownload(transfer.objectKey, basename(transfer.path), ttl)
+              .pipe(Effect.map(({ url }) => ({ path: transfer.path, size: transfer.size, url }))),
+          );
+          return {
+            expiresAt: delivery.expiresAt,
+            files,
+            note: delivery.note,
+            senderName: delivery.sender.name,
+            title: delivery.title,
+          };
+        }, dieOnDatabaseError),
+
+        // One upsert per file. "started" sets the first time and bumps the
+        // last one; "saved" also stamps the file once and keeps that stamp.
+        report: Effect.fn("SharedLinks.report")(function* report(
+          token: string,
+          path: string,
+          event: DownloadEvent,
+          unlock?: string,
+        ) {
+          yield* Effect.annotateCurrentSpan("download.event", event);
+          const linkId = yield* tokens.verify(token);
+          if (Option.isNone(linkId)) {
+            return;
+          }
+          yield* Effect.annotateCurrentSpan("link.id", linkId.value);
+          const link = yield* db.query.link.findFirst({
+            columns: { id: true, passwordHash: true },
+            where: { id: linkId.value },
+          });
+          if (link === undefined || !(yield* isOpen(link, unlock))) {
+            return;
+          }
+          const now = new Date(yield* Clock.currentTimeMillis);
+          yield* db
+            .insert(schema.download)
+            .select((qb) =>
+              qb
+                .select({
+                  deliveryId: schema.transfer.deliveryId,
+                  lastAt: sql<Date>`${now.getTime()}`.as("last_at"),
+                  savedAt: sql<Date | null>`${event === "saved" ? now.getTime() : null}`.as(
+                    "saved_at",
                   ),
-              )
-              .onConflictDoUpdate({
-                set: {
-                  lastAt: sql`excluded.last_at`,
-                  savedAt: sql`coalesce(${schema.download.savedAt}, excluded.saved_at)`,
-                },
-                target: schema.download.transferId,
-              });
-          }, dieOnDatabaseError),
-
-          unlock: Effect.fn("SharedLinks.unlock")(function* unlock(
-            token: string,
-            password: string,
-            ip: string,
-          ) {
-            const linkId = yield* tokens.verify(token);
-            if (Option.isNone(linkId)) {
-              yield* Effect.annotateCurrentSpan("link.refused", "badToken");
-              return yield* new LinkNotFound();
-            }
-            yield* Effect.annotateCurrentSpan("link.id", linkId.value);
-            if (!(yield* attempts.allowIp(ip))) {
-              return yield* new RateLimited({
-                limit: "passwordAttemptsPerIp",
-                retryAfterSeconds: rateLimits.passwordAttemptsPerIp.windowSeconds,
-              });
-            }
-            if (!(yield* attempts.allowLink(linkId.value))) {
-              return yield* new RateLimited({
-                limit: "passwordAttemptsPerLink",
-                retryAfterSeconds: rateLimits.passwordAttemptsPerLink.windowSeconds,
-              });
-            }
-            const link = yield* db.query.link.findFirst({
-              where: { id: linkId.value },
-              with: { delivery: true },
+                  startedAt: sql<Date>`${now.getTime()}`.as("started_at"),
+                  transferId: schema.transfer.id,
+                })
+                .from(schema.link)
+                .innerJoin(schema.delivery, eq(schema.delivery.id, schema.link.deliveryId))
+                .innerJoin(schema.transfer, eq(schema.transfer.deliveryId, schema.delivery.id))
+                .where(
+                  and(
+                    eq(schema.link.id, linkId.value),
+                    isNull(schema.link.revokedAt),
+                    eq(schema.delivery.status, "ready"),
+                    gt(schema.delivery.expiresAt, now),
+                    eq(schema.transfer.path, path),
+                  ),
+                ),
+            )
+            .onConflictDoUpdate({
+              set: {
+                lastAt: sql`excluded.last_at`,
+                savedAt: sql`coalesce(${schema.download.savedAt}, excluded.saved_at)`,
+              },
+              target: schema.download.transferId,
             });
-            if (link === undefined) {
-              yield* Effect.annotateCurrentSpan("link.refused", "unknown");
-              return yield* new LinkNotFound();
-            }
-            if (link.revokedAt !== null) {
-              yield* Effect.annotateCurrentSpan("link.refused", "revoked");
-              return yield* new LinkNotFound();
-            }
-            if (link.delivery.status === "cancelled") {
-              yield* Effect.annotateCurrentSpan("link.refused", "cancelled");
-              return yield* new LinkNotFound();
-            }
-            if (
-              link.passwordHash !== null &&
-              !(yield* checkPassword(password, link.passwordHash))
-            ) {
-              yield* Effect.annotateCurrentSpan("link.refused", "wrongPassword");
-              return yield* new WrongPassword();
-            }
-            return yield* tokens.issueUnlock(link.id, link.passwordHash ?? "");
-          }, dieOnDatabaseError),
-        });
-      }),
-    );
+        }, dieOnDatabaseError),
+
+        unlock: Effect.fn("SharedLinks.unlock")(function* unlock(
+          token: string,
+          password: string,
+          ip: string,
+        ) {
+          const linkId = yield* tokens.verify(token);
+          if (Option.isNone(linkId)) {
+            yield* Effect.annotateCurrentSpan("link.refused", "badToken");
+            return yield* new LinkNotFound();
+          }
+          yield* Effect.annotateCurrentSpan("link.id", linkId.value);
+          yield* attempts.take({ ip, key: linkId.value, kind: "unlock" });
+          const link = yield* db.query.link.findFirst({
+            where: { id: linkId.value },
+            with: { delivery: true },
+          });
+          if (link === undefined) {
+            yield* Effect.annotateCurrentSpan("link.refused", "unknown");
+            return yield* new LinkNotFound();
+          }
+          if (link.revokedAt !== null) {
+            yield* Effect.annotateCurrentSpan("link.refused", "revoked");
+            return yield* new LinkNotFound();
+          }
+          if (link.delivery.status === "cancelled") {
+            yield* Effect.annotateCurrentSpan("link.refused", "cancelled");
+            return yield* new LinkNotFound();
+          }
+          if (link.passwordHash !== null && !(yield* checkPassword(password, link.passwordHash))) {
+            yield* Effect.annotateCurrentSpan("link.refused", "wrongPassword");
+            return yield* new WrongPassword();
+          }
+          return yield* tokens.issueUnlock(link.id, link.passwordHash ?? "");
+        }, dieOnDatabaseError),
+      });
+    }),
+  );
 }

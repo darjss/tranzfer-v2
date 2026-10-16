@@ -21,7 +21,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { Deliveries, secondsUntilRoom } from "./deliveries";
+import { secondsUntilRoom } from "./attempts";
+import { Deliveries } from "./deliveries";
 import { Mail } from "./infrastructure/email";
 
 // Opening emails per sweep. At one sweep a minute a list of a few hundred
