@@ -4,7 +4,7 @@ Written against `origin/dev` at commit `0a61bc5` (2026-10-12). Each plan is self
 
 Plan numbers are identifiers, not an order. Run them by wave. Plans in the same wave touch different files unless the "Conflicts" column says otherwise. Line numbers drift: re-find each `file:line` before editing.
 
-Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 14 (#184).
+Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 04 (#185), 14 (#184).
 
 ## Every plan ships its constraint
 
@@ -24,7 +24,6 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 | ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | --------------------- | ------------------------- |
 | B    | 10   | Smart Placement on the API Worker, measured on staging                               | P2       | S    | none                  | IN PROGRESS (#174)        |
 | B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none                  | IN PROGRESS (step 1 #179) |
-| C    | 04   | One `RateLimiter` service replaces six injection shapes                              | P2       | M    | none                  | TODO                      |
 | C    | 05   | Brand `UserId`, `LinkToken`, `UnlockToken`                                           | P2       | M    | none                  | TODO                      |
 | C    | 06   | RPC surface: shared error fragments, one session path, IP helper (B: renames)        | P2/P3    | S+S  | soft: 05              | TODO                      |
 | C    | 15   | File-request rules move from `deliveries.ts` to `file-requests.ts`                   | P3       | M    | none                  | TODO                      |
@@ -66,7 +65,7 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
 - **Typed constraint errors from D1.** The database layer classifies every driver failure as `UnknownError` (`@effect/sql-d1` `D1Client.ts:34-35`), so a typed unique/foreign-key error is not available. The existing "decide from what landed" re-read after a failed batch (`deliveries.ts:488-520`, `plans.ts:269-276`) is the correct design. Left alone.
 - **`dieOnDatabaseError` as policy.** Decided in `docs/STRUCTURE.md`. Kept; plan 17 only changes what the defect carries.
 - **OOP or class-heavy code.** None found. Every class is a `Context.Service`, a tagged error, `Api` (RpcGroup) or `ApiWorker`. No manager/factory/inheritance patterns. The one non-idiom is that seven services restate their method signatures in a hand-written interface (see next item).
-- **Hand-written service interfaces** (`Deliveries`, `Transfers`, `FileRequests`, `SharedLinks`, `Emails`, `Plans`, `Billing`; about 300 lines, against `docs/CONVENTIONS.md` "Types come from values"). They carry the error contract and the doc comments, and the RPC layer already checks handler error types. Not worth the churn; amend the CONVENTIONS sentence (one service has several implementations only for `Storage`, `Mail`, `SigningRate`) instead. Revisit if plan 06 leaves the unions duplicated.
+- **Hand-written service interfaces** (`Deliveries`, `Transfers`, `FileRequests`, `SharedLinks`, `Emails`, `Plans`, `Billing`; about 300 lines, against `docs/CONVENTIONS.md` "Types come from values"). They carry the error contract and the doc comments, and the RPC layer already checks handler error types. Not worth the churn; amend the CONVENTIONS sentence (one service has several implementations only for `Storage`, `Mail`, `RateLimiter`) instead. Revisit if plan 06 leaves the unions duplicated.
 - **`Deliveries` (806 lines) is long but deep.** `place` is the atomic admission core. Only the file-request rules (plan 15) and the sweeper step are worth moving.
 - **Mutation seam in the web.** Sixteen `runPromiseExit` sites repeat `Exit.isFailure(exit) ? appError(exit.cause).message : undefined` (`dashboard/deliveries.ts` x8, `billing.ts`, `Unlock.tsx`, `SaveAll.tsx`, `Pricing.tsx`, `DeliverySheet.tsx`, `routes/d/[token].tsx`). `docs/SOLID-EFFECT-BINDING.md` says to add a mutation helper when real callers need one; the helper would be one line. Optional, speculative.
 - **Token domain separation** (a delivery token and a request token are both `HMAC(id)` of one key): ids are disjoint random values, no exploit found. Changing the format invalidates every shared link. Noted in plan 05.
