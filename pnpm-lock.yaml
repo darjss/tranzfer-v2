@@ -237,6 +237,9 @@ importers:
       '@oxlint/plugins':
         specifier: 1.85.0
         version: 1.85.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
       effect:
         specifier: 'catalog:'
         version: 4.0.4
