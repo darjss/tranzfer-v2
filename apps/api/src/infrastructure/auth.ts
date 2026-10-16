@@ -112,6 +112,21 @@ export const admitSignup = Effect.fn("Auth.admitSignup")(function* admitSignup(i
   });
 }, dieOnDatabaseError);
 
+/**
+ * Deletes sign-up rows the new-accounts window no longer counts, so a client
+ * IP is kept only as long as the cap needs it. Returns how many went.
+ */
+export const pruneSignups = Effect.gen(function* pruneSignups() {
+  const { db } = yield* Database;
+  const now = yield* Clock.currentTimeMillis;
+  const since = new Date(now - rateLimits.newAccounts.windowSeconds * 1000);
+  const pruned = yield* db
+    .delete(schema.signup)
+    .where(lt(schema.signup.createdAt, since))
+    .returning({ createdAt: schema.signup.createdAt });
+  return pruned.length;
+}).pipe(dieOnDatabaseError, Effect.withSpan("Auth.pruneSignups"));
+
 const SigningSecret = Schema.Redacted(Schema.String.check(Schema.isMinLength(32)));
 
 // A copied .env.example leaves empty values behind; treat them as unset.
@@ -206,6 +221,10 @@ export class Auth extends Context.Service<
 
         const instance = yield* BetterAuth({
           ...configured,
+          // Encrypts Google's access and refresh tokens with the auth secret.
+          // The clear_plain_oauth_tokens migration cleared the plain ones saved
+          // before this. Nothing here reads them back.
+          account: { encryptOAuthTokens: true },
           advanced: { database: { validateSchema: false }, ipAddress },
           basePath: "/api/auth",
           baseURL: origin,
