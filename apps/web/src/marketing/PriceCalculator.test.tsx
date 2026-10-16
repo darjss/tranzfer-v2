@@ -34,11 +34,11 @@ describe("PriceCalculator", () => {
     expect(price("Tranzfer")).toContain("$0");
     expect(price("MASV")).toContain("$0");
     expect(price("Filemail")).toContain("$6");
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
+    expect(artifact).toHaveNoDiagnostics();
     // Two inputs, each re-running the quotes and the rows that read them. The
     // projection recomputes on every input and reconciles to the same rows, so
     // a few runs end unchanged; rebuilding the rows instead tripped
     // HOT_SCOPE_TIME on CI.
-    assertBudget(artifact, { allow: [], maxReruns: 80, maxWastedRuns: 4 });
+    assertBudget(artifact, { maxReruns: 80, maxWastedRuns: 4 });
   });
 });
