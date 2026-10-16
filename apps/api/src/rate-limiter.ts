@@ -42,7 +42,17 @@ export const bindingLimits = {
   uploadSigning: { binding: "UPLOAD_SIGNING", namespaceId: 1002, rule: rateLimits.uploadSigning },
 } as const;
 
-type BindingLimit = keyof typeof bindingLimits;
+type NamespaceId<K extends keyof typeof bindingLimits> = (typeof bindingLimits)[K]["namespaceId"];
+
+// Two limits that take the same namespace id both drop out of this type, so
+// every call that names either one fails typecheck.
+type BindingLimit = {
+  [K in keyof typeof bindingLimits]: NamespaceId<K> extends NamespaceId<
+    Exclude<keyof typeof bindingLimits, K>
+  >
+    ? never
+    : K;
+}[keyof typeof bindingLimits];
 
 /** Counts hits per key under one of `bindingLimits`. */
 export class RateLimiter extends Context.Service<
