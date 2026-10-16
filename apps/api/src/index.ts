@@ -73,6 +73,7 @@ export default ApiWorker.make(
     compatibility: { date: "2026-09-08" },
     dev: { port: 8787, strictPort: true },
     main: import.meta.url,
+    placement: { mode: "smart" },
   },
   Effect.gen(function* impl() {
     // This effect also runs at deploy time, when no binding exists, so the D1
