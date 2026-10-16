@@ -36,6 +36,7 @@ import {
   remember,
 } from "./recovery";
 import type { RecoveryRecord } from "./recovery";
+import { ledger } from "./ledger";
 import { UploadSpans } from "./spans";
 import { patchTransfer, transfers, wireWindow } from "./store";
 import { claim, letGo, sendingElsewhere } from "./tabs";
@@ -237,38 +238,15 @@ const make = Effect.gen(function* makeUploads() {
   // layer, so it belongs to the app runtime rather than to a component.
   const runFork = yield* FiberSet.makeRuntime();
   const runPromise = yield* FiberSet.makeRuntimePromise();
-  // transferId -> acknowledged bytes over time, oldest first, since the
-  // transfer last started moving in this tab.
-  const acks = new Map<TransferId, { at: number; confirmed: number }[]>();
-  // objectKey -> transferId, for every file this tab sent or resumed. Signing
-  // hands us keys, so this is how a signed request finds its record.
-  const keys = new Map<string, TransferId>();
-  // transferId -> the uploadId already persisted; a new multipart upload for
-  // the same transfer records again.
-  const uploadIdStored = new Map<TransferId, string>();
-  // Complete signed means the bytes may already be a finished object; an
-  // error after this point reconciles instead of restarting transport.
-  const completeSigned = new Set<TransferId>();
-  // transferId -> transport retries spent; any acknowledged part resets the
-  // budget because progress proves transport works.
-  const autoRetries = new Map<TransferId, number>();
-  // transferId -> the file request's token, for transfers an uploader without
-  // an account sends. Their calls go to the token-bound RPCs.
-  const requestTokens = new Map<TransferId, string>();
-  // transferId -> part numbers R2 holds. Parts finish out of order, so
-  // confirmed bytes come from this set, seeded from ListParts on resume.
-  const doneParts = new Map<TransferId, Set<number>>();
 
   // The rate from the newest sample at least a window old (or the start, early
   // on) to this acknowledgement.
-  const ackedSpeed = (transferId: TransferId, confirmed: number) => {
+  const ackedSpeed = (samples: { at: number; confirmed: number }[], confirmed: number) => {
     const now = Date.now();
-    const samples = acks.get(transferId) ?? [];
     samples.push({ at: now, confirmed });
     while (samples.length > 2 && now - (samples[1]?.at ?? now) >= SPEED_WINDOW_MS) {
       samples.shift();
     }
-    acks.set(transferId, samples);
     const [base] = samples;
     return base === undefined || now === base.at
       ? 0
@@ -296,14 +274,14 @@ const make = Effect.gen(function* makeUploads() {
   // the request's token.
   const signFor = (transferId: TransferId | undefined, key: string, request: UploadRequest) =>
     Effect.suspend((): Effect.Effect<SignedUrl, ApiError> => {
-      const token = transferId === undefined ? undefined : requestTokens.get(transferId);
+      const token = transferId === undefined ? undefined : ledger.of(transferId)?.token;
       return token === undefined
         ? api.SignUpload({ key, request })
         : api.SignRequestUpload({ key, request, token });
     });
   const finalizeFor = (transferId: TransferId) =>
     Effect.suspend((): Effect.Effect<Pick<Delivery, "id" | "status" | "transfers">, ApiError> => {
-      const token = requestTokens.get(transferId);
+      const token = ledger.of(transferId)?.token;
       return token === undefined
         ? api.FinalizeTransfer({ transferId })
         : api.FinalizeRequestTransfer({ token, transferId });
@@ -316,19 +294,15 @@ const make = Effect.gen(function* makeUploads() {
     }
     // The upload id first reaches the browser inside a signed URL; the record
     // has to hold it before that URL can be lost with the tab.
-    const transferId = keys.get(request.key);
-    if (
-      transferId !== undefined &&
-      "uploadId" in request &&
-      uploadIdStored.get(transferId) !== request.uploadId
-    ) {
-      uploadIdStored.set(transferId, request.uploadId);
-      yield* recordUploadId(transferId, request.uploadId);
+    const entry = ledger.byKey(request.key);
+    if (entry !== undefined && "uploadId" in request && entry.uploadId !== request.uploadId) {
+      entry.uploadId = request.uploadId;
+      yield* recordUploadId(entry.transferId, request.uploadId);
     }
-    const signed = yield* retryTransport(signFor(transferId, request.key, upload));
-    if (Predicate.isTagged(upload, "Complete") && transferId !== undefined) {
-      completeSigned.add(transferId);
-      yield* spans.note(transferId, "complete.signed");
+    const signed = yield* retryTransport(signFor(entry?.transferId, request.key, upload));
+    if (Predicate.isTagged(upload, "Complete") && entry !== undefined) {
+      entry.completeSigned = true;
+      yield* spans.note(entry.transferId, "complete.signed");
     }
     // The headers are part of the signature (an empty file's PUT carries
     // if-none-match), so Uppy must send them as given.
@@ -388,13 +362,10 @@ const make = Effect.gen(function* makeUploads() {
   const settled = (uppy: Uppy<TransferMeta, Body>, fileId: string, transferId: TransferId) =>
     Effect.gen(function* settle() {
       yield* spans.endFile(transferId, "done", {
-        "upload.parts_confirmed": doneParts.get(transferId)?.size,
+        "upload.parts_confirmed": ledger.of(transferId)?.doneParts.size,
       });
       patchTransfer(transferId, { bytesPerSecond: 0, phase: "done" });
-      completeSigned.delete(transferId);
-      autoRetries.delete(transferId);
-      doneParts.delete(transferId);
-      requestTokens.delete(transferId);
+      ledger.forget(transferId);
       uppy.removeFile(fileId);
       yield* forget([transferId]);
       letGo(transferId);
@@ -451,17 +422,17 @@ const make = Effect.gen(function* makeUploads() {
                   Effect.withTracerEnabled(false),
                   Effect.provideService(HttpClient.TracerPropagationEnabled, false),
                 )
-              : spans.underFile(keys.get(request.key))(sign(request)),
+              : spans.underFile(ledger.byKey(request.key)?.transferId)(sign(request)),
           ),
       });
 
       uppy.on("s3-multipart:part-uploaded", (file, part) => {
-        const done = doneParts.get(file.meta.transferId) ?? new Set<number>();
-        doneParts.set(file.meta.transferId, done.add(part.PartNumber));
-        const confirmed = partBytes(done, file.size ?? 0);
-        autoRetries.delete(file.meta.transferId);
+        const entry = ledger.entry(file.meta.transferId, file.meta.objectKey);
+        entry.doneParts.add(part.PartNumber);
+        const confirmed = partBytes(entry.doneParts, file.size ?? 0);
+        entry.autoRetries = 0;
         patchTransfer(file.meta.transferId, {
-          bytesPerSecond: ackedSpeed(file.meta.transferId, confirmed),
+          bytesPerSecond: ackedSpeed(entry.acks, confirmed),
           confirmed,
           phase: "uploading",
         });
@@ -472,11 +443,12 @@ const make = Effect.gen(function* makeUploads() {
         if (file === undefined) {
           return;
         }
-        const { transferId } = file.meta;
+        const { objectKey, transferId } = file.meta;
         const confirmed = transfers[transferId]?.confirmed ?? 0;
+        const entry = ledger.entry(transferId, objectKey);
         // The first bytes on the wire start the speed window.
-        if (!acks.has(transferId)) {
-          acks.set(transferId, [{ at: Date.now(), confirmed }]);
+        if (entry.acks.length === 0) {
+          entry.acks.push({ at: Date.now(), confirmed });
         }
         patchTransfer(transferId, {
           inFlight: Math.max(progress.bytesUploaded - confirmed, 0),
@@ -488,8 +460,8 @@ const make = Effect.gen(function* makeUploads() {
         if (file === undefined) {
           return;
         }
-        const { transferId } = file.meta;
-        acks.delete(transferId);
+        const { objectKey, transferId } = file.meta;
+        ledger.entry(transferId, objectKey).acks = [];
         patchTransfer(transferId, {
           bytesPerSecond: 0,
           confirmed: Math.max(file.size ?? 0, transfers[transferId]?.confirmed ?? 0),
@@ -506,20 +478,21 @@ const make = Effect.gen(function* makeUploads() {
         if (file === undefined) {
           return;
         }
-        const { transferId } = file.meta;
+        const { objectKey, transferId } = file.meta;
+        const entry = ledger.entry(transferId, objectKey);
         // A retry measures speed afresh from its own first bytes.
-        acks.delete(transferId);
+        entry.acks = [];
         // Complete was already signed, or the guarded PUT found its object, so
         // the object may exist; reconcile through FinalizeTransfer instead of
         // starting transport again.
-        if (completeSigned.has(transferId) || putAlreadyLanded(error)) {
+        if (entry.completeSigned || putAlreadyLanded(error)) {
           patchTransfer(transferId, { bytesPerSecond: 0, inFlight: 0, phase: "finalizing" });
           runFork(finish(uppy, file.id, transferId));
           return;
         }
-        const attempts = autoRetries.get(transferId) ?? 0;
+        const attempts = entry.autoRetries;
         if (isTransientUploadError(error) && attempts < MAX_TRANSPORT_RETRIES) {
-          autoRetries.set(transferId, attempts + 1);
+          entry.autoRetries = attempts + 1;
           // Keep phase uploading: the board already shows the paused copy
           // while offline ("Connection lost…"). retryUpload resumes the same
           // multipart upload because Uppy keeps s3Multipart on error, so
@@ -680,10 +653,7 @@ const make = Effect.gen(function* makeUploads() {
           }
           patchTransfer(transfer.id, { phase: "queued" });
           claim(transfer.id);
-          keys.set(transfer.objectKey, transfer.id);
-          if (token !== undefined) {
-            requestTokens.set(transfer.id, token);
-          }
+          ledger.entry(transfer.id, transfer.objectKey).token = token;
           const fileId = uppy.addFile({
             data: file,
             meta: {
@@ -704,10 +674,7 @@ const make = Effect.gen(function* makeUploads() {
               uppy.removeFile(fileId);
             }
             for (const transfer of delivery.transfers) {
-              keys.delete(transfer.objectKey);
-              completeSigned.delete(transfer.id);
-              autoRetries.delete(transfer.id);
-              requestTokens.delete(transfer.id);
+              ledger.forget(transfer.id);
               patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
               letGo(transfer.id);
             }
@@ -763,7 +730,8 @@ const make = Effect.gen(function* makeUploads() {
     if (file === undefined) {
       return;
     }
-    autoRetries.delete(transferId);
+    const entry = ledger.entry(transferId, file.meta.objectKey);
+    entry.autoRetries = 0;
     yield* spans.beginFile(file.meta.deliveryId, { id: transferId, size: file.size ?? 0 }, true);
     if (transfers[transferId]?.uploaded) {
       // Uppy finished, so the object exists and only FinalizeTransfer failed;
@@ -774,7 +742,7 @@ const make = Effect.gen(function* makeUploads() {
       runFork(finish(uppy, file.id, transferId));
       return;
     }
-    if (completeSigned.has(transferId)) {
+    if (entry.completeSigned) {
       // The Complete response may be the only thing that was lost; settle the
       // key first. NotUploaded means parts are genuinely missing, so transport
       // resumes: Uppy lists parts and Completes again.
@@ -816,9 +784,7 @@ const make = Effect.gen(function* makeUploads() {
     // Removed files fire no terminal event, so their progress would stay
     // active and keep beforeunload armed.
     for (const transfer of cancelled.transfers) {
-      keys.delete(transfer.objectKey);
-      completeSigned.delete(transfer.id);
-      autoRetries.delete(transfer.id);
+      ledger.forget(transfer.id);
       patchTransfer(transfer.id, { bytesPerSecond: 0, inFlight: 0, phase: "cancelled" });
       letGo(transfer.id);
       yield* spans.endFile(transfer.id, "cancelled");
@@ -867,7 +833,7 @@ const make = Effect.gen(function* makeUploads() {
         continue;
       }
       if (token !== undefined) {
-        requestTokens.set(transfer.id, token);
+        ledger.entry(transfer.id, transfer.objectKey).token = token;
       }
       if (transfer.state === "complete" || transfer.state === "cancelled") {
         forgotten.push(transfer.id);
@@ -916,7 +882,7 @@ const make = Effect.gen(function* makeUploads() {
     const uppy = yield* engine;
     if (token !== undefined) {
       for (const transfer of delivery.transfers) {
-        requestTokens.set(transfer.id, token);
+        ledger.entry(transfer.id, transfer.objectKey).token = token;
       }
     }
     const records = yield* readAll;
@@ -1021,8 +987,7 @@ const make = Effect.gen(function* makeUploads() {
       const { listed, record, transfer, verifyMillis } = matched;
       claimed.add(transfer.id);
       const done = new Set(listed.map((part) => part.partNumber));
-      doneParts.set(transfer.id, done);
-      keys.set(transfer.objectKey, transfer.id);
+      ledger.entry(transfer.id, transfer.objectKey).doneParts = done;
       const fileId = uppy.addFile({
         data: file,
         meta: {
