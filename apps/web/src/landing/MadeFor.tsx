@@ -2,7 +2,7 @@ import { For } from "solid-js";
 import { css, cx } from "styled-system/css";
 import { ArrowIcon } from "./notebook";
 import { eyebrow, section, smallTitle } from "./styles";
-import { audiences } from "../marketing/content";
+import { audiences } from "../marketing/audiences";
 
 // Index cards, one per use-case page. The copy comes from content.ts so the
 // card and the page it links to say the same thing.
