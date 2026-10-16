@@ -779,13 +779,17 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
     Effect.gen(function* scenario() {
       yield* addUser("gus");
       const plans = yield* Plans;
-      const tries = yield* Effect.forEach(Arr.range(1, rateLimits.codeRedemptions.limit + 1), (n) =>
-        Effect.map(Effect.flip(plans.redeem("gus", `GUESS-${n}`)), (error) => error._tag),
+      // All at once: exactly the limit is counted, the rest refused.
+      const tries = yield* Effect.forEach(
+        Arr.range(1, rateLimits.codeRedemptions.limit + 2),
+        (n) => Effect.map(Effect.flip(plans.redeem("gus", `GUESS-${n}`)), (error) => error._tag),
+        { concurrency: "unbounded" },
       );
-      expect(tries.at(-1)).toBe("RateLimited");
-      expect(tries.slice(0, -1)).toEqual(
-        Arr.makeBy(rateLimits.codeRedemptions.limit, () => "AccessCodeRefused"),
-      );
+      expect(tries.toSorted()).toEqual([
+        ...Arr.makeBy(rateLimits.codeRedemptions.limit, () => "AccessCodeRefused"),
+        "RateLimited",
+        "RateLimited",
+      ]);
     }),
   );
 
