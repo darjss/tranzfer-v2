@@ -2,7 +2,7 @@
 
 One tool per job. Versions live in the manifests and the lockfile. Prerelease integrations get checked against installed code, never against memory.
 
-- UI: Solid 2 and Solid Router. Reads go through the [Effect read adapter](SOLID-EFFECT-BINDING.md). No Effect Atom, no query cache.
+- UI: Solid 2 and Solid Router. Reads go through the [Effect read adapter](SOLID-EFFECT-BINDING.md), in the browser only. No Effect Atom, no query cache.
 - Build: Vite+ over a pnpm workspace. The Cloudflare Vite plugin runs SSR in workerd.
 - Styling: Panda CSS with `strictTokens`, `css()`/`cva()`/`cx()` from `styled-system`. Bespoke keyframes and reveal hooks stay in plain CSS.
 - Components: native elements first. Kobalte for complex accessible widgets, once its Solid 2 support is verified.
