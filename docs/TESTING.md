@@ -28,8 +28,8 @@ Name tests after the guarantee they protect: `recovery_never_resends_confirmed_p
 
 Solid's dev build reports known anti-patterns as stable diagnostic codes, and `@solidjs/diagnostics` records them together with why each reactive node re-ran. `captureArtifact(() => interaction, { scenario })` runs an interaction against a mounted tree and returns both. Assert on it:
 
-- `expect(artifact).toHaveNoDiagnostics()` fails on any rule code.
-- `assertBudget(artifact, { allow: [], maxReruns, maxWastedRuns })` caps how much recomputes. `artifact.attribution.reruns` names each run (`nodeName`), whether its value changed, and the write that caused it. Give the memos you care about a `name` option so they read in the report.
+- `expect(artifact).toHaveNoDiagnostics()` fails on any rule code. `apps/web/vitest-setup.ts` turns off `HOT_SCOPE_TIME`, a wall-clock budget that slow CI runners trip at random, so tests don't need to allow it.
+- `assertBudget(artifact, { maxReruns, maxWastedRuns })` caps how much recomputes. `artifact.attribution.reruns` names each run (`nodeName`), whether its value changed, and the write that caused it. Give the memos you care about a `name` option so they read in the report.
 - A run with `changed: false` was wasted. Fix the cause (an unstable memo output, a read that is too wide) instead of raising the budget.
 
 `apps/web/src/dashboard/dashboard.test.tsx` shows both shapes. One progress tick must recompute only the moving row and the grouping check. Cancel must leave Ready before a held server reply, and fail if the optimistic write is removed. Its fake server is `RpcTest.makeClient(Api)` over in-memory handlers, so the page runs its real typed client. Call `flush()` before reading the DOM after a write; Solid updates it asynchronously.

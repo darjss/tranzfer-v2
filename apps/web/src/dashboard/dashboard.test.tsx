@@ -332,13 +332,13 @@ describe("dashboard reactivity", () => {
     // The tick reached the screen: the moving row shows the new speed.
     flush();
     expect(screen.getByText(/40 MB\/s/u)).toBeInTheDocument();
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
+    expect(artifact).toHaveNoDiagnostics();
     // Steady state, one tick: the moving row's rollup recomputes, the two
     // memos that confirm nothing regrouped stop there, and the four bindings
     // that show the new numbers (percent, bar, speed, time left) update. No
     // condition (<Show>/<Match>) re-runs, and only those two confirming memos
     // are allowed to be wasted.
-    assertBudget(artifact, { allow: [], maxReruns: 7, maxWastedRuns: 2 });
+    assertBudget(artifact, { maxReruns: 7, maxWastedRuns: 2 });
     const reruns = (artifact.attribution?.reruns ?? []).map((run) => run.nodeName);
     expect(reruns).toEqual(expect.arrayContaining(["Board.groups", "Row.kind", "Row.roll"]));
     expect(reruns).not.toContain("condition value");
@@ -421,7 +421,7 @@ describe("dashboard reactivity", () => {
     );
 
     expect(result).toBeUndefined();
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
+    expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
   });
 
@@ -468,8 +468,8 @@ describe("dashboard reactivity", () => {
     expect(screen.getByText("20 MB already uploaded.")).toBeInTheDocument();
     // The row says how much already arrived, so picking the files is worth it.
     expect(screen.getByText("1 file · 20 MB of 60 MB arrived")).toBeInTheDocument();
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
-    assertBudget(artifact, { allow: [], maxReruns: 5, maxWastedRuns: 2 });
+    expect(artifact).toHaveNoDiagnostics();
+    assertBudget(artifact, { maxReruns: 5, maxWastedRuns: 2 });
     await runtime.dispose();
   });
   it("a re-pick shows how much of the stored data is checked, then lets go", async () => {
@@ -514,8 +514,8 @@ describe("dashboard reactivity", () => {
       },
       { scenario: "re-pick-check" },
     );
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
-    assertBudget(artifact, { allow: [], maxReruns: 20, maxWastedRuns: 5 });
+    expect(artifact).toHaveNoDiagnostics();
+    assertBudget(artifact, { maxReruns: 20, maxWastedRuns: 5 });
     await runtime.dispose();
   });
 
@@ -611,7 +611,7 @@ describe("dashboard reactivity", () => {
     expect(screen.queryByRole("button", { hidden: true, name: "Manage billing" }) !== null).toBe(
       expected.manage,
     );
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
+    expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
   });
   it("an invite code redeems on landing and the plan shows until when", async () => {
@@ -679,7 +679,7 @@ describe("dashboard reactivity", () => {
     ).toBeInTheDocument();
     // The Applying… flag is an optimistic write that reverts when the action
     // settles, by design; anything else is a defect.
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME", "OPTIMISTIC_REVERTED"] });
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
     // A wrong code resolves to the words its toast shows.
     expect(await redeem?.("NOPE")).toBe(
       "We don't know that code. Check the spelling and try again.",
@@ -723,10 +723,10 @@ describe("dashboard reactivity", () => {
     flush();
     expect(screen.getByText("20 MB/s · about a minute left")).toBeInTheDocument();
     expect(screen.queryByText("Starting…")).toBeNull();
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
+    expect(artifact).toHaveNoDiagnostics();
     // A one-off change of state, not a tick: Board.groups confirms nothing
     // regrouped, and every binding that reads the row's kind re-checks once.
-    assertBudget(artifact, { allow: [], maxReruns: 21, maxWastedRuns: 10 });
+    assertBudget(artifact, { maxReruns: 21, maxWastedRuns: 10 });
     await runtime.dispose();
   });
 
@@ -761,8 +761,8 @@ describe("dashboard reactivity", () => {
 
     expect(sendAgain).toHaveBeenCalledOnce();
     expect(cancel).toHaveBeenCalledWith(stuck.id);
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
-    assertBudget(artifact, { allow: [], maxReruns: 6, maxWastedRuns: 2 });
+    expect(artifact).toHaveNoDiagnostics();
+    assertBudget(artifact, { maxReruns: 6, maxWastedRuns: 2 });
     await runtime.dispose();
   });
 
@@ -821,7 +821,7 @@ describe("dashboard reactivity", () => {
     );
 
     expect(screen.getByText("Live")).toBeInTheDocument();
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
+    expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
   });
 
@@ -857,7 +857,7 @@ describe("dashboard reactivity", () => {
     // The other card is untouched.
     expect(screen.getAllByRole("button", { name: "Tell me when it opens" })).toHaveLength(1);
     // The pending flag is an optimistic true that each of the two calls ends.
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME", "OPTIMISTIC_REVERTED"] });
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
     // Two calls, two state changes (button to form, form to the note) and the
     // pending flag on each; nothing recomputes without changing.
     assertBudget(artifact, { allow: ["OPTIMISTIC_REVERTED"], maxReruns: 15, maxWastedRuns: 0 });
@@ -969,7 +969,7 @@ describe("dashboard reactivity", () => {
         `Episode 14 is ready: ${link} Download before ${untilDate(readyAt)}.`,
       );
     });
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME", "OPTIMISTIC_REVERTED"] });
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
     // One state change on a whole list: the row leaves Moving for Ready, the
     // new card mounts and the copy buttons settle. Nothing recomputes for
     // nothing. The re-read's optimistic overlay reverts by design.
@@ -1103,7 +1103,7 @@ describe("dashboard reactivity", () => {
     expect(card.getByText("Not sent, this address bounced before")).toBeInTheDocument();
     expect(card.getByText(/We can't see anyone's inbox/u)).toBeInTheDocument();
     expect(card.getByRole("button", { name: "Email it to more people" })).toBeInTheDocument();
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME", "OPTIMISTIC_REVERTED"] });
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
     assertBudget(artifact, { allow: ["OPTIMISTIC_REVERTED"], maxReruns: 45, maxWastedRuns: 0 });
     await runtime.dispose();
   });
@@ -1156,7 +1156,7 @@ describe("dashboard reactivity", () => {
       },
       { scenario: "link-password-set" },
     );
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME", "OPTIMISTIC_REVERTED"] });
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
     expect(document.body.textContent).not.toContain("wrap-2026-ep14");
 
     button("Remove").click();
@@ -1210,7 +1210,7 @@ describe("dashboard reactivity", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
+    expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
   });
 
@@ -1305,7 +1305,7 @@ describe("dashboard reactivity", () => {
     );
 
     expect(screen.queryByText("Sending in another tab")).toBeNull();
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
+    expect(artifact).toHaveNoDiagnostics();
     await runtime.dispose();
   });
 });
