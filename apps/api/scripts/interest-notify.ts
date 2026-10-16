@@ -10,7 +10,7 @@ import * as Flag from "effect/cli/Flag";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 
-import { queueOpenings } from "../src/emails";
+import { queueOpenings } from "../src/interest";
 import { onStage, stageFlag } from "./stage";
 
 const notify = Command.make(
