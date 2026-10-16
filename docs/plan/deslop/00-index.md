@@ -4,7 +4,7 @@ Written against `origin/dev` at commit `0a61bc5` (2026-10-12). Each plan is self
 
 Plan numbers are identifiers, not an order. Run them by wave. Plans in the same wave touch different files unless the "Conflicts" column says otherwise. Line numbers drift: re-find each `file:line` before editing.
 
-Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 04 (#185), 14 (#184), 05 (#186).
+Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 04 (#185), 14 (#184), 05 (#186), 06 (#PR).
 
 ## Every plan ships its constraint
 
@@ -24,7 +24,6 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 | ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | --------------------- | ------------------------- |
 | B    | 10   | Smart Placement on the API Worker, measured on staging                               | P2       | S    | none                  | IN PROGRESS (#174)        |
 | B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none                  | IN PROGRESS (step 1 #179) |
-| C    | 06   | RPC surface: shared error fragments, one session path, IP helper (B: renames)        | P2/P3    | S+S  | soft: 05              | TODO                      |
 | C    | 15   | File-request rules move from `deliveries.ts` to `file-requests.ts`                   | P3       | M    | none                  | TODO                      |
 | C    | 07   | Split the waitlist from delivery emails; move pure helpers                           | P3       | M    | 04                    | TODO                      |
 | D    | 16   | Custom lint rule specs; each rule lands with the plan that clears its hits           | P2       | M    | 05, 07                | TODO                      |
@@ -82,6 +81,8 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
 - Concurrent Polar webhooks race on an unconditional upsert (`billing.ts:253-257`); small window; guard with `updatedAt`.
 - Link secret has no key id or rotation (`index.ts:54`); losing Alchemy state invalidates all links.
 - Double-click on "Yes, start over" opens the file picker twice (`dashboard/Board.tsx:61-70`); cosmetic.
+- Wire renames from plan 06 part B, waiting on the founder: `Deliveries`, `FileRequests`, `DeliveryEmails` and `Me` become `ListDeliveries`, `ListFileRequests`, `ListDeliveryEmails` and `GetMe`, with no compatibility shim. Call sites: `apps/web/src/dashboard/deliveries.ts`, `apps/web/src/routes/deliveries.tsx`, `e2e/gates/upload.test.ts`, plus docs.
+- `JoinInterest` is public but still lists `AuthenticationUnavailable` and `Unauthorized`, and `apps/web/src/landing/Pricing.tsx` branches on `Unauthorized`. Dropping them is a contract change that touches the pricing page.
 - Uppy ships on every page (`App.tsx:9` static import, `codeSplitting: false`); unmeasured.
 
 ## Direction (options, not problems)
