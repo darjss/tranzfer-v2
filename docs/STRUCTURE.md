@@ -19,7 +19,7 @@ Database failures are defects (`dieOnDatabaseError` at each service method). Sto
 
 Never capture a request, principal or response headers in an isolate-wide singleton.
 
-Browser RPC posts to exactly `/rpc`, forwarded by the web Worker to the API binding. Server rendering never calls the API (PR #PRNUM). See [the bridge contract](SOLID-EFFECT-BINDING.md).
+Browser RPC posts to exactly `/rpc`, forwarded by the web Worker to the API binding. Server rendering never calls the API (PR #184). See [the bridge contract](SOLID-EFFECT-BINDING.md).
 
 ## Adding an operation
 

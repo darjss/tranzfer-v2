@@ -4,7 +4,7 @@ Written against `origin/dev` at commit `0a61bc5` (2026-10-12). Each plan is self
 
 Plan numbers are identifiers, not an order. Run them by wave. Plans in the same wave touch different files unless the "Conflicts" column says otherwise. Line numbers drift: re-find each `file:line` before editing.
 
-Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181).
+Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 14 (#184).
 
 ## Every plan ships its constraint
 
@@ -29,7 +29,6 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 | C    | 06   | RPC surface: shared error fragments, one session path, IP helper (B: renames)        | P2/P3    | S+S  | soft: 05              | TODO                      |
 | C    | 15   | File-request rules move from `deliveries.ts` to `file-requests.ts`                   | P3       | M    | none                  | TODO                      |
 | C    | 07   | Split the waitlist from delivery emails; move pure helpers                           | P3       | M    | 04                    | TODO                      |
-| C    | 14   | SSR API client: decide, then delete or give it a reader                              | P3       | S    | none                  | TODO                      |
 | D    | 16   | Custom lint rule specs; each rule lands with the plan that clears its hits           | P2       | M    | 05, 07                | TODO                      |
 | D    | 12   | D1 read replication with Sessions API                                                | P3       | L    | 10, 11 measured first | TODO                      |
 
@@ -91,7 +90,7 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
 
 1. **Revoke and rotate a link.** `link.revokedAt` is read at `shared-links.ts:92,187,225` and written nowhere; there is no way to cut off one leaked link without cancelling the whole delivery. The read side is done.
 2. **The file-request uploader page.** The API for file requests shipped (PR #130, `FileRequests` + 4 token-bound RPCs) and generates `/r/<token>` links, but `apps/web/src/routes` has no `r` route. Every day it sits, the API surface is untested by a client.
-3. **Decide SSR reads** (plan 14), because the next page that needs a public, rate-limited read on the server needs the client IP header.
+3. **SSR reads: decided no** (#184). Reads run in the browser; the SSR client is deleted. A page that needs a server read later must forward `cf-connecting-ip` and the cookie (`docs/SOLID-EFFECT-BINDING.md`).
 
 ## Not audited
 
