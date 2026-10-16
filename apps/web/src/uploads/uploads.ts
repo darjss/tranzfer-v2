@@ -3,6 +3,7 @@ import AwsS3 from "@uppy/aws-s3";
 import { Uppy } from "@uppy/core";
 import type { Body, Meta } from "@uppy/core/utils";
 import {
+  basename,
   checkFiles,
   DeliveryId,
   isSinglePut,
@@ -194,8 +195,6 @@ export const isTransientUploadError = (error: Error) => {
 // already there: an earlier PUT landed and its response was lost, or the tab
 // died after it. That reconciles through FinalizeTransfer like a lost Complete.
 export const putAlreadyLanded = (error: Error) => Schema.is(s3Error)(error) && error.status === 412;
-
-const basename = (path: string) => path.split("/").pop() ?? path;
 
 // The pick waits on this hashing, and it can run for minutes, so it lives in a
 // worker: on the page thread each 64 MiB part was a ~120 ms long task. Worker

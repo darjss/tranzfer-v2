@@ -1,4 +1,5 @@
 import {
+  basename,
   LinkExpired,
   LinkLocked,
   LinkNotFound,
@@ -26,8 +27,6 @@ import { Storage } from "./storage";
 // with, so a short lifetime broke big downloads; cancel and expiry still end
 // them, because the purge deletes the objects every URL points at.
 const DOWNLOAD_URL_TTL = Duration.days(7);
-
-const basename = (path: string) => path.split("/").at(-1) ?? path;
 
 /** What anyone holding a link can do: unlock it, open it, and tell the sender what they downloaded. */
 export class SharedLinks extends Context.Service<
