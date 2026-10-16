@@ -189,14 +189,8 @@ const words = Match.type<ApiError | UploadFailed>().pipe(
     UploadClosed: () => "This delivery was cancelled or has already finished.",
     UploadFailed: (error) =>
       Match.value(error.reason).pipe(
-        Match.when(
-          "gone",
-          () => "Storage no longer holds this upload's parts, so send the file again.",
-        ),
-        Match.when(
-          "denied",
-          () => "Storage refused the upload's permission. Retry to get a fresh one.",
-        ),
+        Match.when("gone", () => "Storage lost this upload's earlier parts. Send the file again."),
+        Match.when("denied", () => "Storage refused this upload. Retry it."),
         Match.when(
           "network",
           () => "We lost the connection to storage. Check your connection and retry.",
