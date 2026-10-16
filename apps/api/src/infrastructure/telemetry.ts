@@ -18,6 +18,7 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
+import { RateLimiter } from "../rate-limiter";
 import { Ingest, Traces } from "../resources";
 import { clientIp } from "./auth";
 import { lazy } from "./r2";
@@ -243,16 +244,14 @@ export const relayConfig = Effect.gen(function* relayConfig() {
  * route holds the ingest token and forwards OTLP JSON to the traces dataset.
  * The token never appears in a response or a log line.
  */
-export const relayTraces = (
-  { client, origin, target }: Effect.Success<typeof relayConfig>,
-  allow: (ip: string) => Effect.Effect<boolean>,
-) =>
+export const relayTraces = ({ client, origin, target }: Effect.Success<typeof relayConfig>) =>
   Effect.gen(function* relay() {
     const request = yield* HttpServerRequest.HttpServerRequest;
     if (target === undefined) {
       return status(204);
     }
-    if (!(yield* allow(clientIp(new Headers(request.headers))))) {
+    const limiter = yield* RateLimiter;
+    if (!(yield* limiter.allow("telemetryRelay", clientIp(new Headers(request.headers))))) {
       return status(429);
     }
     if (request.headers.origin !== origin) {

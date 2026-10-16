@@ -1,4 +1,4 @@
-import { DeliveryId, rateLimits, TransferId } from "@tranzfer/contracts";
+import { DeliveryId, TransferId } from "@tranzfer/contracts";
 import type { NewDelivery, NewFile, RetentionDays } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { testDatabase } from "@tranzfer/db/testing";
@@ -12,10 +12,11 @@ import { Deliveries } from "../src/deliveries";
 import { FileRequests } from "../src/file-requests";
 import { LinkTokens } from "../src/link-tokens";
 import { Plans } from "../src/plans";
+import { bindingLimits, RateLimiter } from "../src/rate-limiter";
 import { SharedLinks } from "../src/shared-links";
 import { Storage } from "../src/storage";
 import type { StoredObject } from "../src/storage";
-import { SigningRate, Transfers } from "../src/transfers";
+import { Transfers } from "../src/transfers";
 
 /** Object storage as a map; tests put objects the way a browser upload would. */
 export const makeMemoryStorage = () => {
@@ -50,32 +51,25 @@ export const makeMemoryStorage = () => {
   return { layer, objects, purged, sealed };
 };
 
-/** A rate-limit binding as a count per key that never resets. */
-const counting = (limit: number) => {
+/** Rate-limit bindings as a count per limit and key that never resets. */
+const countingLimiter = Layer.sync(RateLimiter, () => {
   const counts = new Map<string, number>();
-  return (key: string) =>
+  return RateLimiter.make((name, key) =>
     Effect.sync(() => {
-      const count = (counts.get(key) ?? 0) + 1;
-      counts.set(key, count);
-      return count <= limit;
-    });
-};
+      const count = (counts.get(`${name}:${key}`) ?? 0) + 1;
+      counts.set(`${name}:${key}`, count);
+      return count <= bindingLimits[name].rule.limit;
+    }),
+  );
+});
 
 /** The domain over a fresh migrated local D1 and the given storage. */
 export const domainLayer = (storage: Layer.Layer<Storage>) =>
   Layer.mergeAll(
     SharedLinks.layer,
-    FileRequests.layer({
-      callsPerIp: counting(rateLimits.portalCallsPerIp.limit),
-      callsPerRequest: counting(rateLimits.portalCallsPerRequest.limit),
-      uploadsPerIp: counting(rateLimits.portalUploadsPerIp.limit),
-    }).pipe(Layer.provideMerge(Transfers.layer)),
+    FileRequests.layer.pipe(Layer.provideMerge(Transfers.layer)),
   ).pipe(
-    Layer.provideMerge(
-      Layer.sync(SigningRate, () =>
-        SigningRate.of({ allow: counting(rateLimits.uploadSigning.limit) }),
-      ),
-    ),
+    Layer.provideMerge(countingLimiter),
     Layer.provideMerge(Deliveries.layer),
     Layer.provideMerge(Plans.layer),
     Layer.provideMerge(Attempts.layer),

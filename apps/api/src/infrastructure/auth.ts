@@ -29,6 +29,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { secondsUntilRoom } from "../attempts";
 import { sendWelcome } from "../emails";
+import { RateLimiter } from "../rate-limiter";
 import type { Mail } from "./email";
 import { stagingLogin } from "./staging-login";
 
@@ -196,19 +197,16 @@ export class Auth extends Context.Service<
     >;
   }
 >()("tranzfer/Auth") {
-  /**
-   * `allowRequest` answers whether a client IP still fits
-   * `rateLimits.authRequests`; it is checked before Better Auth sees a request.
-   */
+  /** `authRequests` is checked per client IP before Better Auth sees a request. */
   static readonly layer = (
     stage: "production" | "staging" | "dev",
     d1: Effect.Effect<D1Database>,
-    allowRequest: (ip: string) => Effect.Effect<boolean>,
   ) =>
     Layer.effect(
       Auth,
       Effect.gen(function* auth() {
         const configured = yield* providers(stage, d1);
+        const limiter = yield* RateLimiter;
         const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
 
         // Our snake_case, integer-ms columns rule out the plugin's Kysely D1 layer.
@@ -273,7 +271,7 @@ export class Auth extends Context.Service<
           migrate: false,
           // Sign-in errors land on the sign-in page, which shows the words.
           onAPIError: { errorURL: `${origin}/sign-in` },
-          // Its stores are per isolate or per path; allowRequest limits instead.
+          // Its stores are per isolate or per path; RateLimiter limits instead.
           rateLimit: { enabled: false },
           // Skips the session and user reads for 5 minutes. A revoked session
           // keeps working in a browser that still holds its cookie until then.
@@ -284,7 +282,7 @@ export class Auth extends Context.Service<
         return Auth.of({
           fetch: Effect.gen(function* fetch() {
             const request = yield* HttpServerRequest.HttpServerRequest;
-            if (!(yield* allowRequest(clientIp(new Headers(request.headers))))) {
+            if (!(yield* limiter.allow("authRequests", clientIp(new Headers(request.headers))))) {
               const { windowSeconds } = rateLimits.authRequests;
               return yield* HttpServerResponse.schemaJson(RateLimited)(
                 new RateLimited({ limit: "authRequests", retryAfterSeconds: windowSeconds }),
