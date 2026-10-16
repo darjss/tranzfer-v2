@@ -1,3 +1,4 @@
+import { emailHeld, emailLost } from "@tranzfer/contracts";
 import type { Delivery, DeliveryEmail, Transfer } from "@tranzfer/contracts";
 import * as Data from "effect/Data";
 import * as Match from "effect/Match";
@@ -81,10 +82,10 @@ export const emailWords = (row: Emailed) => {
   if (row.errorCode === bounced) {
     return "Not sent, this address bounced before";
   }
-  if (row.errorCode === "held") {
+  if (row.errorCode === emailHeld) {
     return "Not sent, this site only emails approved addresses";
   }
-  if (row.errorCode === "lost") {
+  if (row.errorCode === emailLost) {
     return "Not sent, it didn't finish. Try again";
   }
   return "Not sent, the mail server refused it";

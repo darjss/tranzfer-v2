@@ -48,6 +48,7 @@ const rateLimitBindings = {
   1008: "PORTAL_CALLS_PER_IP",
   1009: "PORTAL_CALLS_PER_REQUEST",
   1010: "PORTAL_UPLOADS_PER_IP",
+  1011: "TELEMETRY_RELAY",
 } as const;
 
 const rateLimit = (
@@ -159,6 +160,8 @@ export default ApiWorker.make(
     const portalCallsPerRequest = yield* rateLimit(1009, rateLimits.portalCallsPerRequest);
     const portalUploadsPerIp = yield* rateLimit(1010, rateLimits.portalUploadsPerIp);
 
+    const telemetryRelay = yield* rateLimit(1011, rateLimits.telemetryRelay);
+
     // Sends through Cloudflare Email Sending as hello@tranzfer.app. The
     // domain is onboarded on the account, so any recipient is allowed.
     const email = yield* Cloudflare.Email.Send(yield* Cloudflare.Email.SendEmail("EMAIL"));
@@ -205,6 +208,23 @@ export default ApiWorker.make(
     const perInvocation = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(Effect.provide(domain, { local: true }), Effect.provideContext(isolate));
 
+    // SameSite=Lax keeps cookies off cross-site POSTs, but staging and every
+    // pr-<n> preview are same-site with production and run unmerged branches.
+    // Browsers always send Origin and Sec-Fetch-Site on a fetch POST; the e2e
+    // client, curl and the service binding send neither and pass.
+    const sameSiteGuard = <E, R>(
+      handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
+    ) =>
+      Effect.gen(function* guard() {
+        const { headers } = yield* HttpServerRequest.HttpServerRequest;
+        const site = headers["sec-fetch-site"];
+        return site === "cross-site" ||
+          site === "same-site" ||
+          (headers.origin !== undefined && headers.origin !== origin)
+          ? HttpServerResponse.empty({ status: 403 })
+          : yield* handler;
+      });
+
     yield* Cloudflare.Workers.cron("* * * * *", () => perInvocation(sweep));
 
     const health = Effect.gen(function* health() {
@@ -232,8 +252,10 @@ export default ApiWorker.make(
         "POST",
         "/rpc",
         perInvocation(
-          Effect.flatten(RpcServer.toHttpEffect(Api)).pipe(
-            Effect.provide(Layer.mergeAll(ApiHandlers, AuthenticatedLive), { local: true }),
+          sameSiteGuard(
+            Effect.flatten(RpcServer.toHttpEffect(Api)).pipe(
+              Effect.provide(Layer.mergeAll(ApiHandlers, AuthenticatedLive), { local: true }),
+            ),
           ),
         ),
       ),
@@ -258,7 +280,11 @@ export default ApiWorker.make(
         ),
       ),
       HttpRouter.add("GET", "/health", perInvocation(health)),
-      HttpRouter.add("POST", "/api/telemetry/traces", relayTraces(yield* relayConfig)),
+      HttpRouter.add(
+        "POST",
+        "/api/telemetry/traces",
+        relayTraces(yield* relayConfig, limiter(telemetryRelay)),
+      ),
     );
     const handle_ = yield* routes.pipe(
       Layer.provide(HttpServer.layerServices),

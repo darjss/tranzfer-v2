@@ -1,3 +1,4 @@
+import { passwordLength } from "@tranzfer/contracts";
 import * as Exit from "effect/Exit";
 import { action, createOptimistic, createSignal, Show, useContext } from "solid-js";
 import { css } from "styled-system/css";
@@ -81,7 +82,7 @@ export const Unlock = (props: {
           <input
             autocomplete="current-password"
             class={field}
-            maxlength={128}
+            maxlength={passwordLength.max}
             name="password"
             onInput={(event) => {
               setPassword(event.currentTarget.value);

@@ -19,27 +19,27 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { Ingest, Traces } from "../resources";
+import { clientIp } from "./auth";
 import { lazy } from "./r2";
 import { deployStage, stageName } from "./stage";
 
-// Response headers worth keeping on a span. Everything else can carry a
-// credential (set-cookie, x-amz-security-token, signed redirects), so the
-// default is to hide the value and keep the name.
-const KEPT_HEADERS = new Set(["cf-ray", "content-length", "content-type"]);
-const HEADER_ATTRIBUTE = /^http\.(?:request|response)\.header\.(?<name>.+)$/u;
+// The HTTP facts worth keeping. The host stays in `server.address`.
+const httpFacts = new Set([
+  "http.request.method",
+  "http.response.status_code",
+  "http.route",
+  "url.path",
+  "url.scheme",
+]);
 
 /**
- * Effect's HTTP spans record the full URL, query string included, and every
- * header not on its short default redaction list. A query string can hold an
- * OAuth code or a signature, so neither the query nor the full URL leaves the
- * Worker. The path and host stay in `url.path` and `server.address`.
+ * Effect's HTTP spans record the full URL, query string included. A query
+ * string can hold an OAuth code or a signature, so no `http.` or `url.`
+ * attribute leaves a Worker unless `httpFacts` names it. This covers the
+ * API's own spans and the browser spans the relay forwards.
  */
-export const isScrubbed = (key: string) => {
-  const header = HEADER_ATTRIBUTE.exec(key)?.groups?.name;
-  return header === undefined
-    ? key === "url.query" || key === "url.full"
-    : !KEPT_HEADERS.has(header);
-};
+export const isScrubbed = (key: string) =>
+  (key.startsWith("http.") || key.startsWith("url.")) && !httpFacts.has(key);
 
 // The fields of a typed error that explain a refusal and carry no person's
 // data: a limit's name and wait, a plan, a reason tag, a mail provider's code.
@@ -177,14 +177,32 @@ export const telemetry = Layer.unwrap(
 
 const MAX_BODY_BYTES = 256 * 1024;
 
-// The browser's spans, forwarded as they are but for the resource: the
-// service name, stage and environment come from here, not from the caller.
+// The exporter sends at most 50 spans a batch.
+const MAX_SPANS = 500;
+
+// The browser's spans, forwarded as they are but for the resource and the
+// scrubbed attributes: the service name, stage and environment come from
+// here, not from the caller.
 const BrowserSpans = Schema.fromJsonString(
   Schema.Struct({
     resourceSpans: Schema.Array(
       Schema.Struct({
         scopeSpans: Schema.Array(
-          Schema.Struct({ spans: Schema.Array(Schema.Record(Schema.String, Schema.Json)) }),
+          Schema.Struct({
+            spans: Schema.Array(
+              Schema.StructWithRest(
+                Schema.Struct({
+                  attributes: Schema.Array(
+                    Schema.Struct({ key: Schema.String, value: Schema.Json }),
+                  ),
+                  name: Schema.String,
+                  spanId: Schema.String,
+                  traceId: Schema.String,
+                }),
+                [Schema.Record(Schema.String, Schema.Json)],
+              ),
+            ).check(Schema.isMaxLength(MAX_SPANS)),
+          }),
         ),
       }),
     ),
@@ -225,11 +243,17 @@ export const relayConfig = Effect.gen(function* relayConfig() {
  * route holds the ingest token and forwards OTLP JSON to the traces dataset.
  * The token never appears in a response or a log line.
  */
-export const relayTraces = ({ client, origin, target }: Effect.Success<typeof relayConfig>) =>
+export const relayTraces = (
+  { client, origin, target }: Effect.Success<typeof relayConfig>,
+  allow: (ip: string) => Effect.Effect<boolean>,
+) =>
   Effect.gen(function* relay() {
     const request = yield* HttpServerRequest.HttpServerRequest;
     if (target === undefined) {
       return status(204);
+    }
+    if (!(yield* allow(clientIp(new Headers(request.headers))))) {
+      return status(429);
     }
     if (request.headers.origin !== origin) {
       return status(403);
@@ -283,7 +307,12 @@ export const relayTraces = ({ client, origin, target }: Effect.Success<typeof re
                 {
                   scope: { name: "tranzfer-web" },
                   spans: body.resourceSpans.flatMap(({ scopeSpans }) =>
-                    scopeSpans.flatMap((scope) => scope.spans),
+                    scopeSpans.flatMap((scope) =>
+                      scope.spans.map((span) => ({
+                        ...span,
+                        attributes: span.attributes.filter(({ key }) => !isScrubbed(key)),
+                      })),
+                    ),
                   ),
                 },
               ],

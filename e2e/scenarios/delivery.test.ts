@@ -341,6 +341,37 @@ layer(Target.layer)("staging deliveries", (it) => {
     }),
   );
 
+  it.effect("browser rules · security headers, and /rpc refuses cross-site POSTs", () =>
+    Effect.gen(function* browserRules() {
+      const { baseUrl } = yield* Target;
+      const rpc = (headers: Record<string, string>) =>
+        Effect.promise(
+          async () =>
+            await fetch(`${baseUrl}/rpc`, {
+              body: "{}",
+              headers: { "content-type": "application/json", ...headers },
+              method: "POST",
+            }),
+        );
+      // "/" is prerendered and served from public/_headers; "/deliveries" and
+      // "/rpc" go through the Worker in src/middleware.ts.
+      const pages = yield* Effect.forEach(["/", "/deliveries"], (path) =>
+        Effect.promise(async () => await fetch(`${baseUrl}${path}`)),
+      );
+      const crossSite = yield* rpc({ "sec-fetch-site": "cross-site" });
+      const sameSite = yield* rpc({ "sec-fetch-site": "same-site" });
+      const otherOrigin = yield* rpc({ origin: "https://example.com" });
+      const sameOrigin = yield* rpc({ origin: baseUrl, "sec-fetch-site": "same-origin" });
+
+      for (const response of [...pages, crossSite]) {
+        expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+        expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+      }
+      expect([crossSite.status, sameSite.status, otherOrigin.status]).toEqual([403, 403, 403]);
+      expect(sameOrigin.status).not.toBe(403);
+    }),
+  );
+
   it.effect("cancel · aborts remote multipart and closes signing", () =>
     Effect.gen(function* cancel() {
       const { api } = yield* Target;

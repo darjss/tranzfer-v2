@@ -102,9 +102,19 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       const missing = yield* Effect.flip(transfers.finalize("ben", one.id));
       expect(missing._tag).toBe("NotUploaded");
 
+      // Signing the Put marks it finalizing; a wrong size is deleted and the
+      // transfer reopens, so a correct Put can land on the free key.
+      yield* transfers.sign("ben", one.objectKey, UploadRequest.cases.Put.make({}));
       storage.objects.set(one.objectKey, { etag: "a", size: 99 });
       const wrongSize = yield* Effect.flip(transfers.finalize("ben", one.id));
       expect(wrongSize._tag).toBe("InvalidUpload");
+      expect(storage.objects.has(one.objectKey)).toBe(false);
+      const deliveries = yield* Deliveries;
+      const reopened = yield* deliveries.view(created.id);
+      expect(reopened.transfers.map((transfer) => transfer.state)).toEqual([
+        "uploading",
+        "uploading",
+      ]);
 
       storage.objects.set(one.objectKey, { etag: "a", size: 4 });
       const halfway = yield* transfers.finalize("ben", one.id);

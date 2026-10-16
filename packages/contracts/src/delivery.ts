@@ -21,6 +21,10 @@ export const maxFiles = 1000;
 export const maxNameBytes = 255;
 export const maxPathBytes = 1024;
 export const maxTitleLength = 200;
+export const maxNoteLength = 500;
+
+/** The last name in a delivery path: the file name, without its folders. */
+export const basename = (path: string) => path.split("/").at(-1) ?? path;
 
 // This package's lib has no TextEncoder. A lone surrogate counts 3, as its
 // replacement character encodes.
@@ -43,7 +47,7 @@ const byteLength = (text: string) => {
 export const DeliveryTitle = Schema.Trim.check(Schema.isBetweenLength(1, maxTitleLength));
 
 /** A short message for the recipient, shown as plain text. Empty means none. */
-export const DeliveryNote = Schema.Trim.check(Schema.isMaxLength(500));
+export const DeliveryNote = Schema.Trim.check(Schema.isMaxLength(maxNoteLength));
 
 export const NewFile = Schema.Struct({
   contentType: Schema.NullOr(Schema.String.check(Schema.isMaxLength(255))),
