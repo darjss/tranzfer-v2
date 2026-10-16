@@ -42,22 +42,6 @@ const RECOVER_BATCH = 50;
 
 type Transfer = typeof schema.transfer.$inferSelect;
 
-// The stored object must be exactly what the sender declared.
-const verify = (transfer: Transfer, object: Option.Option<StoredObject>) =>
-  Match.value(object).pipe(
-    Match.when(Option.isNone, () => Effect.fail(new NotUploaded())),
-    Match.when(
-      (found) => Option.isSome(found) && found.value.size !== transfer.size,
-      (found) =>
-        Effect.logError("uploaded size does not match", {
-          expected: transfer.size,
-          found: Option.map(found, ({ size }) => size),
-          transferId: transfer.id,
-        }).pipe(Effect.andThen(Effect.fail(new InvalidUpload()))),
-    ),
-    Match.orElse((found) => Effect.succeed(found.value)),
-  );
-
 /**
  * Counts signing requests per sender. Cloudflare's rate-limit binding in the
  * Worker, set to `rateLimits.uploadSigning`; it answers whether this request
@@ -102,6 +86,42 @@ export class Transfers extends Context.Service<
       const plans = yield* Plans;
       const signingRate = yield* SigningRate;
       const storage = yield* Storage;
+
+      /**
+       * The stored object must be exactly what the sender declared. Signed
+       * URLs do not pin the body length, so a wrong size is deleted, and a
+       * `finalizing` transfer goes back to `uploading`: with the key free, a
+       * correct upload can start again.
+       */
+      const verify = (transfer: Transfer, object: Option.Option<StoredObject>) =>
+        Match.value(object).pipe(
+          Match.when(Option.isNone, () => Effect.fail(new NotUploaded())),
+          Match.when(
+            (found) => Option.isSome(found) && found.value.size !== transfer.size,
+            (found) =>
+              Effect.logError("uploaded size does not match", {
+                expected: transfer.size,
+                found: Option.map(found, ({ size }) => size),
+                transferId: transfer.id,
+              }).pipe(
+                // Object keys end in a UUID, so the key as prefix touches no other file.
+                Effect.andThen(storage.purge(transfer.objectKey, [transfer.objectKey])),
+                Effect.andThen(
+                  db
+                    .update(schema.transfer)
+                    .set({ state: "uploading" })
+                    .where(
+                      and(
+                        eq(schema.transfer.id, transfer.id),
+                        eq(schema.transfer.state, "finalizing"),
+                      ),
+                    ),
+                ),
+                Effect.andThen(Effect.fail(new InvalidUpload())),
+              ),
+          ),
+          Match.orElse((found) => Effect.succeed(found.value)),
+        );
 
       const owned = (
         senderId: string,

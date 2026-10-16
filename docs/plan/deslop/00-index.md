@@ -20,21 +20,21 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 
 ## Order of execution
 
-| Wave | Plan | Title                                                                                | Priority | Size | Depends on            | Status |
-| ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | --------------------- | ------ |
-| B    | 10   | Smart Placement on the API Worker, measured on staging                               | P2       | S    | none                  | TODO   |
-| B    | 13   | Rate-limit and bound the browser telemetry relay                                     | P2       | S    | none                  | TODO   |
-| B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none                  | TODO   |
-| C    | 04   | One `RateLimiter` service replaces six injection shapes                              | P2       | M    | none                  | TODO   |
-| C    | 05   | Brand `UserId`, `LinkToken`, `UnlockToken`                                           | P2       | M    | none                  | TODO   |
-| C    | 06   | RPC surface: shared error fragments, one session path, IP helper (B: renames)        | P2/P3    | S+S  | soft: 05              | TODO   |
-| C    | 21   | Exact D1 counters for password and code attempts, fail closed                        | P2       | M    | soft: 04, 01          | TODO   |
-| C    | 25   | Web reads limits and email codes from contracts; one copy-state                      | P3       | S-M  | none                  | TODO   |
-| C    | 15   | File-request rules move from `deliveries.ts` to `file-requests.ts`                   | P3       | M    | none                  | TODO   |
-| C    | 07   | Split the waitlist from delivery emails; move pure helpers                           | P3       | M    | 04                    | TODO   |
-| C    | 14   | SSR API client: decide, then delete or give it a reader                              | P3       | S    | none                  | TODO   |
-| D    | 16   | Custom lint rule specs; each rule lands with the plan that clears its hits           | P2       | M    | 05, 07                | TODO   |
-| D    | 12   | D1 read replication with Sessions API                                                | P3       | L    | 10, 11 measured first | TODO   |
+| Wave | Plan | Title                                                                                | Priority | Size | Depends on            | Status                    |
+| ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | --------------------- | ------------------------- |
+| B    | 10   | Smart Placement on the API Worker, measured on staging                               | P2       | S    | none                  | TODO                      |
+| B    | 13   | Rate-limit and bound the browser telemetry relay                                     | P2       | S    | none                  | TODO                      |
+| B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none                  | IN PROGRESS (step 1 #179) |
+| C    | 04   | One `RateLimiter` service replaces six injection shapes                              | P2       | M    | none                  | TODO                      |
+| C    | 05   | Brand `UserId`, `LinkToken`, `UnlockToken`                                           | P2       | M    | none                  | TODO                      |
+| C    | 06   | RPC surface: shared error fragments, one session path, IP helper (B: renames)        | P2/P3    | S+S  | soft: 05              | TODO                      |
+| C    | 21   | Exact D1 counters for password and code attempts, fail closed                        | P2       | M    | soft: 04, 01          | TODO                      |
+| C    | 25   | Web reads limits and email codes from contracts; one copy-state                      | P3       | S-M  | none                  | TODO                      |
+| C    | 15   | File-request rules move from `deliveries.ts` to `file-requests.ts`                   | P3       | M    | none                  | TODO                      |
+| C    | 07   | Split the waitlist from delivery emails; move pure helpers                           | P3       | M    | 04                    | TODO                      |
+| C    | 14   | SSR API client: decide, then delete or give it a reader                              | P3       | S    | none                  | TODO                      |
+| D    | 16   | Custom lint rule specs; each rule lands with the plan that clears its hits           | P2       | M    | 05, 07                | TODO                      |
+| D    | 12   | D1 read replication with Sessions API                                                | P3       | L    | 10, 11 measured first | TODO                      |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale).
 
