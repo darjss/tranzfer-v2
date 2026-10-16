@@ -151,6 +151,28 @@ export const lintConfig = (
         },
       },
       {
+        files: paths.web,
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            {
+              paths: [
+                {
+                  message:
+                    "The web app has one API client, WebLayer in src/api/client.ts, and it runs in the browser only (docs/SOLID-EFFECT-BINDING.md).",
+                  name: "effect/rpc/RpcClient",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        // The one place the web app builds its API client.
+        files: ["**/src/api/client.ts"],
+        rules: { "no-restricted-imports": "off" },
+      },
+      {
         files: ["**/src/guides/Article.tsx"],
         rules: {
           // Its HTML is our own Markdown from content/, compiled at build time.
