@@ -2,7 +2,7 @@ import * as Schema from "effect/Schema";
 
 import { PaidPlanId } from "./billing";
 
-/** Loose on purpose: the confirmation email is the real check. */
+/** Loose on purpose: a typed address is stored unverified and gets no email until its plan opens. */
 export const EmailAddress = Schema.String.check(
   Schema.isMaxLength(254),
   Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/u),

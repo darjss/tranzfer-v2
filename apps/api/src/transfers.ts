@@ -18,7 +18,7 @@ import type {
   UploadRequest,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, exists, inArray, ne, notExists, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -194,8 +194,23 @@ export class Transfers extends Context.Service<
               and(
                 deliveryId === undefined ? undefined : eq(schema.delivery.id, deliveryId),
                 eq(schema.delivery.status, "open"),
-                sql`EXISTS (SELECT 1 FROM transfer WHERE transfer.delivery_id = ${schema.delivery.id})`,
-                sql`NOT EXISTS (SELECT 1 FROM transfer WHERE transfer.delivery_id = ${schema.delivery.id} AND transfer.state != 'complete')`,
+                exists(
+                  db
+                    .select({ one: sql`1` })
+                    .from(schema.transfer)
+                    .where(eq(schema.transfer.deliveryId, schema.delivery.id)),
+                ),
+                notExists(
+                  db
+                    .select({ one: sql`1` })
+                    .from(schema.transfer)
+                    .where(
+                      and(
+                        eq(schema.transfer.deliveryId, schema.delivery.id),
+                        ne(schema.transfer.state, "complete"),
+                      ),
+                    ),
+                ),
               ),
             ),
         );

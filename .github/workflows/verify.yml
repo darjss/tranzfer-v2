@@ -22,3 +22,9 @@ jobs:
           node-version: "24"
       - run: vp check
       - run: vp run test
+      # Production is never one local command from deletion: no script destroys
+      # a fixed stage, and no production script skips the approval prompt.
+      - name: Guard production scripts
+        run: |
+          jq -e '[.scripts[] | select(test("cli\\.js destroy") and (contains("$ALCHEMY_STAGE") | not))] == []' infra/package.json
+          jq -e '[.scripts | to_entries[] | select(.value | contains("--stage production") and contains("--yes"))] == []' infra/package.json

@@ -88,7 +88,7 @@ export const admitSignup = Effect.fn("Auth.admitSignup")(function* admitSignup(i
           ip: sql<string>`${ip}`.as("ip"),
         })
         .from(sql`(select 1)`)
-        .where(lt(sql`(select count(*) from ${schema.signup} where ${recent})`, newAccounts.limit)),
+        .where(lt(db.$count(schema.signup, recent), newAccounts.limit)),
     )
     .returning();
   if (admitted !== undefined) {

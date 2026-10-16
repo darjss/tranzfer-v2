@@ -4,7 +4,7 @@ Written against `origin/dev` at commit `0a61bc5` (2026-10-12). Each plan is self
 
 Plan numbers are identifiers, not an order. Run them by wave. Plans in the same wave touch different files unless the "Conflicts" column says otherwise. Line numbers drift: re-find each `file:line` before editing.
 
-Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147).
+Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168).
 
 ## Every plan ships its constraint
 
@@ -22,25 +22,21 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 
 | Wave | Plan | Title                                                                                | Priority | Size | Depends on            | Status |
 | ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | --------------------- | ------ |
-| A    | 24   | Production guards in CI and infra (destroy script, tests before deploy, retain)      | P2       | S    | none                  | TODO   |
 | B    | 10   | Smart Placement on the API Worker, measured on staging                               | P2       | S    | none                  | TODO   |
 | B    | 20   | Security headers and a cross-site check on `/rpc`                                    | P2       | S    | none                  | TODO   |
 | B    | 13   | Rate-limit and bound the browser telemetry relay                                     | P2       | S    | none                  | TODO   |
-| B    | 22   | Cap waitlist confirmation mail; bound sender text in delivery mail                   | P2       | S    | none                  | TODO   |
 | B    | 23   | Privacy page matches the schema; purge sign-up IPs; encrypt OAuth tokens             | P2       | S-M  | none (soft: 01)       | TODO   |
 | B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none                  | TODO   |
-| B    | 02   | Replace SQL strings with Drizzle builders where possible                             | P2       | M    | none                  | TODO   |
-| B    | 03   | One clock default, one timestamps helper, enums from contracts                       | P2       | S    | none                  | TODO   |
 | C    | 04   | One `RateLimiter` service replaces six injection shapes                              | P2       | M    | none                  | TODO   |
-| C    | 05   | Brand `UserId`, `LinkToken`, `UnlockToken`                                           | P2       | M    | soft: 03              | TODO   |
+| C    | 05   | Brand `UserId`, `LinkToken`, `UnlockToken`                                           | P2       | M    | none                  | TODO   |
 | C    | 06   | RPC surface: shared error fragments, one session path, IP helper (B: renames)        | P2/P3    | S+S  | soft: 05              | TODO   |
 | C    | 09   | Uploads: per-transfer ledger, transport module, typed upload failure                 | P2       | M    | none                  | TODO   |
 | C    | 21   | Exact D1 counters for password and code attempts, fail closed                        | P2       | M    | soft: 04, 01          | TODO   |
 | C    | 25   | Web reads limits and email codes from contracts; one copy-state                      | P3       | S-M  | none                  | TODO   |
-| C    | 15   | File-request rules move from `deliveries.ts` to `file-requests.ts`                   | P3       | M    | 02                    | TODO   |
+| C    | 15   | File-request rules move from `deliveries.ts` to `file-requests.ts`                   | P3       | M    | none                  | TODO   |
 | C    | 07   | Split the waitlist from delivery emails; move pure helpers                           | P3       | M    | 04                    | TODO   |
 | C    | 14   | SSR API client: decide, then delete or give it a reader                              | P3       | S    | none                  | TODO   |
-| D    | 16   | Custom lint rule specs; each rule lands with the plan that clears its hits           | P2       | M    | 02, 03, 05, 07        | TODO   |
+| D    | 16   | Custom lint rule specs; each rule lands with the plan that clears its hits           | P2       | M    | 05, 07                | TODO   |
 | D    | 12   | D1 read replication with Sessions API                                                | P3       | L    | 10, 11 measured first | TODO   |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale).
@@ -50,12 +46,11 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
 - All of wave A in parallel. Overlaps are small: 17 and 01 both touch `deliveries.ts` (different functions: 17 `place` line 517 and `removeObjects` line 281; 01 `purgeEnded`); 11 and 23 both add one option to the `BetterAuth({...})` call in `infrastructure/auth.ts` (merge order: 11 then 23).
 - `apps/api/src/index.ts` is touched by 04, 10, 12, 13, 20, 21 and 07. Land them one at a time in this order: 10, 20, 13, 21, 04, 07, 12. Everything else in a wave can be parallel.
 - Web plans (08, 09, 14, 25) and API plans do not share files except `apps/web/src/api/errors.ts` (09 adds a branch, 13 adds one line to `tooMany`, 18 edits one string).
-- `packages/contracts` is touched by 03, 05, 06, 13, 17, 18, 22, 25; each edit is local, but rebase before opening the PR.
+- `packages/contracts` is touched by 05, 06, 13, 17, 18, 22, 25; each edit is local, but rebase before opening the PR.
 
 ## Dependencies, with the reason
 
 - 09 after 08: both edit `retry()` in `uploads.ts` (08 adds one statement).
-- 15 after 02: both rewrite `requestAccepts`/`requestBytes` SQL in `deliveries.ts`.
 - 07 after 04: both change `Emails.layer` options (04 deletes the limiter parameters).
 - 21 soft on 04: if 04 landed, remove two rows from `bindingLimits` instead of two binding blocks; soft on 01 for the `isolated` sweep helper.
 - 12 after 10 and 11: the placement and the session cookie cache may remove the need; 12 has a measurement gate.
@@ -70,9 +65,8 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
 5. One failing sweep step cancels the other four, and 20 un-purgeable deliveries block all later purges: `apps/api/src/sweeper.ts:14-23`, `apps/api/src/deliveries.ts:676-693`. Plan 01.
 6. `vp run destroy` targets production with `--yes`; production D1 has no retention: `infra/package.json`, `apps/api/src/resources.ts:20`. Plan 24.
 7. Six different ways to inject a rate-limit binding, ten copy-pasted binding blocks: `apps/api/src/index.ts:114-191`. Plan 04.
-8. Raw SQL strings with hard-coded table names (4 sites) where Drizzle's `exists`/`$count` exist: `apps/api/src/transfers.ts:196-197`, `deliveries.ts:669,775`. Plan 02.
-9. `uploads.ts` keeps one transfer's state in six parallel maps and cleans them in three hand-copied places: `apps/web/src/uploads/uploads.ts:284-299,411-423`. Plan 09.
-10. Presigned PUT/part URLs do not pin the body length, so stored bytes can exceed what was declared and charged: `apps/api/src/infrastructure/r2.ts:30-60`. Plan 19.
+8. `uploads.ts` keeps one transfer's state in six parallel maps and cleans them in three hand-copied places: `apps/web/src/uploads/uploads.ts:284-299,411-423`. Plan 09.
+9. Presigned PUT/part URLs do not pin the body length, so stored bytes can exceed what was declared and charged: `apps/api/src/infrastructure/r2.ts:30-60`. Plan 19.
 
 ## Findings considered and rejected (so nobody re-audits them)
 

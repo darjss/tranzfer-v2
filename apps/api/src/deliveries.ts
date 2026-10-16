@@ -22,7 +22,23 @@ import type {
   DeliveryRefused,
 } from "@tranzfer/contracts";
 import { Database, databaseFault, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  exists,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  max,
+  min,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -69,13 +85,6 @@ export const secondsUntilRoom = (
 };
 
 export const objectPrefix = (deliveryId: DeliveryId) => `d/${deliveryId}/`;
-
-// How many deliveries the sender created after `since`, as SQL.
-const createdSince = (senderId: string, since: number) =>
-  sql`(select count(*) from ${schema.delivery} where ${and(
-    eq(schema.delivery.senderId, senderId),
-    gt(schema.delivery.createdAt, new Date(since)),
-  )})`;
 
 export const isExpired = (expiresAt: Date | null, now: number) =>
   expiresAt !== null && expiresAt.getTime() <= now;
@@ -213,22 +222,29 @@ export class Deliveries extends Context.Service<
         const rows = yield* db
           .select({
             deliveryId: schema.download.deliveryId,
-            filesSaved: sql<number>`count(${schema.download.savedAt})`,
-            lastAt: sql<number>`max(${schema.download.lastAt})`,
-            startedAt: sql<number>`min(${schema.download.startedAt})`,
+            filesSaved: count(schema.download.savedAt),
+            lastAt: max(schema.download.lastAt),
+            startedAt: min(schema.download.startedAt),
           })
           .from(schema.download)
           .where(inArray(schema.download.deliveryId, ids))
           .groupBy(schema.download.deliveryId);
         return new Map(
-          rows.map((row) => [
-            row.deliveryId,
-            {
-              filesSaved: row.filesSaved,
-              lastAt: new Date(row.lastAt),
-              startedAt: new Date(row.startedAt),
-            } satisfies DeliveryDownload,
-          ]),
+          // max and min are null only for an empty group, which groupBy never makes.
+          rows.flatMap((row) =>
+            row.lastAt === null || row.startedAt === null
+              ? []
+              : [
+                  [
+                    row.deliveryId,
+                    {
+                      filesSaved: row.filesSaved,
+                      lastAt: row.lastAt,
+                      startedAt: row.startedAt,
+                    } satisfies DeliveryDownload,
+                  ],
+                ],
+          ),
         );
       });
 
@@ -375,7 +391,17 @@ export class Deliveries extends Context.Service<
           ...(plan === "free"
             ? (["deliveriesPerHour", "deliveriesPerDay"] as const).map((limit) =>
                 lt(
-                  createdSince(senderId, now - rateLimits[limit].windowSeconds * 1000),
+                  // The sender's deliveries created inside the window.
+                  db.$count(
+                    schema.delivery,
+                    and(
+                      eq(schema.delivery.senderId, senderId),
+                      gt(
+                        schema.delivery.createdAt,
+                        new Date(now - rateLimits[limit].windowSeconds * 1000),
+                      ),
+                    ),
+                  ),
                   rateLimits[limit].limit,
                 ),
               )
@@ -413,15 +439,22 @@ export class Deliveries extends Context.Service<
       // the statement that inserts the delivery, so racing uploads and a close
       // can't slip past it.
       const requestAccepts = (requestId: RequestId, requestedBytes: number, now: number) =>
-        sql`exists (select 1 from ${schema.fileRequest} where ${and(
-          eq(schema.fileRequest.id, requestId),
-          isNull(schema.fileRequest.closedAt),
-          gt(schema.fileRequest.expiresAt, new Date(now)),
-          or(
-            isNull(schema.fileRequest.maxBytes),
-            sql`(${requestBytes(requestId)}) + ${requestedBytes} <= ${schema.fileRequest.maxBytes}`,
-          ),
-        )})`;
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(schema.fileRequest)
+            .where(
+              and(
+                eq(schema.fileRequest.id, requestId),
+                isNull(schema.fileRequest.closedAt),
+                gt(schema.fileRequest.expiresAt, new Date(now)),
+                or(
+                  isNull(schema.fileRequest.maxBytes),
+                  sql`(${requestBytes(requestId)}) + ${requestedBytes} <= ${schema.fileRequest.maxBytes}`,
+                ),
+              ),
+            ),
+        );
 
       // Everything create and receive share once the owner, title and
       // retention are settled: admit, insert atomically, and name a refusal.
@@ -668,7 +701,17 @@ export class Deliveries extends Context.Service<
                 .where(
                   and(
                     inArray(schema.transfer.deliveryId, ids),
-                    sql`EXISTS (SELECT 1 FROM delivery WHERE delivery.id = transfer.delivery_id AND delivery.status = 'cancelled')`,
+                    exists(
+                      db
+                        .select({ one: sql`1` })
+                        .from(schema.delivery)
+                        .where(
+                          and(
+                            eq(schema.delivery.id, schema.transfer.deliveryId),
+                            eq(schema.delivery.status, "cancelled"),
+                          ),
+                        ),
+                    ),
                   ),
                 ),
             ]);
@@ -784,7 +827,17 @@ export class Deliveries extends Context.Service<
             .where(
               and(
                 eq(schema.link.deliveryId, deliveryId),
-                sql`EXISTS (SELECT 1 FROM delivery WHERE delivery.id = link.delivery_id AND delivery.sender_id = ${senderId})`,
+                exists(
+                  db
+                    .select({ one: sql`1` })
+                    .from(schema.delivery)
+                    .where(
+                      and(
+                        eq(schema.delivery.id, schema.link.deliveryId),
+                        eq(schema.delivery.senderId, senderId),
+                      ),
+                    ),
+                ),
               ),
             )
             .returning({ id: schema.link.id });

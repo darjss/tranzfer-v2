@@ -64,14 +64,18 @@ const expiryFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
+// Cuts by code point, so an emoji is never split.
+const clip = (text: string, max: number) => Array.from(text).slice(0, max).join("");
+
 // The sender's name, title and note are theirs. The text keeps them as typed,
-// the HTML escapes them, and the download link is the only link.
+// the HTML escapes them, and the download link is the only link. The name is
+// cut to 60 characters in the subject and body, the title to 100 in the subject.
 const deliveryMessage = (
   sender: { readonly email: string; readonly name: string },
   delivery: Delivery,
   url: string,
 ) => {
-  const name = sender.name.replaceAll(/\s+/gu, " ").trim() || sender.email;
+  const name = clip(sender.name.replaceAll(/\s+/gu, " ").trim(), 60) || sender.email;
   const title = delivery.title.replaceAll(/\s+/gu, " ");
   const fileCount = delivery.transfers.length;
   const total = delivery.transfers.reduce((sum, transfer) => sum + transfer.size, 0);
@@ -86,7 +90,7 @@ const deliveryMessage = (
   const html = (paragraph: string) => escapeHtml(paragraph).replaceAll("\n", "<br>");
   return {
     html: page([...before.map(html), `Download: ${link(escapeHtml(url))}`, ...after.map(html)]),
-    subject: `${name} sent you ${title}`,
+    subject: `${name} sent you ${clip(title, 100)}`,
     text: [...before, `Download: ${url}`, ...after].join("\n\n"),
   };
 };
@@ -171,9 +175,10 @@ export class Emails extends Context.Service<
   Emails,
   {
     /**
-     * Puts the address on a plan's list and sends the confirmation. Asking
-     * again changes nothing and sends nothing. A failed send is logged, not
-     * returned: the sign-up stands.
+     * Puts the address on a plan's list. A signed-in join (`userId` set) also
+     * gets the confirmation; a typed address gets none. Asking again changes
+     * nothing and sends nothing. A failed send is logged, not returned: the
+     * sign-up stands.
      */
     readonly joinInterest: (
       input: { readonly email: string; readonly plan: PaidPlanId; readonly userId: string | null },
@@ -231,8 +236,23 @@ export class Emails extends Context.Service<
         // inserts, so racing sends can't pass a cap.
         const reserve = (senderId: string, deliveryId: DeliveryId, needed: number, now: number) => {
           const since = new Date(now - rateLimits.emailsPerDay.windowSeconds * 1000);
-          const mine = sql`(select count(*) from ${schema.deliveryEmail} inner join ${schema.delivery} on ${schema.delivery.id} = ${schema.deliveryEmail.deliveryId} where ${and(eq(schema.delivery.senderId, senderId), gt(schema.deliveryEmail.createdAt, since))})`;
-          const everyone = sql`(select count(*) from ${schema.deliveryEmail} where ${gt(schema.deliveryEmail.createdAt, since)})`;
+          const mine = db.$count(
+            schema.deliveryEmail,
+            and(
+              gt(schema.deliveryEmail.createdAt, since),
+              inArray(
+                schema.deliveryEmail.deliveryId,
+                db
+                  .select({ id: schema.delivery.id })
+                  .from(schema.delivery)
+                  .where(eq(schema.delivery.senderId, senderId)),
+              ),
+            ),
+          );
+          const everyone = db.$count(
+            schema.deliveryEmail,
+            gt(schema.deliveryEmail.createdAt, since),
+          );
           return db
             .insert(schema.deliveryEmail)
             .select((qb) =>
@@ -372,7 +392,9 @@ export class Emails extends Context.Service<
               "interest.new": added.length > 0,
               "interest.plan": input.plan,
             });
-            if (added.length > 0) {
+            // Anyone can type any address, so only a signed-in join, which uses
+            // the account's own address, gets the confirmation.
+            if (added.length > 0 && input.userId !== null) {
               yield* mail.send({ to: email, ...onTheList(input.plan, options.appUrl) }).pipe(
                 Effect.annotateSpans("mail.kind", "interest"),
                 Effect.catchTag("MailError", () => Effect.void),
