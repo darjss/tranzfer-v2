@@ -7,8 +7,6 @@ import {
   plans,
   RateLimited,
   rateLimits,
-  RequestFull,
-  RequestNotFound,
   RetentionNotInPlan,
 } from "@tranzfer/contracts";
 import type {
@@ -16,7 +14,6 @@ import type {
   DeliveryId,
   DeliveryRefused,
   NewDelivery,
-  NewRequestUpload,
   PlanId,
   RequestId,
   RetentionDays,
@@ -36,10 +33,10 @@ import {
   lte,
   max,
   min,
-  ne,
   or,
   sql,
 } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -84,16 +81,19 @@ interface Origin {
 const direct: Origin = { requestId: null, uploaderEmail: null, uploaderName: null };
 
 /**
- * An upload through a file request. `explain` runs when the delivery's
- * statement inserted nothing and the owner's own limits do not explain it. It
- * fails with why the request refused, or succeeds when nothing it can name did.
+ * An upload through a file request. `condition` joins the statement that
+ * inserts the delivery, so the request's own rules hold when uploads race.
+ * `explain` runs when that statement inserted nothing and the owner's own
+ * limits do not explain it. It fails with why the request refused, or succeeds
+ * when nothing it can name did.
  */
-interface Intake<E> {
+export interface Intake<E> {
   readonly origin: {
     readonly requestId: RequestId;
     readonly uploaderEmail: string | null;
     readonly uploaderName: string;
   };
+  readonly condition: (requestedBytes: number, now: number) => SQL;
   readonly explain: (requestedBytes: number) => Effect.Effect<void, E>;
 }
 
@@ -157,18 +157,18 @@ export class Deliveries extends Context.Service<
       details: { readonly note: string; readonly title: string },
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
     /**
-     * Creates the delivery for an upload through a file request. It belongs to
-     * the request's owner and counts against their plan, and the request's own
-     * limits are part of the statement that inserts it. The caller has checked
-     * the request is live; `RequestNotFound` here is a close or expiry that
-     * landed in between.
+     * Creates the delivery under a plan the caller settled: replays a retried
+     * create, then inserts it in one statement that checks the sender's
+     * limits and the intake's condition, and names the refusal when it loses.
      */
-    readonly receive: (
-      request: typeof schema.fileRequest.$inferSelect,
-      input: NewRequestUpload,
+    readonly place: <E = never>(
+      senderId: UserId,
+      plan: PlanId,
+      input: NewDelivery,
+      intake?: Intake<E>,
     ) => Effect.Effect<
       Delivery,
-      DeliveryConflict | DeliveryRefused | RateLimited | RequestFull | RequestNotFound
+      DeliveryConflict | DeliveryRefused | OverPlanLimit | RateLimited | E
     >;
     /** The deliveries among these ids that came in through the request. */
     readonly ofRequest: (
@@ -411,40 +411,9 @@ export class Deliveries extends Context.Service<
           : yield* new DeliveryConflict();
       });
 
-      // Bytes in a request's uploads that were not cancelled, as SQL.
-      const requestBytes = (requestId: RequestId) =>
-        db
-          .select({ total: sql<number>`coalesce(sum(${schema.transfer.size}), 0)` })
-          .from(schema.transfer)
-          .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
-          .where(
-            and(eq(schema.delivery.requestId, requestId), ne(schema.delivery.status, "cancelled")),
-          );
-
-      // The request is open, unexpired and has room for these bytes. Part of
-      // the statement that inserts the delivery, so racing uploads and a close
-      // can't slip past it.
-      const requestAccepts = (requestId: RequestId, requestedBytes: number, now: number) =>
-        exists(
-          db
-            .select({ one: sql`1` })
-            .from(schema.fileRequest)
-            .where(
-              and(
-                eq(schema.fileRequest.id, requestId),
-                isNull(schema.fileRequest.closedAt),
-                gt(schema.fileRequest.expiresAt, new Date(now)),
-                or(
-                  isNull(schema.fileRequest.maxBytes),
-                  sql`(${requestBytes(requestId)}) + ${requestedBytes} <= ${schema.fileRequest.maxBytes}`,
-                ),
-              ),
-            ),
-        );
-
-      // Everything create and receive share once the owner, title and
+      // Everything create and place share once the owner, title and
       // retention are settled: admit, insert atomically, and name a refusal.
-      const place = <E = never>(
+      const insert = <E = never>(
         senderId: UserId,
         plan: PlanId,
         input: NewDelivery,
@@ -479,9 +448,7 @@ export class Deliveries extends Context.Service<
                     and(
                       eq(schema.user.id, senderId),
                       withinLimits(senderId, plan, requestedBytes, now),
-                      origin.requestId === null
-                        ? undefined
-                        : requestAccepts(origin.requestId, requestedBytes, now),
+                      intake?.condition(requestedBytes, now),
                     ),
                   ),
               ),
@@ -538,7 +505,7 @@ export class Deliveries extends Context.Service<
               ),
             ),
           );
-        }).pipe(Effect.withSpan("Deliveries.place"));
+        }).pipe(Effect.withSpan("Deliveries.insert"));
 
       return Deliveries.of({
         activeBytes,
@@ -620,7 +587,7 @@ export class Deliveries extends Context.Service<
               requestedDays: input.retentionDays,
             });
           }
-          return yield* place(senderId, plan, input);
+          return yield* insert(senderId, plan, input);
         }, dieOnDatabaseError),
         list: Effect.fn("Deliveries.list")(function* list(senderId: UserId) {
           const rows = yield* db.query.delivery.findMany({
@@ -659,6 +626,21 @@ export class Deliveries extends Context.Service<
           }
           return yield* viewRow(row);
         }, dieOnDatabaseError),
+
+        place: <E = never>(
+          senderId: UserId,
+          plan: PlanId,
+          input: NewDelivery,
+          intake?: Intake<E>,
+        ) =>
+          Effect.gen(function* place() {
+            const replayed = yield* replay(senderId, input, intake?.origin ?? direct);
+            if (Option.isSome(replayed)) {
+              return replayed.value;
+            }
+            yield* checkFiles(input.files);
+            return yield* insert(senderId, plan, input, intake);
+          }).pipe(Effect.withSpan("Deliveries.place"), dieOnDatabaseError),
 
         purgeEnded: Effect.gen(function* purgeEnded() {
           const now = yield* Clock.currentTimeMillis;
@@ -745,59 +727,6 @@ export class Deliveries extends Context.Service<
           yield* Effect.annotateCurrentSpan({ "sweep.ended": ended.length, "sweep.purged": total });
           return total;
         }).pipe(Effect.withSpan("Deliveries.purgeEnded"), dieOnDatabaseError),
-
-        receive: Effect.fn("Deliveries.receive")(function* receive(
-          request: typeof schema.fileRequest.$inferSelect,
-          input: NewRequestUpload,
-        ) {
-          yield* Effect.annotateCurrentSpan({
-            "delivery.file_count": input.files.length,
-            "delivery.id": input.id,
-            "delivery.total_bytes": input.files.reduce((total, file) => total + file.size, 0),
-            "request.id": request.id,
-          });
-          const { ownerId } = request;
-          const { plan } = yield* userPlans.current(ownerId);
-          // The owner's plan may have dropped since the request was made.
-          const retentionDays =
-            request.retentionDays <= plans[plan].maxRetentionDays
-              ? request.retentionDays
-              : plans[plan].maxRetentionDays;
-          const delivery = {
-            files: input.files,
-            id: input.id,
-            retentionDays,
-            title: `${request.title} from ${input.name}`,
-          };
-          const origin = {
-            requestId: request.id,
-            uploaderEmail: input.email,
-            uploaderName: input.name,
-          };
-          const replayed = yield* replay(ownerId, delivery, origin);
-          if (Option.isSome(replayed)) {
-            return replayed.value;
-          }
-          yield* checkFiles(input.files);
-          return yield* place(ownerId, plan, delivery, {
-            explain: Effect.fn("Deliveries.explain")(function* explain(requestedBytes: number) {
-              const row = yield* db.query.fileRequest.findFirst({ where: { id: request.id } });
-              const now = yield* Clock.currentTimeMillis;
-              if (row === undefined || row.closedAt !== null || row.expiresAt.getTime() <= now) {
-                return yield* new RequestNotFound();
-              }
-              const [used] = yield* requestBytes(row.id);
-              if (row.maxBytes !== null && (used?.total ?? 0) + requestedBytes > row.maxBytes) {
-                return yield* new RequestFull();
-              }
-              return yield* Effect.void;
-            }),
-            origin,
-          }).pipe(
-            // The uploader is told there is no room, not how big the owner's plan is.
-            Effect.catchTag("OverPlanLimit", () => Effect.fail(new RequestFull())),
-          );
-        }, dieOnDatabaseError),
 
         setPassword: Effect.fn("Deliveries.setPassword")(function* setPassword(
           senderId: UserId,

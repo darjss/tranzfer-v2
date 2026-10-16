@@ -6,6 +6,7 @@ import { Billing } from "./billing";
 import { Deliveries } from "./deliveries";
 import { Emails } from "./emails";
 import { pruneSignups } from "./infrastructure/auth";
+import { Interest } from "./interest";
 import { Transfers } from "./transfers";
 
 // One step's failure must not cancel the others; the next minute retries it.
@@ -31,6 +32,7 @@ export const sweep = Effect.gen(function* sweep() {
   const transfers = yield* Transfers;
   const billing = yield* Billing;
   const emails = yield* Emails;
+  const interest = yield* Interest;
   const attempts = yield* Attempts;
   const [recovered, purged, reconciled, announced, lost, pruned, prunedAttempts] =
     yield* Effect.all(
@@ -38,7 +40,7 @@ export const sweep = Effect.gen(function* sweep() {
         isolated("recoverFinalizing", transfers.recoverFinalizing),
         isolated("purgeEnded", deliveries.purgeEnded),
         isolated("reconcileStale", billing.reconcileStale),
-        isolated("sendOpenings", emails.sendOpenings),
+        isolated("sendOpenings", interest.sendOpenings),
         isolated("failLost", emails.failLost),
         isolated("pruneSignups", pruneSignups),
         isolated("pruneAttempts", attempts.prune),

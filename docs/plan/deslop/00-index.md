@@ -4,7 +4,7 @@ Written against `origin/dev` at commit `0a61bc5` (2026-10-12). Each plan is self
 
 Plan numbers are identifiers, not an order. Run them by wave. Plans in the same wave touch different files unless the "Conflicts" column says otherwise. Line numbers drift: re-find each `file:line` before editing.
 
-Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 04 (#185), 14 (#184), 05 (#186), 06 (#189).
+Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 04 (#185), 14 (#184), 05 (#186), 15 (#188), 07 (#187), 06 (#189).
 
 ## Every plan ships its constraint
 
@@ -24,8 +24,6 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 | ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | --------------------- | ------------------------- |
 | B    | 10   | Smart Placement on the API Worker, measured on staging                               | P2       | S    | none                  | IN PROGRESS (#174)        |
 | B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none                  | IN PROGRESS (step 1 #179) |
-| C    | 15   | File-request rules move from `deliveries.ts` to `file-requests.ts`                   | P3       | M    | none                  | TODO                      |
-| C    | 07   | Split the waitlist from delivery emails; move pure helpers                           | P3       | M    | 04                    | TODO                      |
 | D    | 16   | Custom lint rule specs; each rule lands with the plan that clears its hits           | P2       | M    | 05, 07                | TODO                      |
 | D    | 12   | D1 read replication with Sessions API                                                | P3       | L    | 10, 11 measured first | TODO                      |
 

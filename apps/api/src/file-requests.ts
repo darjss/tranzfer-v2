@@ -2,6 +2,7 @@ import {
   FileRequest,
   OpenedRequest,
   plans,
+  RequestFull,
   RequestId,
   RequestNotFound,
   RetentionNotInPlan,
@@ -18,7 +19,6 @@ import type {
   NewRequestUpload,
   NotUploaded,
   RateLimited,
-  RequestFull,
   RequestUpload,
   SignedUrl,
   StorageUnavailable,
@@ -28,7 +28,19 @@ import type {
   UserId,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, countDistinct, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import {
+  and,
+  countDistinct,
+  desc,
+  eq,
+  exists,
+  gt,
+  inArray,
+  isNull,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -175,6 +187,53 @@ export class FileRequests extends Context.Service<
         );
       });
 
+      // Bytes in a request's uploads that were not cancelled, as SQL.
+      const requestBytes = (requestId: RequestId) =>
+        db
+          .select({ total: sql<number>`coalesce(sum(${schema.transfer.size}), 0)` })
+          .from(schema.transfer)
+          .innerJoin(schema.delivery, eq(schema.transfer.deliveryId, schema.delivery.id))
+          .where(
+            and(eq(schema.delivery.requestId, requestId), ne(schema.delivery.status, "cancelled")),
+          );
+
+      // The request is open, unexpired and has room for these bytes. Part of
+      // the statement that inserts the delivery, so racing uploads and a close
+      // can't slip past it.
+      const requestAccepts = (requestId: RequestId, requestedBytes: number, now: number) =>
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(schema.fileRequest)
+            .where(
+              and(
+                eq(schema.fileRequest.id, requestId),
+                isNull(schema.fileRequest.closedAt),
+                gt(schema.fileRequest.expiresAt, new Date(now)),
+                or(
+                  isNull(schema.fileRequest.maxBytes),
+                  sql`(${requestBytes(requestId)}) + ${requestedBytes} <= ${schema.fileRequest.maxBytes}`,
+                ),
+              ),
+            ),
+        );
+
+      // Names why the request refused an upload its statement did not insert.
+      const explain = Effect.fn("FileRequests.explain")(function* explain(
+        requestId: RequestId,
+        requestedBytes: number,
+      ) {
+        const row = yield* db.query.fileRequest.findFirst({ where: { id: requestId } });
+        const now = yield* Clock.currentTimeMillis;
+        if (row === undefined || row.closedAt !== null || row.expiresAt.getTime() <= now) {
+          return yield* new RequestNotFound();
+        }
+        const [used] = yield* requestBytes(row.id);
+        if (row.maxBytes !== null && (used?.total ?? 0) + requestedBytes > row.maxBytes) {
+          return yield* new RequestFull();
+        }
+      }, dieOnDatabaseError);
+
       const viewOne = Effect.fn("FileRequests.viewOne")(function* viewOne(row: Row) {
         const [view] = yield* views([row]);
         return view ?? (yield* Effect.die(new Error(`Request ${row.id} has no view`)));
@@ -303,9 +362,44 @@ export class FileRequests extends Context.Service<
           ip: string,
         ) {
           const request = yield* live(input.token, ip);
-          yield* Effect.annotateCurrentSpan("request.id", request.id);
+          yield* Effect.annotateCurrentSpan({
+            "delivery.file_count": input.files.length,
+            "delivery.id": input.id,
+            "delivery.total_bytes": input.files.reduce((total, file) => total + file.size, 0),
+            "request.id": request.id,
+          });
           yield* limiter.check("portalUploadsPerIp", ip);
-          return toUpload(yield* deliveries.receive(request, input));
+          // The upload belongs to the request's owner and counts against their
+          // plan, which may have dropped since the request was made.
+          const { plan } = yield* userPlans.current(request.ownerId);
+          const delivery = yield* deliveries
+            .place(
+              request.ownerId,
+              plan,
+              {
+                files: input.files,
+                id: input.id,
+                retentionDays:
+                  request.retentionDays <= plans[plan].maxRetentionDays
+                    ? request.retentionDays
+                    : plans[plan].maxRetentionDays,
+                title: `${request.title} from ${input.name}`,
+              },
+              {
+                condition: (requestedBytes, now) => requestAccepts(request.id, requestedBytes, now),
+                explain: (requestedBytes) => explain(request.id, requestedBytes),
+                origin: {
+                  requestId: request.id,
+                  uploaderEmail: input.email,
+                  uploaderName: input.name,
+                },
+              },
+            )
+            .pipe(
+              // The uploader is told there is no room, not how big the owner's plan is.
+              Effect.catchTag("OverPlanLimit", () => Effect.fail(new RequestFull())),
+            );
+          return toUpload(delivery);
         }),
 
         sign: Effect.fn("FileRequests.sign")(function* sign(
