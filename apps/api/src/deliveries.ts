@@ -51,6 +51,7 @@ import * as Result from "effect/Result";
 
 import { LinkTokens, newLinkId } from "./link-tokens";
 import { hashPassword } from "./passwords";
+import { secondsUntilRoom } from "./attempts";
 import { Plans } from "./plans";
 import { Storage, UPLOAD_URL_TTL } from "./storage";
 
@@ -67,22 +68,6 @@ const CANCEL_SETTLE = Duration.sum(UPLOAD_URL_TTL, Duration.minutes(1));
  * refuses past it, and the sweeper ends what is still open.
  */
 export const UPLOAD_WINDOW = Duration.days(7);
-
-/**
- * Seconds until a rolling window has room again, given the creation times in
- * it newest first, or undefined while it has room. The window is full when
- * its limit-th newest entry is still inside it.
- */
-export const secondsUntilRoom = (
-  newestFirst: readonly Date[],
-  rule: { readonly limit: number; readonly windowSeconds: number },
-  now: number,
-) => {
-  const oldestCounted = newestFirst[rule.limit - 1];
-  const reopensAt =
-    oldestCounted === undefined ? now : oldestCounted.getTime() + rule.windowSeconds * 1000;
-  return reopensAt > now ? Math.ceil((reopensAt - now) / 1000) : undefined;
-};
 
 export const objectPrefix = (deliveryId: DeliveryId) => `d/${deliveryId}/`;
 

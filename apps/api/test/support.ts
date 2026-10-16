@@ -7,6 +7,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 
+import { Attempts } from "../src/attempts";
 import { Deliveries } from "../src/deliveries";
 import { FileRequests } from "../src/file-requests";
 import { LinkTokens } from "../src/link-tokens";
@@ -63,12 +64,7 @@ const counting = (limit: number) => {
 /** The domain over a fresh migrated local D1 and the given storage. */
 export const domainLayer = (storage: Layer.Layer<Storage>) =>
   Layer.mergeAll(
-    Layer.suspend(() =>
-      SharedLinks.layer({
-        allowIp: counting(rateLimits.passwordAttemptsPerIp.limit),
-        allowLink: counting(rateLimits.passwordAttemptsPerLink.limit),
-      }),
-    ),
+    SharedLinks.layer,
     FileRequests.layer({
       callsPerIp: counting(rateLimits.portalCallsPerIp.limit),
       callsPerRequest: counting(rateLimits.portalCallsPerRequest.limit),
@@ -81,7 +77,8 @@ export const domainLayer = (storage: Layer.Layer<Storage>) =>
       ),
     ),
     Layer.provideMerge(Deliveries.layer),
-    Layer.provideMerge(Plans.layer(counting(rateLimits.codeRedemptions.limit))),
+    Layer.provideMerge(Plans.layer),
+    Layer.provideMerge(Attempts.layer),
     Layer.provideMerge(
       LinkTokens.layer(Effect.succeed(Redacted.make("test-link-secret-0123456789abcdef"))),
     ),

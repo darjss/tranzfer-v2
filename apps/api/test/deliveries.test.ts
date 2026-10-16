@@ -812,9 +812,8 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
       );
       const refused = yield* Effect.flip(
         Effect.flatMap(Effect.service(Plans), (plans) => plans.redeem("hal", "LATE")).pipe(
-          Effect.provide(
-            Plans.layer(() => Effect.succeed(true)).pipe(Layer.provide(revokingFirst)),
-          ),
+          // Fresh, or the suite's memoized Plans over the plain database answers.
+          Effect.provide(Layer.fresh(Plans.layer).pipe(Layer.provide(revokingFirst))),
         ),
       );
       expect(refused).toBeInstanceOf(AccessCodeRefused);
