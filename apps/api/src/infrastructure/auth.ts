@@ -222,8 +222,8 @@ export class Auth extends Context.Service<
         const instance = yield* BetterAuth({
           ...configured,
           // Encrypts Google's access and refresh tokens with the auth secret.
-          // Older rows keep plain values until a sign-in replaces them; Google
-          // rarely resends a refresh token. Nothing here reads them back.
+          // The clear_plain_oauth_tokens migration cleared the plain ones saved
+          // before this. Nothing here reads them back.
           account: { encryptOAuthTokens: true },
           advanced: { database: { validateSchema: false }, ipAddress },
           basePath: "/api/auth",

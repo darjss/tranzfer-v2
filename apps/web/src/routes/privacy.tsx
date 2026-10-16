@@ -18,9 +18,8 @@ export default function Privacy() {
       <ul>
         <li>
           <strong>Your account.</strong> Your name, email address and profile photo from Google when
-          you sign in. Google also hands back sign-in tokens. We keep them with your account and
-          never use them, and the ones that could call Google for you are stored encrypted. Nothing
-          else from your Google account.
+          you sign in. Google also returns sign-in tokens; we never use them, and we store the ones
+          that could act on your Google account encrypted. Nothing else from your Google account.
         </li>
         <li>
           <strong>Your sign-up.</strong> The IP address you created your account from, so one
