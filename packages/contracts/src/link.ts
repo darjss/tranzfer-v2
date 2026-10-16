@@ -1,5 +1,17 @@
 import * as Schema from "effect/Schema";
 
+/** A shared link's or file request's credential, `${linkId}.${hmac}`. Only the API mints one. */
+export const LinkToken = Schema.String.check(Schema.isNonEmpty()).pipe(Schema.brand("LinkToken"));
+export type LinkToken = typeof LinkToken.Type;
+
+/** Proof that the holder typed a link's password. Only the API mints one. */
+export const UnlockToken = Schema.String.pipe(Schema.brand("UnlockToken"));
+export type UnlockToken = typeof UnlockToken.Type;
+
+/** What anyone holding a link sends: its token, plus the unlock when it has a password. */
+export const LinkAccess = Schema.Struct({ token: LinkToken, unlock: Schema.optional(UnlockToken) });
+export type LinkAccess = typeof LinkAccess.Type;
+
 export const SharedFile = Schema.Struct({
   path: Schema.String,
   size: Schema.Int,
@@ -51,6 +63,6 @@ export class WrongPassword extends Schema.TaggedError<WrongPassword>()("WrongPas
 /** Proof of a right password, scoped to one link and good until `expiresAt`. */
 export const Unlocked = Schema.Struct({
   expiresAt: Schema.DateFromString,
-  unlock: Schema.String,
+  unlock: UnlockToken,
 });
 export interface Unlocked extends Schema.Schema.Type<typeof Unlocked> {}

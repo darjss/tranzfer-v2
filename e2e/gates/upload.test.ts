@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { expect } from "@effect/vitest";
 import type { DeliveryId } from "@tranzfer/contracts";
-import { partCount, partSize } from "@tranzfer/contracts";
+import { LinkToken, partCount, partSize } from "@tranzfer/contracts";
 import * as Data from "effect/Data";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -309,7 +309,7 @@ scenario(
     yield* run.record("lostCompleteR2Status", yield* awaitFired(lostStatus, "lost-Complete"));
 
     // f. The anonymous download verifies byte for byte.
-    const token = finished.link.slice("/d/".length);
+    const token = LinkToken.make(finished.link.slice("/d/".length));
     const shared = yield* anon.OpenLink({ token });
     expect(shared.files).toHaveLength(1);
     const downloadStarted = performance.now();

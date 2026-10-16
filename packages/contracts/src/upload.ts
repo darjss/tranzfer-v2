@@ -1,5 +1,7 @@
 import * as Schema from "effect/Schema";
 
+import { LinkToken } from "./link";
+
 const MIB = 1024 * 1024;
 const MAX_PARTS = 10_000;
 
@@ -47,7 +49,7 @@ export interface SignUploadPayload extends Schema.Schema.Type<typeof SignUploadP
 /** The same, from an uploader with no account: the request's token is the credential. */
 export const SignRequestUploadPayload = Schema.Struct({
   ...SignUploadPayload.fields,
-  token: Schema.String,
+  token: LinkToken,
 });
 
 /** `headers` are part of the signature; the request must send them as given. */

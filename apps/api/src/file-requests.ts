@@ -15,6 +15,7 @@ import type {
   DeliveryNotFound,
   DeliveryRefused,
   InvalidUpload,
+  LinkToken,
   NewFileRequest,
   NewRequestUpload,
   NotUploaded,
@@ -91,7 +92,7 @@ export class FileRequests extends Context.Service<
       requestId: RequestId,
     ) => Effect.Effect<FileRequest, RequestNotFound>;
     readonly open: (
-      token: string,
+      token: LinkToken,
       ip: string,
     ) => Effect.Effect<OpenedRequest, RateLimited | RequestNotFound>;
     readonly receive: (
@@ -102,7 +103,7 @@ export class FileRequests extends Context.Service<
       DeliveryConflict | DeliveryRefused | RateLimited | RequestFull | RequestNotFound
     >;
     readonly sign: (
-      token: string,
+      token: LinkToken,
       ip: string,
       key: string,
       request: UploadRequest,
@@ -111,7 +112,7 @@ export class FileRequests extends Context.Service<
       DeliveryNotFound | InvalidUpload | RateLimited | RequestNotFound | UploadClosed
     >;
     readonly finalize: (
-      token: string,
+      token: LinkToken,
       ip: string,
       transferId: TransferId,
     ) => Effect.Effect<
@@ -126,7 +127,7 @@ export class FileRequests extends Context.Service<
     >;
     /** The uploads among these ids that came in through the token's request. */
     readonly uploads: (
-      token: string,
+      token: LinkToken,
       ip: string,
       deliveryIds: readonly DeliveryId[],
     ) => Effect.Effect<readonly RequestUpload[], RateLimited | RequestNotFound>;
@@ -196,7 +197,7 @@ export class FileRequests extends Context.Service<
         // first, so floods of bad tokens are limited too, then the token must
         // verify and name a request that is open and unexpired, then the
         // request is counted.
-        const live = Effect.fn("FileRequests.live")(function* live(token: string, ip: string) {
+        const live = Effect.fn("FileRequests.live")(function* live(token: LinkToken, ip: string) {
           if (!(yield* rates.callsPerIp(ip))) {
             return yield* limited("portalCallsPerIp");
           }
@@ -283,7 +284,7 @@ export class FileRequests extends Context.Service<
           }, dieOnDatabaseError),
 
           finalize: Effect.fn("FileRequests.finalize")(function* finalize(
-            token: string,
+            token: LinkToken,
             ip: string,
             transferId: TransferId,
           ) {
@@ -303,7 +304,7 @@ export class FileRequests extends Context.Service<
             return yield* views(rows);
           }, dieOnDatabaseError),
 
-          open: Effect.fn("FileRequests.open")(function* open(token: string, ip: string) {
+          open: Effect.fn("FileRequests.open")(function* open(token: LinkToken, ip: string) {
             const request = yield* live(token, ip);
             yield* Effect.annotateCurrentSpan("request.id", request.id);
             return OpenedRequest.make({
@@ -327,7 +328,7 @@ export class FileRequests extends Context.Service<
           }),
 
           sign: Effect.fn("FileRequests.sign")(function* sign(
-            token: string,
+            token: LinkToken,
             ip: string,
             key: string,
             request: UploadRequest,
@@ -338,7 +339,7 @@ export class FileRequests extends Context.Service<
           }),
 
           uploads: Effect.fn("FileRequests.uploads")(function* uploads(
-            token: string,
+            token: LinkToken,
             ip: string,
             deliveryIds: readonly DeliveryId[],
           ) {

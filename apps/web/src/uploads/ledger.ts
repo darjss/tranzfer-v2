@@ -1,4 +1,4 @@
-import type { TransferId } from "@tranzfer/contracts";
+import type { LinkToken, TransferId } from "@tranzfer/contracts";
 
 // What this tab knows about each transfer it sends, beyond the progress in
 // store.ts. Module state like the store, so it survives navigation (law 11).
@@ -21,7 +21,7 @@ interface Entry {
   readonly objectKey: string;
   // The file request's token, for a transfer an uploader without an account
   // sends. Its calls go to the token-bound RPCs.
-  token: string | undefined;
+  token: LinkToken | undefined;
   readonly transferId: TransferId;
   // The upload id already persisted; a new multipart upload for the same
   // transfer records again.

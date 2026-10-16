@@ -29,11 +29,13 @@ import { DeliveryEmail, DeliveryNotShareable, SendDeliveryEmailPayload } from ".
 import { InterestJoined, JoinInterestPayload } from "./interest";
 import {
   DownloadEvent,
+  LinkAccess,
   LinkExpired,
   LinkLocked,
   LinkNotFound,
   LinkNotReady,
   LinkPassword,
+  LinkToken,
   passwordLength,
   SharedDelivery,
   Unlocked,
@@ -145,7 +147,7 @@ export class Api extends RpcGroup.make(
   // counts against the caller's IP and the request.
   Rpc.make("OpenFileRequest", {
     error: Schema.Union([RateLimited, RequestNotFound]),
-    payload: Schema.Struct({ token: Schema.String }),
+    payload: Schema.Struct({ token: LinkToken }),
     success: OpenedRequest,
   }),
   Rpc.make("CreateRequestUpload", {
@@ -213,7 +215,7 @@ export class Api extends RpcGroup.make(
   // show its files or sign their URLs.
   Rpc.make("OpenLink", {
     error: Schema.Union([LinkExpired, LinkLocked, LinkNotFound, LinkNotReady]),
-    payload: Schema.Struct({ token: Schema.String, unlock: Schema.optional(Schema.String) }),
+    payload: LinkAccess,
     success: SharedDelivery,
   }),
   // Public. Counted per client IP and per link, right and wrong passwords alike.
@@ -221,7 +223,7 @@ export class Api extends RpcGroup.make(
     error: Schema.Union([LinkNotFound, RateLimited, WrongPassword]),
     payload: Schema.Struct({
       password: Schema.String.check(Schema.isMaxLength(passwordLength.max)),
-      token: Schema.String,
+      token: LinkToken,
     }),
     success: Unlocked,
   }),
@@ -229,10 +231,9 @@ export class Api extends RpcGroup.make(
   // unlock, records nothing and says nothing.
   Rpc.make("ReportDownload", {
     payload: Schema.Struct({
+      ...LinkAccess.fields,
       event: DownloadEvent,
       path: Schema.String,
-      token: Schema.String,
-      unlock: Schema.optional(Schema.String),
     }),
   }),
 ) {}

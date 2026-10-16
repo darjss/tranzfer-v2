@@ -9,6 +9,7 @@ import {
   DeliveryRefused,
   DeliveryTitle,
   LinkPassword,
+  LinkToken,
   OverPlanLimit,
   RateLimited,
   rateLimits,
@@ -192,7 +193,7 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
         .update(schema.delivery)
         .set({ expiresAt: new Date(Date.now() + 30 * 86_400_000), status: "ready" })
         .where(eq(schema.delivery.id, created.id));
-      const shared = yield* links.open(created.link.slice("/d/".length));
+      const shared = yield* links.open(LinkToken.make(created.link.slice("/d/".length)));
       expect({ note: shared.note, title: shared.title }).toEqual({ note, title: "Episode 14" });
 
       // An empty note takes it back off.

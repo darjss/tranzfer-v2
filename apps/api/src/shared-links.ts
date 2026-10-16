@@ -6,7 +6,14 @@ import {
   LinkNotReady,
   WrongPassword,
 } from "@tranzfer/contracts";
-import type { DownloadEvent, SharedDelivery, Unlocked, RateLimited } from "@tranzfer/contracts";
+import type {
+  DownloadEvent,
+  LinkToken,
+  RateLimited,
+  SharedDelivery,
+  UnlockToken,
+  Unlocked,
+} from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
@@ -33,8 +40,8 @@ export class SharedLinks extends Context.Service<
   {
     /** A link with a password lists and signs nothing without the `unlock` that `unlock` issued. */
     readonly open: (
-      token: string,
-      unlock?: string,
+      token: LinkToken,
+      unlock?: UnlockToken,
     ) => Effect.Effect<SharedDelivery, LinkExpired | LinkLocked | LinkNotFound | LinkNotReady>;
     /**
      * Trades a password for an unlock good for a day. Every call counts toward
@@ -42,16 +49,16 @@ export class SharedLinks extends Context.Service<
      * password unlocks with anything.
      */
     readonly unlock: (
-      token: string,
+      token: LinkToken,
       password: string,
       ip: string,
     ) => Effect.Effect<Unlocked, LinkNotFound | RateLimited | WrongPassword>;
     /** Best effort: a bad, revoked, ended or still locked link, or an unknown path, records nothing. */
     readonly report: (
-      token: string,
+      token: LinkToken,
       path: string,
       event: DownloadEvent,
-      unlock?: string,
+      unlock?: UnlockToken,
     ) => Effect.Effect<void>;
   }
 >()("tranzfer/SharedLinks") {
@@ -67,7 +74,7 @@ export class SharedLinks extends Context.Service<
       // password ends every unlock issued before.
       const isOpen = Effect.fn("SharedLinks.isOpen")(function* isOpen(
         link: { readonly id: string; readonly passwordHash: string | null },
-        unlock: string | undefined,
+        unlock: UnlockToken | undefined,
       ) {
         return (
           link.passwordHash === null ||
@@ -76,7 +83,7 @@ export class SharedLinks extends Context.Service<
       });
 
       return SharedLinks.of({
-        open: Effect.fn("SharedLinks.open")(function* open(token: string, unlock?: string) {
+        open: Effect.fn("SharedLinks.open")(function* open(token: LinkToken, unlock?: UnlockToken) {
           const linkId = yield* tokens.verify(token);
           if (Option.isNone(linkId)) {
             yield* Effect.annotateCurrentSpan("link.refused", "badToken");
@@ -154,10 +161,10 @@ export class SharedLinks extends Context.Service<
         // One upsert per file. "started" sets the first time and bumps the
         // last one; "saved" also stamps the file once and keeps that stamp.
         report: Effect.fn("SharedLinks.report")(function* report(
-          token: string,
+          token: LinkToken,
           path: string,
           event: DownloadEvent,
-          unlock?: string,
+          unlock?: UnlockToken,
         ) {
           yield* Effect.annotateCurrentSpan("download.event", event);
           const linkId = yield* tokens.verify(token);
@@ -209,7 +216,7 @@ export class SharedLinks extends Context.Service<
         }, dieOnDatabaseError),
 
         unlock: Effect.fn("SharedLinks.unlock")(function* unlock(
-          token: string,
+          token: LinkToken,
           password: string,
           ip: string,
         ) {

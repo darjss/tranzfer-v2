@@ -1,4 +1,4 @@
-import type { DeliveryId, RequestUpload } from "@tranzfer/contracts";
+import type { DeliveryId, LinkToken, RequestUpload } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import type * as ManagedRuntime from "effect/ManagedRuntime";
@@ -19,7 +19,7 @@ import type { ChosenFile } from "../uploads/uploads";
  */
 export const createPortal = (
   runtime: ManagedRuntime.ManagedRuntime<AppServices, never>,
-  token: () => string,
+  token: () => LinkToken,
 ) => {
   const request = createMemo(() =>
     runEffect(ApiClient.use((api) => api.OpenFileRequest({ token: token() }))),
