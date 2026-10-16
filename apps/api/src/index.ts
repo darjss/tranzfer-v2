@@ -20,6 +20,7 @@ import { Billing, InvalidWebhook } from "./billing";
 import { Deliveries } from "./deliveries";
 import { Emails } from "./emails";
 import { FileRequests } from "./file-requests";
+import { Interest } from "./interest";
 import { LinkTokens } from "./link-tokens";
 import { Plans } from "./plans";
 import { RateLimiter, bindingLimits } from "./rate-limiter";
@@ -156,6 +157,7 @@ export default ApiWorker.make(
           execution.waitUntil(effect).pipe(Effect.provide(RuntimeContext.phantom)),
       }),
       FileRequests.layer.pipe(Layer.provideMerge(Transfers.layer)),
+      Interest.layer({ appUrl: origin }),
     ).pipe(
       Layer.provideMerge(Deliveries.layer),
       Layer.provideMerge(Plans.layer),

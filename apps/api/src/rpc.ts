@@ -16,6 +16,7 @@ import { Auth, clientIp } from "./infrastructure/auth";
 import { Deliveries } from "./deliveries";
 import { Emails } from "./emails";
 import { FileRequests } from "./file-requests";
+import { Interest } from "./interest";
 import { Plans } from "./plans";
 import { SharedLinks } from "./shared-links";
 import { Transfers } from "./transfers";
@@ -56,6 +57,7 @@ export const ApiHandlers = Api.toLayer(
     const billing = yield* Billing;
     const userPlans = yield* Plans;
     const emails = yield* Emails;
+    const interest = yield* Interest;
     const requests = yield* FileRequests;
     const auth = yield* Auth;
     const sender = Effect.map(CurrentPrincipal, ({ id }) => id);
@@ -98,7 +100,7 @@ export const ApiHandlers = Api.toLayer(
                   ),
                 )
               : { email, userId: null };
-          return yield* emails.joinInterest({ ...who, plan }, clientIp(new Headers(headers)));
+          return yield* interest.join({ ...who, plan }, clientIp(new Headers(headers)));
         }),
       Me: () => Effect.service(CurrentPrincipal),
       OpenBillingPortal: () => Effect.flatMap(sender, billing.portal),
