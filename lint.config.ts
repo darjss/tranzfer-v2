@@ -263,7 +263,7 @@ export const rootLint = lintConfig(
 );
 
 export const webLint = lintConfig({
-  api: [],
+  api: ["src/**"],
   components: ["**/*.tsx"],
   web: ["**/*.{js,jsx,ts,tsx}"],
 });
