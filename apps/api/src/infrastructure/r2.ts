@@ -3,12 +3,10 @@ import { Credentials, Endpoint, Presign, Region } from "@distilled.cloud/aws";
 import * as S3 from "@distilled.cloud/aws/s3";
 import { RuntimeContext } from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
-import * as Output from "alchemy/Output";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
@@ -59,23 +57,16 @@ const uploadRequest = Match.type<UploadRequest>().pipe(
   }),
 );
 
-interface R2Options {
-  readonly accountId: Effect.Effect<string>;
-  readonly bucket: Effect.Effect<string>;
-  readonly tokenId: Effect.Effect<string>;
-  readonly tokenValue: Effect.Effect<Redacted.Redacted>;
-}
+type BucketCredentials = Effect.Effect<Cloudflare.R2.S3CredentialsValue>;
 
-const objectUrl = (options: R2Options, key: string) =>
+const objectUrl = (credentials: BucketCredentials, key: string) =>
   Effect.map(
-    Effect.all([options.accountId, options.bucket]),
-    ([accountId, bucket]) =>
-      new URL(
-        `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key.split("/").map(encodeURIComponent).join("/")}`,
-      ),
+    credentials,
+    ({ bucketName, endpoint }) =>
+      new URL(`${endpoint}/${bucketName}/${key.split("/").map(encodeURIComponent).join("/")}`),
   );
 
-const make = (options: R2Options) =>
+const make = (credentials: BucketCredentials) =>
   Effect.gen(function* makeR2Storage() {
     const headObject = yield* S3.headObject;
     const listMultipartUploads = yield* S3.listMultipartUploads;
@@ -142,7 +133,7 @@ const make = (options: R2Options) =>
 
     return Storage.of({
       head: Effect.fn("Storage.head")(function* head(key: string) {
-        const bucket = yield* options.bucket;
+        const { bucketName: bucket } = yield* credentials;
         return yield* headObject({ Bucket: bucket, Key: key }).pipe(
           Effect.map((output) =>
             Option.map(Option.fromNullishOr(output.ContentLength), (size) => ({
@@ -156,7 +147,7 @@ const make = (options: R2Options) =>
       }),
 
       purge: Effect.fn("Storage.purge")(function* purge(prefix: string, keys: readonly string[]) {
-        const bucket = yield* options.bucket;
+        const { bucketName: bucket } = yield* credentials;
         yield* abortAll(bucket, prefix, () => true);
         yield* Effect.forEach(
           Arr.chunksOf(keys, DELETE_BATCH),
@@ -176,7 +167,7 @@ const make = (options: R2Options) =>
       }),
 
       seal: Effect.fn("Storage.seal")(function* seal(key: string) {
-        const bucket = yield* options.bucket;
+        const { bucketName: bucket } = yield* credentials;
         yield* abortAll(bucket, key, (found) => found === key);
       }),
 
@@ -185,7 +176,7 @@ const make = (options: R2Options) =>
         filename: string,
         ttl: Duration.Duration,
       ) {
-        const url = yield* objectUrl(options, key);
+        const url = yield* objectUrl(credentials, key);
         const fallback = filename.replaceAll(/[^ -~]/gu, "_").replaceAll(/["\\]/gu, "_");
         url.searchParams.set(
           "response-content-disposition",
@@ -198,7 +189,7 @@ const make = (options: R2Options) =>
         key: string,
         request: UploadRequest,
       ) {
-        const url = yield* objectUrl(options, key);
+        const url = yield* objectUrl(credentials, key);
         const { headers, method, query } = uploadRequest(request);
         for (const [name, value] of Object.entries(query)) {
           url.searchParams.set(name, value);
@@ -208,38 +199,25 @@ const make = (options: R2Options) =>
     });
   });
 
-/** Storage over R2's S3 API. Credential inputs are read lazily, once per isolate. */
-export const r2Storage = (options: R2Options) =>
+/** Storage over R2's S3 API. The credentials are read lazily, once per isolate. */
+export const r2Storage = (binding: BucketCredentials) =>
   Layer.unwrap(
     Effect.gen(function* r2StorageLayer() {
-      // R2's S3 credentials are the token id and the SHA-256 hex of its value.
-      const credentials = yield* Effect.cached(
-        Effect.gen(function* resolveCredentials() {
-          const [tokenId, tokenValue] = yield* Effect.all([options.tokenId, options.tokenValue]);
-          const digest = yield* Effect.promise(
-            async () =>
-              await crypto.subtle.digest(
-                "SHA-256",
-                new TextEncoder().encode(Redacted.value(tokenValue)),
-              ),
-          );
-          return {
-            accessKeyId: Redacted.make(tokenId),
-            region,
-            secretAccessKey: Redacted.make(Hex.encode(new Uint8Array(digest))),
-            sessionToken: undefined,
-          };
-        }),
-      );
-      return Layer.effect(Storage, make(options)).pipe(
+      const credentials = yield* Effect.cached(binding);
+      return Layer.effect(Storage, make(credentials)).pipe(
         Layer.provide([
-          Layer.succeed(Credentials.Credentials, credentials),
+          Layer.succeed(
+            Credentials.Credentials,
+            Effect.map(credentials, ({ accessKeyId, secretAccessKey }) => ({
+              accessKeyId: Redacted.make(accessKeyId),
+              region,
+              secretAccessKey: Redacted.make(secretAccessKey),
+              sessionToken: undefined,
+            })),
+          ),
           Layer.succeed(
             Endpoint.Endpoint,
-            Effect.map(
-              options.accountId,
-              (accountId) => `https://${accountId}.r2.cloudflarestorage.com`,
-            ),
+            Effect.map(credentials, ({ endpoint }) => endpoint),
           ),
           Region.of(region),
           FetchHttpClient.layer,
@@ -252,29 +230,8 @@ export const r2Storage = (options: R2Options) =>
 export const lazy = <A>(value: Effect.Effect<A, never, RuntimeContext>) =>
   value.pipe(Effect.provide(RuntimeContext.phantom));
 
-/** The Files bucket plus an account token scoped to it, as a Storage layer. */
+/** The Files bucket and S3 credentials scoped to it, as a Storage layer. */
 export const filesStorage = Effect.gen(function* filesStorage() {
-  const files = yield* Files;
-  const token = yield* Cloudflare.ApiToken.AccountApiToken("FilesToken", {
-    policies: [
-      {
-        effect: "allow",
-        permissionGroups: [
-          "Workers R2 Storage Bucket Item Read",
-          "Workers R2 Storage Bucket Item Write",
-        ],
-        resources: Output.all(files.accountId, files.jurisdiction, files.bucketName).pipe(
-          Output.map(([accountId, jurisdiction, bucketName]) => ({
-            [`com.cloudflare.edge.r2.bucket.${accountId}_${jurisdiction}_${bucketName}`]: "*",
-          })),
-        ),
-      },
-    ],
-  });
-  return r2Storage({
-    accountId: lazy(yield* files.accountId),
-    bucket: lazy(yield* files.bucketName),
-    tokenId: lazy(yield* token.tokenId),
-    tokenValue: lazy(yield* token.value),
-  });
+  const credentials = yield* Cloudflare.R2.S3Credentials(Files, { access: "read-write" });
+  return r2Storage(lazy(credentials));
 });
