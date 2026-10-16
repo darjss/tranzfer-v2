@@ -356,9 +356,12 @@ const LazyLink = clientOnly(async () => await Promise.resolve({ default: LinkPag
 
 export default function PublicDelivery() {
   const params = useParams<{ token: string }>();
-  // Signed URLs reach the page, so it must never be cached.
+  // Signed URLs reach the page, so it must never be cached, and the token in
+  // the path must not leave in a Referer header.
   if (isServer) {
-    getRequestEvent()?.response.headers.set("cache-control", "no-store");
+    const headers = getRequestEvent()?.response.headers;
+    headers?.set("cache-control", "no-store");
+    headers?.set("referrer-policy", "no-referrer");
   }
   return (
     <div

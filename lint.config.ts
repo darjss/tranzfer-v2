@@ -108,21 +108,6 @@ const vitePlusPlugin = {
   specifier: "vite-plus/oxlint-plugin",
 };
 
-const oxlintFromEslintLevels = (rules: Record<string, 0 | 1 | 2>) =>
-  Object.fromEntries(
-    Object.entries(rules).map(([name, level]) => {
-      if (level === 2) {
-        return [name, "error"];
-      }
-
-      if (level === 1) {
-        return [name, "warn"];
-      }
-
-      return [name, "off"];
-    }),
-  );
-
 export const lintConfig = (
   paths: {
     api: string[];
@@ -158,7 +143,7 @@ export const lintConfig = (
         files: paths.web,
         jsPlugins: ["eslint-plugin-solid"],
         rules: {
-          ...oxlintFromEslintLevels(solidV2Strict.rules),
+          ...solidV2Strict.rules,
           "solid/reactivity": "error",
           // String styles carry CSS variables. The object autofix does not
           // type-check against those props.

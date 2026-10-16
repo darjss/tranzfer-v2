@@ -22,24 +22,14 @@ import { Ingest, Traces } from "../resources";
 import { lazy } from "./r2";
 import { deployStage, stageName } from "./stage";
 
-// Response headers worth keeping on a span. Everything else can carry a
-// credential (set-cookie, x-amz-security-token, signed redirects), so the
-// default is to hide the value and keep the name.
-const KEPT_HEADERS = new Set(["cf-ray", "content-length", "content-type"]);
-const HEADER_ATTRIBUTE = /^http\.(?:request|response)\.header\.(?<name>.+)$/u;
-
 /**
- * Effect's HTTP spans record the full URL, query string included, and every
- * header not on its short default redaction list. A query string can hold an
- * OAuth code or a signature, so neither the query nor the full URL leaves the
- * Worker. The path and host stay in `url.path` and `server.address`.
+ * Effect's HTTP spans record the full URL, query string included. A query
+ * string can hold an OAuth code or a signature, so neither the query nor the
+ * full URL leaves the Worker. The path and host stay in `url.path` and
+ * `server.address`. Headers need no scrub: Effect records none unless a
+ * `TracerHeaderFilter` asks for them.
  */
-export const isScrubbed = (key: string) => {
-  const header = HEADER_ATTRIBUTE.exec(key)?.groups?.name;
-  return header === undefined
-    ? key === "url.query" || key === "url.full"
-    : !KEPT_HEADERS.has(header);
-};
+export const isScrubbed = (key: string) => key === "url.query" || key === "url.full";
 
 // The fields of a typed error that explain a refusal and carry no person's
 // data: a limit's name and wait, a plan, a reason tag, a mail provider's code.
