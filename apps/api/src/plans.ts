@@ -1,5 +1,5 @@
 import { AccessCodeRefused, PaidPlanId, PlanId } from "@tranzfer/contracts";
-import type { PlanGrant, RateLimited } from "@tranzfer/contracts";
+import type { PlanGrant, RateLimited, UserId } from "@tranzfer/contracts";
 import { Database, databaseFault, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
@@ -142,10 +142,10 @@ export class Plans extends Context.Service<
   {
     /** `grantEndsAt` is set when an unexpired grant is what lifts the plan. */
     readonly current: (
-      userId: string,
+      userId: UserId,
     ) => Effect.Effect<{ readonly plan: PlanId; readonly grantEndsAt: Date | null }>;
     readonly redeem: (
-      userId: string,
+      userId: UserId,
       code: string,
     ) => Effect.Effect<PlanGrant, AccessCodeRefused | RateLimited>;
   }
@@ -158,7 +158,7 @@ export class Plans extends Context.Service<
 
       // The code's row when this user can redeem it now, else why not.
       const redeemable = Effect.fn("Plans.redeemable")(function* redeemable(
-        userId: string,
+        userId: UserId,
         code: string,
         now: number,
       ) {
@@ -194,7 +194,7 @@ export class Plans extends Context.Service<
       });
 
       return Plans.of({
-        current: Effect.fn("Plans.current")(function* current(userId: string) {
+        current: Effect.fn("Plans.current")(function* current(userId: UserId) {
           const now = yield* Clock.currentTimeMillis;
           const subscription = yield* db.query.subscription.findFirst({
             columns: { plan: true },
@@ -220,7 +220,7 @@ export class Plans extends Context.Service<
           return resolved;
         }, dieOnDatabaseError),
 
-        redeem: Effect.fn("Plans.redeem")(function* redeem(userId: string, input: string) {
+        redeem: Effect.fn("Plans.redeem")(function* redeem(userId: UserId, input: string) {
           yield* attempts.take({ key: userId, kind: "code" });
           const code = input.trim().toUpperCase();
           const now = yield* Clock.currentTimeMillis;

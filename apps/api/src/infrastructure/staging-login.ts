@@ -1,6 +1,7 @@
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import type { BetterAuthPlugin } from "better-auth/types";
+import { UserId } from "@tranzfer/contracts";
 import { schema } from "@tranzfer/db";
 import { drizzle } from "drizzle-orm/d1";
 import * as Effect from "effect/Effect";
@@ -53,7 +54,8 @@ export const stagingLogin = (key: string, d1: Effect.Effect<D1Database>): Better
         if (user === undefined) {
           throw new APIError("INTERNAL_SERVER_ERROR", { message: "Staging login failed" });
         }
-        const grant = { plan: "studio", status: "comp", userId: user.id } as const;
+        // Better Auth generated this id, as in Auth.session.
+        const grant = { plan: "studio", status: "comp", userId: UserId.make(user.id) } as const;
         await drizzle(await Effect.runPromise(d1))
           .insert(schema.subscription)
           .values(grant)

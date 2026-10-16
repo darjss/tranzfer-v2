@@ -13,6 +13,7 @@ import {
   RateLimited,
   rateLimits,
   RetentionNotInPlan,
+  UserId,
 } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { eq, sql } from "drizzle-orm";
@@ -48,13 +49,13 @@ import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } 
 const storage = makeMemoryStorage();
 const GB = 1_000_000_000;
 
-const subscribe = (userId: string, plan: "pro" | "starter" | "studio") =>
+const subscribe = (userId: UserId, plan: "pro" | "starter" | "studio") =>
   Effect.flatMap(Effect.service(Database), ({ db }) =>
     db.insert(schema.subscription).values({ plan, status: "active", userId }),
   ).pipe(Effect.orDie);
 
 // A ready delivery of `sizes` for `senderId`, finalized at the current time.
-const readyDelivery = (senderId: string, sizes: readonly number[], title = "Cut") =>
+const readyDelivery = (senderId: UserId, sizes: readonly number[], title = "Cut") =>
   Effect.gen(function* makeReady() {
     const deliveries = yield* Deliveries;
     const transfers = yield* Transfers;
@@ -96,10 +97,10 @@ const signed = (rawKey: string, id: string, timestamp: number, body: string) =>
 layer(domainLayer(storage.layer))("Deliveries", (it) => {
   it.effect("creates a delivery with one transfer per file and a link", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("alice");
+      const alice = yield* addUser("alice");
       const deliveries = yield* Deliveries;
       const input = newDelivery([newFile("a/one.txt", 5), newFile("a/two.bin", 9)], "Shoot");
-      const created = yield* deliveries.create("alice", input);
+      const created = yield* deliveries.create(alice, input);
       expect(created.status).toBe("open");
       expect(created.title).toBe("Shoot");
       expect(created.transfers.map((transfer) => transfer.path)).toEqual([
@@ -112,15 +113,15 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
 
   it.effect("replays an identical create and rejects a changed one", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("bob");
+      const bob = yield* addUser("bob");
       const deliveries = yield* Deliveries;
       const input = newDelivery([newFile("x.txt", 1)]);
-      const original = yield* deliveries.create("bob", input);
-      const replay = yield* deliveries.create("bob", input);
+      const original = yield* deliveries.create(bob, input);
+      const replay = yield* deliveries.create(bob, input);
       expect(replay).toEqual(original);
 
       const changed = yield* Effect.flip(
-        deliveries.create("bob", {
+        deliveries.create(bob, {
           files: input.files,
           id: input.id,
           retentionDays: input.retentionDays,
@@ -130,7 +131,7 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       expect(changed._tag).toBe("DeliveryConflict");
       for (const edit of [{ contentType: "image/png" }, { lastModified: 42 }]) {
         const source = yield* Effect.flip(
-          deliveries.create("bob", {
+          deliveries.create(bob, {
             files: [{ ...first(input.files), ...edit }],
             id: input.id,
             retentionDays: input.retentionDays,
@@ -139,18 +140,18 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
         );
         expect(source._tag).toBe("DeliveryConflict");
       }
-      const stranger = yield* Effect.flip(deliveries.create("alice", input));
+      const stranger = yield* Effect.flip(deliveries.create(UserId.make("alice"), input));
       expect(stranger._tag).toBe("DeliveryConflict");
     }),
   );
 
   it.effect("rejects a new delivery that reuses a transfer id", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("carol");
+      const carol = yield* addUser("carol");
       const deliveries = yield* Deliveries;
       const shared = newFile("shared.txt", 3);
-      yield* deliveries.create("carol", newDelivery([shared]));
-      const reused = yield* Effect.flip(deliveries.create("carol", newDelivery([shared])));
+      yield* deliveries.create(carol, newDelivery([shared]));
+      const reused = yield* Effect.flip(deliveries.create(carol, newDelivery([shared])));
       expect(reused._tag).toBe("DeliveryConflict");
     }),
   );
@@ -158,30 +159,30 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
   it.effect("lets only the owner change the title and note, and the recipient reads them", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("nora", "Nora");
-      yield* addUser("oscar");
+      const nora = yield* addUser("nora", "Nora");
+      const oscar = yield* addUser("oscar");
       const deliveries = yield* Deliveries;
       const links = yield* SharedLinks;
       const created = yield* deliveries.create(
-        "nora",
+        nora,
         newDelivery([newFile("cut.mov", 3)], "cut.mov"),
       );
       expect(created.note).toBe("");
 
       const foreign = yield* Effect.flip(
-        deliveries.update("oscar", created.id, { note: "mine now", title: "Stolen" }),
+        deliveries.update(oscar, created.id, { note: "mine now", title: "Stolen" }),
       );
       expect(foreign._tag).toBe("DeliveryNotFound");
       const missing = yield* Effect.flip(
-        deliveries.update("nora", DeliveryId.make(crypto.randomUUID()), { note: "", title: "x" }),
+        deliveries.update(nora, DeliveryId.make(crypto.randomUUID()), { note: "", title: "x" }),
       );
       expect(missing._tag).toBe("DeliveryNotFound");
-      expect((yield* deliveries.list("nora")).map(({ note, title }) => ({ note, title }))).toEqual([
+      expect((yield* deliveries.list(nora)).map(({ note, title }) => ({ note, title }))).toEqual([
         { note: "", title: "cut.mov" },
       ]);
 
       const note = "Final cut.\n<script>alert(1)</script> Colour is locked.";
-      const updated = yield* deliveries.update("nora", created.id, { note, title: "Episode 14" });
+      const updated = yield* deliveries.update(nora, created.id, { note, title: "Episode 14" });
       expect({ note: updated.note, title: updated.title }).toEqual({ note, title: "Episode 14" });
 
       // The recipient's page carries the same words once the delivery is ready.
@@ -195,7 +196,7 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       expect({ note: shared.note, title: shared.title }).toEqual({ note, title: "Episode 14" });
 
       // An empty note takes it back off.
-      const cleared = yield* deliveries.update("nora", created.id, {
+      const cleared = yield* deliveries.update(nora, created.id, {
         note: "",
         title: "Episode 14",
       });
@@ -218,11 +219,11 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
 
   it.effect("lets only the owner set or remove a link password, and stores only its hash", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("pwowner");
-      yield* addUser("pwother");
+      const pwowner = yield* addUser("pwowner");
+      const pwother = yield* addUser("pwother");
       const deliveries = yield* Deliveries;
       const { db } = yield* Database;
-      const created = yield* deliveries.create("pwowner", newDelivery([newFile("a.mov", 3)]));
+      const created = yield* deliveries.create(pwowner, newDelivery([newFile("a.mov", 3)]));
       expect(created.hasPassword).toBe(false);
       const stored = () =>
         db.query.link
@@ -230,29 +231,29 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
           .pipe(Effect.map((link) => link?.passwordHash));
 
       const foreign = yield* Effect.flip(
-        deliveries.setPassword("pwother", created.id, "hunter2hunter2"),
+        deliveries.setPassword(pwother, created.id, "hunter2hunter2"),
       );
       expect(foreign._tag).toBe("DeliveryNotFound");
       const missing = yield* Effect.flip(
-        deliveries.setPassword("pwowner", DeliveryId.make(crypto.randomUUID()), "hunter2hunter2"),
+        deliveries.setPassword(pwowner, DeliveryId.make(crypto.randomUUID()), "hunter2hunter2"),
       );
       expect(missing._tag).toBe("DeliveryNotFound");
       expect(yield* stored()).toBeNull();
 
-      const locked = yield* deliveries.setPassword("pwowner", created.id, "hunter2hunter2");
+      const locked = yield* deliveries.setPassword(pwowner, created.id, "hunter2hunter2");
       expect(locked.hasPassword).toBe(true);
-      expect((yield* deliveries.list("pwowner")).map((row) => row.hasPassword)).toEqual([true]);
+      expect((yield* deliveries.list(pwowner)).map((row) => row.hasPassword)).toEqual([true]);
       // Slow, salted and nothing like the password.
       const hash = yield* stored();
       expect(hash).toMatch(/^pbkdf2-sha256\$100000\$[\w-]{22}\$[\w-]{43}$/u);
       expect(hash).not.toContain("hunter2");
-      yield* deliveries.setPassword("pwowner", created.id, "hunter2hunter2");
+      yield* deliveries.setPassword(pwowner, created.id, "hunter2hunter2");
       expect(yield* stored()).not.toBe(hash);
 
       // A foreign sender can't clear it either.
-      yield* Effect.flip(deliveries.setPassword("pwother", created.id, null));
+      yield* Effect.flip(deliveries.setPassword(pwother, created.id, null));
       expect((yield* deliveries.view(created.id)).hasPassword).toBe(true);
-      const cleared = yield* deliveries.setPassword("pwowner", created.id, null);
+      const cleared = yield* deliveries.setPassword(pwowner, created.id, null);
       expect(cleared.hasPassword).toBe(false);
       expect(yield* stored()).toBeNull();
     }),
@@ -270,21 +271,21 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
 
   it.effect("creates a thousand files in one delivery", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("dave");
+      const dave = yield* addUser("dave");
       const deliveries = yield* Deliveries;
       const files = Array.from({ length: 1000 }, (_, index) => newFile(`bulk/${index}.txt`, 1));
-      const created = yield* deliveries.create("dave", newDelivery(files));
+      const created = yield* deliveries.create(dave, newDelivery(files));
       expect(created.transfers).toHaveLength(1000);
     }),
   );
 
   it.effect("carries names up to 255 bytes, ASCII or multibyte, and 1,000 files", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("dana-names");
+      const danaNames = yield* addUser("dana-names");
       const deliveries = yield* Deliveries;
       const names = ["a".repeat(255), "é".repeat(127), "日".repeat(85), "😀".repeat(63)];
       const created = yield* deliveries.create(
-        "dana-names",
+        danaNames,
         newDelivery(names.map((name) => newFile(`folder/${name}`, 1))),
       );
       expect(created.transfers).toHaveLength(names.length);
@@ -293,11 +294,11 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
 
   it.effect("refuses what the disk or the contract can't carry, with the numbers", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("erin-refused");
+      const erinRefused = yield* addUser("erin-refused");
       const deliveries = yield* Deliveries;
       const refusal = (paths: readonly string[]) =>
         Effect.flip(
-          deliveries.create("erin-refused", newDelivery(paths.map((path) => newFile(path, 1)))),
+          deliveries.create(erinRefused, newDelivery(paths.map((path) => newFile(path, 1)))),
         );
       const tooMany = yield* refusal(Array.from({ length: 1001 }, (_, index) => `f/${index}`));
       expect(tooMany).toBeInstanceOf(DeliveryRefused);
@@ -321,25 +322,25 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       expect(yield* refusal(["Photo.JPG", "photo.jpg"])).toMatchObject({
         reason: DeliveryRefusal.cases.DuplicatePath.make({ path: "photo.jpg" }),
       });
-      expect(yield* deliveries.list("erin-refused")).toEqual([]);
+      expect(yield* deliveries.list(erinRefused)).toEqual([]);
     }),
   );
 
   it.effect("lists only the sender's deliveries, newest first", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("erin");
-      yield* addUser("frank");
+      const erin = yield* addUser("erin");
+      const frank = yield* addUser("frank");
       const deliveries = yield* Deliveries;
-      const older = yield* deliveries.create("erin", newDelivery([newFile("1.txt", 1)], "Older"));
-      const newer = yield* deliveries.create("erin", newDelivery([newFile("2.txt", 1)], "Newer"));
-      yield* deliveries.create("frank", newDelivery([newFile("3.txt", 1)], "Not Erin's"));
+      const older = yield* deliveries.create(erin, newDelivery([newFile("1.txt", 1)], "Older"));
+      const newer = yield* deliveries.create(erin, newDelivery([newFile("2.txt", 1)], "Newer"));
+      yield* deliveries.create(frank, newDelivery([newFile("3.txt", 1)], "Not Erin's"));
       // D1 stamps createdAt; backdate one so the order doesn't hinge on a millisecond.
       const { db } = yield* Database;
       yield* db
         .update(schema.delivery)
         .set({ createdAt: new Date(Date.now() - 60_000) })
         .where(eq(schema.delivery.id, older.id));
-      const listed = yield* deliveries.list("erin");
+      const listed = yield* deliveries.list(erin);
       expect(listed.map((delivery) => delivery.id)).toEqual([newer.id, older.id]);
     }),
   );
@@ -347,22 +348,22 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
   it.effect("clears only the sender's ended deliveries off the list, and still purges them", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("ivy");
+      const ivy = yield* addUser("ivy");
       const deliveries = yield* Deliveries;
       const { db } = yield* Database;
-      const live = yield* deliveries.create("ivy", newDelivery([newFile("live.bin", 1)]));
-      const cancelled = yield* deliveries.create("ivy", newDelivery([newFile("gone.bin", 1)]));
-      const expired = yield* deliveries.create("ivy", newDelivery([newFile("old.bin", 1)]));
-      yield* deliveries.cancel("ivy", cancelled.id);
+      const live = yield* deliveries.create(ivy, newDelivery([newFile("live.bin", 1)]));
+      const cancelled = yield* deliveries.create(ivy, newDelivery([newFile("gone.bin", 1)]));
+      const expired = yield* deliveries.create(ivy, newDelivery([newFile("old.bin", 1)]));
+      yield* deliveries.cancel(ivy, cancelled.id);
       yield* db
         .update(schema.delivery)
         .set({ expiresAt: new Date(Date.now() - 60_000), status: "ready" })
         .where(eq(schema.delivery.id, expired.id));
 
       // Someone else's ids, and a live delivery, are left alone.
-      yield* deliveries.clear("alice", [cancelled.id]);
-      yield* deliveries.clear("ivy", [live.id, cancelled.id, expired.id]);
-      const listed = yield* deliveries.list("ivy");
+      yield* deliveries.clear(UserId.make("alice"), [cancelled.id]);
+      yield* deliveries.clear(ivy, [live.id, cancelled.id, expired.id]);
+      const listed = yield* deliveries.list(ivy);
       expect(listed.map((delivery) => delivery.id)).toEqual([live.id]);
 
       // Clearing only hides the row: the sweeper still purges what ended.
@@ -375,16 +376,16 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
     Effect.gen(function* scenario() {
       // D1 stamps updatedAt from the wall clock; start the test clock there too.
       yield* TestClock.setTime(Date.now());
-      yield* addUser("gina");
+      const gina = yield* addUser("gina");
       const deliveries = yield* Deliveries;
-      const created = yield* deliveries.create("gina", newDelivery([newFile("f.bin", 4)]));
+      const created = yield* deliveries.create(gina, newDelivery([newFile("f.bin", 4)]));
       const { objectKey } = first(created.transfers);
       storage.objects.set(objectKey, { etag: "e", size: 4 });
 
-      const foreign = yield* Effect.flip(deliveries.cancel("alice", created.id));
+      const foreign = yield* Effect.flip(deliveries.cancel(UserId.make("alice"), created.id));
       expect(foreign._tag).toBe("DeliveryNotFound");
 
-      const cancelled = yield* deliveries.cancel("gina", created.id);
+      const cancelled = yield* deliveries.cancel(gina, created.id);
       expect(cancelled.status).toBe("cancelled");
       expect(cancelled.transfers.every((t) => t.state === "cancelled")).toBe(true);
       expect(storage.objects.has(objectKey)).toBe(false);
@@ -406,10 +407,10 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
   it.effect("ends an open delivery that never finished, then purges it", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("hank");
+      const hank = yield* addUser("hank");
       const deliveries = yield* Deliveries;
-      const created = yield* deliveries.create("hank", newDelivery([newFile("half.bin", 9)]));
-      const recent = yield* deliveries.create("hank", newDelivery([newFile("fresh.bin", 9)]));
+      const created = yield* deliveries.create(hank, newDelivery([newFile("half.bin", 9)]));
+      const recent = yield* deliveries.create(hank, newDelivery([newFile("fresh.bin", 9)]));
 
       yield* TestClock.adjust("6 days");
       expect(yield* deliveries.purgeEnded).toBe(0);
@@ -429,11 +430,11 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
   );
   it.effect("refuses a delivery past the plan's active space before anything is stored", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("iris");
+      const iris = yield* addUser("iris");
       const deliveries = yield* Deliveries;
-      yield* deliveries.create("iris", newDelivery([newFile("a.bin", 15 * GB)]));
+      yield* deliveries.create(iris, newDelivery([newFile("a.bin", 15 * GB)]));
       const refused = yield* Effect.flip(
-        deliveries.create("iris", newDelivery([newFile("b.bin", 6 * GB)])),
+        deliveries.create(iris, newDelivery([newFile("b.bin", 6 * GB)])),
       );
       expect(refused).toBeInstanceOf(OverPlanLimit);
       expect(refused).toMatchObject({
@@ -442,9 +443,9 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
         requestedBytes: 6 * GB,
         usedBytes: 15 * GB,
       });
-      expect(yield* deliveries.list("iris")).toHaveLength(1);
+      expect(yield* deliveries.list(iris)).toHaveLength(1);
       // Exactly the remaining space still fits.
-      yield* deliveries.create("iris", newDelivery([newFile("c.bin", 5 * GB)]));
+      yield* deliveries.create(iris, newDelivery([newFile("c.bin", 5 * GB)]));
     }),
   );
 
@@ -453,48 +454,48 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
     () =>
       Effect.gen(function* scenario() {
         yield* TestClock.setTime(Date.now());
-        yield* addUser("jack");
+        const jack = yield* addUser("jack");
         const deliveries = yield* Deliveries;
         const { db } = yield* Database;
-        const open = yield* deliveries.create("jack", newDelivery([newFile("o.bin", 4 * GB)]));
-        const ready = yield* deliveries.create("jack", newDelivery([newFile("r.bin", 3 * GB)]));
-        const doomed = yield* deliveries.create("jack", newDelivery([newFile("d.bin", 2 * GB)]));
+        const open = yield* deliveries.create(jack, newDelivery([newFile("o.bin", 4 * GB)]));
+        const ready = yield* deliveries.create(jack, newDelivery([newFile("r.bin", 3 * GB)]));
+        const doomed = yield* deliveries.create(jack, newDelivery([newFile("d.bin", 2 * GB)]));
         yield* db
           .update(schema.delivery)
           .set({ expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), status: "ready" })
           .where(eq(schema.delivery.id, ready.id));
-        expect(yield* deliveries.activeBytes("jack")).toBe(9 * GB);
+        expect(yield* deliveries.activeBytes(jack)).toBe(9 * GB);
 
-        yield* deliveries.cancel("jack", doomed.id);
-        expect(yield* deliveries.activeBytes("jack")).toBe(7 * GB);
+        yield* deliveries.cancel(jack, doomed.id);
+        expect(yield* deliveries.activeBytes(jack)).toBe(7 * GB);
 
         yield* TestClock.adjust("4 days");
-        expect(yield* deliveries.activeBytes("jack")).toBe(4 * GB);
+        expect(yield* deliveries.activeBytes(jack)).toBe(4 * GB);
         expect((yield* deliveries.view(open.id)).status).toBe("open");
         // Another sender's deliveries never count.
-        yield* addUser("kate");
-        expect(yield* deliveries.activeBytes("kate")).toBe(0);
+        const kate = yield* addUser("kate");
+        expect(yield* deliveries.activeBytes(kate)).toBe(0);
       }),
   );
 
   it.effect("holds link lifetime to the plan, and a subscription raises both limits", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("lena");
+      const lena = yield* addUser("lena");
       const deliveries = yield* Deliveries;
       const tooLong = yield* Effect.flip(
-        deliveries.create("lena", newDelivery([newFile("w.bin", 25 * GB)], "Week", 7)),
+        deliveries.create(lena, newDelivery([newFile("w.bin", 25 * GB)], "Week", 7)),
       );
       expect(tooLong).toBeInstanceOf(RetentionNotInPlan);
       expect(tooLong).toMatchObject({ maxRetentionDays: 3, plan: "free", requestedDays: 7 });
 
-      yield* subscribe("lena", "starter");
+      yield* subscribe(lena, "starter");
       const created = yield* deliveries.create(
-        "lena",
+        lena,
         newDelivery([newFile("w2.bin", 25 * GB)], "Week", 7),
       );
       expect(created.retentionDays).toBe(7);
       const tooLongForStarter = yield* Effect.flip(
-        deliveries.create("lena", newDelivery([newFile("f.bin", 1)], "Fortnight", 14)),
+        deliveries.create(lena, newDelivery([newFile("f.bin", 1)], "Fortnight", 14)),
       );
       expect(tooLongForStarter).toBeInstanceOf(RetentionNotInPlan);
       expect(tooLongForStarter).toMatchObject({ plan: "starter" });
@@ -504,29 +505,29 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
   it.effect("caps new deliveries an hour on Free, with an exact wait, and not on paid plans", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("max");
-      yield* addUser("nia");
-      yield* subscribe("nia", "pro");
+      const max = yield* addUser("max");
+      const nia = yield* addUser("nia");
+      yield* subscribe(nia, "pro");
       const deliveries = yield* Deliveries;
-      const send = (sender: string) => deliveries.create(sender, newDelivery([newFile("a", 1)]));
-      const refusal = send("max").pipe(
+      const send = (sender: UserId) => deliveries.create(sender, newDelivery([newFile("a", 1)]));
+      const refusal = send(max).pipe(
         Effect.andThen(Effect.die(new Error("expected the hourly cap"))),
         Effect.catchTag("RateLimited", Effect.succeed),
       );
       yield* Effect.forEach(Arr.range(1, rateLimits.deliveriesPerHour.limit), () =>
-        Effect.andThen(send("max"), send("nia")),
+        Effect.andThen(send(max), send(nia)),
       );
 
       const refused = yield* refusal;
       expect(refused.limit).toBe("deliveriesPerHour");
       expect(refused.retryAfterSeconds).toBeGreaterThan(3500);
       expect(refused.retryAfterSeconds).toBeLessThanOrEqual(3601);
-      yield* send("nia");
+      yield* send(nia);
 
       yield* TestClock.adjust(Duration.seconds(refused.retryAfterSeconds - 1));
       yield* refusal;
       yield* TestClock.adjust("1 second");
-      yield* send("max");
+      yield* send(max);
     }),
   );
 
@@ -534,7 +535,7 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
     Effect.gen(function* scenario() {
       const now = Date.now();
       yield* TestClock.setTime(now);
-      yield* addUser("olga");
+      const olga = yield* addUser("olga");
       const deliveries = yield* Deliveries;
       const { db } = yield* Database;
       const { limit } = rateLimits.deliveriesPerDay;
@@ -545,14 +546,14 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
           createdAt: new Date(now - step * 12 * 60 * 1000),
           id: DeliveryId.make(crypto.randomUUID()),
           retentionDays: 3,
-          senderId: "olga",
+          senderId: olga,
           title: "Earlier",
         }),
       );
-      yield* deliveries.create("olga", newDelivery([newFile("last.bin", 1)]));
+      yield* deliveries.create(olga, newDelivery([newFile("last.bin", 1)]));
 
       const refused = yield* Effect.flip(
-        deliveries.create("olga", newDelivery([newFile("over.bin", 1)])),
+        deliveries.create(olga, newDelivery([newFile("over.bin", 1)])),
       );
       expect(refused).toBeInstanceOf(RateLimited);
       expect(refused).toMatchObject({
@@ -565,17 +566,17 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
   it.effect("concurrent creates at the hourly cap land only up to it", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("pam");
+      const pam = yield* addUser("pam");
       const deliveries = yield* Deliveries;
       const { limit } = rateLimits.deliveriesPerHour;
       yield* Effect.forEach(Arr.range(1, limit - 1), () =>
-        deliveries.create("pam", newDelivery([newFile("a", 1)])),
+        deliveries.create(pam, newDelivery([newFile("a", 1)])),
       );
       // Every create reads one slot left before any of them inserts.
       const outcomes = yield* Effect.forEach(
         Arr.range(1, 5),
         () =>
-          deliveries.create("pam", newDelivery([newFile("a", 1)])).pipe(
+          deliveries.create(pam, newDelivery([newFile("a", 1)])).pipe(
             Effect.as("created"),
             Effect.catchTag("RateLimited", (error) => Effect.succeed(error.limit)),
           ),
@@ -588,26 +589,26 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
         "deliveriesPerHour",
         "deliveriesPerHour",
       ]);
-      expect(yield* deliveries.list("pam")).toHaveLength(limit);
+      expect(yield* deliveries.list(pam)).toHaveLength(limit);
     }),
   );
 
   it.effect("concurrent creates never pass the plan's active space", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("quinn");
-      yield* subscribe("quinn", "pro");
+      const quinn = yield* addUser("quinn");
+      yield* subscribe(quinn, "pro");
       const deliveries = yield* Deliveries;
       const outcomes = yield* Effect.forEach(
         Arr.range(1, 3),
         () =>
-          deliveries.create("quinn", newDelivery([newFile("half.bin", 400 * GB)])).pipe(
+          deliveries.create(quinn, newDelivery([newFile("half.bin", 400 * GB)])).pipe(
             Effect.as("created"),
             Effect.catchTag("OverPlanLimit", (error) => Effect.succeed(error._tag)),
           ),
         { concurrency: "unbounded" },
       );
       expect(outcomes.toSorted()).toEqual(["OverPlanLimit", "created", "created"]);
-      expect(yield* deliveries.activeBytes("quinn")).toBe(800 * GB);
+      expect(yield* deliveries.activeBytes(quinn)).toBe(800 * GB);
     }),
   );
 
@@ -672,30 +673,30 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
     Effect.gen(function* scenario() {
       const now = Date.now();
       yield* TestClock.setTime(now);
-      yield* addUser("ada");
+      const ada = yield* addUser("ada");
       yield* addCode({ code: "BETA-PRO", days: 90, maxUses: 30, plan: "pro" });
       const plans = yield* Plans;
       const deliveries = yield* Deliveries;
 
       // Typed in any case, with stray spaces.
-      const grant = yield* plans.redeem("ada", "  beta-pro ");
+      const grant = yield* plans.redeem(ada, "  beta-pro ");
       expect(grant).toEqual({ endsAt: new Date(now + 90 * DAY), plan: "pro" });
-      expect(yield* plans.current("ada")).toEqual({ grantEndsAt: grant.endsAt, plan: "pro" });
+      expect(yield* plans.current(ada)).toEqual({ grantEndsAt: grant.endsAt, plan: "pro" });
       // Pro's retention and space, with no subscription anywhere.
       const created = yield* deliveries.create(
-        "ada",
+        ada,
         newDelivery([newFile("big.bin", 500 * GB)], "Fortnight", 14),
       );
       expect(created.retentionDays).toBe(14);
 
-      const accessCodeRefused = yield* Effect.flip(plans.redeem("ada", "BETA-PRO"));
+      const accessCodeRefused = yield* Effect.flip(plans.redeem(ada, "BETA-PRO"));
       expect(accessCodeRefused).toBeInstanceOf(AccessCodeRefused);
       expect(accessCodeRefused).toMatchObject({ reason: "alreadyRedeemed" });
       expect(yield* usesOf("BETA-PRO")).toEqual({ uses: 1 });
 
       // The grant ends on its day and the plan falls back to Free.
       yield* TestClock.adjust(Duration.days(90));
-      expect(yield* plans.current("ada")).toEqual({ grantEndsAt: null, plan: "free" });
+      expect(yield* plans.current(ada)).toEqual({ grantEndsAt: null, plan: "free" });
     }),
   );
 
@@ -703,8 +704,8 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
     Effect.gen(function* scenario() {
       const now = Date.now();
       yield* TestClock.setTime(now);
-      yield* addUser("bo");
-      yield* addUser("cy");
+      const bo = yield* addUser("bo");
+      const cy = yield* addUser("cy");
       yield* addCode({
         code: "OLD",
         days: 30,
@@ -714,25 +715,26 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
       });
       yield* addCode({ code: "ONE", days: 30, maxUses: 1, plan: "starter" });
       const plans = yield* Plans;
-      const reason = (userId: string, code: string) =>
+      const reason = (userId: UserId, code: string) =>
         Effect.map(Effect.flip(plans.redeem(userId, code)), (error) =>
           Predicate.isTagged(error, "AccessCodeRefused") ? error.reason : error._tag,
         );
 
-      expect(yield* reason("bo", "NOPE")).toBe("unknown");
-      expect(yield* reason("bo", "OLD")).toBe("expired");
-      yield* plans.redeem("bo", "ONE");
-      expect(yield* reason("cy", "ONE")).toBe("usedUp");
+      expect(yield* reason(bo, "NOPE")).toBe("unknown");
+      expect(yield* reason(bo, "OLD")).toBe("expired");
+      yield* plans.redeem(bo, "ONE");
+      expect(yield* reason(cy, "ONE")).toBe("usedUp");
       expect(yield* usesOf("OLD")).toEqual({ uses: 0 });
       expect(yield* usesOf("ONE")).toEqual({ uses: 1 });
-      expect(yield* plans.current("cy")).toEqual({ grantEndsAt: null, plan: "free" });
+      expect(yield* plans.current(cy)).toEqual({ grantEndsAt: null, plan: "free" });
     }),
   );
 
   it.effect("concurrent redemptions never pass the code's uses", () =>
     Effect.gen(function* scenario() {
-      const users = ["d1", "d2", "d3", "d4", "d5", "d6"];
-      yield* Effect.forEach(users, (id) => addUser(id));
+      const users = yield* Effect.forEach(["d1", "d2", "d3", "d4", "d5", "d6"], (id) =>
+        addUser(id),
+      );
       yield* addCode({ code: "RUSH", days: 7, maxUses: 2, plan: "studio" });
       const plans = yield* Plans;
       // Every attempt reads the code with uses to spare before any batch lands.
@@ -760,29 +762,29 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
   it.effect("the higher of a subscription and a grant sets the plan", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("eve");
-      yield* addUser("fay");
-      yield* subscribe("eve", "studio");
-      yield* subscribe("fay", "starter");
+      const eve = yield* addUser("eve");
+      const fay = yield* addUser("fay");
+      yield* subscribe(eve, "studio");
+      yield* subscribe(fay, "starter");
       yield* addCode({ code: "PRO-30", days: 30, maxUses: 10, plan: "pro" });
       const plans = yield* Plans;
-      yield* plans.redeem("eve", "PRO-30");
-      yield* plans.redeem("fay", "PRO-30");
-      expect(yield* plans.current("eve")).toEqual({ grantEndsAt: null, plan: "studio" });
-      expect(yield* plans.current("fay")).toMatchObject({ plan: "pro" });
+      yield* plans.redeem(eve, "PRO-30");
+      yield* plans.redeem(fay, "PRO-30");
+      expect(yield* plans.current(eve)).toEqual({ grantEndsAt: null, plan: "studio" });
+      expect(yield* plans.current(fay)).toMatchObject({ plan: "pro" });
       yield* TestClock.adjust(Duration.days(30));
-      expect(yield* plans.current("fay")).toEqual({ grantEndsAt: null, plan: "starter" });
+      expect(yield* plans.current(fay)).toEqual({ grantEndsAt: null, plan: "starter" });
     }),
   );
 
   it.effect("caps code attempts per user, so codes can't be guessed", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("gus");
+      const gus = yield* addUser("gus");
       const plans = yield* Plans;
       // All at once: exactly the limit is counted, the rest refused.
       const tries = yield* Effect.forEach(
         Arr.range(1, rateLimits.codeRedemptions.limit + 2),
-        (n) => Effect.map(Effect.flip(plans.redeem("gus", `GUESS-${n}`)), (error) => error._tag),
+        (n) => Effect.map(Effect.flip(plans.redeem(gus, `GUESS-${n}`)), (error) => error._tag),
         { concurrency: "unbounded" },
       );
       expect(tries.toSorted()).toEqual([
@@ -796,7 +798,7 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
   it.effect("a code revoked while a redemption is in flight grants nothing", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("hal");
+      const hal = yield* addUser("hal");
       yield* addCode({ code: "LATE", days: 30, maxUses: 10, plan: "pro" });
       // The operator's revoke lands after the redemption read the code and
       // before its batch runs.
@@ -815,7 +817,7 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
         ),
       );
       const refused = yield* Effect.flip(
-        Effect.flatMap(Effect.service(Plans), (plans) => plans.redeem("hal", "LATE")).pipe(
+        Effect.flatMap(Effect.service(Plans), (plans) => plans.redeem(hal, "LATE")).pipe(
           // Fresh, or the suite's memoized Plans over the plain database answers.
           Effect.provide(Layer.fresh(Plans.layer).pipe(Layer.provide(revokingFirst))),
         ),
@@ -823,14 +825,14 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
       expect(refused).toBeInstanceOf(AccessCodeRefused);
       expect(refused).toMatchObject({ reason: "expired" });
       expect(yield* usesOf("LATE")).toEqual({ uses: 0 });
-      expect(yield* (yield* Plans).current("hal")).toEqual({ grantEndsAt: null, plan: "free" });
+      expect(yield* (yield* Plans).current(hal)).toEqual({ grantEndsAt: null, plan: "free" });
     }),
   );
 
   it.effect("operators create, list and revoke codes", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("ivy");
+      const ivy = yield* addUser("ivy");
       const input = yield* Schema.decodeUnknownEffect(NewAccessCode)({
         code: " beta-studio ",
         days: 60,
@@ -847,20 +849,20 @@ layer(domainLayer(storage.layer))("Access codes", (it) => {
         uses: 0,
       });
       expect(yield* Effect.flip(createAccessCode(input))).toBeInstanceOf(AccessCodeExists);
-      yield* (yield* Plans).redeem("ivy", "beta-studio");
+      yield* (yield* Plans).redeem(ivy, "beta-studio");
       expect(yield* listAccessCodes()).toContainEqual(
         expect.objectContaining({ code: "BETA-STUDIO", uses: 1 }),
       );
 
       yield* revokeAccessCode("beta-studio");
-      yield* addUser("jo");
-      expect(yield* Effect.flip((yield* Plans).redeem("jo", "BETA-STUDIO"))).toMatchObject({
+      const jo = yield* addUser("jo");
+      expect(yield* Effect.flip((yield* Plans).redeem(jo, "BETA-STUDIO"))).toMatchObject({
         reason: "expired",
       });
       expect(yield* Effect.flip(revokeAccessCode("BETA-STUDIO"))).toBeInstanceOf(AccessCodeNotLive);
       expect(yield* Effect.flip(revokeAccessCode("NOPE"))).toBeInstanceOf(AccessCodeNotLive);
       // Grants already made keep their end.
-      expect(yield* (yield* Plans).current("ivy")).toMatchObject({ plan: "studio" });
+      expect(yield* (yield* Plans).current(ivy)).toMatchObject({ plan: "studio" });
     }),
   );
 
@@ -956,7 +958,7 @@ const asPolar = (subscriptions: typeof polarSubscriptions) => {
     return polarPage();
   });
 };
-const reconcileAs = (userId: string) =>
+const reconcileAs = (userId: UserId) =>
   Effect.gen(function* reconcileUser() {
     const billing = yield* Billing;
     const body = JSON.stringify({
@@ -982,34 +984,34 @@ layer(billingLayer)("Billing reconcile", (it) => {
   it.effect("keeps a paid plan while payment is past due and until a cancelled period ends", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("mona");
+      const mona = yield* addUser("mona");
       asPolar([{ current_period_end: later(2), product_id: "prod_pro", status: "past_due" }]);
-      expect(yield* reconcileAs("mona")).toMatchObject({ plan: "pro", status: "past_due" });
+      expect(yield* reconcileAs(mona)).toMatchObject({ plan: "pro", status: "past_due" });
 
       asPolar([{ current_period_end: later(2), product_id: "prod_pro", status: "canceled" }]);
-      expect(yield* reconcileAs("mona")).toMatchObject({ plan: "pro", status: "canceled" });
+      expect(yield* reconcileAs(mona)).toMatchObject({ plan: "pro", status: "canceled" });
 
       asPolar([{ current_period_end: later(-1), product_id: "prod_pro", status: "canceled" }]);
-      expect(yield* reconcileAs("mona")).toMatchObject({ plan: "free", status: "none" });
+      expect(yield* reconcileAs(mona)).toMatchObject({ plan: "free", status: "none" });
 
       asPolar([{ current_period_end: later(9), product_id: "prod_pro", status: "unpaid" }]);
-      expect(yield* reconcileAs("mona")).toMatchObject({ plan: "free", status: "none" });
+      expect(yield* reconcileAs(mona)).toMatchObject({ plan: "free", status: "none" });
 
       // The highest granting plan wins when a customer holds two.
       asPolar([
         { current_period_end: later(9), product_id: "prod_starter", status: "active" },
         { current_period_end: later(9), product_id: "prod_studio", status: "trialing" },
       ]);
-      expect(yield* reconcileAs("mona")).toMatchObject({ plan: "studio", status: "trialing" });
+      expect(yield* reconcileAs(mona)).toMatchObject({ plan: "studio", status: "trialing" });
     }),
   );
 
   it.effect("the sweep reconciles rows past their period end, a few at a time", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.now());
-      yield* addUser("nina");
-      yield* addUser("omar");
-      yield* addUser("comp");
+      const nina = yield* addUser("nina");
+      const omar = yield* addUser("omar");
+      const comp = yield* addUser("comp");
       const billing = yield* Billing;
       const { db } = yield* Database;
       const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -1020,23 +1022,23 @@ layer(billingLayer)("Billing reconcile", (it) => {
         updatedAt: hourAgo,
       } as const;
       yield* db.insert(schema.subscription).values([
-        { ...row, userId: "nina" },
+        { ...row, userId: nina },
         // Still inside its period: left alone.
-        { ...row, currentPeriodEnd: new Date(Date.now() + 86_400_000), userId: "omar" },
+        { ...row, currentPeriodEnd: new Date(Date.now() + 86_400_000), userId: omar },
         // A grant has no period and Polar never owns it.
-        { plan: "studio", status: "comp", userId: "comp" },
+        { plan: "studio", status: "comp", userId: comp },
       ]);
       // Polar says the subscription ended, which a lost webhook never told us.
       asPolar([]);
       polarCalls.length = 0;
       expect(yield* billing.reconcileStale).toBe(1);
       expect(polarCalls).toHaveLength(1);
-      expect(yield* billing.summary("nina")).toMatchObject({ plan: "free", status: "none" });
-      expect(yield* billing.summary("omar")).toMatchObject({ plan: "pro" });
-      expect(yield* billing.summary("comp")).toMatchObject({ plan: "studio", status: "comp" });
+      expect(yield* billing.summary(nina)).toMatchObject({ plan: "free", status: "none" });
+      expect(yield* billing.summary(omar)).toMatchObject({ plan: "pro" });
+      expect(yield* billing.summary(comp)).toMatchObject({ plan: "studio", status: "comp" });
       expect(yield* billing.reconcileStale).toBe(0);
       // A webhook for a comp user cannot take the grant away.
-      expect(yield* reconcileAs("comp")).toMatchObject({ plan: "studio", status: "comp" });
+      expect(yield* reconcileAs(comp)).toMatchObject({ plan: "studio", status: "comp" });
     }),
   );
 });
@@ -1048,24 +1050,24 @@ const closedBilling = Billing.layer({ appUrl: "https://app.test", polar: Option.
 layer(closedBilling)("Billing before paid plans open", (it) => {
   it.effect("refuses checkout, the portal and webhooks without calling Polar", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("pia");
+      const piaId = yield* addUser("pia");
       const billing = yield* Billing;
-      const pia = { email: "pia@test", id: "pia", image: null, name: "Pia" };
+      const pia = { email: "pia@test", id: piaId, image: null, name: "Pia" };
       asPolar([]);
       polarCalls.length = 0;
       expect(yield* Effect.flip(billing.checkout(pia, "pro"))).toMatchObject({
         reason: "notOpen",
       });
-      expect(yield* Effect.flip(billing.portal("pia"))).toMatchObject({ reason: "notOpen" });
+      expect(yield* Effect.flip(billing.portal(piaId))).toMatchObject({ reason: "notOpen" });
       expect(yield* Effect.flip(billing.webhook({}, "{}"))).toMatchObject({
         reason: "disabled",
       });
-      expect(yield* billing.summary("pia")).toMatchObject({ plan: "free", status: "none" });
+      expect(yield* billing.summary(piaId)).toMatchObject({ plan: "free", status: "none" });
 
       // A code still works, and the summary says until when.
       yield* addCode({ code: "BETA-STUDIO", days: 14, maxUses: 1, plan: "studio" });
-      const grant = yield* (yield* Plans).redeem("pia", "beta-studio");
-      expect(yield* billing.summary("pia")).toMatchObject({
+      const grant = yield* (yield* Plans).redeem(piaId, "beta-studio");
+      expect(yield* billing.summary(piaId)).toMatchObject({
         grantEndsAt: grant.endsAt,
         limitBytes: 3000 * GB,
         maxRetentionDays: 14,
@@ -1129,7 +1131,7 @@ const interestRows = Effect.flatMap(Effect.service(Database), ({ db }) =>
 layer(emailsLayer)("Emails", (it) => {
   it.effect("keeps one row per address and plan, and confirms only a signed-in first ask", () =>
     Effect.gen(function* scenario() {
-      yield* addUser("kai");
+      const kai = yield* addUser("kai");
       const emails = yield* Emails;
       sent.length = 0;
       expect(
@@ -1146,14 +1148,14 @@ layer(emailsLayer)("Emails", (it) => {
         { email: "ana@example.com", plan: "studio", userId: null },
         "1.1.1.1",
       );
-      yield* emails.joinInterest({ email: "kai@test", plan: "pro", userId: "kai" }, "1.1.1.2");
-      yield* emails.joinInterest({ email: "kai@test", plan: "pro", userId: "kai" }, "1.1.1.2");
+      yield* emails.joinInterest({ email: "kai@test", plan: "pro", userId: kai }, "1.1.1.2");
+      yield* emails.joinInterest({ email: "kai@test", plan: "pro", userId: kai }, "1.1.1.2");
       expect(
         (yield* interestRows).map(({ email, plan, userId }) => ({ email, plan, userId })),
       ).toEqual([
         { email: "ana@example.com", plan: "pro", userId: null },
         { email: "ana@example.com", plan: "studio", userId: null },
-        { email: "kai@test", plan: "pro", userId: "kai" },
+        { email: "kai@test", plan: "pro", userId: kai },
       ]);
       expect(sent).toEqual([{ subject: "You're on the list for Pro", to: "kai@test" }]);
     }),
@@ -1165,7 +1167,7 @@ layer(emailsLayer)("Emails", (it) => {
       const emails = yield* Emails;
       expect(
         yield* emails.joinInterest(
-          { email: "gone@example.com", plan: "starter", userId: "kai" },
+          { email: "gone@example.com", plan: "starter", userId: UserId.make("kai") },
           "2.2.2.2",
         ),
       ).toEqual({ email: "gone@example.com" });
@@ -1260,11 +1262,11 @@ layer(emailsLayer)("Emails", (it) => {
   it.effect("emails each distinct address in the background and reports how each one ended", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.parse("2026-10-09T09:00:00Z"));
-      yield* addUser("ema", "Ema <b>Ross");
+      const ema = yield* addUser("ema", "Ema <b>Ross");
       const emails = yield* Emails;
       const deliveries = yield* Deliveries;
-      const created = yield* readyDelivery("ema", [1_500_000, 2_000_000], 'Cut <3 "final"');
-      const ready = yield* deliveries.update("ema", created.id, {
+      const created = yield* readyDelivery(ema, [1_500_000, 2_000_000], 'Cut <3 "final"');
+      const ready = yield* deliveries.update(ema, created.id, {
         note: "Hello & bye\nSecond line <b>bold</b>",
         title: created.title,
       });
@@ -1273,7 +1275,7 @@ layer(emailsLayer)("Emails", (it) => {
       mailed.length = 0;
 
       const queued = yield* emails.sendDelivery(
-        { email: "ema@test", id: "ema", name: "Ema <b>Ross" },
+        { email: "ema@test", id: ema, image: null, name: "Ema <b>Ross" },
         {
           deliveryId: ready.id,
           recipients: ["A@Example.com", "gone@example.com", "held@example.com", "a@example.com"],
@@ -1288,7 +1290,7 @@ layer(emailsLayer)("Emails", (it) => {
       expect(mailed).toEqual([]);
 
       yield* runBackground;
-      const settled = yield* emails.deliveryEmails("ema", ready.id);
+      const settled = yield* emails.deliveryEmails(ema, ready.id);
       expect(
         settled.toReversed().map(({ errorCode, id, status }) => ({ errorCode, id, status })),
       ).toEqual([
@@ -1329,28 +1331,28 @@ layer(emailsLayer)("Emails", (it) => {
   it.effect("emails only the owner's ready, unexpired deliveries", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.parse("2026-10-09T09:00:00Z"));
-      yield* addUser("own");
-      yield* addUser("other");
+      const own = yield* addUser("own");
+      const other = yield* addUser("other");
       const emails = yield* Emails;
       const deliveries = yield* Deliveries;
       const to = { recipients: ["a@example.com"] };
-      const owner = { email: "own@test", id: "own", name: "Own" };
+      const owner = { email: "own@test", id: own, image: null, name: "Own" };
 
-      const ready = yield* readyDelivery("own", [3]);
+      const ready = yield* readyDelivery(own, [3]);
       expect(
         yield* Effect.flip(
-          emails.sendDelivery({ ...owner, id: "other" }, { ...to, deliveryId: ready.id }),
+          emails.sendDelivery({ ...owner, id: other }, { ...to, deliveryId: ready.id }),
         ),
       ).toBeInstanceOf(DeliveryNotFound);
-      expect(yield* emails.deliveryEmails("other", ready.id)).toEqual([]);
+      expect(yield* emails.deliveryEmails(other, ready.id)).toEqual([]);
 
-      const open = yield* deliveries.create("own", newDelivery([newFile("x", 1)], "Still going"));
+      const open = yield* deliveries.create(own, newDelivery([newFile("x", 1)], "Still going"));
       expect(
         yield* Effect.flip(emails.sendDelivery(owner, { ...to, deliveryId: open.id })),
       ).toBeInstanceOf(DeliveryNotShareable);
 
-      const cancelled = yield* readyDelivery("own", [3], "Cancelled");
-      yield* deliveries.cancel("own", cancelled.id);
+      const cancelled = yield* readyDelivery(own, [3], "Cancelled");
+      yield* deliveries.cancel(own, cancelled.id);
       expect(
         yield* Effect.flip(emails.sendDelivery(owner, { ...to, deliveryId: cancelled.id })),
       ).toBeInstanceOf(DeliveryNotShareable);
@@ -1366,10 +1368,10 @@ layer(emailsLayer)("Emails", (it) => {
   it.effect("holds a sender to the request rate and the daily caps, then reopens", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.parse("2028-03-01T09:00:00Z"));
-      yield* addUser("cap");
+      const cap = yield* addUser("cap");
       const emails = yield* Emails;
-      const ready = yield* readyDelivery("cap", [3]);
-      const sender = { email: "cap@test", id: "cap", name: "Cap" };
+      const ready = yield* readyDelivery(cap, [3]);
+      const sender = { email: "cap@test", id: cap, image: null, name: "Cap" };
       const many = (prefix: string, count: number) => ({
         deliveryId: ready.id,
         recipients: Arr.range(1, count).map((n) => `${prefix}${n}@example.com`),
@@ -1386,7 +1388,7 @@ layer(emailsLayer)("Emails", (it) => {
         retryAfterSeconds: rateLimits.emailsPerDay.windowSeconds,
       });
       // Nothing was queued by the refused send.
-      expect(yield* emails.deliveryEmails("cap", ready.id)).toHaveLength(50);
+      expect(yield* emails.deliveryEmails(cap, ready.id)).toHaveLength(50);
       yield* TestClock.adjust("1 day");
       expect(yield* emails.sendDelivery(sender, many("again-", 1))).toHaveLength(1);
 
@@ -1407,12 +1409,12 @@ layer(emailsLayer)("Emails", (it) => {
   it.effect("keeps every sender together under the account's daily quota", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.parse("2031-03-01T09:00:00Z"));
-      yield* addUser("wide");
-      yield* addUser("bulk");
+      const wide = yield* addUser("wide");
+      const bulkId = yield* addUser("bulk");
       const { db } = yield* Database;
       const emails = yield* Emails;
-      const ready = yield* readyDelivery("wide", [3]);
-      const bulk = yield* readyDelivery("bulk", [3]);
+      const ready = yield* readyDelivery(wide, [3]);
+      const bulk = yield* readyDelivery(bulkId, [3]);
       const { emailsAccountPerDay } = rateLimits;
       // Everyone else's sends so far today, short of the cap by five.
       yield* db
@@ -1420,7 +1422,7 @@ layer(emailsLayer)("Emails", (it) => {
           sql`insert into delivery_email (delivery_id, status, created_at) select ${bulk.id}, 'sent', ${Date.parse("2031-03-01T09:00:00Z")} from json_each(${JSON.stringify(Arr.range(1, emailsAccountPerDay.limit - 5))})`,
         )
         .pipe(Effect.orDie);
-      const sender = { email: "wide@test", id: "wide", name: "Wide" };
+      const sender = { email: "wide@test", id: wide, image: null, name: "Wide" };
       const many = (count: number) => ({
         deliveryId: ready.id,
         recipients: Arr.range(1, count).map((n) => `w${n}@example.com`),
@@ -1436,13 +1438,13 @@ layer(emailsLayer)("Emails", (it) => {
   it.effect("marks a send that never finished as failed once it is clearly lost", () =>
     Effect.gen(function* scenario() {
       yield* TestClock.setTime(Date.parse("2032-03-01T09:00:00Z"));
-      yield* addUser("lost");
+      const lost = yield* addUser("lost");
       const emails = yield* Emails;
-      const ready = yield* readyDelivery("lost", [3]);
+      const ready = yield* readyDelivery(lost, [3]);
       // Earlier tests left their sends queued; settle those first.
       yield* emails.failLost;
       yield* emails.sendDelivery(
-        { email: "lost@test", id: "lost", name: "Lost" },
+        { email: "lost@test", id: lost, image: null, name: "Lost" },
         { deliveryId: ready.id, recipients: ["a@example.com"] },
       );
       background.length = 0;
@@ -1451,7 +1453,7 @@ layer(emailsLayer)("Emails", (it) => {
       yield* TestClock.adjust("2 minutes");
       expect(yield* emails.failLost).toBe(1);
       expect(
-        (yield* emails.deliveryEmails("lost", ready.id)).map(({ errorCode, status }) => ({
+        (yield* emails.deliveryEmails(lost, ready.id)).map(({ errorCode, status }) => ({
           errorCode,
           status,
         })),

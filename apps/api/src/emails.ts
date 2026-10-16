@@ -12,6 +12,8 @@ import type {
   DeliveryId,
   DeliveryNotFound,
   PaidPlanId,
+  Principal,
+  UserId,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
@@ -189,7 +191,7 @@ export class Emails extends Context.Service<
      * sign-up stands.
      */
     readonly joinInterest: (
-      input: { readonly email: string; readonly plan: PaidPlanId; readonly userId: string | null },
+      input: { readonly email: string; readonly plan: PaidPlanId; readonly userId: UserId | null },
       ip: string,
     ) => Effect.Effect<{ readonly email: string }, RateLimited>;
     /**
@@ -205,7 +207,7 @@ export class Emails extends Context.Service<
      * and each row settles to `sent` or `failed`. Nothing keeps the address.
      */
     readonly sendDelivery: (
-      sender: { readonly email: string; readonly id: string; readonly name: string },
+      sender: Principal,
       input: { readonly deliveryId: DeliveryId; readonly recipients: readonly string[] },
     ) => Effect.Effect<
       readonly DeliveryEmail[],
@@ -213,7 +215,7 @@ export class Emails extends Context.Service<
     >;
     /** The sender's latest 50 emails for a delivery, newest first. */
     readonly deliveryEmails: (
-      senderId: string,
+      senderId: UserId,
       deliveryId: DeliveryId,
     ) => Effect.Effect<readonly DeliveryEmail[]>;
     /** Marks delivery emails stuck queued as failed. Returns how many. */
@@ -228,7 +230,7 @@ export class Emails extends Context.Service<
    */
   static readonly layer = (options: {
     readonly appUrl: string;
-    readonly allowDeliveryEmail: (userId: string) => Effect.Effect<boolean>;
+    readonly allowDeliveryEmail: (userId: UserId) => Effect.Effect<boolean>;
     readonly allowInterest: (ip: string) => Effect.Effect<boolean>;
     readonly background: (effect: Effect.Effect<void>) => Effect.Effect<void>;
   }) =>
@@ -242,7 +244,7 @@ export class Emails extends Context.Service<
         // Rows for `count` new emails, or none when either daily cap lacks
         // room for all of them. The statement that counts is the one that
         // inserts, so racing sends can't pass a cap.
-        const reserve = (senderId: string, deliveryId: DeliveryId, needed: number, now: number) => {
+        const reserve = (senderId: UserId, deliveryId: DeliveryId, needed: number, now: number) => {
           const since = new Date(now - rateLimits.emailsPerDay.windowSeconds * 1000);
           const mine = db.$count(
             schema.deliveryEmail,
@@ -286,7 +288,7 @@ export class Emails extends Context.Service<
 
         // How long until the cap that refused has room for `needed` more.
         const refusal = Effect.fn("Emails.refusal")(function* refusal(
-          senderId: string,
+          senderId: UserId,
           needed: number,
           now: number,
         ) {
@@ -346,7 +348,7 @@ export class Emails extends Context.Service<
 
         return Emails.of({
           deliveryEmails: Effect.fn("Emails.deliveryEmails")(function* deliveryEmails(
-            senderId: string,
+            senderId: UserId,
             deliveryId: DeliveryId,
           ) {
             yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);

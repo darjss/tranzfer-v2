@@ -9,8 +9,10 @@ import {
   RetentionNotInPlan,
 } from "@tranzfer/contracts";
 import type {
-  DeliveryNotFound,
+  Delivery,
   DeliveryConflict,
+  DeliveryId,
+  DeliveryNotFound,
   DeliveryRefused,
   InvalidUpload,
   NewFileRequest,
@@ -23,8 +25,7 @@ import type {
   TransferId,
   UploadClosed,
   UploadRequest,
-  Delivery,
-  DeliveryId,
+  UserId,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, countDistinct, desc, eq, inArray, ne, sql } from "drizzle-orm";
@@ -80,13 +81,13 @@ export class FileRequests extends Context.Service<
   FileRequests,
   {
     readonly create: (
-      ownerId: string,
+      ownerId: UserId,
       input: NewFileRequest,
     ) => Effect.Effect<FileRequest, RetentionNotInPlan>;
-    readonly list: (ownerId: string) => Effect.Effect<readonly FileRequest[]>;
+    readonly list: (ownerId: UserId) => Effect.Effect<readonly FileRequest[]>;
     /** Ends the request now. Closing again changes nothing. */
     readonly close: (
-      ownerId: string,
+      ownerId: UserId,
       requestId: RequestId,
     ) => Effect.Effect<FileRequest, RequestNotFound>;
     readonly open: (
@@ -224,7 +225,7 @@ export class FileRequests extends Context.Service<
 
         return FileRequests.of({
           close: Effect.fn("FileRequests.close")(function* close(
-            ownerId: string,
+            ownerId: UserId,
             requestId: RequestId,
           ) {
             yield* Effect.annotateCurrentSpan("request.id", requestId);
@@ -246,7 +247,7 @@ export class FileRequests extends Context.Service<
           }, dieOnDatabaseError),
 
           create: Effect.fn("FileRequests.create")(function* create(
-            ownerId: string,
+            ownerId: UserId,
             input: NewFileRequest,
           ) {
             const { plan } = yield* userPlans.current(ownerId);
@@ -291,7 +292,7 @@ export class FileRequests extends Context.Service<
             return toUpload(yield* transfers.finalize(request.ownerId, transferId, request.id));
           }),
 
-          list: Effect.fn("FileRequests.list")(function* list(ownerId: string) {
+          list: Effect.fn("FileRequests.list")(function* list(ownerId: UserId) {
             const rows = yield* db
               .select()
               .from(schema.fileRequest)

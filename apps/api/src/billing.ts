@@ -1,6 +1,6 @@
 import * as Polar from "@distilled.cloud/polar";
 import { webhooks } from "@polar-sh/sdk/2026-10";
-import { BillingUnavailable, plans } from "@tranzfer/contracts";
+import { BillingUnavailable, UserId, plans } from "@tranzfer/contracts";
 import type {
   BillingSummary,
   PaidPlanId,
@@ -71,7 +71,7 @@ export const verifyWebhook = Effect.fn("Billing.verifyWebhook")(function* verify
 // Subscription events embed their customer; the external id is our user id.
 const WebhookEvent = Schema.Struct({
   data: Schema.Struct({
-    customer: Schema.Struct({ external_id: Schema.NullOr(Schema.String) }),
+    customer: Schema.Struct({ external_id: Schema.NullOr(UserId) }),
   }),
 });
 
@@ -85,14 +85,14 @@ const highestFirst = ["studio", "pro", "starter"] as const;
 export class Billing extends Context.Service<
   Billing,
   {
-    readonly summary: (userId: string) => Effect.Effect<BillingSummary>;
+    readonly summary: (userId: UserId) => Effect.Effect<BillingSummary>;
     /** A subscriber changes plans in the portal; checkout would start a second subscription. */
     readonly checkout: (
       user: Principal,
       plan: PaidPlanId,
     ) => Effect.Effect<{ readonly url: string }, BillingUnavailable>;
     readonly portal: (
-      userId: string,
+      userId: UserId,
     ) => Effect.Effect<{ readonly url: string }, BillingUnavailable>;
     /** Refetches Polar state for rows past their period end. Returns how many it tried. */
     readonly reconcileStale: Effect.Effect<number>;
@@ -149,9 +149,9 @@ export class Billing extends Context.Service<
           onSome: (polar) => polar.products,
         });
 
-        const row = (userId: string) => db.query.subscription.findFirst({ where: { userId } });
+        const row = (userId: UserId) => db.query.subscription.findFirst({ where: { userId } });
 
-        const portal = Effect.fn("Billing.portal")(function* portal(userId: string) {
+        const portal = Effect.fn("Billing.portal")(function* portal(userId: UserId) {
           const session = yield* viaPolar(
             Polar.customerSessionsCreate({
               body: { external_customer_id: userId, return_url: `${options.appUrl}/deliveries` },
@@ -169,7 +169,7 @@ export class Billing extends Context.Service<
          * canceled until its paid period ends. Revoked, unpaid, paused and
          * incomplete ones grant nothing. A comp row is never overwritten.
          */
-        const reconcile = Effect.fn("Billing.reconcile")(function* reconcile(userId: string) {
+        const reconcile = Effect.fn("Billing.reconcile")(function* reconcile(userId: UserId) {
           yield* Effect.annotateCurrentSpan("user.id", userId);
           const current = yield* row(userId);
           if (current?.status === "comp") {
@@ -297,7 +297,7 @@ export class Billing extends Context.Service<
 
           reconcileStale: reconcileStale(),
 
-          summary: Effect.fn("Billing.summary")(function* summary(userId: string) {
+          summary: Effect.fn("Billing.summary")(function* summary(userId: UserId) {
             if (Option.exists(options.polar, (polar) => polar.reconcileOnRead)) {
               yield* Effect.ignore(reconcile(userId));
             }

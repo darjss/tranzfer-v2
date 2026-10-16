@@ -3,9 +3,12 @@ import * as Schema from "effect/Schema";
 import type * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 
+export const UserId = Schema.String.pipe(Schema.brand("UserId"));
+export type UserId = typeof UserId.Type;
+
 export const Principal = Schema.Struct({
   email: Schema.String,
-  id: Schema.String,
+  id: UserId,
   image: Schema.NullOr(Schema.String),
   name: Schema.String,
 });

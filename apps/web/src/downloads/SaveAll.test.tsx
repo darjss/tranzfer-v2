@@ -7,6 +7,7 @@ import {
   Authenticated,
   CurrentPrincipal,
   LinkLocked,
+  UserId,
   WrongPassword,
 } from "@tranzfer/contracts";
 import type { SharedDelivery } from "@tranzfer/contracts";
@@ -150,7 +151,7 @@ const makeWorld = (options: { locked?: boolean } = {}) => {
           effect.pipe(
             Effect.provideService(CurrentPrincipal, {
               email: "s@test",
-              id: "s",
+              id: UserId.make("s"),
               image: null,
               name: "Sender",
             }),
