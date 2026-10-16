@@ -6,7 +6,7 @@ Resumable file delivery for creators and editors. The first milestone is one com
 
 Install with `vp install`. Copy [.env.example](.env.example) to `.env`, fill in the values, follow the [local serving guide](.agents/skills/portless/SKILL.md), then run `vp run dev`.
 
-Use `https://tranzfer.localhost`. Alchemy runs both Workers locally against a real D1 database and R2 bucket for your `dev_<user>` stage, so `infra/.env` needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Keep auth secrets server-side and register the matching Google OAuth callback for the chosen origin.
+Use `https://tranzfer.localhost`. Alchemy runs both Workers locally against a real D1 database and R2 bucket for your `dev_<user>` stage, so `.env` needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Keep auth secrets server-side and register the matching Google OAuth callback for the chosen origin.
 
 Run `vp check`, `vp run test` and `vp run build` before committing. An empty test run is not passing coverage.
 
@@ -16,7 +16,7 @@ From the main checkout, run `vp run build`, inspect `vp run plan:production`, th
 
 Production and staging deploys create Axiom datasets and an ingest token, so they need `AXIOM_TOKEN` and `AXIOM_ORG_ID` ([.env.example](.env.example)). Both are GitHub secrets in `deploy.yml`. PR previews export into staging's datasets and need no Axiom credentials. Dev stages ship no telemetry.
 
-After deployment, check API `/health`, web `/infra`, and sign-in. The infrastructure probe checks D1 and R2 reads. A Worker rollback does not roll back migrations or storage changes.
+After deployment, check API `/health` and sign-in. The health probe checks D1 and R2 reads. A Worker rollback does not roll back migrations or storage changes.
 
 ## Decisions
 

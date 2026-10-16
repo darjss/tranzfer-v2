@@ -31,7 +31,7 @@ import { Billing, verifyWebhook } from "../src/billing";
 import { Deliveries } from "../src/deliveries";
 import { Emails, queueOpenings, sendWelcome } from "../src/emails";
 import { Mail, MailError } from "../src/infrastructure/email";
-import { admitSignup } from "../src/infrastructure/auth";
+import { admitSignup, pruneSignups } from "../src/infrastructure/auth";
 import {
   AccessCodeExists,
   AccessCodeNotLive,
@@ -906,6 +906,11 @@ layer(domainLayer(storage.layer))("Accounts", (it) => {
       expect(refused.retryAfterSeconds).toBeGreaterThan(rateLimits.newAccounts.windowSeconds - 60);
       yield* TestClock.adjust(Duration.seconds(refused.retryAfterSeconds));
       yield* admitSignup("203.0.113.7");
+
+      // The sweep drops rows the window no longer counts and keeps the rest.
+      yield* TestClock.adjust(Duration.seconds(rateLimits.newAccounts.windowSeconds));
+      expect(yield* pruneSignups).toBe(limit + 1);
+      expect(yield* pruneSignups).toBe(0);
     }),
   );
 });
