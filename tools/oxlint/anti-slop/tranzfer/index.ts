@@ -1,5 +1,6 @@
 import { eslintCompatPlugin } from "vite-plus/lint/plugins";
 
+import { brandedUserIdRule } from "./rules/branded-user-id.ts";
 import { noDebugMarkersInTestsRule } from "./rules/no-debug-markers-in-tests.ts";
 import { noCountSubqueryStringRule } from "./rules/no-count-subquery-string.ts";
 import { noImportThenReexportRule } from "./rules/no-import-then-reexport.ts";
@@ -10,6 +11,7 @@ import { oneClockExpressionRule } from "./rules/one-clock-expression.ts";
 const tranzferPlugin = eslintCompatPlugin({
   meta: { name: "tranzfer" },
   rules: {
+    "branded-user-id": brandedUserIdRule,
     "no-count-subquery-string": noCountSubqueryStringRule,
     "no-debug-markers-in-tests": noDebugMarkersInTestsRule,
     "no-import-then-reexport": noImportThenReexportRule,
