@@ -10,6 +10,7 @@ import type {
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { eq } from "drizzle-orm";
 import * as Arr from "effect/Array";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -279,8 +280,12 @@ export class Billing extends Context.Service<
             stale,
             ({ userId }) =>
               reconcile(userId).pipe(
-                Effect.catchCause(() =>
-                  Effect.logError("billing reconcile failed").pipe(
+                Effect.catchCause((cause) => {
+                  const error = Cause.squash(cause);
+                  return Effect.logError("billing reconcile failed", {
+                    error: error instanceof Error ? error.name : "unknown",
+                    userId,
+                  }).pipe(
                     Effect.andThen(
                       db
                         .update(schema.subscription)
@@ -288,8 +293,8 @@ export class Billing extends Context.Service<
                         .where(eq(schema.subscription.userId, userId))
                         .pipe(dieOnDatabaseError),
                     ),
-                  ),
-                ),
+                  );
+                }),
               ),
             { discard: true },
           );
