@@ -96,7 +96,6 @@ const tooMany = {
   portalCallsPerIp: "Too many requests from your network.",
   portalCallsPerRequest: "This link is getting too many requests at once.",
   portalUploadsPerIp: "Too many uploads started from your network.",
-  telemetryRelay: "Too much telemetry from your network.",
   uploadSigning: "Too many upload requests at once.",
 } satisfies Record<RateLimitName, string>;
 

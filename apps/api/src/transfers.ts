@@ -31,6 +31,7 @@ import * as Predicate from "effect/Predicate";
 
 import { Deliveries, UPLOAD_WINDOW } from "./deliveries";
 import { Plans } from "./plans";
+import { RateLimiter } from "./rate-limiter";
 import { Storage } from "./storage";
 import type { StoredObject } from "./storage";
 
@@ -42,16 +43,6 @@ const RECOVER_WITHIN = Duration.days(7);
 const RECOVER_BATCH = 50;
 
 type Transfer = typeof schema.transfer.$inferSelect;
-
-/**
- * Counts signing requests per sender. Cloudflare's rate-limit binding in the
- * Worker, set to `rateLimits.uploadSigning`; it answers whether this request
- * still fits.
- */
-export class SigningRate extends Context.Service<
-  SigningRate,
-  { readonly allow: (senderId: UserId) => Effect.Effect<boolean> }
->()("tranzfer/SigningRate") {}
 
 /** Upload signing and completion for a sender's transfers. */
 export class Transfers extends Context.Service<
@@ -85,7 +76,7 @@ export class Transfers extends Context.Service<
       const { db } = yield* Database;
       const deliveries = yield* Deliveries;
       const plans = yield* Plans;
-      const signingRate = yield* SigningRate;
+      const limiter = yield* RateLimiter;
       const storage = yield* Storage;
 
       /**
@@ -332,7 +323,7 @@ export class Transfers extends Context.Service<
           // request is held to the portal limits instead (FileRequests).
           if (
             requestId === undefined &&
-            !(yield* signingRate.allow(senderId)) &&
+            !(yield* limiter.allow("uploadSigning", senderId)) &&
             (yield* plans.current(senderId)).plan === "free"
           ) {
             return yield* new RateLimited({

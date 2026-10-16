@@ -1,4 +1,4 @@
-import { Api, plans, rateLimits } from "@tranzfer/contracts";
+import { Api, plans } from "@tranzfer/contracts";
 import type { PaidPlanId } from "@tranzfer/contracts";
 import { Database } from "@tranzfer/db";
 import { Random, RuntimeContext } from "alchemy";
@@ -8,6 +8,7 @@ import { sql } from "drizzle-orm";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Record from "effect/Record";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as Schema from "effect/Schema";
@@ -21,11 +22,12 @@ import { Emails } from "./emails";
 import { FileRequests } from "./file-requests";
 import { LinkTokens } from "./link-tokens";
 import { Plans } from "./plans";
+import { RateLimiter, bindingLimits } from "./rate-limiter";
 import { ApiHandlers, AuthenticatedLive } from "./rpc";
 import { SharedLinks } from "./shared-links";
 import { Storage } from "./storage";
 import { sweep } from "./sweeper";
-import { SigningRate, Transfers } from "./transfers";
+import { Transfers } from "./transfers";
 import { Auth } from "./infrastructure/auth";
 import { emailAllowlist, Mail } from "./infrastructure/email";
 import { PolarProduct, PolarWebhook, paidPlansOpen, polarAccess } from "./infrastructure/polar";
@@ -34,32 +36,6 @@ import { deployStage, stageName } from "./infrastructure/stage";
 import { relayConfig, relayTraces, telemetry } from "./infrastructure/telemetry";
 import { App } from "./resources";
 import { ApiWorker } from "./worker";
-
-// Cloudflare rate-limit namespace ids are unique per account, and every stage
-// shares them. The id is the key, so two limits that take the same id do not
-// compile. Take the next number; never reuse or renumber one.
-const rateLimitBindings = {
-  1001: "AUTH_REQUESTS",
-  1002: "UPLOAD_SIGNING",
-  1004: "INTEREST_SIGNUPS",
-  1005: "EMAIL_REQUESTS",
-  1008: "PORTAL_CALLS_PER_IP",
-  1009: "PORTAL_CALLS_PER_REQUEST",
-  1010: "PORTAL_UPLOADS_PER_IP",
-  1011: "TELEMETRY_RELAY",
-} as const;
-
-const rateLimit = (
-  namespaceId: keyof typeof rateLimitBindings,
-  {
-    limit,
-    windowSeconds,
-  }: { limit: number; windowSeconds: Cloudflare.RateLimitProps["simple"]["period"] },
-) =>
-  Cloudflare.RateLimit(rateLimitBindings[namespaceId], {
-    namespaceId,
-    simple: { limit, period: windowSeconds },
-  });
 
 const productProps = (plan: PaidPlanId) => ({
   name: `Tranzfer ${plans[plan].name}`,
@@ -130,29 +106,27 @@ export default ApiWorker.make(
     // Rate-limit namespaces are account-wide, so every stage shares the
     // counters and the key carries the stage name.
     const stageKey = yield* stageName;
-    const limiter = (client: Cloudflare.RateLimitClient) => (key: string) =>
-      client.limit({ key: `${stageKey}:${key}` }).pipe(
-        Effect.map(({ success }) => success),
-        // A limiter outage must not lock anyone out.
-        Effect.catchTag("RateLimitError", (error) =>
-          Effect.logWarning("rate limit check failed", error.message).pipe(Effect.as(true)),
+    const rateLimitClients = yield* Effect.all(
+      Record.map(bindingLimits, ({ binding, namespaceId, rule }) =>
+        Cloudflare.RateLimit(binding, {
+          namespaceId,
+          simple: { limit: rule.limit, period: rule.windowSeconds },
+        }).asEffect(),
+      ),
+    );
+    const rateLimiter = Layer.succeed(
+      RateLimiter,
+      RateLimiter.make((name, key) =>
+        rateLimitClients[name].limit({ key: `${stageKey}:${key}` }).pipe(
+          Effect.map(({ success }) => success),
+          // A limiter outage must not lock anyone out.
+          Effect.catchTag("RateLimitError", (error) =>
+            Effect.logWarning("rate limit check failed", error.message).pipe(Effect.as(true)),
+          ),
+          Effect.provide(RuntimeContext.phantom),
         ),
-        Effect.provide(RuntimeContext.phantom),
-      );
-    const authRequests = yield* rateLimit(1001, rateLimits.authRequests);
-    const uploadSigning = yield* rateLimit(1002, rateLimits.uploadSigning);
-
-    const interestSignups = yield* rateLimit(1004, rateLimits.interestSignups);
-
-    const emailRequests = yield* rateLimit(1005, rateLimits.emailRequests);
-
-    // File requests count uploader calls three ways, each with its own
-    // namespace: per client IP, per request, and new uploads per client IP.
-    const portalCallsPerIp = yield* rateLimit(1008, rateLimits.portalCallsPerIp);
-    const portalCallsPerRequest = yield* rateLimit(1009, rateLimits.portalCallsPerRequest);
-    const portalUploadsPerIp = yield* rateLimit(1010, rateLimits.portalUploadsPerIp);
-
-    const telemetryRelay = yield* rateLimit(1011, rateLimits.telemetryRelay);
+      ),
+    );
 
     // Sends through Cloudflare Email Sending as hello@tranzfer.app. The
     // domain is onboarded on the account, so any recipient is allowed.
@@ -163,11 +137,10 @@ export default ApiWorker.make(
       Layer.mergeAll(
         yield* filesStorage,
         LinkTokens.layer((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom))),
-        Auth.layer(stage, handle, limiter(authRequests)),
-        Layer.succeed(SigningRate, SigningRate.of({ allow: limiter(uploadSigning) })),
+        Auth.layer(stage, handle),
         Mail.layer(stage, email, yield* emailAllowlist),
         RpcSerialization.layerJson,
-      ),
+      ).pipe(Layer.provideMerge(rateLimiter)),
     );
 
     // A D1 client belongs to one invocation, so the services over it are
@@ -177,18 +150,12 @@ export default ApiWorker.make(
       SharedLinks.layer,
       billing,
       Emails.layer({
-        allowDeliveryEmail: limiter(emailRequests),
-        allowInterest: limiter(interestSignups),
         appUrl: origin,
         // Runs after the response, kept alive by the request's waitUntil.
         background: (effect) =>
           execution.waitUntil(effect).pipe(Effect.provide(RuntimeContext.phantom)),
       }),
-      FileRequests.layer({
-        callsPerIp: limiter(portalCallsPerIp),
-        callsPerRequest: limiter(portalCallsPerRequest),
-        uploadsPerIp: limiter(portalUploadsPerIp),
-      }).pipe(Layer.provideMerge(Transfers.layer)),
+      FileRequests.layer.pipe(Layer.provideMerge(Transfers.layer)),
     ).pipe(
       Layer.provideMerge(Deliveries.layer),
       Layer.provideMerge(Plans.layer),
@@ -273,7 +240,7 @@ export default ApiWorker.make(
       HttpRouter.add(
         "POST",
         "/api/telemetry/traces",
-        relayTraces(yield* relayConfig, limiter(telemetryRelay)),
+        relayTraces(yield* relayConfig).pipe(Effect.provideContext(isolate)),
       ),
     );
     const handle_ = yield* routes.pipe(

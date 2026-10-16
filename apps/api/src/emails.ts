@@ -26,6 +26,7 @@ import * as Layer from "effect/Layer";
 import { secondsUntilRoom } from "./attempts";
 import { Deliveries } from "./deliveries";
 import { Mail } from "./infrastructure/email";
+import { RateLimiter } from "./rate-limiter";
 
 // Opening emails per sweep. At one sweep a minute a list of a few hundred
 // goes out within the hour and stays inside the account's daily sending quota.
@@ -222,16 +223,9 @@ export class Emails extends Context.Service<
     readonly failLost: Effect.Effect<number>;
   }
 >()("tranzfer/Emails") {
-  /**
-   * `allowInterest` counts one interest sign-up for an IP, true while under
-   * `interestSignups`. `allowDeliveryEmail` counts one send request for a user,
-   * true while under `emailRequests`. `background` runs an effect after the
-   * response, like the request's waitUntil.
-   */
+  /** `background` runs an effect after the response, like the request's waitUntil. */
   static readonly layer = (options: {
     readonly appUrl: string;
-    readonly allowDeliveryEmail: (userId: UserId) => Effect.Effect<boolean>;
-    readonly allowInterest: (ip: string) => Effect.Effect<boolean>;
     readonly background: (effect: Effect.Effect<void>) => Effect.Effect<void>;
   }) =>
     Layer.effect(
@@ -240,6 +234,7 @@ export class Emails extends Context.Service<
         const { db } = yield* Database;
         const mail = yield* Mail;
         const deliveries = yield* Deliveries;
+        const limiter = yield* RateLimiter;
 
         // Rows for `count` new emails, or none when either daily cap lacks
         // room for all of them. The statement that counts is the one that
@@ -386,12 +381,7 @@ export class Emails extends Context.Service<
           }).pipe(dieOnDatabaseError, Effect.withSpan("Emails.failLost")),
 
           joinInterest: Effect.fn("Emails.joinInterest")(function* joinInterest(input, ip) {
-            if (!(yield* options.allowInterest(ip))) {
-              return yield* new RateLimited({
-                limit: "interestSignups",
-                retryAfterSeconds: rateLimits.interestSignups.windowSeconds,
-              });
-            }
+            yield* limiter.check("interestSignups", ip);
             const email = input.email.toLowerCase();
             const added = yield* db
               .insert(schema.planInterest)
@@ -414,12 +404,7 @@ export class Emails extends Context.Service<
           }, dieOnDatabaseError),
 
           sendDelivery: Effect.fn("Emails.sendDelivery")(function* sendDelivery(sender, input) {
-            if (!(yield* options.allowDeliveryEmail(sender.id))) {
-              return yield* new RateLimited({
-                limit: "emailRequests",
-                retryAfterSeconds: rateLimits.emailRequests.windowSeconds,
-              });
-            }
+            yield* limiter.check("emailRequests", sender.id);
             yield* Effect.annotateCurrentSpan("delivery.id", input.deliveryId);
             const delivery = yield* deliveries.owned(sender.id, input.deliveryId);
             if (delivery.status !== "ready") {
