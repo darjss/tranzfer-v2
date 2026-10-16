@@ -52,6 +52,25 @@ export const signup = sqliteTable(
   (table) => [index("signup_ip_createdAt_idx").on(table.ip, table.createdAt)],
 );
 
+// One row per counted link password or access code attempt, right or wrong.
+// `key` is the link id for an unlock and the user id for a code; `ip` is set
+// for an unlock only. A row lands only while its windows are under the limits,
+// in the same statement that counts them (apps/api/src/attempts.ts).
+export const attempt = sqliteTable(
+  "attempt",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    kind: text("kind", { enum: ["code", "unlock"] }).notNull(),
+    key: text("key").notNull(),
+    ip: text("ip"),
+    createdAt: timestamps.createdAt,
+  },
+  (table) => [
+    index("attempt_kind_key_createdAt_idx").on(table.kind, table.key, table.createdAt),
+    index("attempt_kind_ip_createdAt_idx").on(table.kind, table.ip, table.createdAt),
+  ],
+);
+
 export const session = sqliteTable(
   "session",
   {
