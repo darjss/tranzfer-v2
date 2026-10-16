@@ -30,7 +30,6 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 | C    | 04   | One `RateLimiter` service replaces six injection shapes                              | P2       | M    | none                  | TODO   |
 | C    | 05   | Brand `UserId`, `LinkToken`, `UnlockToken`                                           | P2       | M    | none                  | TODO   |
 | C    | 06   | RPC surface: shared error fragments, one session path, IP helper (B: renames)        | P2/P3    | S+S  | soft: 05              | TODO   |
-| C    | 09   | Uploads: per-transfer ledger, transport module, typed upload failure                 | P2       | M    | none                  | TODO   |
 | C    | 21   | Exact D1 counters for password and code attempts, fail closed                        | P2       | M    | soft: 04, 01          | TODO   |
 | C    | 25   | Web reads limits and email codes from contracts; one copy-state                      | P3       | S-M  | none                  | TODO   |
 | C    | 15   | File-request rules move from `deliveries.ts` to `file-requests.ts`                   | P3       | M    | none                  | TODO   |
