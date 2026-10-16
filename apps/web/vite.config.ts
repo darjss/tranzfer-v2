@@ -65,10 +65,7 @@ export default defineConfig({
     target: "esnext",
   },
   environments: {
-    // The ssr bundle runs in workerd, where `cloudflare:*` modules are
-    // builtins. The client graph reaches the same specifier through binding.ts
-    // on a branch `isServer` eliminates, so it must be external there too.
-    client: { build: { rolldownOptions: { external: [/^cloudflare:/u] } } },
+    // The ssr bundle runs in workerd, where `cloudflare:*` modules are builtins.
     ssr: { build: { rolldownOptions: { external: [/^cloudflare:/u] } } },
   },
   fmt: {
@@ -81,7 +78,8 @@ export default defineConfig({
       diagnostics: true,
       extensions: [".jsx", ".tsx"],
       ssr: true,
-      // Session reads can renew cookies; finish them before committing headers.
+      // One complete document per response: crawlers, no-JS clients and the
+      // prerender crawl never see a Loading fallback.
       start: { middleware: "./src/middleware.ts", renderMode: "async" },
     }),
     fileRoutes({ codeSplitting: false, httpMethods: true, types: true }),
