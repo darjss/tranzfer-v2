@@ -17,7 +17,6 @@ import {
 import { Database, schema } from "@tranzfer/db";
 import { eq, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
-import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import { Base64 } from "effect/encoding";
@@ -614,10 +613,10 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
 
   it.effect("accepts only a Polar delivery that is signed, fresh and intact", () =>
     Effect.gen(function* scenario() {
-      yield* TestClock.setTime(1_800_000_000_000);
+      // Polar's SDK reads the wall clock, which TestClock does not move.
       const secret = webhookSecret("test webhook key");
       const body = '{"type":"subscription.updated"}';
-      const timestamp = 1_800_000_000;
+      const timestamp = Math.floor(Date.now() / 1000);
       const good = yield* signed("test webhook key", "evt_1", timestamp, body);
       const headers = {
         "webhook-id": "evt_1",
@@ -644,9 +643,14 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       expect(yield* check({ "webhook-signature": undefined })).toMatchObject({ reason: "headers" });
       expect(yield* check({ "webhook-timestamp": "soon" })).toMatchObject({ reason: "timestamp" });
 
-      // The same signed delivery replayed past the five-minute window.
-      yield* TestClock.adjust("6 minutes");
-      expect(yield* check({})).toMatchObject({ reason: "timestamp" });
+      // A delivery signed correctly but past the five-minute window.
+      const old = timestamp - 6 * 60;
+      expect(
+        yield* check({
+          "webhook-signature": yield* signed("test webhook key", "evt_1", old, body),
+          "webhook-timestamp": String(old),
+        }),
+      ).toMatchObject({ reason: "timestamp" });
     }),
   );
 });
@@ -947,8 +951,12 @@ const asPolar = (subscriptions: typeof polarSubscriptions) => {
 const reconcileAs = (userId: string) =>
   Effect.gen(function* reconcileUser() {
     const billing = yield* Billing;
-    const body = JSON.stringify({ data: { customer: { external_id: userId } } });
-    const timestamp = Math.floor((yield* Clock.currentTimeMillis) / 1000);
+    const body = JSON.stringify({
+      data: { customer: { external_id: userId } },
+      type: "subscription.updated",
+    });
+    // Polar's SDK reads the wall clock, which TestClock does not move.
+    const timestamp = Math.floor(Date.now() / 1000);
     const header = yield* signed("billing webhook key", "evt", timestamp, body);
     yield* billing.webhook(
       {
