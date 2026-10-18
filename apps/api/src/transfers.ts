@@ -4,6 +4,7 @@ import {
   isSinglePut,
   NotUploaded,
   partCount,
+  partSize,
   RateLimited,
   rateLimits,
   StorageUnavailable,
@@ -391,7 +392,18 @@ export class Transfers extends Context.Service<
               multipart && partNumber <= partCount(transfer.size) ? Effect.void : invalid,
             Put: () => (isSinglePut(transfer.size) ? markFinalizing : invalid),
           });
-          return yield* storage.signUpload(key, request);
+          // R2 refuses a body of any other length than the signed one, so the
+          // bytes stored are the bytes declared and charged at create. Every
+          // part is partSize long except a short last one.
+          const each = partSize(transfer.size);
+          const contentLength = Match.value(request).pipe(
+            Match.tag("Put", () => transfer.size),
+            Match.tag("Part", ({ partNumber }) =>
+              Math.min(each, transfer.size - (partNumber - 1) * each),
+            ),
+            Match.orElse(() => undefined),
+          );
+          return yield* storage.signUpload(key, request, contentLength);
         }, dieOnDatabaseError),
       });
     }),

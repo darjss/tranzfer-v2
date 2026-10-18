@@ -168,11 +168,16 @@ const s3ServiceError = (status: number) =>
 describe("isTransientUploadError", () => {
   it("transient_upload_errors_are_network_expiry_throttling_and_5xx", () => {
     expect(
-      isTransientUploadError(Object.assign(new Error("x"), { code: "NETWORK", name: "DV" })),
+      isTransientUploadError(Object.assign(new Error("x"), { code: "NETWORK", name: "DV" }), 0),
     ).toBe(true);
     for (const status of [403, 408, 429, 500, 503]) {
-      expect(isTransientUploadError(s3ServiceError(status))).toBe(true);
+      expect(isTransientUploadError(s3ServiceError(status), 0)).toBe(true);
     }
+    expect(isTransientUploadError(s3ServiceError(503), 5)).toBe(true);
+  });
+
+  it("a_403_that_survives_a_fresh_signature_is_a_refusal", () => {
+    expect(isTransientUploadError(s3ServiceError(403), 1)).toBe(false);
   });
 
   it("an_existing_object_under_a_guarded_put_is_a_412_to_reconcile", () => {
@@ -182,11 +187,11 @@ describe("isTransientUploadError", () => {
   });
 
   it("remote_gone_and_refusals_stay_final", () => {
-    expect(isTransientUploadError(s3ServiceError(404))).toBe(false);
-    expect(isTransientUploadError(s3ServiceError(400))).toBe(false);
-    expect(isTransientUploadError(new Error("plain"))).toBe(false);
+    expect(isTransientUploadError(s3ServiceError(404), 0)).toBe(false);
+    expect(isTransientUploadError(s3ServiceError(400), 0)).toBe(false);
+    expect(isTransientUploadError(new Error("plain"), 0)).toBe(false);
     // @ts-expect-error runtime garbage reaches the guard untyped.
-    expect(isTransientUploadError("network down")).toBe(false);
+    expect(isTransientUploadError("network down", 0)).toBe(false);
   });
 });
 

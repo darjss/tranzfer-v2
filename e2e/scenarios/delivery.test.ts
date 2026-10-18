@@ -172,7 +172,7 @@ layer(Target.layer)("staging deliveries", (it) => {
           key: emptyTransfer.objectKey,
           request: UploadRequest.cases.Put.make({}),
         });
-        expect(emptyPut.headers).toEqual({ "if-none-match": "*" });
+        expect(emptyPut.headers).toEqual({ "content-length": "0", "if-none-match": "*" });
         const putEmpty = yield* Effect.promise(
           async () =>
             await send("PUT", emptyPut.url, new Uint8Array(0), undefined, emptyPut.headers),
@@ -340,6 +340,100 @@ layer(Target.layer)("staging deliveries", (it) => {
     }),
   );
 
+  it.effect("pinned length · R2 refuses a body longer than the signed length", () =>
+    Effect.gen(function* pinned() {
+      const { api } = yield* Target;
+      const part = partSize(128 * MIB);
+      const file = (path: string, size: number) => ({
+        contentType: "application/octet-stream",
+        id: TransferId.make(randomUUID()),
+        lastModified: Date.now(),
+        path,
+        size,
+      });
+      const delivery = yield* api.CreateDelivery({
+        files: [file("exact.bin", 2 * part), file("one.bin", 1), file("short.bin", part + 10)],
+        id: DeliveryId.make(randomUUID()),
+        retentionDays: 1,
+        title: "Pinned",
+      });
+      yield* Effect.gen(function* refused() {
+        const transfer = (path: string) =>
+          required(
+            delivery.transfers.find((t) => t.path === path),
+            `delivery is missing ${path}`,
+          );
+        const exact = yield* transfer("exact.bin");
+        const one = yield* transfer("one.bin");
+        const short = yield* transfer("short.bin");
+        // Without the signed content-length header, fetch sends the body's own
+        // length, which is what a tampering client controls.
+        const errorCode = (body: Buffer) =>
+          /<Code>(?<code>[^<]+)<\/Code>/u.exec(body.toString("utf-8"))?.groups?.code;
+
+        // A 1-byte file declared at create: a 2-byte PUT is refused, 1 byte lands.
+        const put = yield* api.SignUpload({
+          key: one.objectKey,
+          request: UploadRequest.cases.Put.make({}),
+        });
+        expect(put.headers).toEqual({ "content-length": "1", "if-none-match": "*" });
+        const oversizedPut = yield* Effect.promise(
+          async () =>
+            await send("PUT", put.url, Buffer.from("ab"), undefined, { "if-none-match": "*" }),
+        );
+        expect({ code: errorCode(oversizedPut.body), status: oversizedPut.status }).toEqual({
+          code: "SignatureDoesNotMatch",
+          status: 403,
+        });
+        const exactPut = yield* Effect.promise(
+          async () => await send("PUT", put.url, Buffer.from("a"), undefined, put.headers),
+        );
+        expect(exactPut.status).toBe(200);
+        const afterOne = yield* finalize(api, one.id);
+        expect(afterOne.transfers.find((t) => t.id === one.id)?.state).toBe("complete");
+
+        // A short last part signs its own length: one byte over is refused.
+        const shortId = yield* createUpload(api, short.objectKey);
+        const lastPart = yield* api.SignUpload({
+          key: short.objectKey,
+          request: UploadRequest.cases.Part.make({ partNumber: 2, uploadId: shortId }),
+        });
+        expect(lastPart.headers).toEqual({ "content-length": "10" });
+        const oversizedPart = yield* Effect.promise(
+          async () => await send("PUT", lastPart.url, Buffer.alloc(11, 0x73)),
+        );
+        expect({ code: errorCode(oversizedPart.body), status: oversizedPart.status }).toEqual({
+          code: "SignatureDoesNotMatch",
+          status: 403,
+        });
+        yield* putPart(api, short.objectKey, shortId, 2, Buffer.alloc(10, 0x73));
+
+        // A file of exactly two full parts uploads and finalizes as before.
+        const bytes = Buffer.alloc(2 * part, 0x65);
+        const exactId = yield* createUpload(api, exact.objectKey);
+        const etags = yield* Effect.forEach([1, 2], (partNumber) =>
+          putPart(
+            api,
+            exact.objectKey,
+            exactId,
+            partNumber,
+            bytes.subarray((partNumber - 1) * part, partNumber * part),
+          ),
+        );
+        const complete = yield* api.SignUpload({
+          key: exact.objectKey,
+          request: UploadRequest.cases.Complete.make({ uploadId: exactId }),
+        });
+        const completed = yield* Effect.promise(
+          async () => await send("POST", complete.url, completeXml(etags), "application/xml"),
+        );
+        expect(completed.status).toBe(200);
+        const afterExact = yield* finalize(api, exact.id);
+        expect(afterExact.transfers.find((t) => t.id === exact.id)?.state).toBe("complete");
+      }).pipe(Effect.ensuring(cleanup(api, delivery.id)));
+    }),
+  );
+
   it.effect("browser rules · security headers, and /rpc refuses cross-site POSTs", () =>
     Effect.gen(function* browserRules() {
       const { baseUrl } = yield* Target;
@@ -421,8 +515,10 @@ layer(Target.layer)("staging deliveries", (it) => {
         expect(cancelled.transfers[0].state).toBe("cancelled");
 
         // The URL signed before cancel is dead: the MPU was aborted remotely.
+        // The body is part 2's signed length, so only the abort can refuse it.
         const orphan = yield* Effect.promise(
-          async () => await send("PUT", presigned2.url, Buffer.alloc(1024, 0x78)),
+          async () =>
+            await send("PUT", presigned2.url, Buffer.alloc(70 * MIB - partSize(70 * MIB), 0x78)),
         );
         expect(orphan.status).not.toBe(200);
         expect(orphan.body.toString("utf-8")).toContain("NoSuchUpload");

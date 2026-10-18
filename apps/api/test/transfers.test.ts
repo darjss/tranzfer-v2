@@ -43,6 +43,13 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
 
       const create = yield* transfers.sign(ann, smallKey, UploadRequest.cases.Create.make({}));
       expect(create.url).toBe(`memory://Create/${smallKey}`);
+      expect(create.headers).toEqual({});
+      // Each part signs its exact length: full parts, then the short last one.
+      const bigPart = (partNumber: number) =>
+        transfers.sign(ann, bigKey, UploadRequest.cases.Part.make({ partNumber, uploadId: "u" }));
+      expect((yield* bigPart(1)).headers).toEqual({ "content-length": String(64 * MIB) });
+      expect((yield* bigPart(3)).headers).toEqual({ "content-length": String(64 * MIB) });
+      expect((yield* bigPart(4)).headers).toEqual({ "content-length": String(8 * MIB) });
       const tooFar = yield* Effect.flip(
         transfers.sign(
           ann,
@@ -81,6 +88,7 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
         UploadRequest.cases.Part.make({ partNumber: 1, uploadId: "u" }),
       );
       expect(morePart.url).toBe(`memory://Part/${smallKey}`);
+      expect(morePart.headers).toEqual({ "content-length": "10" });
       const tooMany = yield* Effect.flip(
         transfers.sign(
           ann,
@@ -239,7 +247,8 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
       // The first response is lost; the retry still gets a URL. If-None-Match
       // (signed by the real storage) is what stops a second write.
       yield* transfers.sign(gus, objectKey, UploadRequest.cases.Put.make({}));
-      yield* transfers.sign(gus, objectKey, UploadRequest.cases.Put.make({}));
+      const again = yield* transfers.sign(gus, objectKey, UploadRequest.cases.Put.make({}));
+      expect(again.headers).toEqual({ "content-length": "0" });
     }),
   );
 
@@ -262,6 +271,8 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
 
       const put = yield* transfers.sign(hal, key("small.bin"), UploadRequest.cases.Put.make({}));
       expect(put.url).toBe(`memory://Put/${key("small.bin")}`);
+      // The Put signs the declared size, so storage refuses any other body.
+      expect(put.headers).toEqual({ "content-length": String(3 * MIB) });
       // Signing the Put is the point the object may land unseen, so the
       // sweeper's state is set and no multipart upload can start after it.
       const reopen = yield* Effect.flip(

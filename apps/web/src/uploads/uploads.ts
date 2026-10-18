@@ -225,7 +225,7 @@ const make = Effect.gen(function* makeUploads() {
           return;
         }
         const attempts = entry.autoRetries;
-        if (isTransientUploadError(error) && attempts < MAX_TRANSPORT_RETRIES) {
+        if (isTransientUploadError(error, attempts) && attempts < MAX_TRANSPORT_RETRIES) {
           entry.autoRetries = attempts + 1;
           // Keep phase uploading: the board already shows the paused copy
           // while offline ("Connection lost…"). retryUpload resumes the same
