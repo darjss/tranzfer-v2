@@ -143,7 +143,11 @@ export const PlanGrant = Schema.Struct({ endsAt: Schema.DateFromString, plan: Pa
 export interface PlanGrant extends Schema.Schema.Type<typeof PlanGrant> {}
 
 /** What a person types or a `?code=` link carries. Case and surrounding spaces don't matter. */
-export const AccessCodeInput = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64));
+export const maxAccessCodeLength = 64;
+export const AccessCodeInput = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(maxAccessCodeLength),
+);
 
 /**
  * The code gave nothing. `unknown`: no such code. `expired`: past its last

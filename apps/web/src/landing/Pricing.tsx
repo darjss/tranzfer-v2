@@ -1,4 +1,4 @@
-import { PlanId, plans } from "@tranzfer/contracts";
+import { maxEmailLength, PlanId, plans } from "@tranzfer/contracts";
 import type { PaidPlanId, PlanId as Plan } from "@tranzfer/contracts";
 import { dynamic } from "@solidjs/web";
 import * as Exit from "effect/Exit";
@@ -139,7 +139,7 @@ export function NotifyMe(props: { plan: PaidPlanId; hot: boolean }) {
               aria-label="Your email"
               autocomplete="email"
               class={field}
-              maxlength={254}
+              maxlength={maxEmailLength}
               name="email"
               placeholder="you@studio.com"
               ref={(input) => {
