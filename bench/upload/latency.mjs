@@ -28,9 +28,9 @@ const series = async (name, fn, n = 50) => {
   );
 };
 await series("health", health);
-await series("me", async () => (await rpc(cookie, "Me")).ms);
+await series("me", async () => (await rpc(cookie, "GetMe")).ms);
 await series("deliveries", async () => {
-  const r = await rpc(cookie, "Deliveries");
+  const r = await rpc(cookie, "ListDeliveries");
   out.deliveriesRows = r.value.length;
   out.deliveriesServerTiming ??= r.headers.get("server-timing");
   return r.ms;

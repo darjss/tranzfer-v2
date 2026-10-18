@@ -96,7 +96,7 @@ Tranzfer sends four emails, all from `Tranzfer <hello@tranzfer.app>`, as plain t
 
 ### Emailing a delivery
 
-`SendDeliveryEmail` takes a ready, unexpired delivery you own and 1 to 10 addresses, and sends one email per distinct address. It answers at once with a `queued` row per address. The mail goes out in the Worker's `waitUntil`, and each row settles to `sent` or `failed`. `DeliveryEmails` reads them back, and the page polls every 2 seconds until none is queued.
+`SendDeliveryEmail` takes a ready, unexpired delivery you own and 1 to 10 addresses, and sends one email per distinct address. It answers at once with a `queued` row per address. The mail goes out in the Worker's `waitUntil`, and each row settles to `sent` or `failed`. `ListDeliveryEmails` reads them back, and the page polls every 2 seconds until none is queued.
 
 `sent` means Cloudflare took the message. Nothing says it reached an inbox, and the card says so. The card says "bounced" only for `E_RECIPIENT_SUPPRESSED`, Cloudflare's code for an address it has on its bounce list. Staging and previews report an address off the allowlist as `failed` with code `held`.
 

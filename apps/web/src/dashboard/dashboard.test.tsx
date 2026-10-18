@@ -134,21 +134,21 @@ const makeWorld = (
           CreateDelivery: () => Effect.die("unused"),
           CreateFileRequest: () => Effect.die("unused"),
           CreateRequestUpload: () => Effect.die("unused"),
-          Deliveries: () =>
-            Effect.suspend(() => {
-              listsToFail -= 1;
-              return listsToFail < 0 ? Effect.succeed([...server]) : Effect.die("list failed");
-            }),
-          DeliveryEmails: () => Effect.sync(() => emailRows.toReversed()),
-          FileRequests: () => Effect.succeed([]),
           FinalizeRequestTransfer: () => Effect.die("unused"),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.sync(() => billing),
+          GetMe: () => Effect.service(CurrentPrincipal),
           // Like the real one: without an address it needs a session, and
           // this page plays a signed-out visitor.
           JoinInterest: ({ email }) =>
             email === undefined ? Effect.fail(new Unauthorized()) : Effect.succeed({ email }),
-          Me: () => Effect.service(CurrentPrincipal),
+          ListDeliveries: () =>
+            Effect.suspend(() => {
+              listsToFail -= 1;
+              return listsToFail < 0 ? Effect.succeed([...server]) : Effect.die("list failed");
+            }),
+          ListDeliveryEmails: () => Effect.sync(() => emailRows.toReversed()),
+          ListFileRequests: () => Effect.succeed([]),
           OpenBillingPortal: () => Effect.die("unused"),
           OpenFileRequest: () => Effect.die("unused"),
           OpenLink: () => Effect.die("unused"),

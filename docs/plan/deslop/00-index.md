@@ -77,7 +77,6 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
 - Concurrent Polar webhooks race on an unconditional upsert (`billing.ts:253-257`); small window; guard with `updatedAt`.
 - Link secret has no key id or rotation (`index.ts:54`); losing Alchemy state invalidates all links.
 - Double-click on "Yes, start over" opens the file picker twice (`dashboard/Board.tsx:61-70`); cosmetic.
-- Wire renames from plan 06 part B, waiting on the founder: `Deliveries`, `FileRequests`, `DeliveryEmails` and `Me` become `ListDeliveries`, `ListFileRequests`, `ListDeliveryEmails` and `GetMe`, with no compatibility shim. Call sites: `apps/web/src/dashboard/deliveries.ts`, `apps/web/src/routes/deliveries.tsx`, `e2e/gates/upload.test.ts`, plus docs.
 - `JoinInterest` is public but still lists `AuthenticationUnavailable` and `Unauthorized`, and `apps/web/src/landing/Pricing.tsx` branches on `Unauthorized`. Dropping them is a contract change that touches the pricing page.
 - Uppy ships on every page (`App.tsx:9` static import, `codeSplitting: false`); unmeasured.
 

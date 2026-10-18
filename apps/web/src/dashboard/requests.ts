@@ -22,7 +22,7 @@ export const createRequests = (runtime: ManagedRuntime.ManagedRuntime<AppService
     () =>
       runEffect(
         ApiClient.use((api) =>
-          retryTransport(api.FileRequests()).pipe(Effect.map((list) => [...list])),
+          retryTransport(api.ListFileRequests()).pipe(Effect.map((list) => [...list])),
         ),
       ),
     [],

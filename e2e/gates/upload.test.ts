@@ -164,7 +164,7 @@ scenario(
     yield* run.step("sent");
 
     // The delivery id and link come from the API, same staging user.
-    const delivery = yield* api.Deliveries().pipe(
+    const delivery = yield* api.ListDeliveries().pipe(
       Effect.flatMap((list) => {
         const found = list.find((d) => d.transfers.some((t) => t.path === name && t.size === size));
         return found === undefined
@@ -291,7 +291,7 @@ scenario(
       }
     });
     yield* waitVisible(currentPage.locator("dialog").getByText("Ready", { exact: true }), 600_000);
-    const finished = yield* api.Deliveries().pipe(
+    const finished = yield* api.ListDeliveries().pipe(
       Effect.flatMap((list) => {
         const found = list.find((d) => d.id === delivery.id);
         return found !== undefined &&
