@@ -1,5 +1,5 @@
 import { DeliveryId, TransferId, UserId } from "@tranzfer/contracts";
-import type { NewDelivery, NewFile, RetentionDays } from "@tranzfer/contracts";
+import type { NewDelivery, NewFile, RetentionDays, SignedUrl } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { testDatabase } from "@tranzfer/db/testing";
 import * as Effect from "effect/Effect";
@@ -40,10 +40,10 @@ export const makeMemoryStorage = () => {
         }),
       signDownload: (key) =>
         Effect.succeed({ expiresAt: new Date(0), headers: {}, url: `memory://get/${key}` }),
-      signUpload: (key, request) =>
-        Effect.succeed({
+      signUpload: (key, request, contentLength) =>
+        Effect.succeed<SignedUrl>({
           expiresAt: new Date(0),
-          headers: {},
+          headers: contentLength === undefined ? {} : { "content-length": String(contentLength) },
           url: `memory://${request._tag}/${key}`,
         }),
     }),

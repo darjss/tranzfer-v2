@@ -188,13 +188,21 @@ const make = (credentials: BucketCredentials) =>
       signUpload: Effect.fn("Storage.signUpload")(function* signUpload(
         key: string,
         request: UploadRequest,
+        contentLength: number | undefined,
       ) {
         const url = yield* objectUrl(credentials, key);
         const { headers, method, query } = uploadRequest(request);
         for (const [name, value] of Object.entries(query)) {
           url.searchParams.set(name, value);
         }
-        return yield* presign(method, url, UPLOAD_URL_TTL, headers);
+        return yield* presign(
+          method,
+          url,
+          UPLOAD_URL_TTL,
+          contentLength === undefined
+            ? headers
+            : { ...headers, "content-length": String(contentLength) },
+        );
       }),
     });
   });

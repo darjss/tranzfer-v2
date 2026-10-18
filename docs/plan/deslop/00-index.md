@@ -4,7 +4,7 @@ Written against `origin/dev` at commit `0a61bc5` (2026-10-12). Each plan is self
 
 Plan numbers are identifiers, not an order. Run them by wave. Plans in the same wave touch different files unless the "Conflicts" column says otherwise. Line numbers drift: re-find each `file:line` before editing.
 
-Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 04 (#185), 14 (#184), 05 (#186), 15 (#188), 07 (#187), 06 (#189), 16 (#198), 10 (#174, kept), 12 (rejected, #203).
+Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 04 (#185), 14 (#184), 05 (#186), 15 (#188), 07 (#187), 06 (#189), 16 (#198), 10 (#174, kept), 12 (rejected, #203), 19 (#202).
 
 ## Every plan ships its constraint
 
@@ -15,15 +15,13 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 - 22: send waitlist confirmation mail only to signed-in users; store anonymous joins without mailing them.
 - 21: make the attempt counters exact and fail closed now; no lockout redesign.
 - 24: take `--yes` off `destroy`, retain production D1 and R2, keep separate staging and production `CLOUDFLARE_API_TOKEN` environment secrets.
-- 19: do step 1 now (delete oversized objects at finalize); step 2 stays gated on a staging run.
+- 19: do step 1 now (delete oversized objects at finalize). Step 2 (signed length) shipped after a preview e2e run, 2026-10-18 (#202).
 - 14: delete the SSR API client unless `docs/plan/01-foundation.md` needs a server-side API read.
 - 10 and 12 (2026-10-18): keep Smart Placement without measuring it, and no D1 read replication. A Worker placed next to the primary gains nothing from a replica, and replicas cost a bookmark cookie, a cast and stale-read bugs (#203, closed).
 
 ## Order of execution
 
-| Wave | Plan | Title                                                                                | Priority | Size | Depends on | Status                    |
-| ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | ---------- | ------------------------- |
-| B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none       | IN PROGRESS (step 1 #179) |
+No plans open.
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale).
 

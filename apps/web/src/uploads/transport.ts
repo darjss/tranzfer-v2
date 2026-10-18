@@ -90,23 +90,26 @@ export const retryWhileNotUploaded = <A, E extends { readonly _tag: string }, R>
 // S3NetworkError carries code "NETWORK", S3ServiceError a numeric status.
 // Network loss, an expired signature (403, law 6), timeouts, throttling and
 // 5xx come back on their own; 404 is the multipart upload gone, which must
-// never restart silently.
+// never restart silently. Every retry signs afresh, so a 403 that survives
+// one fresh signature is a refusal (a body longer or shorter than the signed
+// length) and fails at once instead of retrying 40 times.
 export const s3Error = Schema.Struct({
   // A service error copies x-amz-error-code here, which can be null.
   code: Schema.optional(Schema.Unknown),
   status: Schema.optional(Schema.Number),
 });
 
-export const isTransientUploadError = (error: Error) => {
+export const isTransientUploadError = (error: Error, attempts: number) => {
   if (!Schema.is(s3Error)(error)) {
     return false;
   }
   if (error.status === undefined) {
     return error.code === "NETWORK";
   }
-  return (
-    error.status === 403 || error.status === 408 || error.status === 429 || error.status >= 500
-  );
+  if (error.status === 403) {
+    return attempts === 0;
+  }
+  return error.status === 408 || error.status === 429 || error.status >= 500;
 };
 
 // What the row says about a failure isTransientUploadError gave up on. Only a
