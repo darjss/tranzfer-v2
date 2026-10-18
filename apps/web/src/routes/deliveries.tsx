@@ -33,7 +33,7 @@ import { SendDoneList } from "../dashboard/SendDone";
 import { TopBar } from "../dashboard/TopBar";
 import { inkStrokes } from "../landing/notebook";
 import { online, wireWindow } from "../uploads/store";
-import { chosenFiles, getDroppedFiles } from "../uploads/uploads";
+import { chosenFiles, getDroppedFiles } from "../uploads/files";
 import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
 import { paidPlansOpen } from "../ui/support";

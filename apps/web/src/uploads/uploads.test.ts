@@ -23,14 +23,13 @@ import { appError } from "../api/errors";
 import { retryTransport } from "../api/retry";
 import { fingerprint } from "./recovery";
 import { makeUploadSpans } from "./spans";
+import { chosenFiles, deliveryTitle } from "./files";
 import {
-  chosenFiles,
-  deliveryTitle,
   isTransientUploadError,
   putAlreadyLanded,
   retryWhileNotUploaded,
   toUploadRequest,
-} from "./uploads";
+} from "./transport";
 import { verifyParts } from "./verify";
 
 const file = (name: string, relativePath = "") =>

@@ -10,7 +10,7 @@ import { runEffect } from "../api/solid-effect";
 import type { AppServices } from "../api/solid-effect";
 import { rereadWhenSettled } from "../dashboard/deliveries";
 import { Uploads } from "../uploads/uploads";
-import type { ChosenFile } from "../uploads/uploads";
+import type { ChosenFile } from "../uploads/files";
 
 /**
  * An uploader's side of a file request: the request they opened, the uploads

@@ -23,7 +23,7 @@ import { transfers } from "../uploads/store";
 import { untilFree } from "../uploads/tabs";
 import { retryTransport } from "../api/retry";
 import { Uploads } from "../uploads/uploads";
-import type { ChosenFile } from "../uploads/uploads";
+import type { ChosenFile } from "../uploads/files";
 import { bytes, emailSummary, kindOf, rollup, totalSize, untilDate } from "./format";
 import type { Emailed } from "./format";
 
