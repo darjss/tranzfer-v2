@@ -71,7 +71,7 @@ export class SharedLinks extends Context.Service<
     SharedLinks,
     Effect.gen(function* makeSharedLinks() {
       const attempts = yield* Attempts;
-      const { db } = yield* Database;
+      const { db, primary } = yield* Database;
       const tokens = yield* LinkTokens;
       const storage = yield* Storage;
 
@@ -99,12 +99,21 @@ export class SharedLinks extends Context.Service<
             return yield* new LinkNotFound();
           }
           yield* Effect.annotateCurrentSpan("link.id", linkId.value);
-          const link = yield* db.query.link.findFirst({
-            where: { id: linkId.value },
-            with: {
-              delivery: { with: { sender: true, transfers: { orderBy: { path: "asc" } } } },
-            },
-          });
+          const find = (source: typeof db) =>
+            source.query.link.findFirst({
+              where: { id: linkId.value },
+              with: {
+                delivery: { with: { sender: true, transfers: { orderBy: { path: "asc" } } } },
+              },
+            });
+          const nearest = yield* find(db);
+          // A recipient holds no bookmark of the sender's writes, so a replica
+          // can still miss a link just made or finalized. Ask the primary
+          // before saying so.
+          const link =
+            nearest === undefined || nearest.delivery.status === "open"
+              ? yield* find(primary)
+              : nearest;
           if (link === undefined) {
             yield* Effect.annotateCurrentSpan("link.refused", "unknown");
             return yield* new LinkNotFound();
@@ -244,7 +253,9 @@ export class SharedLinks extends Context.Service<
           }
           yield* Effect.annotateCurrentSpan("link.id", linkId.value);
           yield* attempts.take({ ip, key: linkId.value, kind: "unlock" });
-          const link = yield* db.query.link.findFirst({
+          // The unlock is bound to the hash the sender set last, which a
+          // replica may not have yet.
+          const link = yield* primary.query.link.findFirst({
             where: { id: linkId.value },
             with: { delivery: true },
           });

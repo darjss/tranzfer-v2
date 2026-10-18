@@ -246,6 +246,13 @@ export const lintConfig = (
         },
       },
       {
+        files: ["packages/db/src/database.ts"],
+        rules: {
+          // D1Client takes a D1Database; its one assertion hands it a session (SAFETY comment there).
+          "typescript/no-unsafe-type-assertion": "off",
+        },
+      },
+      {
         files: ["**/src/guides/Article.tsx"],
         rules: {
           // Its HTML is our own Markdown from content/, compiled at build time.

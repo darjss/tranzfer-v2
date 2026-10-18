@@ -59,7 +59,7 @@ const appDatabase = (stage: string) =>
       const d1 = yield* client.raw.pipe(
         Effect.provideService(RuntimeContext, makeResolveContext(resolved)),
       );
-      return Database.fromD1(d1);
+      return Database.layer(d1);
     }),
   );
 

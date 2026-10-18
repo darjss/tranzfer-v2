@@ -28,6 +28,11 @@ export const testDatabase = Layer.unwrap(
           migrationsFolder: new URL("../migrations", import.meta.url).pathname,
         }),
     );
-    return Database.fromD1(proxy.env.DB);
+    // Sessions, as the Worker opens them. Local D1 has no replicas, so both
+    // read the one database.
+    return Database.layer(
+      proxy.env.DB.withSession("first-unconstrained"),
+      proxy.env.DB.withSession("first-primary"),
+    );
   }),
 );

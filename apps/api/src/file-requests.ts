@@ -135,7 +135,7 @@ export class FileRequests extends Context.Service<
   static readonly layer = Layer.effect(
     FileRequests,
     Effect.gen(function* makeFileRequests() {
-      const { db } = yield* Database;
+      const { db, primary } = yield* Database;
       const deliveries = yield* Deliveries;
       const tokens = yield* LinkTokens;
       const limiter = yield* RateLimiter;
@@ -250,14 +250,18 @@ export class FileRequests extends Context.Service<
           return yield* new RequestNotFound();
         }
         const now = yield* Clock.currentTimeMillis;
-        const row = yield* db.query.fileRequest.findFirst({
-          where: {
-            closedAt: { isNull: true },
-            expiresAt: { gt: new Date(now) },
-            id: RequestId.make(id.value),
-          },
-          with: { owner: true },
-        });
+        const find = (source: typeof db) =>
+          source.query.fileRequest.findFirst({
+            where: {
+              closedAt: { isNull: true },
+              expiresAt: { gt: new Date(now) },
+              id: RequestId.make(id.value),
+            },
+            with: { owner: true },
+          });
+        // An uploader holds no bookmark of the owner's writes, so a replica
+        // can still miss a request just made. Ask the primary before saying so.
+        const row = (yield* find(db)) ?? (yield* find(primary));
         if (row === undefined) {
           return yield* new RequestNotFound();
         }

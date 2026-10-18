@@ -2,6 +2,7 @@ import type { Api } from "@tranzfer/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Cookies from "effect/http/Cookies";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import type * as RpcClient from "effect/rpc/RpcClient";
 import type { RpcClientError } from "effect/rpc/RpcClientError";
@@ -21,7 +22,7 @@ const stagingLogin = async (baseUrl: string, key: string) => {
   if (!response.ok || cookies.length === 0) {
     throw new Error(`staging-login failed: ${response.status} ${await response.text()}`);
   }
-  return cookies.map((cookie) => cookie.split(";")[0]).join("; ");
+  return Cookies.fromSetCookie(cookies);
 };
 
 export class Target extends Context.Service<
@@ -42,8 +43,8 @@ export class Target extends Context.Service<
       if (key === undefined) {
         return yield* Effect.die(new Error("TEST_LOGIN_KEY is required for the staging target"));
       }
-      const cookie = yield* Effect.promise(async () => await stagingLogin(baseUrl, key));
-      const api = yield* apiClient(baseUrl, cookie);
+      const cookies = yield* Effect.promise(async () => await stagingLogin(baseUrl, key));
+      const api = yield* apiClient(baseUrl, cookies);
       const anon = yield* apiClient(baseUrl);
       return Target.of({ anon, api, baseUrl, loginKey: key });
     }),

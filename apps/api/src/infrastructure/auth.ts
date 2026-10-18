@@ -149,7 +149,7 @@ const google = Config.all({
  * What each stage signs in with. Production requires Google and never
  * registers the test login; the other stages take whatever is configured.
  */
-const providers = (stage: "production" | "staging" | "dev", d1: Effect.Effect<D1Database>) =>
+const providers = (stage: "production" | "staging" | "dev") =>
   Match.value(stage).pipe(
     Match.when("production", () =>
       Effect.gen(function* productionProviders() {
@@ -172,7 +172,7 @@ const providers = (stage: "production" | "staging" | "dev", d1: Effect.Effect<D1
         const testLoginKey = yield* Config.option(Config.schema(SigningSecret, "TEST_LOGIN_KEY"));
         return {
           plugins: Option.toArray(
-            Option.map(testLoginKey, (key) => stagingLogin(Redacted.value(key), d1)),
+            Option.map(testLoginKey, (key) => stagingLogin(Redacted.value(key), runAuthCallback)),
           ),
           secret: Option.getOrUndefined(secret),
           socialProviders: Option.getOrUndefined(socialProviders),
@@ -181,6 +181,12 @@ const providers = (stage: "production" | "staging" | "dev", d1: Effect.Effect<D1
     ),
   );
 
+/**
+ * Better Auth over the invocation's D1 session. Built once per isolate, so
+ * each call takes the invocation's Database.
+ *
+ * @effect-expect-leaking Database
+ */
 export class Auth extends Context.Service<
   Auth,
   {
@@ -193,7 +199,8 @@ export class Auth extends Context.Service<
       headers: Headers,
     ) => Effect.Effect<
       { readonly cookies: Cookies.Cookies; readonly principal: Option.Option<Principal> },
-      AuthError
+      AuthError,
+      Database
     >;
   }
 >()("tranzfer/Auth") {
@@ -203,21 +210,30 @@ export class Auth extends Context.Service<
    */
   static readonly layer = (
     stage: "production" | "staging" | "dev",
-    d1: Effect.Effect<D1Database>,
     welcome: (email: string, appUrl: string) => Effect.Effect<void, never, Mail>,
   ) =>
     Layer.effect(
       Auth,
       Effect.gen(function* auth() {
-        const configured = yield* providers(stage, d1);
+        const configured = yield* providers(stage);
         const limiter = yield* RateLimiter;
         const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
 
         // Our snake_case, integer-ms columns rule out the plugin's Kysely D1 layer.
+        // The plugin builds this once per invocation, in the fiber of the first
+        // `fetch` or `session` call, which both require the invocation's
+        // Database. Its D1 session carries the bookmark, so auth reads see
+        // the same writes as the rest of the request.
         const authDatabase = Layer.succeed(AuthDatabase, {
           provider: "sqlite",
-          runtime: d1.pipe(
-            Effect.map((handle) => drizzleAdapter(drizzle(handle), { provider: "sqlite", schema })),
+          runtime: Effect.serviceOption(Database).pipe(
+            Effect.flatMap(
+              Option.match({
+                onNone: () => Effect.die(new Error("Better Auth ran outside an invocation")),
+                onSome: ({ d1 }) =>
+                  Effect.succeed(drizzleAdapter(drizzle(d1), { provider: "sqlite", schema })),
+              }),
+            ),
           ),
         } satisfies DatabaseService);
 

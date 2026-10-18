@@ -2,8 +2,7 @@ import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import type { BetterAuthPlugin } from "better-auth/types";
 import { UserId } from "@tranzfer/contracts";
-import { schema } from "@tranzfer/db";
-import { drizzle } from "drizzle-orm/d1";
+import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
@@ -13,8 +12,12 @@ const testerEmail = "staging@tranzfer.app";
 // Lets testers sign in on staging and local stages without OAuth, on the
 // Studio plan so release gates can send hundreds of GB without Polar.
 // Production never registers this plugin, so neither the login nor the grant
-// exists there.
-export const stagingLogin = (key: string, d1: Effect.Effect<D1Database>): BetterAuthPlugin => ({
+// exists there. `run` is auth.ts's runAuthCallback, passed in to keep the
+// imports one way.
+export const stagingLogin = (
+  key: string,
+  run: (effect: Effect.Effect<void, never, Database>) => Promise<void>,
+): BetterAuthPlugin => ({
   endpoints: {
     stagingLogin: createAuthEndpoint(
       "/staging-login",
@@ -56,10 +59,14 @@ export const stagingLogin = (key: string, d1: Effect.Effect<D1Database>): Better
         }
         // Better Auth generated this id, as in Auth.session.
         const grant = { plan: "studio", status: "comp", userId: UserId.make(user.id) } as const;
-        await drizzle(await Effect.runPromise(d1))
-          .insert(schema.subscription)
-          .values(grant)
-          .onConflictDoUpdate({ set: grant, target: schema.subscription.userId });
+        await run(
+          Effect.flatMap(Database, ({ db }) =>
+            db
+              .insert(schema.subscription)
+              .values(grant)
+              .onConflictDoUpdate({ set: grant, target: schema.subscription.userId }),
+          ).pipe(dieOnDatabaseError, Effect.asVoid),
+        );
         const session = await adapter.createSession(user.id);
         await setSessionCookie(ctx, { session, user });
         return await ctx.json({ user });

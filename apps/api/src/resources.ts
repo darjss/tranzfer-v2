@@ -27,6 +27,9 @@ export const App = Cloudflare.D1.Database("App", {
   // Resolved against process.cwd() by the provider, which is infra/ for
   // dev/plan/deploy.
   migrations: { dir: "../packages/db/migrations", table: "drizzle_migrations" },
+  // Read-only copies near users. The Worker reads them through one D1
+  // session per invocation (index.ts); toggling this updates in place.
+  readReplication: { mode: "auto" },
 }).pipe(Alchemy.remote(), retainInProduction);
 
 export const Files = Cloudflare.R2.Bucket("Files", {

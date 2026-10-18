@@ -5,6 +5,7 @@ import {
   CurrentPrincipal,
   Unauthorized,
 } from "@tranzfer/contracts";
+import { Database } from "@tranzfer/db";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -23,8 +24,9 @@ import { SharedLinks } from "./shared-links";
 import { Transfers } from "./transfers";
 
 // The signed-in caller, or Unauthorized. A renewed session cookie rides on the response.
-const signedIn = (auth: Auth["Service"], headers: HttpHeaders) =>
+const signedIn = (auth: Auth["Service"], database: Database["Service"], headers: HttpHeaders) =>
   auth.session(new Headers(headers)).pipe(
+    Effect.provideService(Database, database),
     Effect.tapError(() => Effect.logError("session lookup failed")),
     Effect.mapError(() => new AuthenticationUnavailable()),
     Effect.tap(({ cookies }) =>
@@ -44,8 +46,9 @@ export const AuthenticatedLive = Layer.effect(
   Authenticated,
   Effect.gen(function* makeAuthenticated() {
     const auth = yield* Auth;
+    const database = yield* Database;
     return Authenticated.of((effect, { headers }) =>
-      Effect.flatMap(signedIn(auth, headers), (user) =>
+      Effect.flatMap(signedIn(auth, database, headers), (user) =>
         Effect.provideService(effect, CurrentPrincipal, user),
       ),
     );
@@ -64,6 +67,7 @@ export const ApiHandlers = Api.toLayer(
     const interest = yield* Interest;
     const requests = yield* FileRequests;
     const auth = yield* Auth;
+    const database = yield* Database;
     const sender = Effect.map(CurrentPrincipal, ({ id }) => id);
     return Api.of({
       CancelDelivery: ({ deliveryId }) =>
@@ -87,7 +91,7 @@ export const ApiHandlers = Api.toLayer(
         Effect.gen(function* joinInterest() {
           const who =
             email === undefined
-              ? yield* Effect.map(signedIn(auth, headers), (user) => ({
+              ? yield* Effect.map(signedIn(auth, database, headers), (user) => ({
                   email: user.email,
                   userId: user.id,
                 }))

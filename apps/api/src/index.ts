@@ -38,6 +38,9 @@ import { relayConfig, relayTraces, telemetry } from "./infrastructure/telemetry"
 import { App } from "./resources";
 import { ApiWorker } from "./worker";
 
+// Carries the browser's D1 bookmark from one response to its next request.
+const bookmarkCookie = "d1b";
+
 const productProps = (plan: PaidPlanId) => ({
   name: `Tranzfer ${plans[plan].name}`,
   plan,
@@ -138,15 +141,14 @@ export default ApiWorker.make(
       Layer.mergeAll(
         yield* filesStorage,
         LinkTokens.layer((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom))),
-        Auth.layer(stage, handle, sendWelcome),
+        Auth.layer(stage, sendWelcome),
         Mail.layer(stage, email, yield* emailAllowlist),
         RpcSerialization.layerJson,
       ).pipe(Layer.provideMerge(rateLimiter)),
     );
 
-    // A D1 client belongs to one invocation, so the services over it are
+    // A D1 session belongs to one invocation, so the services over it are
     // rebuilt per request (and per cron run) with a fresh memo map.
-    const database = Layer.unwrap(Effect.map(handle, Database.fromD1));
     const domain = Layer.mergeAll(
       SharedLinks.layer,
       billing,
@@ -162,10 +164,49 @@ export default ApiWorker.make(
       Layer.provideMerge(Deliveries.layer),
       Layer.provideMerge(Plans.layer),
       Layer.provideMerge(Attempts.layer),
-      Layer.provideMerge(database),
     );
-    const perInvocation = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-      effect.pipe(Effect.provide(domain, { local: true }), Effect.provideContext(isolate));
+    const withDomain = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(Effect.provide(domain, { local: true }));
+
+    // Every query of an invocation, Better Auth's included, goes through one
+    // D1 session, so the invocation reads its own writes. Cron and webhook
+    // runs start on the primary and see every write.
+    const onPrimary = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      Effect.flatMap(handle, (d1) =>
+        withDomain(effect).pipe(
+          Effect.provide(Database.layer(d1.withSession("first-primary")), { local: true }),
+          Effect.provideContext(isolate),
+        ),
+      );
+
+    // A browser's session starts from the bookmark its last response left in
+    // the cookie, so it never reads a replica older than its own writes.
+    // Without one, the first query goes to the nearest replica. The bookmark
+    // is no secret, but it stays out of spans and logs.
+    const browserSession = <E, R>(
+      handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
+    ) =>
+      Effect.gen(function* browserSession() {
+        const { cookies } = yield* HttpServerRequest.HttpServerRequest;
+        const d1 = yield* handle;
+        const session = d1.withSession(cookies[bookmarkCookie] ?? "first-unconstrained");
+        const response = yield* handler.pipe(
+          Effect.provide(Database.layer(session, d1.withSession("first-primary")), {
+            local: true,
+          }),
+          Effect.provideContext(isolate),
+        );
+        const bookmark = session.getBookmark();
+        return bookmark === null
+          ? response
+          : yield* HttpServerResponse.setCookie(response, bookmarkCookie, bookmark, {
+              httpOnly: true,
+              maxAge: "5 minutes",
+              path: "/",
+              sameSite: "lax",
+              secure: true,
+            }).pipe(Effect.orDie);
+      });
 
     // SameSite=Lax keeps cookies off cross-site POSTs, but staging and every
     // pr-<n> preview are same-site with production and run unmerged branches.
@@ -184,7 +225,7 @@ export default ApiWorker.make(
           : yield* handler;
       });
 
-    yield* Cloudflare.Workers.cron("* * * * *", () => perInvocation(sweep));
+    yield* Cloudflare.Workers.cron("* * * * *", () => onPrimary(sweep));
 
     const health = Effect.gen(function* health() {
       const { db } = yield* Database;
@@ -202,18 +243,17 @@ export default ApiWorker.make(
       HttpRouter.add(
         "*",
         "/api/auth/*",
-        Effect.flatMap(Effect.service(Auth), (auth) => auth.fetch).pipe(
-          Effect.provide(database, { local: true }),
-          Effect.provideContext(isolate),
-        ),
+        browserSession(Effect.flatMap(Effect.service(Auth), (auth) => auth.fetch)),
       ),
       HttpRouter.add(
         "POST",
         "/rpc",
-        perInvocation(
-          sameSiteGuard(
-            Effect.flatten(RpcServer.toHttpEffect(Api)).pipe(
-              Effect.provide(Layer.mergeAll(ApiHandlers, AuthenticatedLive), { local: true }),
+        browserSession(
+          withDomain(
+            sameSiteGuard(
+              Effect.flatten(RpcServer.toHttpEffect(Api)).pipe(
+                Effect.provide(Layer.mergeAll(ApiHandlers, AuthenticatedLive), { local: true }),
+              ),
             ),
           ),
         ),
@@ -221,7 +261,7 @@ export default ApiWorker.make(
       HttpRouter.add(
         "POST",
         "/api/polar/webhook",
-        perInvocation(
+        onPrimary(
           Effect.gen(function* polarWebhook() {
             const request = yield* HttpServerRequest.HttpServerRequest;
             const body = yield* request.text;
@@ -238,7 +278,7 @@ export default ApiWorker.make(
           }),
         ),
       ),
-      HttpRouter.add("GET", "/health", perInvocation(health)),
+      HttpRouter.add("GET", "/health", onPrimary(health)),
       HttpRouter.add(
         "POST",
         "/api/telemetry/traces",
