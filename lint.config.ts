@@ -88,6 +88,7 @@ const tranzferRules: OxlintConfig["rules"] = {
   "tranzfer/branded-user-id": "error",
   "tranzfer/no-debug-markers-in-tests": "error",
   "tranzfer/no-import-then-reexport": "error",
+  "tranzfer/no-literal-length-limit": "error",
   "tranzfer/no-silent-ignore": "error",
   "tranzfer/schema-type-style": "error",
 };
