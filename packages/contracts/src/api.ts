@@ -63,16 +63,16 @@ import {
   UploadClosed,
 } from "./upload";
 
+// Error lists the owner's calls share with the token-bound uploader's.
+const createErrors = [DeliveryConflict, DeliveryRefused, RateLimited] as const;
+const transferErrors = [DeliveryNotFound, InvalidUpload, UploadClosed] as const;
+const finalizeErrors = [...transferErrors, NotUploaded, StorageUnavailable] as const;
+const requestErrors = [RateLimited, RequestNotFound] as const;
+
 export class Api extends RpcGroup.make(
   Rpc.make("Me", { error: Unauthorized, success: Principal }).middleware(Authenticated),
   Rpc.make("CreateDelivery", {
-    error: Schema.Union([
-      DeliveryConflict,
-      DeliveryRefused,
-      OverPlanLimit,
-      RateLimited,
-      RetentionNotInPlan,
-    ]),
+    error: Schema.Union([...createErrors, OverPlanLimit, RetentionNotInPlan]),
     payload: NewDelivery,
     success: Delivery,
   }).middleware(Authenticated),
@@ -115,18 +115,12 @@ export class Api extends RpcGroup.make(
     success: Schema.Array(DeliveryEmail),
   }).middleware(Authenticated),
   Rpc.make("SignUpload", {
-    error: Schema.Union([DeliveryNotFound, InvalidUpload, RateLimited, UploadClosed]),
+    error: Schema.Union([...transferErrors, RateLimited]),
     payload: SignUploadPayload,
     success: SignedUrl,
   }).middleware(Authenticated),
   Rpc.make("FinalizeTransfer", {
-    error: Schema.Union([
-      DeliveryNotFound,
-      InvalidUpload,
-      NotUploaded,
-      StorageUnavailable,
-      UploadClosed,
-    ]),
+    error: Schema.Union(finalizeErrors),
     payload: Schema.Struct({ transferId: TransferId }),
     success: Delivery,
   }).middleware(Authenticated),
@@ -146,47 +140,27 @@ export class Api extends RpcGroup.make(
   // The uploader's side is public: the token is the credential. Each call
   // counts against the caller's IP and the request.
   Rpc.make("OpenFileRequest", {
-    error: Schema.Union([RateLimited, RequestNotFound]),
+    error: Schema.Union(requestErrors),
     payload: Schema.Struct({ token: LinkToken }),
     success: OpenedRequest,
   }),
   Rpc.make("CreateRequestUpload", {
-    error: Schema.Union([
-      DeliveryConflict,
-      DeliveryRefused,
-      RateLimited,
-      RequestFull,
-      RequestNotFound,
-    ]),
+    error: Schema.Union([...createErrors, RequestFull, RequestNotFound]),
     payload: NewRequestUpload,
     success: RequestUpload,
   }),
   Rpc.make("SignRequestUpload", {
-    error: Schema.Union([
-      DeliveryNotFound,
-      InvalidUpload,
-      RateLimited,
-      RequestNotFound,
-      UploadClosed,
-    ]),
+    error: Schema.Union([...transferErrors, ...requestErrors]),
     payload: SignRequestUploadPayload,
     success: SignedUrl,
   }),
   Rpc.make("FinalizeRequestTransfer", {
-    error: Schema.Union([
-      DeliveryNotFound,
-      InvalidUpload,
-      NotUploaded,
-      RateLimited,
-      RequestNotFound,
-      StorageUnavailable,
-      UploadClosed,
-    ]),
+    error: Schema.Union([...finalizeErrors, ...requestErrors]),
     payload: RequestTransferPayload,
     success: RequestUpload,
   }),
   Rpc.make("RequestUploads", {
-    error: Schema.Union([RateLimited, RequestNotFound]),
+    error: Schema.Union(requestErrors),
     payload: RequestUploadsPayload,
     success: Schema.Array(RequestUpload),
   }),
