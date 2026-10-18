@@ -12,7 +12,7 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 - Backend: Effect 4 for workflows, typed errors and services. Pure math stays plain functions.
 - Protocol: Effect RPC, schemas in `packages/contracts`. Plain HTTP for Better Auth, webhooks, health and downloads.
 - Worker adapter: Alchemy's Effect Worker runtime. Init builds storage, link tokens and auth once per isolate. Domain services are built per request ([STRUCTURE.md](STRUCTURE.md)).
-- Database: D1 through Drizzle, wrapped in the `Database` service. Alchemy applies migrations.
+- Database: D1 through Drizzle, wrapped in the `Database` service. Alchemy applies migrations. No read replication: the API Worker uses Smart Placement (#174), which runs it next to the D1 primary, so a replica would sit unused (#203).
 - Auth: `@alchemy.run/better-auth` on the Drizzle adapter, over the lazy D1 handle.
 - Upload transport: Uppy, straight from the browser to private R2 multipart. A pnpm patch makes its `ListParts` follow pagination.
 - Browser recovery metadata: idb-keyval.
