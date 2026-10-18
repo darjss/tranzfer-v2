@@ -6,7 +6,7 @@ The rules are in [TESTING.md](../TESTING.md). This file only lists work still to
 
 All native oxlint rules in `lint.config.ts`. No custom plugin.
 
-- Ceilings (`max-lines` 600 shipped in #198): `max-lines-per-function` 150 (skip blank lines and comments), `complexity` 15, `max-depth` 4, `import/no-cycle`. I measured on 2026-09-24 and the only violation at these limits is `Landing` in `apps/web/src/landing/Landing.tsx`, at 331 lines. Split it into its page sections in the same PR. Exempt migrations and `e2e/scenarios/**` from the function limit.
+- Ceilings: `max-lines-per-function` 150 (skip blank lines and comments), `complexity` 15, `max-depth` 4, `import/no-cycle`. I measured on 2026-09-24 and the only violation at these limits is `Landing` in `apps/web/src/landing/Landing.tsx`, at 331 lines. Split it into its page sections in the same PR. Exempt migrations and `e2e/scenarios/**` from the function limit.
 - Boundaries with per-path `no-restricted-imports`:
   - `packages/contracts`: no `solid-js`, `drizzle-orm`, `cloudflare:*`, `better-auth`, `@distilled.cloud/polar` or app paths.
   - `packages/upload-core`, once it exists: no `solid-js`, `@uppy/*`, `drizzle-orm` or `cloudflare:*`.
