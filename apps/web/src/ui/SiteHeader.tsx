@@ -4,7 +4,9 @@ import PhCaretDownBold from "~icons/ph/caret-down-bold";
 import PhListBold from "~icons/ph/list-bold";
 import PhXBold from "~icons/ph/x-bold";
 import Brand from "../landing/Brand";
-import { audiences, features, resources } from "../marketing/content";
+import { audiences } from "../marketing/audiences";
+import { resources } from "../marketing/content";
+import { features } from "../marketing/features";
 import { button } from "./Button";
 
 // The public pages' top bar. Every menu is a native popover: the browser

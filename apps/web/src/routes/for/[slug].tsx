@@ -2,7 +2,7 @@ import { useParams } from "@solidjs/router";
 import type { RouteDefinition } from "@solidjs/router";
 import { httpStatus } from "@solidjs/web";
 import { Show } from "solid-js";
-import { audiences } from "../../marketing/content";
+import { audiences } from "../../marketing/audiences";
 import MarketingPage from "../../marketing/MarketingPage";
 import NotFound from "../[...404]";
 
