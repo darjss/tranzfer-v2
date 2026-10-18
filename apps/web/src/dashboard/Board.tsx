@@ -18,6 +18,7 @@ import {
   groupOf,
   kindOf,
   kindWords,
+  openedWords,
   rollup,
   speedAt,
 } from "./format";
@@ -247,6 +248,7 @@ function Row(
                       , {shortDate.format(expiresAt())}
                     </span>
                   </span>
+                  <span>{openedWords(props.delivery)}</span>
                   <span>{downloadWords(props.delivery)}</span>
                 </>
               )}

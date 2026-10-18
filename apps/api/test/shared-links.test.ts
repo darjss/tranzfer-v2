@@ -295,6 +295,72 @@ layer(domainLayer(storage.layer))("SharedLinks", (it) => {
       expect(rows).toHaveLength(1);
     }),
   );
+
+  it.effect("counts page loads that showed the files and nothing else", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      const deliveries = yield* Deliveries;
+      const transfers = yield* Transfers;
+      const links = yield* SharedLinks;
+      const sam = yield* addUser("opens-sam", "Sam");
+      const created = yield* deliveries.create(sam, newDelivery([newFile("a.mov", 3)], "Opens"));
+      const token = tokenOf(created.link);
+      const opens = Effect.map(deliveries.view(created.id), (row) => ({
+        count: row.openCount,
+        lastAt: row.lastOpenedAt,
+      }));
+      expect(yield* opens).toEqual({ count: 0, lastAt: null });
+
+      // Not ready, tampered and wrong-token page loads show nothing, so count nothing.
+      yield* Effect.flip(links.open(token, undefined, true));
+      yield* Effect.flip(links.open(LinkToken.make(`${token}x`), undefined, true));
+      expect(yield* opens).toEqual({ count: 0, lastAt: null });
+
+      const file = first(created.transfers);
+      storage.objects.set(file.objectKey, { etag: "m", size: 3 });
+      yield* transfers.finalize(sam, file.id);
+
+      // A download click re-opens the link for fresh URLs; that is no new visit.
+      yield* links.open(token);
+      expect(yield* opens).toEqual({ count: 0, lastAt: null });
+
+      yield* links.open(token, undefined, true);
+      const firstAt = new Date(yield* Clock.currentTimeMillis);
+      expect(yield* opens).toEqual({ count: 1, lastAt: firstAt });
+
+      yield* TestClock.adjust("1 hour");
+      yield* links.open(token, undefined, true);
+      yield* links.open(token);
+      const secondAt = new Date(yield* Clock.currentTimeMillis);
+      expect(yield* opens).toEqual({ count: 2, lastAt: secondAt });
+      expect((yield* deliveries.list(sam)).map((row) => row.openCount)).toEqual([2]);
+
+      // The tally outlives the link; a cancelled or expired link counts no more.
+      yield* TestClock.adjust("4 days");
+      yield* Effect.flip(links.open(token, undefined, true));
+      expect(yield* opens).toEqual({ count: 2, lastAt: secondAt });
+      yield* deliveries.cancel(sam, created.id);
+      yield* Effect.flip(links.open(token, undefined, true));
+      expect(yield* opens).toEqual({ count: 2, lastAt: secondAt });
+    }),
+  );
+
+  it.effect("a password link counts the load that got in, not the locked one", () =>
+    Effect.gen(function* scenario() {
+      yield* TestClock.setTime(Date.now());
+      const deliveries = yield* Deliveries;
+      const links = yield* SharedLinks;
+      const { created, token } = yield* lockedDelivery("opens-locked", "opens secret");
+
+      yield* Effect.flip(links.open(token, undefined, true));
+      yield* Effect.flip(links.open(token, UnlockToken.make("9999999999999.AAAA"), true));
+      expect((yield* deliveries.view(created.id)).openCount).toBe(0);
+
+      const { unlock } = yield* links.unlock(token, "opens secret", "ip-opens");
+      yield* links.open(token, unlock, true);
+      expect((yield* deliveries.view(created.id)).openCount).toBe(1);
+    }),
+  );
 });
 
 // Its own database, so the dropped table leaves the other tests alone.

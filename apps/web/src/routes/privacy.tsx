@@ -7,7 +7,7 @@ export default function Privacy() {
       path="/privacy"
       title="Privacy policy"
       description="What Tranzfer stores about you and your files, which companies process it for us, how long each piece is kept, and how to get a copy or have it deleted."
-      updated="16 October 2026"
+      updated="18 October 2026"
     >
       <p>
         Tranzfer keeps as little about you as it can and deletes files when their delivery ends.
@@ -49,6 +49,11 @@ export default function Privacy() {
           address comes with it.
         </li>
         <li>
+          <strong>Link opens.</strong> How many times your link showed its files and when it last
+          did, so your dashboard can show it was opened. We keep a count and one time per link, not
+          a record of each visit, and no name or IP address.
+        </li>
+        <li>
           <strong>Emails you send.</strong> When you email a link, we send it to the addresses you
           type and keep only whether each send worked. The addresses aren't stored.
         </li>
@@ -73,8 +78,8 @@ export default function Privacy() {
         </li>
       </ul>
       <p>
-        Recipients who open a link don't create an account. We don't track them beyond the download
-        reports, password attempts and request diagnostics above.
+        Recipients who open a link don't create an account. We don't track them beyond the link
+        opens, download reports, password attempts and request diagnostics above.
       </p>
 
       <h2>How long it lives</h2>
@@ -85,8 +90,8 @@ export default function Privacy() {
           uploads are cleared after 7 days.
         </li>
         <li>
-          Delivery records, with an uploader's name and email and the download reports, stay in your
-          history until you delete your account.
+          Delivery records, with an uploader's name and email, the link opens and the download
+          reports, stay in your history until you delete your account.
         </li>
         <li>The IP address you signed up from is deleted 24 hours after you sign up.</li>
         <li>Password and access code attempts are deleted within a few minutes.</li>

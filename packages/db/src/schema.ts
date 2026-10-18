@@ -232,6 +232,9 @@ export const link = sqliteTable(
     // The recipient's password, as `pbkdf2-sha256$<iterations>$<salt>$<hash>`
     // (apps/api/src/passwords.ts). Null means anyone with the link gets in.
     passwordHash: text("password_hash"),
+    // Page loads that showed the recipient the files (`SharedLinks.open`).
+    openCount: integer("open_count").default(0).notNull(),
+    lastOpenedAt: integer("last_opened_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(nowMs).notNull(),
   },
   (table) => [index("link_deliveryId_idx").on(table.deliveryId)],

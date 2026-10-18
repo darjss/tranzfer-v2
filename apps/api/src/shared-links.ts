@@ -38,10 +38,15 @@ const DOWNLOAD_URL_TTL = Duration.days(7);
 export class SharedLinks extends Context.Service<
   SharedLinks,
   {
-    /** A link with a password lists and signs nothing without the `unlock` that `unlock` issued. */
+    /**
+     * A link with a password lists and signs nothing without the `unlock` that
+     * `unlock` issued. A `pageLoad` that gets the files counts as one open for
+     * the sender; a refusal or a re-open for fresh URLs does not.
+     */
     readonly open: (
       token: LinkToken,
       unlock?: UnlockToken,
+      pageLoad?: boolean,
     ) => Effect.Effect<SharedDelivery, LinkExpired | LinkLocked | LinkNotFound | LinkNotReady>;
     /**
      * Trades a password for an unlock good for a day. Every call counts toward
@@ -83,7 +88,11 @@ export class SharedLinks extends Context.Service<
       });
 
       return SharedLinks.of({
-        open: Effect.fn("SharedLinks.open")(function* open(token: LinkToken, unlock?: UnlockToken) {
+        open: Effect.fn("SharedLinks.open")(function* open(
+          token: LinkToken,
+          unlock?: UnlockToken,
+          pageLoad = false,
+        ) {
           const linkId = yield* tokens.verify(token);
           if (Option.isNone(linkId)) {
             yield* Effect.annotateCurrentSpan("link.refused", "badToken");
@@ -149,6 +158,14 @@ export class SharedLinks extends Context.Service<
               .signDownload(transfer.objectKey, basename(transfer.path), ttl)
               .pipe(Effect.map(({ url }) => ({ path: transfer.path, size: transfer.size, url }))),
           );
+          if (pageLoad) {
+            // One statement, so concurrent loads each add one. Not idempotent: a
+            // client retry whose first try got here counts twice.
+            yield* db
+              .update(schema.link)
+              .set({ lastOpenedAt: new Date(now), openCount: sql`${schema.link.openCount} + 1` })
+              .where(eq(schema.link.id, link.id));
+          }
           return {
             expiresAt: delivery.expiresAt,
             files,
