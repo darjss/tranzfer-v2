@@ -70,13 +70,13 @@ const finalizeErrors = [...transferErrors, NotUploaded, StorageUnavailable] as c
 const requestErrors = [RateLimited, RequestNotFound] as const;
 
 export class Api extends RpcGroup.make(
-  Rpc.make("Me", { error: Unauthorized, success: Principal }).middleware(Authenticated),
+  Rpc.make("GetMe", { error: Unauthorized, success: Principal }).middleware(Authenticated),
   Rpc.make("CreateDelivery", {
     error: Schema.Union([...createErrors, OverPlanLimit, RetentionNotInPlan]),
     payload: NewDelivery,
     success: Delivery,
   }).middleware(Authenticated),
-  Rpc.make("Deliveries", { success: Schema.Array(Delivery) }).middleware(Authenticated),
+  Rpc.make("ListDeliveries", { success: Schema.Array(Delivery) }).middleware(Authenticated),
   Rpc.make("CancelDelivery", {
     error: DeliveryNotFound,
     payload: Schema.Struct({ deliveryId: DeliveryId }),
@@ -102,7 +102,7 @@ export class Api extends RpcGroup.make(
   }).middleware(Authenticated),
   // Owner only; the delivery must be ready and unexpired. Answers at once with
   // one queued row per distinct address, in request order; the mail goes out in
-  // the background and `DeliveryEmails` reports how each one ended.
+  // the background and `ListDeliveryEmails` reports how each one ended.
   Rpc.make("SendDeliveryEmail", {
     error: Schema.Union([DeliveryNotFound, DeliveryNotShareable, RateLimited]),
     payload: SendDeliveryEmailPayload,
@@ -110,7 +110,7 @@ export class Api extends RpcGroup.make(
   }).middleware(Authenticated),
   // The sender's latest 50 emails for a delivery, newest first. Someone else's
   // delivery reads as none.
-  Rpc.make("DeliveryEmails", {
+  Rpc.make("ListDeliveryEmails", {
     payload: Schema.Struct({ deliveryId: DeliveryId }),
     success: Schema.Array(DeliveryEmail),
   }).middleware(Authenticated),
@@ -125,7 +125,7 @@ export class Api extends RpcGroup.make(
     success: Delivery,
   }).middleware(Authenticated),
   // File requests: links the owner hands to people without an account.
-  Rpc.make("FileRequests", { success: Schema.Array(FileRequest) }).middleware(Authenticated),
+  Rpc.make("ListFileRequests", { success: Schema.Array(FileRequest) }).middleware(Authenticated),
   Rpc.make("CreateFileRequest", {
     error: RetentionNotInPlan,
     payload: NewFileRequest,

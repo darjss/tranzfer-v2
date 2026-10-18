@@ -75,15 +75,12 @@ export const ApiHandlers = Api.toLayer(
       CreateDelivery: (input) => Effect.flatMap(sender, (id) => deliveries.create(id, input)),
       CreateFileRequest: (input) => Effect.flatMap(sender, (id) => requests.create(id, input)),
       CreateRequestUpload: (input, { headers }) => requests.receive(input, clientIp(headers)),
-      Deliveries: () => Effect.flatMap(sender, deliveries.list),
-      DeliveryEmails: ({ deliveryId }) =>
-        Effect.flatMap(sender, (id) => emails.deliveryEmails(id, deliveryId)),
-      FileRequests: () => Effect.flatMap(sender, requests.list),
       FinalizeRequestTransfer: ({ token, transferId }, { headers }) =>
         requests.finalize(token, clientIp(headers), transferId),
       FinalizeTransfer: ({ transferId }) =>
         Effect.flatMap(sender, (id) => transfers.finalize(id, transferId)),
       GetBilling: () => Effect.flatMap(sender, billing.summary),
+      GetMe: () => Effect.service(CurrentPrincipal),
       // Without an email the signed-in account's address is used, so a
       // signed-in visitor joins in one click.
       JoinInterest: ({ email, plan }, { headers }) =>
@@ -97,7 +94,10 @@ export const ApiHandlers = Api.toLayer(
               : { email, userId: null };
           return yield* interest.join({ ...who, plan }, clientIp(headers));
         }),
-      Me: () => Effect.service(CurrentPrincipal),
+      ListDeliveries: () => Effect.flatMap(sender, deliveries.list),
+      ListDeliveryEmails: ({ deliveryId }) =>
+        Effect.flatMap(sender, (id) => emails.deliveryEmails(id, deliveryId)),
+      ListFileRequests: () => Effect.flatMap(sender, requests.list),
       OpenBillingPortal: () => Effect.flatMap(sender, billing.portal),
       OpenFileRequest: ({ token }, { headers }) => requests.open(token, clientIp(headers)),
       OpenLink: ({ token, unlock }) => links.open(token, unlock),
