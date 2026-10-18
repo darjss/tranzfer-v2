@@ -159,7 +159,8 @@ export class SharedLinks extends Context.Service<
               .pipe(Effect.map(({ url }) => ({ path: transfer.path, size: transfer.size, url }))),
           );
           if (pageLoad) {
-            // One statement, so concurrent loads each add one.
+            // One statement, so concurrent loads each add one. Not idempotent: a
+            // client retry whose first try got here counts twice.
             yield* db
               .update(schema.link)
               .set({ lastOpenedAt: new Date(now), openCount: sql`${schema.link.openCount} + 1` })

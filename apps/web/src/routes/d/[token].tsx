@@ -264,6 +264,8 @@ export const LinkPage = (props: { token: LinkToken }) => {
     const current = access();
     return runEffect(
       ApiClient.use((api) =>
+        // `pageLoad` adds one to the sender's open count. A retry after a
+        // request that reached the server but lost its answer counts again.
         retryTransport(api.OpenLink({ ...current, pageLoad: true })).pipe(
           Effect.map((shared) => ({ locked: undefined, shared })),
           Effect.catchTag("LinkLocked", (locked) => Effect.succeed({ locked, shared: undefined })),
