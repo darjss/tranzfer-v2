@@ -4,7 +4,7 @@ import { ArrowIcon } from "./notebook";
 import { eyebrow, section, smallTitle } from "./styles";
 import { audiences } from "../marketing/audiences";
 
-// Index cards, one per use-case page. The copy comes from content.ts so the
+// Index cards, one per use-case page. The copy comes from audiences.ts so the
 // card and the page it links to say the same thing.
 const tilt = [-1.5, 1, -0.5, 1.5, -1, 0.5];
 
