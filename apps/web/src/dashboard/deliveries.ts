@@ -115,7 +115,7 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
         ApiClient.use((api) =>
           // A dropped read right after a big upload used to swap the whole
           // page for the error card; transport failures retry first.
-          retryTransport(api.Deliveries()).pipe(
+          retryTransport(api.ListDeliveries()).pipe(
             // Every read rebuilds what this tab can still recover.
             Effect.tap((list) => Uploads.use((uploads) => uploads.restore(list))),
             Effect.map((list) => [...list]),
@@ -299,7 +299,7 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
   // onSignedOut, so the poller stops.
   const readEmails = async (deliveryId: string, onSignedOut: () => void) => {
     const exit = await runtime.runPromiseExit(
-      ApiClient.use((api) => api.DeliveryEmails({ deliveryId: DeliveryId.make(deliveryId) })),
+      ApiClient.use((api) => api.ListDeliveryEmails({ deliveryId: DeliveryId.make(deliveryId) })),
     );
     if (Exit.isFailure(exit)) {
       if (appError(exit.cause).tag === "Unauthorized") {

@@ -138,7 +138,7 @@ const DeliveriesPage = () => {
     };
   });
 
-  const me = createMemo(() => runEffect(ApiClient.use((api) => api.Me())));
+  const me = createMemo(() => runEffect(ApiClient.use((api) => api.GetMe())));
   const {
     billing,
     cancel,

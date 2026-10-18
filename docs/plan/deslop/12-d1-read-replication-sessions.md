@@ -11,7 +11,7 @@
 
 ## Why this matters
 
-Reads dominate D1 traffic. Counting queries in the code (read-only RPCs and the read part of write RPCs): `Me` 1-2 session reads; `Deliveries` (list) 2 reads plus session; `GetBilling` about 4 reads plus session; `CreateDelivery` about 7 reads plus 1 batch; `SignUpload` 1 read (plus session) for each of ~1,600 parts per 100 GB; `OpenLink` 1 read; `UnlockLink`, `ReportDownload` 1 read. Writes are rare by comparison. D1 read replication puts read-only copies in every supported region, and the Sessions API lets a Worker read from a nearby replica while keeping sequential consistency. Plan 11 removes the session reads first; plan 10 may remove the distance. This plan is the one to do only if, after those, read latency from far regions still matters.
+Reads dominate D1 traffic. Counting queries in the code (read-only RPCs and the read part of write RPCs): `GetMe` 1-2 session reads; `ListDeliveries` 2 reads plus session; `GetBilling` about 4 reads plus session; `CreateDelivery` about 7 reads plus 1 batch; `SignUpload` 1 read (plus session) for each of ~1,600 parts per 100 GB; `OpenLink` 1 read; `UnlockLink`, `ReportDownload` 1 read. Writes are rare by comparison. D1 read replication puts read-only copies in every supported region, and the Sessions API lets a Worker read from a nearby replica while keeping sequential consistency. Plan 11 removes the session reads first; plan 10 may remove the distance. This plan is the one to do only if, after those, read latency from far regions still matters.
 
 ## What is supported (checked)
 
@@ -27,7 +27,7 @@ Reads dominate D1 traffic. Counting queries in the code (read-only RPCs and the 
 - Session start: bookmark present => `withSession(bookmark)`; absent => `withSession("first-unconstrained")`. After the handler, `session.getBookmark()` goes into the cookie when not null.
 - Always `first-primary` (no replica for the first query): the cron (`index.ts:240`), the Polar webhook (`index.ts:272`), `SharedLinks.unlock` and `SetLinkPassword` (they depend on `link.passwordHash`, and an unlock is bound to the stored hash, `link-tokens.ts` `verifyUnlock`).
 - Negative re-check for public reads: `OpenLink`, `OpenFileRequest` run on the replica session; if they would fail with `LinkNotFound`, `LinkNotReady` or `RequestNotFound`, run once more on a `first-primary` session before answering. This covers a recipient opening a link seconds after the sender finalized it (they share no bookmark).
-- Auth: the Better Auth handler (`/api/auth/*`) must run in the same scheme and emit the bookmark, otherwise sign-in (a write) followed by `Me` (a read on a stale replica) can come back `Unauthorized`. This is the main hazard.
+- Auth: the Better Auth handler (`/api/auth/*`) must run in the same scheme and emit the bookmark, otherwise sign-in (a write) followed by `GetMe` (a read on a stale replica) can come back `Unauthorized`. This is the main hazard.
 
 ## Current state (key excerpts)
 
@@ -67,7 +67,7 @@ const database = Layer.unwrap(Effect.map(handle, Database.fromD1));
 2. In `index.ts` build the per-invocation `database` layer from `handle` + the request: read the `d1b` cookie from `HttpServerRequest` (for the cron there is none), call `withSession`, and register `appendPreResponseHandler` that appends `Set-Cookie` with `session.getBookmark()`.
 3. **Verify**: `vp check`, `vp run test`, web build. Local D1 under `getPlatformProxy` should accept `withSession`; if it does not, STOP and report (tests then need a shim, which needs approval).
    **PR B (Better Auth through the same session)**
-4. Make `makeAuth` take the per-invocation session (or a thunk returning it) instead of the raw handle; the bookmark cookie is emitted for `/api/auth/*` responses too. **Verify**: sign in on a PR preview with the staging test login, then `Me` succeeds on the first call.
+4. Make `makeAuth` take the per-invocation session (or a thunk returning it) instead of the raw handle; the bookmark cookie is emitted for `/api/auth/*` responses too. **Verify**: sign in on a PR preview with the staging test login, then `GetMe` succeeds on the first call.
    **Gate (step 8)**
    5-7. With replication still disabled on staging, compare Axiom `RpcServer` p50/p95 for the plan 10 baseline operations; confirm the `d1b` cookie round-trips (browser devtools).
 5. Gate: proceed only if, after plans 10 and 11, a read-only RPC from a far region is still slower than the founder's target (ask for the target; do not invent one).
@@ -83,12 +83,12 @@ const database = Layer.unwrap(Effect.map(handle, Database.fromD1));
 
 ## Test plan
 
-No new test files. Local D1 has no replicas, so replica behavior is verified only on staging: sign in then immediately `Me` (10 times in a loop from a script outside the repo), finalize then immediately list, and open a just-finished link from a second browser.
+No new test files. Local D1 has no replicas, so replica behavior is verified only on staging: sign in then immediately `GetMe` (10 times in a loop from a script outside the repo), finalize then immediately list, and open a just-finished link from a second browser.
 
 ## Done criteria
 
 - [ ] `vp check`, `vp run test`, web build exit 0 for each PR
-- [ ] Staging: 20 consecutive sign-in-then-`Me` runs succeed
+- [ ] Staging: 20 consecutive sign-in-then-`GetMe` runs succeed
 - [ ] `vp run plan` for PR C shows the D1 `readReplication` change as an update
 
 ## STOP conditions
