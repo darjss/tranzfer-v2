@@ -59,7 +59,7 @@ export const Files = Cloudflare.R2.Bucket("Files", {
       id: "abort-incomplete-multipart",
     },
     {
-      // Backstop only. The sweeper's `Deliveries.purgeEnded` deletes a
+      // Backstop only. The sweeper's `purgeEnded` deletes a
       // delivery's objects within minutes of it ending; this catches anything
       // it missed. It must outlive max retention (14 days from finalization)
       // plus open/upload time, so objects under a live link are never deleted

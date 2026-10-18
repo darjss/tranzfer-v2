@@ -3,10 +3,10 @@ import * as Effect from "effect/Effect";
 
 import { Attempts } from "./attempts";
 import { Billing } from "./billing";
-import { Deliveries } from "./deliveries";
 import { Emails } from "./emails";
 import { pruneSignups } from "./infrastructure/auth";
 import { Interest } from "./interest";
+import { purgeEnded } from "./purge";
 import { Transfers } from "./transfers";
 
 // One step's failure must not cancel the others; the next minute retries it.
@@ -28,7 +28,6 @@ const isolated = <R>(step: string, effect: Effect.Effect<number, never, R>) =>
 
 /** Background upkeep the requests can't be trusted to finish. Every step is idempotent. */
 export const sweep = Effect.gen(function* sweep() {
-  const deliveries = yield* Deliveries;
   const transfers = yield* Transfers;
   const billing = yield* Billing;
   const emails = yield* Emails;
@@ -38,7 +37,7 @@ export const sweep = Effect.gen(function* sweep() {
     yield* Effect.all(
       [
         isolated("recoverFinalizing", transfers.recoverFinalizing),
-        isolated("purgeEnded", deliveries.purgeEnded),
+        isolated("purgeEnded", purgeEnded),
         isolated("reconcileStale", billing.reconcileStale),
         isolated("sendOpenings", interest.sendOpenings),
         isolated("failLost", emails.failLost),

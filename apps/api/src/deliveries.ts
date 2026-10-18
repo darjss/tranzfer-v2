@@ -1,6 +1,5 @@
 import {
   checkFiles,
-  Delivery,
   DeliveryConflict,
   DeliveryNotFound,
   OverPlanLimit,
@@ -10,7 +9,7 @@ import {
   RetentionNotInPlan,
 } from "@tranzfer/contracts";
 import type {
-  DeliveryDownload,
+  Delivery,
   DeliveryId,
   DeliveryRefused,
   NewDelivery,
@@ -22,7 +21,6 @@ import type {
 import { Database, databaseFault, dieOnDatabaseError, schema } from "@tranzfer/db";
 import {
   and,
-  count,
   desc,
   eq,
   exists,
@@ -31,8 +29,6 @@ import {
   isNull,
   lt,
   lte,
-  max,
-  min,
   or,
   sql,
 } from "drizzle-orm";
@@ -47,19 +43,15 @@ import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 
-import { LinkTokens, newLinkId } from "./link-tokens";
+import { makeDeliveryViews } from "./delivery-views";
+import { newLinkId } from "./link-tokens";
 import { hashPassword } from "./passwords";
 import { secondsUntilRoom } from "./attempts";
 import { Plans } from "./plans";
-import { Storage, UPLOAD_URL_TTL } from "./storage";
+import { Storage } from "./storage";
 
 // D1 caps a statement at 100 bound parameters and a transfer row binds 8.
 const TRANSFER_ROWS_PER_INSERT = 12;
-// Deliveries purged per sweep; each is one list plus one bulk delete per 1000 files.
-const PURGE_BATCH = 20;
-// A Complete or empty-file Put signed before a cancel can still land an object
-// until its URL expires, so the confirming purge waits out the URL's lifetime.
-const CANCEL_SETTLE = Duration.sum(UPLOAD_URL_TTL, Duration.minutes(1));
 /**
  * A delivery has this long to finish uploading. R2 aborts incomplete multipart
  * uploads after 7 days, so the window matches what storage can honor. Signing
@@ -69,8 +61,16 @@ export const UPLOAD_WINDOW = Duration.days(7);
 
 export const objectPrefix = (deliveryId: DeliveryId) => `d/${deliveryId}/`;
 
-export const isExpired = (expiresAt: Date | null, now: number) =>
-  expiresAt !== null && expiresAt.getTime() <= now;
+/** Removes a delivery's objects. A storage failure is logged and reads as false. */
+export const removeObjects = (deliveryId: DeliveryId, objectKeys: readonly string[]) =>
+  Effect.flatMap(Effect.service(Storage), (storage) =>
+    storage.purge(objectPrefix(deliveryId), objectKeys),
+  ).pipe(
+    Effect.as(true),
+    Effect.catchTag("StorageError", (error) =>
+      Effect.logError("purge failed", { deliveryId }, error.cause).pipe(Effect.as(false)),
+    ),
+  );
 
 /** Where a delivery came from: nowhere special, or an uploader through a file request. */
 interface Origin {
@@ -124,7 +124,7 @@ const sameDelivery = (
     ),
   );
 
-/** Delivery lifecycle for its sender, plus the purge of what ended. */
+/** Delivery lifecycle for its sender. The sweeper purges what ended (`purge.ts`). */
 export class Deliveries extends Context.Service<
   Deliveries,
   {
@@ -182,8 +182,6 @@ export class Deliveries extends Context.Service<
       password: string | null,
     ) => Effect.Effect<Delivery, DeliveryNotFound>;
     readonly view: (deliveryId: DeliveryId) => Effect.Effect<Delivery>;
-    /** Removes the objects of cancelled and expired deliveries. Returns how many it purged. */
-    readonly purgeEnded: Effect.Effect<number>;
   }
 >()("tranzfer/Deliveries") {
   static readonly layer = Layer.effect(
@@ -191,113 +189,8 @@ export class Deliveries extends Context.Service<
     Effect.gen(function* makeDeliveries() {
       const { batch, db } = yield* Database;
       const userPlans = yield* Plans;
-      const tokens = yield* LinkTokens;
       const storage = yield* Storage;
-
-      const load = (deliveryId: DeliveryId) =>
-        db.query.delivery.findFirst({
-          where: { id: deliveryId },
-          with: { link: true, transfers: { orderBy: { path: "asc" } } },
-        });
-      type Row = NonNullable<Effect.Success<ReturnType<typeof load>>>;
-
-      // What recipients reported, per delivery; one with no reports has no entry.
-      const downloadsOf = Effect.fn("Deliveries.downloads")(function* downloadsOf(
-        ids: readonly DeliveryId[],
-      ) {
-        const rows = yield* db
-          .select({
-            deliveryId: schema.download.deliveryId,
-            filesSaved: count(schema.download.savedAt),
-            lastAt: max(schema.download.lastAt),
-            startedAt: min(schema.download.startedAt),
-          })
-          .from(schema.download)
-          .where(inArray(schema.download.deliveryId, ids))
-          .groupBy(schema.download.deliveryId);
-        return new Map(
-          // max and min are null only for an empty group, which groupBy never makes.
-          rows.flatMap((row) =>
-            row.lastAt === null || row.startedAt === null
-              ? []
-              : [
-                  [
-                    row.deliveryId,
-                    {
-                      filesSaved: row.filesSaved,
-                      lastAt: row.lastAt,
-                      startedAt: row.startedAt,
-                    } satisfies DeliveryDownload,
-                  ],
-                ],
-          ),
-        );
-      });
-
-      const toView = Effect.fn("Deliveries.toView")(function* toView(
-        row: Row,
-        download: DeliveryDownload | null,
-      ) {
-        if (row.link === null) {
-          // The link is inserted in the delivery's own batch.
-          return yield* Effect.die(new Error(`Delivery ${row.id} has no link`));
-        }
-        const now = yield* Clock.currentTimeMillis;
-        return Delivery.make({
-          createdAt: row.createdAt,
-          download,
-          expiresAt: row.expiresAt,
-          hasPassword: row.link.passwordHash !== null,
-          id: row.id,
-          link: `/d/${yield* tokens.issue(row.link.id)}`,
-          note: row.note,
-          retentionDays: row.retentionDays,
-          status: row.status === "ready" && isExpired(row.expiresAt, now) ? "expired" : row.status,
-          title: row.title,
-          transfers: row.transfers.map((transfer) => ({
-            id: transfer.id,
-            objectKey: transfer.objectKey,
-            path: transfer.path,
-            size: transfer.size,
-            state: transfer.state,
-          })),
-          uploader:
-            row.uploaderName === null ? null : { email: row.uploaderEmail, name: row.uploaderName },
-        });
-      });
-
-      const markPurged = (deliveryId: DeliveryId) =>
-        Effect.flatMap(Clock.currentTimeMillis, (now) =>
-          db
-
-            .update(schema.delivery)
-
-            .set({ purgedAt: new Date(now) })
-
-            .where(eq(schema.delivery.id, deliveryId)),
-        );
-
-      const removeObjects = (deliveryId: DeliveryId, objectKeys: readonly string[]) =>
-        storage.purge(objectPrefix(deliveryId), objectKeys).pipe(
-          Effect.as(true),
-          Effect.catchTag("StorageError", (error) =>
-            Effect.logError("purge failed", { deliveryId }, error.cause).pipe(Effect.as(false)),
-          ),
-        );
-
-      const viewRow = Effect.fn("Deliveries.viewRow")(function* viewRow(row: Row) {
-        const downloads = yield* downloadsOf([row.id]);
-        return yield* toView(row, downloads.get(row.id) ?? null);
-      });
-
-      const view = Effect.fn("Deliveries.view")(function* view(deliveryId: DeliveryId) {
-        yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
-        const row = yield* load(deliveryId);
-        if (row === undefined) {
-          return yield* Effect.die(new Error(`Delivery ${deliveryId} vanished`));
-        }
-        return yield* viewRow(row);
-      }, dieOnDatabaseError);
+      const { downloadsOf, load, toView, view, viewRow } = yield* makeDeliveryViews;
 
       const activeBytesAt = (senderId: UserId, now: number) =>
         db
@@ -534,9 +427,8 @@ export class Deliveries extends Context.Service<
           ]);
           yield* removeObjects(
             deliveryId,
-
             row.transfers.map((transfer) => transfer.objectKey),
-          );
+          ).pipe(Effect.provideService(Storage, storage));
           return yield* view(deliveryId);
         }, dieOnDatabaseError),
         clear: Effect.fn("Deliveries.clear")(function* clear(
@@ -641,92 +533,6 @@ export class Deliveries extends Context.Service<
             yield* checkFiles(input.files);
             return yield* insert(senderId, plan, input, intake);
           }).pipe(Effect.withSpan("Deliveries.place"), dieOnDatabaseError),
-
-        purgeEnded: Effect.gen(function* purgeEnded() {
-          const now = yield* Clock.currentTimeMillis;
-          // A sender who closed the tab and never came back leaves an open
-          // delivery behind. End it like a cancel; the purge below cleans up.
-          const abandoned = yield* db.query.delivery.findMany({
-            columns: { id: true },
-            limit: PURGE_BATCH,
-            where: {
-              createdAt: { lte: new Date(now - Duration.toMillis(UPLOAD_WINDOW)) },
-              status: "open",
-            },
-          });
-          if (abandoned.length > 0) {
-            const ids = abandoned.map((delivery) => delivery.id);
-            yield* batch([
-              db
-                .update(schema.delivery)
-                .set({ status: "cancelled" })
-                .where(and(inArray(schema.delivery.id, ids), eq(schema.delivery.status, "open"))),
-              // Only transfers of deliveries the statement above really ended:
-              // a finalize can flip one to ready between the query and here.
-              db
-                .update(schema.transfer)
-                .set({ state: "cancelled" })
-                .where(
-                  and(
-                    inArray(schema.transfer.deliveryId, ids),
-                    exists(
-                      db
-                        .select({ one: sql`1` })
-                        .from(schema.delivery)
-                        .where(
-                          and(
-                            eq(schema.delivery.id, schema.transfer.deliveryId),
-                            eq(schema.delivery.status, "cancelled"),
-                          ),
-                        ),
-                    ),
-                  ),
-                ),
-            ]);
-            yield* Effect.logInfo("abandoned deliveries cancelled", { count: ids.length });
-          }
-          yield* Effect.annotateCurrentSpan("sweep.abandoned", abandoned.length);
-          const ended = yield* db.query.delivery.findMany({
-            columns: { id: true },
-            limit: PURGE_BATCH,
-            orderBy: { updatedAt: "asc" },
-            where: {
-              OR: [
-                // Cancel removed the objects already. A Complete that was in
-                // flight at that moment can still land one, so purge again once
-                // such requests are long over, and only then record it.
-                {
-                  status: "cancelled",
-                  updatedAt: { lte: new Date(now - Duration.toMillis(CANCEL_SETTLE)) },
-                },
-                { expiresAt: { lte: new Date(now) }, status: "ready" },
-              ],
-              purgedAt: { isNull: true },
-            },
-            with: { transfers: { columns: { objectKey: true } } },
-          });
-          // A failing row rotates to the back instead of filling every batch.
-          // For a cancelled one this also waits CANCEL_SETTLE before the retry.
-          const touch = (deliveryId: DeliveryId) =>
-            db
-              .update(schema.delivery)
-              .set({ updatedAt: new Date(now) })
-              .where(eq(schema.delivery.id, deliveryId));
-          const purged = yield* Effect.forEach(
-            ended,
-            (delivery) =>
-              removeObjects(
-                delivery.id,
-                delivery.transfers.map((transfer) => transfer.objectKey),
-              ).pipe(
-                Effect.tap((removed) => (removed ? markPurged(delivery.id) : touch(delivery.id))),
-              ),
-            { concurrency: 4 },
-          );
-          const total = purged.filter(Boolean).length;
-          yield* Effect.annotateCurrentSpan({ "sweep.ended": ended.length, "sweep.purged": total });
-          return total;
-        }).pipe(Effect.withSpan("Deliveries.purgeEnded"), dieOnDatabaseError),
 
         setPassword: Effect.fn("Deliveries.setPassword")(function* setPassword(
           senderId: UserId,
