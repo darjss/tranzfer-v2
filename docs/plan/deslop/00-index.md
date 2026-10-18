@@ -21,9 +21,9 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 
 ## Order of execution
 
-| Wave | Plan | Title                                                                                | Priority | Size | Depends on            | Status                    |
-| ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | --------------------- | ------------------------- |
-| B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none                  | IN PROGRESS (step 1 #179) |
+| Wave | Plan | Title                                                                                | Priority | Size | Depends on | Status                    |
+| ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | ---------- | ------------------------- |
+| B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none       | IN PROGRESS (step 1 #179) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale).
 
