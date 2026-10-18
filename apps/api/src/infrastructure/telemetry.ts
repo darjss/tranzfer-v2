@@ -251,7 +251,7 @@ export const relayTraces = ({ client, origin, target }: Effect.Success<typeof re
       return status(204);
     }
     const limiter = yield* RateLimiter;
-    if (!(yield* limiter.allow("telemetryRelay", clientIp(new Headers(request.headers))))) {
+    if (!(yield* limiter.allow("telemetryRelay", clientIp(request.headers)))) {
       return status(429);
     }
     if (request.headers.origin !== origin) {
