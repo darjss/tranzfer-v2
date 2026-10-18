@@ -199,14 +199,15 @@ layer(Target.layer)("staging deliveries", (it) => {
         );
 
         // A second upload on the same key, fully prepared before finalize, is
-        // the replay a sender could try later to swap the file.
+        // the replay a sender could try later to swap the file. Its part is
+        // the signed length, other bytes.
         const rogueId = yield* createUpload(api, bigTransfer.objectKey);
         const rogueEtag = yield* putPart(
           api,
           bigTransfer.objectKey,
           rogueId,
           1,
-          Buffer.from("swapped"),
+          Buffer.alloc(part, 0x78),
         );
         const rogueComplete = yield* api.SignUpload({
           key: bigTransfer.objectKey,
