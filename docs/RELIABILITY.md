@@ -251,6 +251,7 @@ How the recipient page does it today:
 - Safari and Firefox have no folder picker. They get the per-file list and a line pointing to Chrome or Edge. A streamed zip through a service worker was rejected: a dropped connection restarts the whole archive, and Safari buffers service-worker downloads. No server-side zip: CRC32 over hundreds of GB does not fit Worker CPU limits.
 
 - The sender's row says how far the download got, but the server never sees bytes move: R2 serves them straight to the browser. The recipient page reports `started` when a file's Download is clicked or its folder save begins, and `saved` when a folder save has the whole file on disk (`ReportDownload`, one `download` row per file, upserted). A one-file download in the browser's own manager is never reported finished, so it reads "Download started". A report is a claim by whoever holds the link, and a download proves nothing about the files being opened.
+- The sender's row also says how often the link was opened and when last (`link.open_count`, `link.last_opened_at`). Only the recipient page's `OpenLink` with `pageLoad` that gets the files counts. Locked, expired and cancelled loads, and the re-opens a download click or Download all makes for fresh URLs, do not. A transport retry that reached the server counts twice, and so does the sender previewing their own link.
 
 ### Link passwords and previews
 

@@ -189,7 +189,9 @@ export class Api extends RpcGroup.make(
   // show its files or sign their URLs.
   Rpc.make("OpenLink", {
     error: Schema.Union([LinkExpired, LinkLocked, LinkNotFound, LinkNotReady]),
-    payload: LinkAccess,
+    // `pageLoad` is set by the recipient page when it opens, and only then does
+    // the sender's tally grow. A download click re-opens for fresh URLs too.
+    payload: Schema.Struct({ ...LinkAccess.fields, pageLoad: Schema.optional(Schema.Boolean) }),
     success: SharedDelivery,
   }),
   // Public. Counted per client IP and per link, right and wrong passwords alike.

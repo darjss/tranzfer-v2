@@ -63,6 +63,12 @@ export const downloadWords = (delivery: Delivery) => {
     : `${download.filesSaved} of ${files(total)} downloaded, last ${when(download.lastAt)}`;
 };
 
+/** How often the link showed its files, and when it last did. */
+export const openedWords = (delivery: Delivery) =>
+  delivery.lastOpenedAt === null
+    ? "Not opened yet"
+    : `Opened ${delivery.openCount === 1 ? "once" : `${delivery.openCount} times`}, last ${when(delivery.lastOpenedAt)}`;
+
 /** An email this page asked for, with the address it typed. The server keeps none. */
 export interface Emailed extends DeliveryEmail {
   readonly to: string;

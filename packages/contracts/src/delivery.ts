@@ -121,8 +121,12 @@ export const Delivery = Schema.Struct({
   expiresAt: Schema.NullOr(Schema.DateFromString),
   hasPassword: Schema.Boolean,
   id: DeliveryId,
+  /** When the link last showed its files to someone; null until it has. */
+  lastOpenedAt: Schema.NullOr(Schema.DateFromString),
   link: Schema.String,
   note: Schema.String,
+  /** How many times the link showed its files. Download clicks and refused loads don't count. */
+  openCount: Schema.Int,
   retentionDays: RetentionDays,
   status: DeliveryStatus,
   title: Schema.String,

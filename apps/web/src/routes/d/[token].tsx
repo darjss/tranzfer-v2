@@ -264,7 +264,7 @@ export const LinkPage = (props: { token: LinkToken }) => {
     const current = access();
     return runEffect(
       ApiClient.use((api) =>
-        retryTransport(api.OpenLink(current)).pipe(
+        retryTransport(api.OpenLink({ ...current, pageLoad: true })).pipe(
           Effect.map((shared) => ({ locked: undefined, shared })),
           Effect.catchTag("LinkLocked", (locked) => Effect.succeed({ locked, shared: undefined })),
         ),
