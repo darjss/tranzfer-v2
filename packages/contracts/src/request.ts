@@ -16,11 +16,14 @@ export type RequestId = typeof RequestId.Type;
 
 // A delivery made through a request is titled "<title> from <name>", and a
 // delivery title holds 200, so these two leave room for the joining word.
-export const RequestTitle = Schema.Trim.check(Schema.isBetweenLength(1, 120));
-export const UploaderName = Schema.Trim.check(Schema.isBetweenLength(1, 60));
+export const maxRequestTitleLength = 120;
+export const maxUploaderNameLength = 60;
+export const RequestTitle = Schema.Trim.check(Schema.isBetweenLength(1, maxRequestTitleLength));
+export const UploaderName = Schema.Trim.check(Schema.isBetweenLength(1, maxUploaderNameLength));
 
 /** Plain text for the uploader. Empty means none. */
-export const RequestInstructions = Schema.Trim.check(Schema.isMaxLength(1000));
+export const maxInstructionsLength = 1000;
+export const RequestInstructions = Schema.Trim.check(Schema.isMaxLength(maxInstructionsLength));
 
 export const NewFileRequest = Schema.Struct({
   instructions: RequestInstructions,

@@ -1,5 +1,11 @@
 import { Meta, Title } from "@solidjs/meta";
-import { EmailAddress, LinkToken, RequestNotFound } from "@tranzfer/contracts";
+import {
+  EmailAddress,
+  LinkToken,
+  maxEmailLength,
+  maxUploaderNameLength,
+  RequestNotFound,
+} from "@tranzfer/contracts";
 import type { RequestUpload } from "@tranzfer/contracts";
 import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
@@ -391,7 +397,7 @@ function Request(props: { token: LinkToken }) {
           <input
             autocomplete="name"
             class={field}
-            maxlength={60}
+            maxlength={maxUploaderNameLength}
             name="name"
             onInput={(event) => {
               setName(event.currentTarget.value);
@@ -408,7 +414,7 @@ function Request(props: { token: LinkToken }) {
           <input
             autocomplete="email"
             class={field}
-            maxlength={254}
+            maxlength={maxEmailLength}
             name="email"
             onInput={(event) => {
               setEmail(event.currentTarget.value);

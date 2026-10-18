@@ -1,4 +1,4 @@
-import { plans } from "@tranzfer/contracts";
+import { maxAccessCodeLength, plans } from "@tranzfer/contracts";
 import type { BillingSummary, PaidPlanId, Principal } from "@tranzfer/contracts";
 import { Show } from "solid-js";
 import { css, cx } from "styled-system/css";
@@ -210,7 +210,7 @@ export function TopBar(props: {
                   shadow: "[inset 0 0 0 1px var(--colors-line)]",
                   textTransform: "uppercase",
                 })}
-                maxlength={64}
+                maxlength={maxAccessCodeLength}
                 name="code"
                 placeholder="BETA-PRO"
                 ref={(element) => {

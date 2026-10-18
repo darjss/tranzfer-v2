@@ -1,4 +1,10 @@
-import { defaultRetentionDays, plans, RetentionDays } from "@tranzfer/contracts";
+import {
+  defaultRetentionDays,
+  maxInstructionsLength,
+  maxRequestTitleLength,
+  plans,
+  RetentionDays,
+} from "@tranzfer/contracts";
 import type { BillingSummary, FileRequest, NewFileRequest, RequestId } from "@tranzfer/contracts";
 import { createSignal, For, Match, Show, Switch } from "solid-js";
 import { css, cx } from "styled-system/css";
@@ -81,7 +87,7 @@ function NewRequest(props: {
         What are you asking for?
         <input
           class={field}
-          maxlength={120}
+          maxlength={maxRequestTitleLength}
           name="title"
           onInput={(event) => {
             setTitle(event.currentTarget.value);
@@ -97,7 +103,7 @@ function NewRequest(props: {
         </span>
         <textarea
           class={field}
-          maxlength={1000}
+          maxlength={maxInstructionsLength}
           name="instructions"
           onInput={(event) => {
             setInstructions(event.currentTarget.value);
