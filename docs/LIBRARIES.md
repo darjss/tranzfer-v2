@@ -50,7 +50,7 @@ Names that moved since 4.0.0-rc. The old form fails or does not exist.
 
 Read `apps/web/node_modules/solid-js/CHEATSHEET.md` first. It matches the installed rc.13; the skill's `references/` target rc.8. Types are in `apps/web/node_modules/solid-js/types` and `apps/web/node_modules/@solidjs/web/types`. Repair guides for diagnostic codes are in `apps/web/node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md` and `apps/web/node_modules/@solidjs/diagnostics/skills/agent-loops/SKILL.md`. `@solidjs/router` is 2.0.0-next.35 and `@solidjs/meta` is 1.0.0-next.2; neither ships docs beyond a README.
 
-- `createEffect(compute, apply)` takes two functions. The cheatsheet's "What changed from 1.x" lists the rest: `onMount` is `onSettled`, `on()` and `createComputed` are gone, `ErrorBoundary` is `Errored`.
+- `createEffect(compute, apply)` takes two functions. Lint names the replacement for each removed `solid-js` import. The cheatsheet's "What changed from 1.x" lists the rest: `onMount` is `onSettled`, `on()` and `createComputed` are gone, `ErrorBoundary` is `Errored`.
 - `<For each>` rows are plain values and the index is an accessor. With `keyed={false}` or `keyed={fn}` the row is an accessor. `<Show>` and `<Match>` function children get an accessor unless `keyed`. Read an accessor in JSX, a memo or an effect, never at the top of the callback.
 - A list rebuilt from fresh objects on every change trips `HOT_SCOPE_TIME`. Project it by id with `createProjection(fn, [], { name })` (see `apps/web/src/marketing/PriceCalculator.tsx`). Adding `keyed` did not help.
 - `<Dynamic>` is deprecated. Use `dynamic(() => Component)`. `clientOnly(() => import(...))` renders only the fallback on the server (see `apps/web/src/App.tsx`).
@@ -58,10 +58,23 @@ Read `apps/web/node_modules/solid-js/CHEATSHEET.md` first. It matches the instal
 - The `solid/reactivity` lint wants `onClick={() => props.dismiss()}`, not `onClick={props.dismiss}`.
 - Effect reads and mutations go through `docs/SOLID-EFFECT-BINDING.md`. `Schema.Class` instances do not survive Solid's SSR serializer; send `Schema.Struct` data.
 
+Common repairs, by code:
+
+- `STRICT_READ_UNTRACKED`, `PENDING_ASYNC_UNTRACKED_READ`: a reactive read outside a tracking scope (destructured props, component body). Read it in JSX, a memo or an effect's compute half; `untrack()` if a one-time snapshot is the intent.
+- `REACTIVE_WRITE_IN_OWNED_SCOPE`, `ACTION_CALLED_IN_OWNED_SCOPE`: a write, `refresh()` or action call during a component body or memo. Move it to an event handler or effect callback.
+- `FLUSH_IN_ACTION`, `FLUSH_IN_EFFECT_CALLBACK`: delete the `flush()`. In tests, call `flush()` before reading the DOM.
+- `NO_OWNER_EFFECT`, `NO_OWNER_CLEANUP`: create effects and `onCleanup` under a component or `createRoot`.
+- `UNSTABLE_MEMO_OUTPUT`: the memo returns fresh but equal objects. Return stable references or pass `equals`.
+- `HOT_SCOPE_*`, `HUGE_FAN_OUT`: a hot signal or one shared value read by many rows. Derive a slower value, or keep the answer in a store keyed by id.
+- `EFFECT_WRITES_OWN_SOURCE`, `EFFECT_RELAY_TEAR`: an effect that writes derived state. Use `createMemo`.
+- `IMMUTABLE_UPDATE_IN_STORE`, `UNSTABLE_LIST_IDENTITY`: mutate the store draft, or `reconcile(data, "id")`, and key `<For>` by a stable id.
+- `ASYNC_WATERFALL`: read every async source before using any, so they start together.
+- `SILENT_HOLD`, `LONG_HOLD`: add feedback with `isPending`, `latest` or an optimistic write. Never remove the hold; past 500 ms show a `Loading` fallback.
+
 Diagnostics in component tests (`captureArtifact` from `@solidjs/diagnostics`):
 
 - `toHaveNoDiagnostics()` filters by code and ignores severity, so an `info` record fails it. `OPTIMISTIC_REVERTED` is `info` and fires for the documented `createOptimistic(false)` saving flag. Tests allow it with a comment.
-- `HOT_SCOPE_TIME` is a wall-clock budget of 8 ms of compute per 1000 ms window. A shared CI runner overshoots it at random, so component tests allow it (commit 59ef367). Do not restructure markup to satisfy it. To tune it instead, pass `captureArtifact(fn, { attribution: { hotTime: { budgetMs, windowMs } } })`; a raised budget silences it, and `hotTime: false` turns the check off.
+- `HOT_SCOPE_TIME` is a wall-clock budget of 8 ms of compute per 1000 ms window that shared CI runners overshoot at random. `apps/web/vitest-setup.ts` turns it off for every `captureArtifact` (#183). Do not restructure markup to satisfy it.
 - Pick `maxReruns` by running once with a large budget, reading `artifact.attribution.reruns.length`, then setting the budget to that count.
 
 ## Alchemy
@@ -79,6 +92,7 @@ Credentials. A profile is a file per provider in `~/.alchemy/profiles/<profile>/
 State lives in a Cloudflare Secrets Store. A token without Secrets Store access fails at "Computing plan" with a bare 403. The first production deploy also needed Account API Tokens edit (Alchemy mints the bucket-scoped R2 token), D1 edit, Workers scripts and routes, R2, Zone read and DNS edit.
 
 - Leave Worker `name` unset. `createWorkerName` uses an explicit name as written; otherwise it builds a stage-scoped name.
+- An expired Cloudflare login: run `cd infra && node ./node_modules/alchemy/bin/cli.js profile refresh --profile default --provider Cloudflare` in a terminal on this box.
 - Read D1 from a script with `Cloudflare.D1.Database.ref("App", { stack, stage })`, `QueryDatabaseLocal` and `evalStack`, as `apps/api/scripts/stage.ts` does. It uses your profile, not `wrangler`.
 - `RuntimeContext.phantom` is `Layer.empty` typed as providing `RuntimeContext`. Use it to discharge that requirement in code that only runs inside the Worker (a limiter call, a secret read). It supplies nothing at runtime. Background work uses `Cloudflare.WorkerExecutionContext` and `execution.waitUntil` (`apps/api/src/index.ts`).
 - `WorkerBridge.ts` installs `Logger.layer([Logger.consolePretty()])` without `mergeWithExisting`, which drops Effect's `tracerLogger`. `infrastructure/telemetry.ts` adds `Logger.tracerLogger` back so log lines reach spans.

@@ -114,6 +114,21 @@ const serverOnlyImports = {
   message: "Server-only: the database and Alchemy stay in apps/api and infra (docs/STRUCTURE.md).",
 };
 
+// Solid 2 removed these; agents keep guessing them from Solid 1.
+const removedSolidImports = [
+  ["createComputed", "createMemo"],
+  ["ErrorBoundary", "Errored"],
+  ["mergeProps", "merge"],
+  ["on", "createEffect(compute, apply)"],
+  ["onMount", "onSettled"],
+  ["splitProps", "omit"],
+  ["Suspense", "Loading"],
+].map(([removed, use]) => ({
+  importNames: [removed],
+  message: `Solid 2 removed ${removed}. Use ${use} (docs/LIBRARIES.md).`,
+  name: "solid-js",
+}));
+
 const vitePlusPlugin = {
   name: "vite-plus",
   specifier: "vite-plus/oxlint-plugin",
@@ -173,6 +188,7 @@ export const lintConfig = (
                     "The web app has one API client, WebLayer in src/api/client.ts, and it runs in the browser only (docs/SOLID-EFFECT-BINDING.md).",
                   name: "effect/rpc/RpcClient",
                 },
+                ...removedSolidImports,
               ],
               patterns: [serverOnlyImports],
             },
@@ -182,7 +198,12 @@ export const lintConfig = (
       {
         // The one place the web app builds its API client.
         files: ["**/src/api/client.ts"],
-        rules: { "no-restricted-imports": ["error", { patterns: [serverOnlyImports] }] },
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            { paths: removedSolidImports, patterns: [serverOnlyImports] },
+          ],
+        },
       },
       {
         files: ["packages/contracts/src/**"],

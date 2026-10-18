@@ -42,7 +42,7 @@ Rules for Effect code, Solid glue and tests, taken from the executor reference (
 ## Solid
 
 - State that tracks an in-flight mutation (pending rows, optimistic status) is `createOptimistic` or `createOptimisticStore` inside an `action`. It never sits in a plain signal cleaned up by `try/finally`.
-- Reactivity diagnostics are defects. The repair list is in [AGENTS.md](../AGENTS.md#change-and-verify).
+- Reactivity diagnostics are defects. The repair list is in [LIBRARIES.md](LIBRARIES.md#solid-2).
 
 ## Tests
 
