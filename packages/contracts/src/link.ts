@@ -17,7 +17,7 @@ export const SharedFile = Schema.Struct({
   size: Schema.Int,
   url: Schema.String,
 });
-export interface SharedFile extends Schema.Schema.Type<typeof SharedFile> {}
+export type SharedFile = typeof SharedFile.Type;
 
 /** What a recipient sees. Download URLs never outlive the link. */
 export const SharedDelivery = Schema.Struct({
@@ -27,7 +27,7 @@ export const SharedDelivery = Schema.Struct({
   senderName: Schema.String,
   title: Schema.String,
 });
-export interface SharedDelivery extends Schema.Schema.Type<typeof SharedDelivery> {}
+export type SharedDelivery = typeof SharedDelivery.Type;
 
 /** A download the recipient's browser reports. The server cannot see bytes move, so it only hears this. */
 export const DownloadEvent = Schema.Literals(["started", "saved"]);
@@ -65,4 +65,4 @@ export const Unlocked = Schema.Struct({
   expiresAt: Schema.DateFromString,
   unlock: UnlockToken,
 });
-export interface Unlocked extends Schema.Schema.Type<typeof Unlocked> {}
+export type Unlocked = typeof Unlocked.Type;

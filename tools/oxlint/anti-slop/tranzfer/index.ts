@@ -7,6 +7,7 @@ import { noCountSubqueryStringRule } from "./rules/no-count-subquery-string.ts";
 import { noImportThenReexportRule } from "./rules/no-import-then-reexport.ts";
 import { noTableNamesInSqlRule } from "./rules/no-table-names-in-sql.ts";
 import { oneClockExpressionRule } from "./rules/one-clock-expression.ts";
+import { schemaTypeStyleRule } from "./rules/schema-type-style.ts";
 
 /** Rules written for this repo, for patterns that cost us time more than once. */
 const tranzferPlugin = eslintCompatPlugin({
@@ -19,6 +20,7 @@ const tranzferPlugin = eslintCompatPlugin({
     "no-import-then-reexport": noImportThenReexportRule,
     "no-table-names-in-sql": noTableNamesInSqlRule,
     "one-clock-expression": oneClockExpressionRule,
+    "schema-type-style": schemaTypeStyleRule,
   },
 });
 

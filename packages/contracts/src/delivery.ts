@@ -57,7 +57,7 @@ export const NewFile = Schema.Struct({
   path: Schema.String,
   size: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
-export interface NewFile extends Schema.Schema.Type<typeof NewFile> {}
+export type NewFile = typeof NewFile.Type;
 
 /**
  * The sender picks every id, so a retried create is a replay rather than a
@@ -77,7 +77,7 @@ export const NewDelivery = Schema.Struct({
   retentionDays: RetentionDays,
   title: DeliveryTitle,
 });
-export interface NewDelivery extends Schema.Schema.Type<typeof NewDelivery> {}
+export type NewDelivery = typeof NewDelivery.Type;
 
 /** What the delivery table stores. `expired` is derived on read from `expiresAt`. */
 export const StoredDeliveryStatus = Schema.Literals(["open", "ready", "cancelled"]);
@@ -95,7 +95,7 @@ export const Transfer = Schema.Struct({
   size: Schema.Int,
   state: TransferState,
 });
-export interface Transfer extends Schema.Schema.Type<typeof Transfer> {}
+export type Transfer = typeof Transfer.Type;
 
 /**
  * What the recipient's browser has reported, for the sender only. Bytes go
@@ -107,7 +107,7 @@ export const DeliveryDownload = Schema.Struct({
   lastAt: Schema.DateFromString,
   startedAt: Schema.DateFromString,
 });
-export interface DeliveryDownload extends Schema.Schema.Type<typeof DeliveryDownload> {}
+export type DeliveryDownload = typeof DeliveryDownload.Type;
 
 /** Who sent a delivery that came in through a request link. Email is optional. */
 export const DeliveryUploader = Schema.Struct({
@@ -130,7 +130,7 @@ export const Delivery = Schema.Struct({
   /** Null for a delivery the owner sent. */
   uploader: Schema.NullOr(DeliveryUploader),
 });
-export interface Delivery extends Schema.Schema.Type<typeof Delivery> {}
+export type Delivery = typeof Delivery.Type;
 
 /** The id is taken by a delivery or transfer whose contents differ from this request. */
 export class DeliveryConflict extends Schema.TaggedError<DeliveryConflict>()(

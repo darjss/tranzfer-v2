@@ -44,7 +44,7 @@ export type UploadRequest = typeof UploadRequest.Type;
 
 /** Uppy signs by object key; the server resolves the transfer from it. */
 export const SignUploadPayload = Schema.Struct({ key: Schema.String, request: UploadRequest });
-export interface SignUploadPayload extends Schema.Schema.Type<typeof SignUploadPayload> {}
+export type SignUploadPayload = typeof SignUploadPayload.Type;
 
 /** The same, from an uploader with no account: the request's token is the credential. */
 export const SignRequestUploadPayload = Schema.Struct({
@@ -58,7 +58,7 @@ export const SignedUrl = Schema.Struct({
   headers: Schema.Record(Schema.String, Schema.String),
   url: Schema.String,
 });
-export interface SignedUrl extends Schema.Schema.Type<typeof SignedUrl> {}
+export type SignedUrl = typeof SignedUrl.Type;
 
 /** The request or the stored object does not fit the transfer. */
 export class InvalidUpload extends Schema.TaggedError<InvalidUpload>()("InvalidUpload", {}) {}

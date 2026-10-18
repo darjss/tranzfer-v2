@@ -30,7 +30,7 @@ export const NewFileRequest = Schema.Struct({
   retentionDays: RetentionDays,
   title: RequestTitle,
 });
-export interface NewFileRequest extends Schema.Schema.Type<typeof NewFileRequest> {}
+export type NewFileRequest = typeof NewFileRequest.Type;
 
 export const FileRequestStatus = Schema.Literals(["open", "closed", "expired"]);
 export type FileRequestStatus = typeof FileRequestStatus.Type;
@@ -51,7 +51,7 @@ export const FileRequest = Schema.Struct({
   /** Uploads that were not cancelled. */
   uploads: Schema.Int,
 });
-export interface FileRequest extends Schema.Schema.Type<typeof FileRequest> {}
+export type FileRequest = typeof FileRequest.Type;
 
 /** What the uploader sees before choosing files. */
 export const OpenedRequest = Schema.Struct({
@@ -60,7 +60,7 @@ export const OpenedRequest = Schema.Struct({
   ownerName: Schema.String,
   title: Schema.String,
 });
-export interface OpenedRequest extends Schema.Schema.Type<typeof OpenedRequest> {}
+export type OpenedRequest = typeof OpenedRequest.Type;
 
 /**
  * One upload session through a request. The uploader picks every id, as a
@@ -75,7 +75,7 @@ export const NewRequestUpload = Schema.Struct({
   name: UploaderName,
   token: LinkToken,
 });
-export interface NewRequestUpload extends Schema.Schema.Type<typeof NewRequestUpload> {}
+export type NewRequestUpload = typeof NewRequestUpload.Type;
 
 /**
  * A delivery as the uploader sees it: its own files and their state, and not
@@ -87,7 +87,7 @@ export const RequestUpload = Schema.Struct({
   title: Schema.String,
   transfers: Schema.Array(Transfer),
 });
-export interface RequestUpload extends Schema.Schema.Type<typeof RequestUpload> {}
+export type RequestUpload = typeof RequestUpload.Type;
 
 /** Delivery ids the uploader's browser remembers; only this request's come back. */
 export const RequestUploadsPayload = Schema.Struct({

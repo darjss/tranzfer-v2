@@ -12,7 +12,7 @@ export const Principal = Schema.Struct({
   image: Schema.NullOr(Schema.String),
   name: Schema.String,
 });
-export interface Principal extends Schema.Schema.Type<typeof Principal> {}
+export type Principal = typeof Principal.Type;
 
 export class Unauthorized extends Schema.TaggedError<Unauthorized>()("Unauthorized", {}) {}
 

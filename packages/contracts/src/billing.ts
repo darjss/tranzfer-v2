@@ -112,7 +112,7 @@ export const BillingSummary = Schema.Struct({
   status: SubscriptionStatus,
   usedBytes: Schema.Int,
 });
-export interface BillingSummary extends Schema.Schema.Type<typeof BillingSummary> {}
+export type BillingSummary = typeof BillingSummary.Type;
 
 /** The delivery would push the sender's active transfer space past the plan limit. */
 export class OverPlanLimit extends Schema.TaggedError<OverPlanLimit>()("OverPlanLimit", {
@@ -140,7 +140,7 @@ export class BillingUnavailable extends Schema.TaggedError<BillingUnavailable>()
 
 /** A paid plan an access code gives for free until `endsAt`. */
 export const PlanGrant = Schema.Struct({ endsAt: Schema.DateFromString, plan: PaidPlanId });
-export interface PlanGrant extends Schema.Schema.Type<typeof PlanGrant> {}
+export type PlanGrant = typeof PlanGrant.Type;
 
 /** What a person types or a `?code=` link carries. Case and surrounding spaces don't matter. */
 export const AccessCodeInput = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64));
