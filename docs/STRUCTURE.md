@@ -11,7 +11,17 @@ Use the existing directory tree as the file inventory. Add a package only for a 
 
 ## Scope and dependencies
 
-`apps/api/src/index.ts` is the composition edge. Storage, link tokens and Better Auth are built once per isolate; their secrets and binding values stay lazy, because the same init also runs at deploy time with no env. The D1 client belongs to one invocation, so `Database` and the domain services over it are built per request and per cron run, with a fresh memo map.
+`apps/api/src/index.ts` is the composition edge. Storage, link tokens and Better Auth are built once per isolate; their secrets and binding values stay lazy, because the same init also runs at deploy time with no env. The D1 session belongs to one invocation, so `Database` and the domain services over it are built per request and per cron run, with a fresh memo map.
+
+### D1 sessions
+
+D1 read replication is on, and each invocation runs every query, Better Auth's included, through one D1 session (PR #PRNUM). A session reads its own writes and never reads older data than it already saw.
+
+- Browser requests (`/rpc`, `/api/auth/*`) start from the bookmark in the `d1b` cookie, or on the nearest replica without one. The response sets `d1b` to the session's newest bookmark, so a browser always reads its own writes, sign-in then `GetMe` included.
+- The cron, the Polar webhook and `/health` start on the primary.
+- Another client's write reaches a replica after a short lag. A read that answers "not there" for a write the caller did not make asks `Database.primary` before saying so: the link in `OpenLink`, the request behind every uploader call, and the password hash in `UnlockLink`.
+- `SetLinkPassword` is one conditional `UPDATE`, which D1 always runs on the primary, and the session reads its result back.
+- Never put the bookmark in a span attribute or a log.
 
 Database failures are defects (`dieOnDatabaseError` at each service method). Storage failures stay typed as `StorageError` inside the API and become `StorageUnavailable` only where a caller can retry.
 

@@ -11,9 +11,9 @@ One tool per job. Versions live in the manifests and the lockfile. Prerelease in
 - Public config: T3 Env with Effect Schema. Secrets and bindings stay on the server.
 - Backend: Effect 4 for workflows, typed errors and services. Pure math stays plain functions.
 - Protocol: Effect RPC, schemas in `packages/contracts`. Plain HTTP for Better Auth, webhooks, health and downloads.
-- Worker adapter: Alchemy's Effect Worker runtime. Init builds storage, link tokens and auth once per isolate. Domain services are built per request ([STRUCTURE.md](STRUCTURE.md)).
-- Database: D1 through Drizzle, wrapped in the `Database` service. Alchemy applies migrations.
-- Auth: `@alchemy.run/better-auth` on the Drizzle adapter, over the lazy D1 handle.
+- Worker adapter: Alchemy's Effect Worker runtime. Init builds storage, link tokens and auth once per isolate. Domain services are built per request ([STRUCTURE.md](STRUCTURE.md)). The API Worker runs with Smart Placement, so Cloudflare may run it near D1 instead of near the caller (PR #174, kept in #PRNUM).
+- Database: D1 through Drizzle, wrapped in the `Database` service. Alchemy applies migrations. Read replication is on (`readReplication` in `apps/api/src/resources.ts`), and every invocation queries through one D1 session ([STRUCTURE.md](STRUCTURE.md#d1-sessions), PR #PRNUM).
+- Auth: `@alchemy.run/better-auth` on the Drizzle adapter, over the invocation's D1 session.
 - Upload transport: Uppy, straight from the browser to private R2 multipart. A pnpm patch makes its `ListParts` follow pagination.
 - Browser recovery metadata: idb-keyval.
 - Part hashing for resume verification: hash-wasm MD5, in a module worker.
