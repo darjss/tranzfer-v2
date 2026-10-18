@@ -4,11 +4,11 @@ Written against `origin/dev` at commit `0a61bc5` (2026-10-12). Each plan is self
 
 Plan numbers are identifiers, not an order. Run them by wave. Plans in the same wave touch different files unless the "Conflicts" column says otherwise. Line numbers drift: re-find each `file:line` before editing.
 
-Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 04 (#185), 14 (#184), 05 (#186), 15 (#188), 07 (#187), 06 (#189).
+Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 04 (#185), 14 (#184), 05 (#186), 15 (#188), 07 (#187), 06 (#189), 16 (#198).
 
 ## Every plan ships its constraint
 
-A cleanup PR also adds the lint rule, type or check that stops the pattern coming back, at `error`, with zero remaining hits. Plan 16 lists the rule specs. Custom rules live in `tools/oxlint/anti-slop/tranzfer/` (a third plugin next to `effect/`), each with a RuleTester test. Built-in rules (`no-restricted-imports`, `max-lines`, focused tests, `no-console` in tests) go straight into `lint.config.ts`.
+A cleanup PR also adds the lint rule, type or check that stops the pattern coming back, at `error`, with zero remaining hits. Custom rules live in `tools/oxlint/anti-slop/tranzfer/` (a third plugin next to `effect/`), each with a RuleTester test. Built-in rules (`no-restricted-imports`, `max-lines`, focused tests, `no-console` in tests) go straight into `lint.config.ts`.
 
 ## Owner decisions (2026-10-13)
 
@@ -24,7 +24,6 @@ A cleanup PR also adds the lint rule, type or check that stops the pattern comin
 | ---- | ---- | ------------------------------------------------------------------------------------ | -------- | ---- | --------------------- | ------------------------- |
 | B    | 10   | Smart Placement on the API Worker, measured on staging                               | P2       | S    | none                  | IN PROGRESS (#174)        |
 | B    | 19   | Declared upload size equals stored size (step 1 delete; step 2 pinned length, gated) | P2       | S+M  | none                  | IN PROGRESS (step 1 #179) |
-| D    | 16   | Custom lint rule specs; each rule lands with the plan that clears its hits           | P2       | M    | 05, 07                | TODO                      |
 | D    | 12   | D1 read replication with Sessions API                                                | P3       | L    | 10, 11 measured first | TODO                      |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale).
@@ -42,7 +41,6 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
 - 07 after 04: both change `Emails.layer` options (04 deletes the limiter parameters).
 - 21 soft on 04: if 04 landed, remove two rows from `bindingLimits` instead of two binding blocks; soft on 01 for the `isolated` sweep helper.
 - 12 after 10 and 11: the placement and the session cookie cache may remove the need; 12 has a measurement gate.
-- 16 flips rules to `error` only after the cleanup plans named in its table land.
 
 ## Top findings (all vetted against the code)
 

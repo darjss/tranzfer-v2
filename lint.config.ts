@@ -239,6 +239,13 @@ export const lintConfig = (
         },
       },
       {
+        excludeFiles: ["**/*.{test,spec}.{ts,tsx}"],
+        files: ["apps/*/src/**", "packages/*/src/**"],
+        rules: {
+          "max-lines": ["error", { max: 600, skipBlankLines: true, skipComments: true }],
+        },
+      },
+      {
         files: ["**/*.{test,spec}.{ts,tsx}"],
         rules: { "vitest/no-focused-tests": "error" },
       },

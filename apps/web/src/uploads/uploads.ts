@@ -1,28 +1,9 @@
-import type { AwsS3Options } from "@uppy/aws-s3";
 import AwsS3 from "@uppy/aws-s3";
 import { Uppy } from "@uppy/core";
-import type { Body, Meta } from "@uppy/core/utils";
-import {
-  basename,
-  checkFiles,
-  DeliveryId,
-  isSinglePut,
-  maxTitleLength,
-  partSize,
-  TransferId,
-  UploadRequest,
-} from "@tranzfer/contracts";
-import type {
-  Delivery,
-  LinkToken,
-  NewFile,
-  RetentionDays,
-  SignedUrl,
-  Transfer,
-} from "@tranzfer/contracts";
-import * as Cause from "effect/Cause";
+import type { Body } from "@uppy/core/utils";
+import { checkFiles, DeliveryId, isSinglePut, partSize, TransferId } from "@tranzfer/contracts";
+import type { Delivery, LinkToken, NewFile, RetentionDays } from "@tranzfer/contracts";
 import * as Context from "effect/Context";
-import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FiberSet from "effect/FiberSet";
@@ -32,38 +13,29 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
 import { ApiClient } from "../api/client";
-import type { ApiError } from "../api/errors";
 import { MAX_TRANSPORT_RETRIES, RETRY_CAP, retryTransport, untilOnline } from "../api/retry";
-import {
-  fingerprint,
-  forget,
-  readAll,
-  recordConfirmed,
-  recordUploadId,
-  remember,
-} from "./recovery";
+import { deliveryTitle } from "./files";
+import type { ChosenFile } from "./files";
+import { fingerprint, forget, recordConfirmed, recordUploadId, remember } from "./recovery";
 import type { RecoveryRecord } from "./recovery";
-import { UploadFailed } from "./failure";
 import { ledger } from "./ledger";
+import { recoverRequest, restore, resume } from "./resume";
 import { UploadSpans } from "./spans";
 import { patchTransfer, transfers, wireWindow } from "./store";
-import { claim, letGo, sendingElsewhere } from "./tabs";
-import type { ListedPart, VerifyReply, VerifyRequest } from "./verify";
-
-type SignRequest = Extract<
-  AwsS3Options<TransferMeta, Body>,
-  { signRequest: unknown }
->["signRequest"];
-type PresignableRequest = Parameters<SignRequest>[0];
-
-interface TransferMeta extends Meta {
-  readonly deliveryId: DeliveryId;
-  readonly objectKey: string;
-  // Uppy derives file ids from relativePath and rejects duplicates, so the
-  // path alone would refuse the same file in a second delivery.
-  readonly relativePath: string;
-  readonly transferId: TransferId;
-}
+import { claim, letGo } from "./tabs";
+import {
+  finalizeFor,
+  isTransientUploadError,
+  partBytes,
+  putAlreadyLanded,
+  retryWhileNotUploaded,
+  s3Error,
+  signFor,
+  start,
+  toUploadRequest,
+  uploadFailed,
+} from "./transport";
+import type { PresignableRequest, TransferMeta } from "./transport";
 
 // Speed counts only parts R2 acknowledged, over about the last half minute.
 // Socket progress runs ahead of the server (the OS buffers a burst at the
@@ -74,185 +46,6 @@ const SPEED_WINDOW_MS = 30_000;
 // connections: 92 MiB/s against 62 at four (bench/upload, 10 GiB on staging).
 // A second big file's parts wait a few seconds for a free connection.
 const PART_CONCURRENCY = 6;
-// RequestUploads reads this many delivery ids at a time.
-const MAX_RECOVERED = 50;
-
-/** Bytes of the given parts; only the last part is short. */
-const partBytes = (parts: ReadonlySet<number>, size: number) => {
-  const each = partSize(size);
-  let total = 0;
-  for (const partNumber of parts) {
-    total += Math.max(Math.min(each, size - (partNumber - 1) * each), 0);
-  }
-  return total;
-};
-const SKIPPED = /^\.DS_Store$|^Thumbs\.db$/u;
-const isSkipped = (path: string) =>
-  path.split("/").some((segment) => SKIPPED.test(segment) || segment.startsWith("._"));
-
-export interface ChosenFile {
-  readonly file: File;
-  readonly path: string;
-}
-
-// relativePath covers drops and webkitRelativePath folder picks; both are ""
-// on plain picks, so an empty relative path falls through to the file name.
-const chosenPath = (file: File & { relativePath?: string }) => {
-  const relative = file.relativePath ?? file.webkitRelativePath;
-  return (relative === undefined || relative === "" ? file.name : relative).replace(/^\/+/u, "");
-};
-
-export const chosenFiles = (files: Iterable<File>) => {
-  const chosen: ChosenFile[] = [];
-  for (const file of files) {
-    const path = chosenPath(file);
-    if (path !== "" && !isSkipped(path)) {
-      chosen.push({ file, path });
-    }
-  }
-  return chosen;
-};
-
-// A name can be longer than a title may be, so the title is cut to fit. A cut
-// through a surrogate pair would leave half a character, so the half goes too.
-const fitTitle = (title: string) =>
-  title.length <= maxTitleLength
-    ? title
-    : `${title.slice(0, maxTitleLength - 1).replace(/[\uD800-\uDBFF]$/u, "")}…`;
-
-export const deliveryTitle = (files: readonly ChosenFile[]) => {
-  const [first] = files;
-  if (first === undefined) {
-    return "Delivery";
-  }
-  const [top] = first.path.split("/");
-  if (files.length > 1 && files.every(({ path }) => path.startsWith(`${top}/`))) {
-    return fitTitle(top ?? "Delivery");
-  }
-  if (files.length === 1) {
-    return fitTitle(first.file.name);
-  }
-  return fitTitle(`${first.file.name} and ${files.length - 1} more`);
-};
-
-// Aborts are never signed: cancel is a server-side operation, and signing
-// one would be a bug. A PUT without an upload id is an empty file: Uppy
-// sends only those as a single request.
-export const toUploadRequest = (request: PresignableRequest): UploadRequest | null => {
-  if (!("uploadId" in request)) {
-    if (request.method === "POST") {
-      return UploadRequest.cases.Create.make({});
-    }
-    return request.method === "PUT" ? UploadRequest.cases.Put.make({}) : null;
-  }
-  if (request.method === "PUT") {
-    return UploadRequest.cases.Part.make({
-      partNumber: request.partNumber,
-      uploadId: request.uploadId,
-    });
-  }
-  if (request.method === "GET") {
-    return UploadRequest.cases.List.make({
-      partNumberMarker: request.partNumberMarker,
-      uploadId: request.uploadId,
-    });
-  }
-  if (request.method === "POST") {
-    return UploadRequest.cases.Complete.make({ uploadId: request.uploadId });
-  }
-  return null;
-};
-
-// R2 can take a moment to make a completed multipart object visible to HEAD,
-// so finalize retries NotUploaded with backoff; any other failure is final.
-export const retryWhileNotUploaded = <A, E extends { readonly _tag: string }, R>(
-  finalize: Effect.Effect<A, E, R>,
-) =>
-  finalize.pipe(
-    Effect.retry({
-      schedule: Schedule.exponential("800 millis"),
-      times: 3,
-      while: Predicate.isTagged("NotUploaded"),
-    }),
-  );
-
-// Uppy's S3 errors aren't exported, and their names don't survive
-// minification (S3Error sets name from new.target), so match on fields:
-// S3NetworkError carries code "NETWORK", S3ServiceError a numeric status.
-// Network loss, an expired signature (403, law 6), timeouts, throttling and
-// 5xx come back on their own; 404 is the multipart upload gone, which must
-// never restart silently.
-const s3Error = Schema.Struct({
-  // A service error copies x-amz-error-code here, which can be null.
-  code: Schema.optional(Schema.Unknown),
-  status: Schema.optional(Schema.Number),
-});
-
-export const isTransientUploadError = (error: Error) => {
-  if (!Schema.is(s3Error)(error)) {
-    return false;
-  }
-  if (error.status === undefined) {
-    return error.code === "NETWORK";
-  }
-  return (
-    error.status === 403 || error.status === 408 || error.status === 429 || error.status >= 500
-  );
-};
-
-// What the row says about a failure isTransientUploadError gave up on. Only a
-// status-less error can be the connection, as above.
-const uploadFailed = ({ code, status }: typeof s3Error.Type) => {
-  if (status === 404) {
-    return new UploadFailed({ reason: "gone", status });
-  }
-  if (status === 403) {
-    return new UploadFailed({ reason: "denied", status });
-  }
-  return new UploadFailed({
-    reason: status === undefined && code === "NETWORK" ? "network" : "unknown",
-    status,
-  });
-};
-
-// A single PUT is signed with If-None-Match: *, so 412 means the object is
-// already there: an earlier PUT landed and its response was lost, or the tab
-// died after it. That reconciles through FinalizeTransfer like a lost Complete.
-export const putAlreadyLanded = (error: Error) => Schema.is(s3Error)(error) && error.status === 412;
-
-// The pick waits on this hashing, and it can run for minutes, so it lives in a
-// worker: on the page thread each 64 MiB part was a ~120 ms long task. Worker
-// events are the adapter edge; a read or hash failure becomes UnknownError and
-// the caller reports the file as unreadable.
-export const verifyInWorker = (
-  file: Blob,
-  parts: readonly ListedPart[],
-  partSizeBytes: number,
-  onChecked: (bytes: number) => void,
-) =>
-  Effect.callback<boolean, Cause.UnknownError>((resume) => {
-    const worker = new Worker(new URL("hash.worker.ts", import.meta.url), { type: "module" });
-    worker.addEventListener("message", ({ data }: MessageEvent<VerifyReply>) => {
-      if ("checked" in data) {
-        onChecked(data.checked);
-      } else if ("ok" in data) {
-        resume(Effect.succeed(data.ok));
-      } else {
-        resume(Effect.fail(new Cause.UnknownError(undefined, "hash worker failed")));
-      }
-    });
-    worker.addEventListener("error", (event) => {
-      resume(Effect.fail(new Cause.UnknownError(event, "hash worker crashed")));
-    });
-    // The options form: a worker takes a transfer list, not a target origin.
-    worker.postMessage({ file, partSize: partSizeBytes, parts } satisfies VerifyRequest, {
-      transfer: [],
-    });
-    // Interrupting the pick terminates the worker mid-hash.
-    return Effect.sync(() => {
-      worker.terminate();
-    });
-  });
 
 const make = Effect.gen(function* makeUploads() {
   const api = yield* ApiClient;
@@ -276,44 +69,6 @@ const make = Effect.gen(function* makeUploads() {
       : ((confirmed - base.confirmed) / (now - base.at)) * 1000;
   };
 
-  // retryUpload, not upload(): upload() would first re-run every failed file
-  // in Uppy, other deliveries' included, so each file starts on its own.
-  // Per-file errors flow through upload-error; a rejection here is a
-  // pre-flight failure no event covers. Interrupting this fiber does not
-  // abort the upload: the promise has no signal.
-  const start = (uppy: Uppy<TransferMeta, Body>, fileId: string, transferId: TransferId) =>
-    Effect.tryPromise(async () => await uppy.retryUpload(fileId)).pipe(
-      Effect.catch(() =>
-        Effect.andThen(
-          Effect.sync(() => {
-            patchTransfer(transferId, {
-              bytesPerSecond: 0,
-              error: uploadFailed({}),
-              phase: "failed",
-            });
-          }),
-          spans.endFile(transferId, "failed", { "error.tag": "StartFailed" }),
-        ),
-      ),
-    );
-
-  // An owner's transfer signs and finalizes as the owner; an uploader's, as
-  // the request's token.
-  const signFor = (transferId: TransferId | undefined, key: string, request: UploadRequest) =>
-    Effect.suspend((): Effect.Effect<SignedUrl, ApiError> => {
-      const token = transferId === undefined ? undefined : ledger.of(transferId)?.token;
-      return token === undefined
-        ? api.SignUpload({ key, request })
-        : api.SignRequestUpload({ key, request, token });
-    });
-  const finalizeFor = (transferId: TransferId) =>
-    Effect.suspend((): Effect.Effect<Pick<Delivery, "id" | "status" | "transfers">, ApiError> => {
-      const token = ledger.of(transferId)?.token;
-      return token === undefined
-        ? api.FinalizeTransfer({ transferId })
-        : api.FinalizeRequestTransfer({ token, transferId });
-    });
-
   const sign = Effect.fn("Uploads.sign")(function* sign(request: PresignableRequest) {
     const upload = toUploadRequest(request);
     if (upload === null) {
@@ -326,7 +81,7 @@ const make = Effect.gen(function* makeUploads() {
       entry.uploadId = request.uploadId;
       yield* recordUploadId(entry.transferId, request.uploadId);
     }
-    const signed = yield* retryTransport(signFor(entry?.transferId, request.key, upload));
+    const signed = yield* retryTransport(signFor(api, entry?.transferId, request.key, upload));
     if (Predicate.isTagged(upload, "Complete") && entry !== undefined) {
       entry.completeSigned = true;
       yield* spans.note(entry.transferId, "complete.signed");
@@ -334,54 +89,6 @@ const make = Effect.gen(function* makeUploads() {
     // The headers are part of the signature (an empty file's PUT carries
     // if-none-match), so Uppy must send them as given.
     return { headers: signed.headers, url: signed.url };
-  });
-
-  // Lists the parts R2 holds for an upload id, following every page. "gone"
-  // means the multipart upload itself vanished (404 or NoSuchUpload), and no
-  // resume may start a new one in its place.
-  const listRemoteParts = Effect.fn("Uploads.listRemoteParts")(function* listRemoteParts(
-    transferId: TransferId,
-    objectKey: string,
-    uploadId: string,
-  ) {
-    const parts: ListedPart[] = [];
-    let marker: number | undefined;
-    for (;;) {
-      const signed = yield* retryTransport(
-        signFor(
-          transferId,
-          objectKey,
-          UploadRequest.cases.List.make({ partNumberMarker: marker, uploadId }),
-        ),
-      );
-      const response = yield* Effect.tryPromise(
-        async () => await fetch(signed.url, { headers: signed.headers }),
-      );
-      const xml = yield* Effect.tryPromise(async () => await response.text());
-      if (response.status === 404 || xml.includes("NoSuchUpload")) {
-        return "gone" as const;
-      }
-      if (!response.ok) {
-        return yield* uploadFailed({ status: response.status });
-      }
-      const doc = new DOMParser().parseFromString(xml, "text/xml");
-      for (const element of doc.querySelectorAll("Part")) {
-        const etag = element.querySelector("ETag")?.textContent ?? "";
-        parts.push({
-          etag: etag.replaceAll('"', ""),
-          partNumber: Number(element.querySelector("PartNumber")?.textContent),
-          size: Number(element.querySelector("Size")?.textContent),
-        });
-      }
-      if (doc.querySelector("IsTruncated")?.textContent !== "true") {
-        return parts;
-      }
-      const next = doc.querySelector("NextPartNumberMarker")?.textContent;
-      if (next === undefined || next === null) {
-        return parts;
-      }
-      marker = Number(next);
-    }
   });
 
   // The uploader has already detached from this file by the time finish
@@ -405,7 +112,7 @@ const make = Effect.gen(function* makeUploads() {
     fileId: string,
     transferId: TransferId,
   ) {
-    return yield* retryWhileNotUploaded(retryTransport(finalizeFor(transferId))).pipe(
+    return yield* retryWhileNotUploaded(retryTransport(finalizeFor(api, transferId))).pipe(
       Effect.matchEffect({
         onFailure: (error) =>
           Effect.andThen(
@@ -556,7 +263,7 @@ const make = Effect.gen(function* makeUploads() {
                     current.error === null ||
                     current.error === undefined
                     ? Effect.void
-                    : start(uppy, file.id, transferId);
+                    : start(spans, uppy, file.id, transferId);
                 }),
               ),
             ),
@@ -722,7 +429,7 @@ const make = Effect.gen(function* makeUploads() {
       }
       for (const { fileId, size, transferId } of added) {
         yield* spans.beginFile(delivery.id, { id: transferId, size }, false);
-        runFork(start(uppy, fileId, transferId));
+        runFork(start(spans, uppy, fileId, transferId));
       }
       return delivery;
     });
@@ -776,14 +483,14 @@ const make = Effect.gen(function* makeUploads() {
       // resumes: Uppy lists parts and Completes again.
       patchTransfer(transferId, { error: undefined, phase: "finalizing" });
       runFork(
-        finalizeFor(transferId).pipe(
+        finalizeFor(api, transferId).pipe(
           spans.underFile(transferId),
           Effect.matchEffect({
             onFailure: (error) =>
               Effect.suspend(() => {
                 if (Predicate.isTagged(error, "NotUploaded")) {
                   patchTransfer(transferId, { phase: "uploading" });
-                  runFork(start(uppy, file.id, transferId));
+                  runFork(start(spans, uppy, file.id, transferId));
                   return Effect.void;
                 }
                 patchTransfer(transferId, { error, phase: "failed" });
@@ -796,7 +503,7 @@ const make = Effect.gen(function* makeUploads() {
       return;
     }
     patchTransfer(transferId, { error: undefined, phase: "uploading" });
-    runFork(start(uppy, file.id, transferId));
+    runFork(start(spans, uppy, file.id, transferId));
   });
 
   const cancel = Effect.fn("Uploads.cancel")(function* cancel(deliveryId: DeliveryId) {
@@ -821,261 +528,22 @@ const make = Effect.gen(function* makeUploads() {
     return cancelled;
   });
 
-  // R2 drops incomplete multipart uploads after 7 days; a record that old
-  // whose delivery no longer lists is only clutter.
-  const RECORD_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-
-  /**
-   * Rebuilds local progress for deliveries this tab doesn't own. A transfer
-   * the server still sees as uploading becomes needsFile: the bytes are
-   * there, but the resume needs the file picked again. Finalizing gets one
-   * finalize attempt; any failure also lands on needsFile, since only a
-   * reselected file can push the missing parts. One that another live tab
-   * holds the lock for becomes elsewhere and is left to that tab.
-   */
-  const restore = Effect.fn("Uploads.restore")(function* restore(
-    deliveries: readonly Pick<Delivery, "transfers">[],
-    // The file request the deliveries came in through, for an uploader.
-    token?: LinkToken,
-  ) {
-    const records = yield* readAll;
-    const elsewhere = yield* sendingElsewhere;
-    const byTransfer = new Map(
-      deliveries.flatMap((delivery) =>
-        delivery.transfers.map((transfer) => [transfer.id, transfer] as const),
-      ),
-    );
-    const forgotten: TransferId[] = [];
-    for (const record of records) {
-      const transfer = byTransfer.get(record.transferId);
-      if (transfer === undefined) {
-        if (Date.now() - record.createdAt > RECORD_WINDOW_MS) {
-          forgotten.push(record.transferId);
-        }
-        continue;
-      }
-      // A transfer already in the store belongs to this tab; leave it alone.
-      // One marked elsewhere is only waiting for the other tab to let go.
-      const local = transfers[transfer.id];
-      if (local !== undefined && local.phase !== "elsewhere") {
-        continue;
-      }
-      if (token !== undefined) {
-        ledger.entry(transfer.id, transfer.objectKey).token = token;
-      }
-      if (transfer.state === "complete" || transfer.state === "cancelled") {
-        forgotten.push(transfer.id);
-      } else if (elsewhere.has(transfer.id)) {
-        patchTransfer(transfer.id, { confirmed: record.confirmed, phase: "elsewhere" });
-      } else if (transfer.state === "finalizing") {
-        patchTransfer(transfer.id, { confirmed: record.confirmed, phase: "finalizing" });
-        runFork(
-          retryWhileNotUploaded(finalizeFor(transfer.id)).pipe(
-            Effect.matchEffect({
-              onFailure: (error) =>
-                Effect.sync(() => {
-                  patchTransfer(transfer.id, { error, phase: "needsFile" });
-                }),
-              onSuccess: () =>
-                Effect.andThen(
-                  Effect.sync(() => {
-                    patchTransfer(transfer.id, { phase: "done" });
-                  }),
-                  forget([transfer.id]),
-                ),
-            }),
-          ),
-        );
-      } else {
-        patchTransfer(transfer.id, { confirmed: record.confirmed, phase: "needsFile" });
-      }
-    }
-    yield* forget(forgotten);
-  });
-
-  /**
-   * Reattaches picked files to transfers waiting on them. Only a file that
-   * still matches its record - same name, size, mtime, part-size policy and
-   * fingerprint - uploads; everything else is reported back for the UI to
-   * explain (law 3: never resume against an unverified file).
-   */
-  const resume = Effect.fn("Uploads.resume")(function* resume(
-    delivery: Pick<Delivery, "id" | "transfers">,
-    files: readonly File[],
-    // Bytes of stored parts hashed so far, out of those listed so far.
-    onChecking?: (progress: { readonly checked: number; readonly total: number }) => void,
-    // The file request the delivery came in through, for an uploader.
-    token?: LinkToken,
-  ) {
-    const uppy = yield* engine;
-    if (token !== undefined) {
-      for (const transfer of delivery.transfers) {
-        ledger.entry(transfer.id, transfer.objectKey).token = token;
-      }
-    }
-    const records = yield* readAll;
-    const recordOf = new Map(records.map((record) => [record.transferId, record]));
-    const candidates = delivery.transfers.filter(
-      (transfer) => transfers[transfer.id]?.phase === "needsFile" && recordOf.has(transfer.id),
-    );
-    const claimed = new Set<TransferId>();
-    // Totals across every file of this pick: listed grows as each file's parts
-    // are listed, spent is what finished files already hashed.
-    let listedBytes = 0;
-    let spentBytes = 0;
-    const problems: {
-      name: string;
-      problem: "changed" | "gone" | "policy" | "unreadable" | "unknown";
-    }[] = [];
-    for (const file of files) {
-      // Repeated basenames are legal (a/clip.mov, b/clip.mov), so every
-      // unclaimed name match is a candidate; the full path ranks first.
-      const picked = chosenPath(file);
-      const matching = candidates
-        .filter(
-          (candidate) =>
-            !claimed.has(candidate.id) &&
-            basename(recordOf.get(candidate.id)?.path ?? "") === file.name,
-        )
-        .toSorted(
-          (a, b) =>
-            Number(recordOf.get(b.id)?.path === picked) -
-            Number(recordOf.get(a.id)?.path === picked),
-        );
-      let first: "changed" | "gone" | "policy" | "unreadable" | undefined;
-      let matched:
-        | {
-            listed: readonly ListedPart[];
-            record: RecoveryRecord;
-            transfer: Transfer;
-            verifyMillis: number;
-          }
-        | undefined;
-      for (const candidate of matching) {
-        const record = recordOf.get(candidate.id);
-        if (record === undefined) {
-          continue;
-        }
-        const verifyStarted = yield* Clock.currentTimeMillis;
-        let problem: "changed" | "gone" | "policy" | "unreadable" | undefined;
-        let listed: readonly ListedPart[] = [];
-        if (record.size !== file.size || record.lastModified !== file.lastModified) {
-          problem = "changed";
-        } else if (record.partSize === partSize(file.size)) {
-          problem = yield* fingerprint(file).pipe(
-            Effect.map((print) =>
-              print.sha256 === record.fingerprint.sha256 ? undefined : ("changed" as const),
-            ),
-            Effect.catch(() => Effect.succeed("unreadable" as const)),
-          );
-        } else {
-          problem = "policy";
-        }
-        // The sampled fingerprint can't see edits between samples; the parts
-        // R2 holds must hash to their ETags against this file. A record with
-        // no uploadId has nothing remote to verify.
-        if (problem === undefined && record.uploadId !== undefined) {
-          const remote = yield* listRemoteParts(candidate.id, candidate.objectKey, record.uploadId);
-          listed = remote === "gone" ? [] : remote;
-          const heldBytes = listed.reduce((total, part) => total + part.size, 0);
-          const before = spentBytes;
-          const total = listedBytes + heldBytes;
-          onChecking?.({ checked: before, total });
-          problem =
-            remote === "gone"
-              ? "gone"
-              : yield* verifyInWorker(file, remote, record.partSize, (checked) => {
-                  onChecking?.({ checked: before + checked, total });
-                }).pipe(
-                  Effect.map((ok) => (ok ? undefined : ("changed" as const))),
-                  Effect.catch(() => Effect.succeed("unreadable" as const)),
-                );
-          listedBytes = total;
-          spentBytes = before + heldBytes;
-        }
-        if (problem === undefined) {
-          matched = {
-            listed,
-            record,
-            transfer: candidate,
-            verifyMillis: (yield* Clock.currentTimeMillis) - verifyStarted,
-          };
-          break;
-        }
-        first ??= problem;
-      }
-      if (matched === undefined) {
-        if (first === undefined) {
-          problems.push({ name: file.name, problem: "unknown" });
-        } else {
-          problems.push({ name: file.name, problem: first });
-        }
-        continue;
-      }
-      const { listed, record, transfer, verifyMillis } = matched;
-      claimed.add(transfer.id);
-      const done = new Set(listed.map((part) => part.partNumber));
-      ledger.entry(transfer.id, transfer.objectKey).doneParts = done;
-      const fileId = uppy.addFile({
-        data: file,
-        meta: {
-          deliveryId: delivery.id,
-          objectKey: transfer.objectKey,
-          relativePath: transfer.objectKey,
-          transferId: transfer.id,
-        },
-        name: file.name,
-        type: file.type,
-      });
-      if (record.uploadId !== undefined) {
-        uppy.setFileState(fileId, {
-          s3Multipart: { key: transfer.objectKey, uploadId: record.uploadId },
-        });
-      }
-      patchTransfer(transfer.id, {
-        confirmed: partBytes(done, transfer.size),
-        error: undefined,
-        phase: "queued",
-      });
-      claim(transfer.id);
-      yield* spans.beginFile(delivery.id, transfer, true);
-      yield* spans.note(transfer.id, "resume.verified", {
-        bytes: partBytes(done, transfer.size),
-        "duration.ms": verifyMillis,
-        parts: listed.length,
-      });
-      runFork(start(uppy, fileId, transfer.id));
-    }
-    yield* Effect.annotateCurrentSpan({
-      "resume.matched": claimed.size,
-      "resume.problems": problems.length,
-    });
-    return problems;
-  });
-
-  /**
-   * What an uploader's browser can recover on a file request page: the
-   * deliveries it remembers plus the ones sent since the page opened, read
-   * back through the token. Unfinished ones are restored like the owner's.
-   */
-  const recoverRequest = Effect.fn("Uploads.recoverRequest")(function* recoverRequest(
-    token: LinkToken,
-    sentHere: readonly DeliveryId[],
-  ) {
-    const records = yield* readAll;
-    const remembered = records
-      .toSorted((a, b) => b.createdAt - a.createdAt)
-      .map((record) => record.deliveryId);
-    const ids = [...new Set([...sentHere, ...remembered])].slice(0, MAX_RECOVERED);
-    const found =
-      ids.length === 0
-        ? []
-        : yield* retryTransport(api.RequestUploads({ deliveryIds: ids, token }));
-    yield* restore(found, token);
-    return found;
-  });
-
-  return { cancel, recoverRequest, restore, resume, retry, send, sendToRequest };
+  return {
+    cancel,
+    recoverRequest: (token: LinkToken, sentHere: readonly DeliveryId[]) =>
+      recoverRequest(api, runFork, token, sentHere),
+    restore: (deliveries: readonly Pick<Delivery, "transfers">[], token?: LinkToken) =>
+      restore(api, runFork, deliveries, token),
+    resume: (
+      delivery: Pick<Delivery, "id" | "transfers">,
+      files: readonly File[],
+      onChecking?: (progress: { readonly checked: number; readonly total: number }) => void,
+      token?: LinkToken,
+    ) => resume(api, spans, runFork, engine, delivery, files, onChecking, token),
+    retry,
+    send,
+    sendToRequest,
+  };
 });
 
 export class Uploads extends Context.Service<Uploads, Effect.Success<typeof make>>()(
@@ -1083,5 +551,3 @@ export class Uploads extends Context.Service<Uploads, Effect.Success<typeof make
 ) {
   static readonly layer = Layer.effect(Uploads, make);
 }
-
-export { getDroppedFiles } from "@uppy/core/utils";

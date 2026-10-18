@@ -38,7 +38,8 @@ import { Button } from "../ui/Button";
 import Loader, { linkQuips } from "../ui/Loader";
 import { Paper, paperFrom, paperTitle, StateIcon } from "../ui/Paper";
 import { online, transfers, wireWindow } from "../uploads/store";
-import { chosenFiles, getDroppedFiles, Uploads } from "../uploads/uploads";
+import { chosenFiles, getDroppedFiles } from "../uploads/files";
+import { Uploads } from "../uploads/uploads";
 import { createPortal } from "./portal";
 
 const field = css({
