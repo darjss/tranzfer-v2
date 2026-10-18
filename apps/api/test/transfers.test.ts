@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 
 import { Deliveries } from "../src/deliveries";
+import { purgeEnded } from "../src/purge";
 import { Transfers } from "../src/transfers";
 import {
   addUser,
@@ -197,7 +198,7 @@ layer(domainLayer(storage.layer))("Transfers", (it) => {
 
       yield* TestClock.adjust("4 days");
       expect((yield* deliveries.view(created.id)).status).toBe("expired");
-      expect(yield* deliveries.purgeEnded).toBeGreaterThanOrEqual(1);
+      expect(yield* purgeEnded).toBeGreaterThanOrEqual(1);
       expect(storage.objects.has(only.objectKey)).toBe(false);
     }),
   );

@@ -44,6 +44,7 @@ import {
   Plans,
   revokeAccessCode,
 } from "../src/plans";
+import { purgeEnded } from "../src/purge";
 import { SharedLinks } from "../src/shared-links";
 import { Transfers } from "../src/transfers";
 import { addUser, domainLayer, first, makeMemoryStorage, newDelivery, newFile } from "./support";
@@ -370,7 +371,7 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
 
       // Clearing only hides the row: the sweeper still purges what ended.
       yield* TestClock.adjust("20 minutes");
-      expect(yield* deliveries.purgeEnded).toBe(2);
+      expect(yield* purgeEnded).toBe(2);
     }),
   );
 
@@ -395,14 +396,14 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       // A Complete in flight during the cancel lands late; the sweeper waits a
       // few minutes, purges again and records it.
       storage.objects.set(objectKey, { etag: "late", size: 4 });
-      expect(yield* deliveries.purgeEnded).toBe(0);
+      expect(yield* purgeEnded).toBe(0);
       // The window covers a signed upload URL's whole lifetime (15 minutes).
       yield* TestClock.adjust("6 minutes");
-      expect(yield* deliveries.purgeEnded).toBe(0);
+      expect(yield* purgeEnded).toBe(0);
       yield* TestClock.adjust("11 minutes");
-      expect(yield* deliveries.purgeEnded).toBe(1);
+      expect(yield* purgeEnded).toBe(1);
       expect(storage.objects.has(objectKey)).toBe(false);
-      expect(yield* deliveries.purgeEnded).toBe(0);
+      expect(yield* purgeEnded).toBe(0);
     }),
   );
 
@@ -415,13 +416,13 @@ layer(domainLayer(storage.layer))("Deliveries", (it) => {
       const recent = yield* deliveries.create(hank, newDelivery([newFile("fresh.bin", 9)]));
 
       yield* TestClock.adjust("6 days");
-      expect(yield* deliveries.purgeEnded).toBe(0);
+      expect(yield* purgeEnded).toBe(0);
       expect((yield* deliveries.view(created.id)).status).toBe("open");
 
       // Past R2's 7-day multipart window nothing can complete, so the sweeper
       // ends it the way a cancel would.
       yield* TestClock.adjust("2 days");
-      yield* deliveries.purgeEnded;
+      yield* purgeEnded;
       expect((yield* deliveries.view(created.id)).status).toBe("cancelled");
       expect((yield* deliveries.view(created.id)).transfers.map((t) => t.state)).toEqual([
         "cancelled",

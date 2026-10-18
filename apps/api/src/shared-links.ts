@@ -24,7 +24,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import { Attempts } from "./attempts";
-import { isExpired } from "./deliveries";
+import { isExpired } from "./delivery-views";
 import { LinkTokens } from "./link-tokens";
 import { checkPassword } from "./passwords";
 import { Storage } from "./storage";
