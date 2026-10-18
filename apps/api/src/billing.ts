@@ -299,7 +299,7 @@ export class Billing extends Context.Service<
 
           summary: Effect.fn("Billing.summary")(function* summary(userId: UserId) {
             if (Option.exists(options.polar, (polar) => polar.reconcileOnRead)) {
-              yield* Effect.ignore(reconcile(userId));
+              yield* Effect.ignore(reconcile(userId), { log: true });
             }
             const current = yield* row(userId);
             const { grantEndsAt, plan } = yield* userPlans.current(userId);

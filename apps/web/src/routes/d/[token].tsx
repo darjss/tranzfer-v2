@@ -300,7 +300,7 @@ export const LinkPage = (props: { token: LinkToken }) => {
       // Only the click is known; the browser's download manager takes it from here.
       runtime.runFork(
         ApiClient.use((api) => api.ReportDownload({ ...current, event: "started", path })).pipe(
-          Effect.ignore,
+          Effect.ignore({ log: true }),
         ),
       );
       location.assign(file.url);

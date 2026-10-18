@@ -711,7 +711,7 @@ const make = Effect.gen(function* makeUploads() {
             // If this cancel fails too, the sweeper ends the open delivery. An
             // uploader has no account to cancel with; the owner or the sweeper does.
             if (token === undefined) {
-              yield* Effect.ignore(api.CancelDelivery({ deliveryId: delivery.id }));
+              yield* Effect.ignore(api.CancelDelivery({ deliveryId: delivery.id }), { log: true });
             }
             return yield* Effect.die(error.cause);
           }),

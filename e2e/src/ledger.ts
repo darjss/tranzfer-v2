@@ -232,7 +232,7 @@ export class Ledger extends Context.Service<
                 new Error(`stalled: no new part acknowledged for 10 minutes at ${acked}/${count}`),
               );
             }
-            yield* Deferred.await(wakeup).pipe(Effect.timeout(remaining), Effect.ignore);
+            yield* Deferred.await(wakeup).pipe(Effect.timeoutOption(remaining));
           }
         });
 
@@ -255,7 +255,7 @@ export class Ledger extends Context.Service<
                 new Error(`stalled: no ${kind} request seen for 10 minutes`),
               );
             }
-            yield* Deferred.await(wakeup).pipe(Effect.timeout(remaining), Effect.ignore);
+            yield* Deferred.await(wakeup).pipe(Effect.timeoutOption(remaining));
           }
         });
 
@@ -282,7 +282,7 @@ export class Ledger extends Context.Service<
                 new Error(`stalled: part ${partNumber} not acknowledged for 10 minutes`),
               );
             }
-            yield* Deferred.await(wakeup).pipe(Effect.timeout(remaining), Effect.ignore);
+            yield* Deferred.await(wakeup).pipe(Effect.timeoutOption(remaining));
           }
         });
 

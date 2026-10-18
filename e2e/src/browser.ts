@@ -259,12 +259,12 @@ export class Browser extends Context.Service<
           }
           yield* Effect.promise(async () => {
             await current.value.browser.close();
-          }).pipe(Effect.timeout("10 seconds"), Effect.ignore);
+          }).pipe(Effect.timeoutOption("10 seconds"));
           yield* kill();
           yield* Ref.set(state, Option.none());
         });
 
-        yield* Effect.addFinalizer(() => close().pipe(Effect.ignore));
+        yield* Effect.addFinalizer(() => close().pipe(Effect.ignore({ log: true })));
 
         const open = Effect.fn("Browser.open")(function* open(route: string) {
           const current = yield* Ref.get(state);

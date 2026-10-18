@@ -245,7 +245,9 @@ export const saveFolder = Effect.fn("SaveFolder.save")(function* saveFolder(
   // Tells the sender, and never holds the save up: a lost report only leaves
   // the sender's count low, and picking the same folder again reports it anew.
   const tell = (path: string, event: "saved" | "started") =>
-    api.ReportDownload({ event, path, ...link }).pipe(Effect.ignore, Effect.forkDetach);
+    api
+      .ReportDownload({ event, path, ...link })
+      .pipe(Effect.ignore({ log: true }), Effect.forkDetach);
 
   const saveOne = Effect.fn("SaveFolder.file")(function* saveOne(file: SharedFile) {
     progress.current = file.path;
