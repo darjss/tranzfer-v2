@@ -19,19 +19,7 @@ import type {
   UserId,
 } from "@tranzfer/contracts";
 import { Database, databaseFault, dieOnDatabaseError, schema } from "@tranzfer/db";
-import {
-  and,
-  desc,
-  eq,
-  exists,
-  gt,
-  inArray,
-  isNull,
-  lt,
-  lte,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, desc, eq, exists, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
@@ -43,8 +31,9 @@ import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 
-import { makeDeliveryViews } from "./delivery-views";
-import { newLinkId } from "./link-tokens";
+import { downloadsOf, loadDelivery, toView } from "./delivery-views";
+import type { DeliveryRow } from "./delivery-views";
+import { LinkTokens, newLinkId } from "./link-tokens";
 import { hashPassword } from "./passwords";
 import { secondsUntilRoom } from "./attempts";
 import { Plans } from "./plans";
@@ -190,7 +179,21 @@ export class Deliveries extends Context.Service<
       const { batch, db } = yield* Database;
       const userPlans = yield* Plans;
       const storage = yield* Storage;
-      const { downloadsOf, load, toView, view, viewRow } = yield* makeDeliveryViews;
+      const tokens = yield* LinkTokens;
+
+      const viewRow = Effect.fn("Deliveries.viewRow")(function* viewRow(row: DeliveryRow) {
+        const downloads = yield* downloadsOf(db, [row.id]);
+        return yield* toView(tokens, row, downloads.get(row.id) ?? null);
+      });
+
+      const view = Effect.fn("Deliveries.view")(function* view(deliveryId: DeliveryId) {
+        yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
+        const row = yield* loadDelivery(db, deliveryId);
+        if (row === undefined) {
+          return yield* Effect.die(new Error(`Delivery ${deliveryId} vanished`));
+        }
+        return yield* viewRow(row);
+      }, dieOnDatabaseError);
 
       const activeBytesAt = (senderId: UserId, now: number) =>
         db
@@ -294,7 +297,7 @@ export class Deliveries extends Context.Service<
         input: NewDelivery,
         origin: Origin,
       ) {
-        const existing = yield* load(input.id);
+        const existing = yield* loadDelivery(db, input.id);
         if (existing === undefined) {
           return Option.none();
         }
@@ -367,7 +370,7 @@ export class Deliveries extends Context.Service<
 
           // The batch lost a race, hit a taken transfer id or found the
           // sender over a limit: decide from what landed.
-          const landed = yield* load(input.id);
+          const landed = yield* loadDelivery(db, input.id);
           // One JSON parameter instead of one per id keeps this under D1's cap.
           const taken = yield* db
             .select({ id: schema.transfer.id })
@@ -407,7 +410,7 @@ export class Deliveries extends Context.Service<
           deliveryId: DeliveryId,
         ) {
           yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
-          const row = yield* load(deliveryId);
+          const row = yield* loadDelivery(db, deliveryId);
           if (row === undefined || row.senderId !== senderId) {
             return yield* new DeliveryNotFound();
           }
@@ -489,8 +492,13 @@ export class Deliveries extends Context.Service<
             with: { link: true, transfers: { orderBy: { path: "asc" } } },
           });
           yield* Effect.annotateCurrentSpan("delivery.count", rows.length);
-          const downloads = yield* downloadsOf(rows.map((row) => row.id));
-          return yield* Effect.forEach(rows, (row) => toView(row, downloads.get(row.id) ?? null));
+          const downloads = yield* downloadsOf(
+            db,
+            rows.map((row) => row.id),
+          );
+          return yield* Effect.forEach(rows, (row) =>
+            toView(tokens, row, downloads.get(row.id) ?? null),
+          );
         }, dieOnDatabaseError),
 
         ofRequest: Effect.fn("Deliveries.ofRequest")(function* ofRequest(
@@ -504,7 +512,7 @@ export class Deliveries extends Context.Service<
             where: { id: { in: [...deliveryIds] }, requestId },
             with: { link: true, transfers: { orderBy: { path: "asc" } } },
           });
-          return yield* Effect.forEach(rows, (row) => toView(row, null));
+          return yield* Effect.forEach(rows, (row) => toView(tokens, row, null));
         }, dieOnDatabaseError),
 
         owned: Effect.fn("Deliveries.owned")(function* owned(
@@ -512,7 +520,7 @@ export class Deliveries extends Context.Service<
           deliveryId: DeliveryId,
         ) {
           yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
-          const row = yield* load(deliveryId);
+          const row = yield* loadDelivery(db, deliveryId);
           if (row === undefined || row.senderId !== senderId) {
             return yield* new DeliveryNotFound();
           }
