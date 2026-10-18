@@ -275,6 +275,14 @@ export function CopyLink(props: {
   );
 }
 
+export const sheetBlock = css({
+  borderColor: "line",
+  borderTopWidth: "1px",
+  px: { base: "5", sm: "7" },
+  py: "6",
+});
+export const sheetHeading = css({ fontWeight: "semibold", textStyle: "sm" });
+
 export const fieldLabel = css({ color: "mut", display: "grid", fontSize: "13", gap: "1" });
 export const field = css({
   _focusVisible: {
