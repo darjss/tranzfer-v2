@@ -107,6 +107,12 @@ const effectErrorRules = {
   "effecttsgo/unknown-in-effect-catch": "error",
 } as const;
 
+// Server-only modules: the database, its query builder, and the deploy tool.
+const serverOnlyImports = {
+  group: ["@tranzfer/db", "drizzle-orm", "drizzle-orm/*", "alchemy", "alchemy/*", "@alchemy.run/*"],
+  message: "Server-only: the database and Alchemy stay in apps/api and infra (docs/STRUCTURE.md).",
+};
+
 const vitePlusPlugin = {
   name: "vite-plus",
   specifier: "vite-plus/oxlint-plugin",
@@ -167,6 +173,7 @@ export const lintConfig = (
                   name: "effect/rpc/RpcClient",
                 },
               ],
+              patterns: [serverOnlyImports],
             },
           ],
         },
@@ -174,7 +181,47 @@ export const lintConfig = (
       {
         // The one place the web app builds its API client.
         files: ["**/src/api/client.ts"],
-        rules: { "no-restricted-imports": "off" },
+        rules: { "no-restricted-imports": ["error", { patterns: [serverOnlyImports] }] },
+      },
+      {
+        files: ["packages/contracts/src/**"],
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            {
+              patterns: [
+                serverOnlyImports,
+                {
+                  group: ["cloudflare:*"],
+                  message: "Contracts import no Worker bindings (docs/STRUCTURE.md).",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        files: ["apps/api/src/infrastructure/**"],
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            {
+              paths: [
+                "../billing",
+                "../deliveries",
+                "../emails",
+                "../file-requests",
+                "../plans",
+                "../shared-links",
+                "../transfers",
+              ].map((name) => ({
+                message:
+                  "Infrastructure sits under the domain (docs/STRUCTURE.md). Pass what it needs in from index.ts.",
+                name,
+              })),
+            },
+          ],
+        },
       },
       {
         files: ["**/src/guides/Article.tsx"],
