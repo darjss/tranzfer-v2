@@ -30,9 +30,11 @@ Axiom `tranzfer-staging-traces`, `alchemy.stage == "staging"`, 30 days before 20
 | RPC            | n    | p50    | p95    |
 | -------------- | ---- | ------ | ------ |
 | CreateDelivery | 73   | 201 ms | 331 ms |
-| Deliveries     | 69   | 109 ms | 185 ms |
+| Deliveries¹    | 69   | 109 ms | 185 ms |
 | GetBilling     | 30   | 92 ms  | 207 ms |
 | SignUpload     | 2153 | 78 ms  | 175 ms |
+
+¹ Renamed `ListDeliveries` in #201; query both names when re-measuring.
 
 `staging.tranzfer.app/health` time to first byte from Tokyo, 60 requests: p50 211 ms, p95 400 ms, min 166 ms.
 
