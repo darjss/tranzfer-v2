@@ -396,10 +396,12 @@ scenario(
           // the API's cancel removes objects of ready deliveries too, so a
           // passed gate leaves nothing in R2.
           if (sentDelivery !== undefined) {
-            yield* api.CancelDelivery({ deliveryId: sentDelivery }).pipe(Effect.ignore);
+            yield* api
+              .CancelDelivery({ deliveryId: sentDelivery })
+              .pipe(Effect.ignore({ log: true }));
           }
         }
-        yield* (yield* Browser).close.pipe(Effect.ignore);
+        yield* (yield* Browser).close.pipe(Effect.ignore({ log: true }));
       }),
     ),
   ),

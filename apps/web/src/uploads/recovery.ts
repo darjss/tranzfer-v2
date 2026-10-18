@@ -25,7 +25,7 @@ export const RecoveryRecord = Schema.Struct({
   uploadId: Schema.optional(Schema.String),
   version: Schema.Literal(1),
 });
-export interface RecoveryRecord extends Schema.Schema.Type<typeof RecoveryRecord> {}
+export type RecoveryRecord = typeof RecoveryRecord.Type;
 
 // The store is created on first use, never at import: routes import this
 // module through Uploads during SSR, where indexedDB does not exist.

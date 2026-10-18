@@ -29,7 +29,7 @@ export const DeliveryEmail = Schema.Struct({
   id: Schema.Int,
   status: EmailStatus,
 });
-export interface DeliveryEmail extends Schema.Schema.Type<typeof DeliveryEmail> {}
+export type DeliveryEmail = typeof DeliveryEmail.Type;
 
 export const SendDeliveryEmailPayload = Schema.Struct({
   deliveryId: DeliveryId,

@@ -98,10 +98,9 @@ const finalize = (api: Api, transferId: TransferId) =>
   );
 
 const cleanup = (api: Api, deliveryId: DeliveryId) =>
-  api.CancelDelivery({ deliveryId }).pipe(
-    Effect.tapError((error) => Effect.logWarning(`cleanup cancel failed for ${deliveryId}`, error)),
-    Effect.ignore,
-  );
+  api
+    .CancelDelivery({ deliveryId })
+    .pipe(Effect.ignore({ log: "Warn", message: `cleanup cancel failed for ${deliveryId}` }));
 
 layer(Target.layer)("staging deliveries", (it) => {
   it.effect("lifecycle · upload, finalize and anonymous download", () =>

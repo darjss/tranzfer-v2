@@ -29,7 +29,6 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import { secondsUntilRoom } from "../attempts";
-import { sendWelcome } from "../emails";
 import { RateLimiter } from "../rate-limiter";
 import type { Mail } from "./email";
 import { stagingLogin } from "./staging-login";
@@ -198,10 +197,14 @@ export class Auth extends Context.Service<
     >;
   }
 >()("tranzfer/Auth") {
-  /** `authRequests` is checked per client IP before Better Auth sees a request. */
+  /**
+   * `authRequests` is checked per client IP before Better Auth sees a request.
+   * `welcome` is the domain's sign-up email, passed in so auth never imports a domain module.
+   */
   static readonly layer = (
     stage: "production" | "staging" | "dev",
     d1: Effect.Effect<D1Database>,
+    welcome: (email: string, appUrl: string) => Effect.Effect<void, never, Mail>,
   ) =>
     Layer.effect(
       Auth,
@@ -235,7 +238,7 @@ export class Auth extends Context.Service<
                 // email, and the welcome never fails.
                 after: async (user, context) => {
                   await context?.context.runInBackgroundOrAwait(
-                    runAuthCallback(sendWelcome(user.email, origin)),
+                    runAuthCallback(welcome(user.email, origin)),
                   );
                 },
                 // New accounts per client IP. A creation outside a request has no

@@ -104,12 +104,12 @@ export const scenario = (
             );
             if (Option.isSome(page)) {
               shot += 1;
-              yield* Effect.promise(
+              yield* Effect.tryPromise(
                 async () =>
                   await page.value.screenshot({
                     path: path.join(dir, `${String(shot).padStart(2, "0")}-${label}.png`),
                   }),
-              ).pipe(Effect.ignore);
+              ).pipe(Effect.ignore({ log: true }));
             }
           });
 

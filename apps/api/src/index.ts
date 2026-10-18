@@ -18,7 +18,7 @@ import * as RpcServer from "effect/rpc/RpcServer";
 import { Attempts } from "./attempts";
 import { Billing, InvalidWebhook } from "./billing";
 import { Deliveries } from "./deliveries";
-import { Emails } from "./emails";
+import { Emails, sendWelcome } from "./emails";
 import { FileRequests } from "./file-requests";
 import { Interest } from "./interest";
 import { LinkTokens } from "./link-tokens";
@@ -138,7 +138,7 @@ export default ApiWorker.make(
       Layer.mergeAll(
         yield* filesStorage,
         LinkTokens.layer((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom))),
-        Auth.layer(stage, handle),
+        Auth.layer(stage, handle, sendWelcome),
         Mail.layer(stage, email, yield* emailAllowlist),
         RpcSerialization.layerJson,
       ).pipe(Layer.provideMerge(rateLimiter)),
