@@ -20,7 +20,7 @@ catalog:
   vite-plus: 1.0.0
   solid-js: 2.0.0-rc.13
   "@solidjs/web": 2.0.0-rc.13
-  "@solidjs/diagnostics": 2.0.0-rc.13
+  "@solidjs/diagnostics": 2.0.0-rc.15
   effect: 4.0.4
   "@effect/platform-node": 4.0.4
   "@effect/vitest": 4.0.4

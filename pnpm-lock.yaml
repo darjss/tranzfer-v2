@@ -180,8 +180,8 @@ catalogs:
       specifier: 4.0.4
       version: 4.0.4
     '@solidjs/diagnostics':
-      specifier: 2.0.0-rc.13
-      version: 2.0.0-rc.13
+      specifier: 2.0.0-rc.15
+      version: 2.0.0-rc.15
     '@solidjs/web':
       specifier: 2.0.0-rc.13
       version: 2.0.0-rc.13
@@ -403,7 +403,7 @@ importers:
         version: 2.6.2
       '@solidjs/diagnostics':
         specifier: 'catalog:'
-        version: 2.0.0-rc.13(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)(vitest@5.0.1)
+        version: 2.0.0-rc.15(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)(vitest@5.0.1)
       '@solidjs/prerender':
         specifier: 0.2.0
         version: 0.2.0(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(prerender-crawler@0.2.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1)))
@@ -3298,11 +3298,11 @@ packages:
   '@solidjs/compiler@2.0.0-rc.13':
     resolution: {integrity: sha512-OveR/xhLKo8MTJO/53jgjHuBW54c6/a9B/jiSjDrBeQ3JSbODUxQ8t58WBSlHaxyowPd27TwhVkLo3zeT1YqMQ==}
 
-  '@solidjs/diagnostics@2.0.0-rc.13':
-    resolution: {integrity: sha512-lwuigQY5dRkF+3IZe1cWmJmXRCYXWlO8jVHlO7cRGI7STHoE2B64tAaonVCdVnAd/bKoT+91WO9/PcbQ4xJ3Jw==}
+  '@solidjs/diagnostics@2.0.0-rc.15':
+    resolution: {integrity: sha512-YvW8WjXyxw10afYceB7HhTDeoOdw0QIsIUeekvb2LvqVfswrU5A6QOUtEPbAeSeDFXqwU+AWb5ayD3urHE9fig==}
     peerDependencies:
-      '@solidjs/web': ^2.0.0-rc.13
-      solid-js: ^2.0.0-rc.13
+      '@solidjs/web': ^2.0.0-rc.15
+      solid-js: ^2.0.0-rc.15
       vitest: 5.0.1
     peerDependenciesMeta:
       vitest:
@@ -3333,6 +3333,10 @@ packages:
 
   '@solidjs/signals@2.0.0-rc.13':
     resolution: {integrity: sha512-4+pRdrAHtfyE9BUJWBup3TpzJojJjgW2mV1vm/Jik4tWa5epxXB/YrLkwqP1v8+S9XjyKKZu5BSLqmcpswMYeQ==}
+    engines: {node: '>=22.12.0'}
+
+  '@solidjs/signals@2.0.0-rc.15':
+    resolution: {integrity: sha512-rMhLaYnBvpb9sB3NJGPsqIxjgr0XKU2nvBS7jhWX2fKx+K/m5O0VoAuCgYuTie3BMBZU9vX08NdnFXg508pcew==}
     engines: {node: '>=22.12.0'}
 
   '@solidjs/start-devtools@1.0.0-next.5':
@@ -8099,9 +8103,9 @@ snapshots:
       '@solidjs/compiler-wasm32-wasi': 2.0.0-rc.13
       '@solidjs/compiler-win32-x64-msvc': 2.0.0-rc.13
 
-  '@solidjs/diagnostics@2.0.0-rc.13(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)(vitest@5.0.1)':
+  '@solidjs/diagnostics@2.0.0-rc.15(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)(vitest@5.0.1)':
     dependencies:
-      '@solidjs/signals': 2.0.0-rc.13
+      '@solidjs/signals': 2.0.0-rc.15
       '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
     optionalDependencies:
@@ -8125,6 +8129,8 @@ snapshots:
       filesystem-routing: 0.4.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(supports-color@10.2.2)
 
   '@solidjs/signals@2.0.0-rc.13': {}
+
+  '@solidjs/signals@2.0.0-rc.15': {}
 
   '@solidjs/start-devtools@1.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
