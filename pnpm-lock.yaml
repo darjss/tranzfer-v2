@@ -183,8 +183,8 @@ catalogs:
       specifier: 2.0.0-rc.13
       version: 2.0.0-rc.13
     '@solidjs/web':
-      specifier: 2.0.0-rc.13
-      version: 2.0.0-rc.13
+      specifier: 2.0.0-rc.15
+      version: 2.0.0-rc.15
     '@types/node':
       specifier: 26.6.4
       version: 26.6.4
@@ -330,22 +330,22 @@ importers:
         version: 5.3.0
       '@kobalte/core':
         specifier: 2.0.0-alpha.2
-        version: 2.0.0-alpha.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+        version: 2.0.0-alpha.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
       '@solidjs/meta':
         specifier: 1.0.0-next.2
-        version: 1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+        version: 1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
       '@solidjs/router':
         specifier: 2.0.0-next.35
-        version: 2.0.0-next.35(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(filesystem-routing@0.4.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(supports-color@10.2.2))(solid-js@2.0.0-rc.13)
+        version: 2.0.0-next.35(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(filesystem-routing@0.4.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(supports-color@10.2.2))(solid-js@2.0.0-rc.13)
       '@solidjs/web':
         specifier: 'catalog:'
-        version: 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+        version: 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       '@tranzfer/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@trev.zip/solid-toast':
         specifier: ^1.2.2
-        version: 1.2.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+        version: 1.2.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
       '@uppy/aws-s3':
         specifier: 6.2.2
         version: 6.2.2(patch_hash=4016890f0dd65fbf3f7dfc95e00518b9157941fb3d757c6220f35c51dea8ece1)(@uppy/core@6.2.0)
@@ -403,19 +403,19 @@ importers:
         version: 2.6.2
       '@solidjs/diagnostics':
         specifier: 'catalog:'
-        version: 2.0.0-rc.13(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)(vitest@5.0.1)
+        version: 2.0.0-rc.13(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)(vitest@5.0.1)
       '@solidjs/prerender':
         specifier: 0.2.0
-        version: 0.2.0(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(prerender-crawler@0.2.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1)))
+        version: 0.2.0(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(prerender-crawler@0.2.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1)))
       '@solidjs/start-devtools':
         specifier: 1.0.0-next.5
-        version: 1.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+        version: 1.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
       '@solidjs/testing-library':
         specifier: 1.0.0-beta.3
-        version: 1.0.0-beta.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+        version: 1.0.0-beta.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
       '@solidjs/vite-plugin':
         specifier: 3.0.0-next.47
-        version: 3.0.0-next.47(@solidjs/start-devtools@1.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13))(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(@testing-library/jest-dom@7.0.1(@testing-library/dom@10.4.2)(vitest@5.0.1))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(solid-js@2.0.0-rc.13)(supports-color@10.2.2)
+        version: 3.0.0-next.47(@solidjs/start-devtools@1.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13))(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(@testing-library/jest-dom@7.0.1(@testing-library/dom@10.4.2)(vitest@5.0.1))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(solid-js@2.0.0-rc.13)(supports-color@10.2.2)
       '@testing-library/jest-dom':
         specifier: 7.0.1
         version: 7.0.1(@testing-library/dom@10.4.2)(vitest@5.0.1)
@@ -3363,11 +3363,11 @@ packages:
       '@testing-library/jest-dom':
         optional: true
 
-  '@solidjs/web@2.0.0-rc.13':
-    resolution: {integrity: sha512-vI/7v/XM8B/3U/oKAzCW2VjTLFkM5IArB2DFnrjxyPRYD3FX9KAXg9QuAnPIPQHC/xvg/LgxmvoVfZUfJ96gOQ==}
+  '@solidjs/web@2.0.0-rc.15':
+    resolution: {integrity: sha512-xwt4rNZ9CXTdMraFqmVn/AXuHIXQJ3jnrKyzEZ4ZFdRCBml0VxL8pA5D3YZHSjHoF7okNAmiVtyRCMNz15jQCg==}
     engines: {node: '>=22.12.0'}
     peerDependencies:
-      solid-js: ^2.0.0-rc.13
+      solid-js: ^2.0.0-rc.15
 
   '@speed-highlight/core@1.2.24':
     resolution: {integrity: sha512-qeW2e1l78afw8VhRPfPQ1Gjj+KU5XFQ/OFV5ti6eTa9bruO7mJyZtA4vw0ofqmA3tKCkROE9xLk3VZoeRc98nw==}
@@ -5492,11 +5492,21 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  seroval-plugins@1.6.7:
+    resolution: {integrity: sha512-4Nk35ttD3DTDJW4hgw5StsVAPeU6qnDFnULAouw6tQ7oLTV/ICXrWpsXo2EE52eSP2joUMazbVf52mFEcADqRw==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      seroval: ^1.0
+
   seroval-plugins@1.6.8:
     resolution: {integrity: sha512-N7mWAMydj89EnYTHtRpS3LBrAz3J9O6oVrqpuXuvlAHfAUG8WEKqtbAd7SBiJNY5NfCAFhSdyAh7wI4Shjqy4g==}
     engines: {node: '>=10'}
     peerDependencies:
       seroval: ^1.0
+
+  seroval@1.6.7:
+    resolution: {integrity: sha512-AeDcLh0yO2SFm9W71essgnSzLV9DI8ZH0x0knXn2DMnUZj728mpLbxjlbB6IqKCmqh8JA3cEqRyGoNkt584JcQ==}
+    engines: {node: '>=10'}
 
   seroval@1.6.8:
     resolution: {integrity: sha512-HlSgSAkTk4EqHcje1ptJjfZi1YDv5KbhVJ/d3P7T/nAXua2VmDu+AKDX5VTdFfZf48nDkWB2TKYt0DrCSa+3wg==}
@@ -7085,40 +7095,40 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@kobalte/core@2.0.0-alpha.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@kobalte/core@2.0.0-alpha.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
       '@floating-ui/dom': 1.8.0
       '@internationalized/number': 3.6.8
-      '@kobalte/utils': 2.0.0-alpha.0(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/a11y': 1.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/controlled-signal': 1.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/focus': 1.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/form': 1.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/i18n': 3.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/interaction': 1.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/keyboard': 2.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/platform': 1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/presence': 1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/props': 4.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/refs': 3.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/resize-observer': 4.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/scroll': 3.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/upload': 1.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@kobalte/utils': 2.0.0-alpha.0(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/a11y': 1.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/controlled-signal': 1.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/focus': 1.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/form': 1.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/i18n': 3.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/interaction': 1.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/keyboard': 2.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/platform': 1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/presence': 1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/props': 4.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/refs': 3.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/resize-observer': 4.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/scroll': 3.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/upload': 1.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@kobalte/utils@2.0.0-alpha.0(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@kobalte/utils@2.0.0-alpha.0(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solid-primitives/event-listener': 3.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/keyed': 3.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/map': 1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/media': 4.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/props': 4.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/refs': 3.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solid-primitives/event-listener': 3.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/keyed': 3.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/map': 1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/media': 4.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/props': 4.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/refs': 3.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
   '@libsql/client@0.17.4':
@@ -7903,160 +7913,160 @@ snapshots:
 
   '@sindresorhus/is@7.2.0': {}
 
-  '@solid-primitives/a11y@1.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solid-primitives/a11y@1.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@solid-primitives/controlled-signal@1.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solid-primitives/controlled-signal@1.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-    transitivePeerDependencies:
-      - '@solidjs/web'
-
-  '@solid-primitives/drag-drop@0.1.0-next.0(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/event-listener@3.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/event-listener@3.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/focus@1.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/form@1.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solid-primitives/a11y': 1.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/i18n@3.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/interaction@1.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/keyboard@2.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/rootless': 2.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/keyed@3.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/map@1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solid-primitives/trigger': 3.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/media@4.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/rootless': 2.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/static-store': 1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/platform@1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
-      solid-js: 2.0.0-rc.13
-
-  '@solid-primitives/presence@1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
-    dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
     transitivePeerDependencies:
       - '@solidjs/web'
 
-  '@solid-primitives/props@4.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solid-primitives/drag-drop@0.1.0-next.0(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@solid-primitives/refs@3.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solid-primitives/event-listener@3.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@solid-primitives/resize-observer@4.0.0-next.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solid-primitives/event-listener@3.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/rootless': 2.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/static-store': 1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@solid-primitives/rootless@2.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solid-primitives/focus@1.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@solid-primitives/scroll@3.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solid-primitives/form@1.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/rootless': 2.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/static-store': 1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solid-primitives/a11y': 1.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@solid-primitives/static-store@1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solid-primitives/i18n@3.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@solid-primitives/trigger@3.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solid-primitives/interaction@1.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@solid-primitives/upload@1.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solid-primitives/keyboard@2.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solid-primitives/drag-drop': 0.1.0-next.0(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/rootless': 2.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@solid-primitives/utils@7.0.0-next.4(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solid-primitives/keyed@3.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/map@1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solid-primitives/trigger': 3.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/media@4.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/rootless': 2.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/static-store': 1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/platform@1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/presence@1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+    transitivePeerDependencies:
+      - '@solidjs/web'
+
+  '@solid-primitives/props@4.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/refs@3.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/resize-observer@4.0.0-next.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/rootless': 2.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/static-store': 1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/rootless@2.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/scroll@3.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solid-primitives/event-listener': 3.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/rootless': 2.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/static-store': 1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/static-store@1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/trigger@3.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solid-primitives/utils': 7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/upload@1.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solid-primitives/drag-drop': 0.1.0-next.0(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
+      solid-js: 2.0.0-rc.13
+
+  '@solid-primitives/utils@7.0.0-next.4(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+    dependencies:
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
   '@solidjs/babel-plugin@2.0.0-rc.13(@babel/core@7.29.7(supports-color@10.2.2))':
@@ -8099,67 +8109,67 @@ snapshots:
       '@solidjs/compiler-wasm32-wasi': 2.0.0-rc.13
       '@solidjs/compiler-win32-x64-msvc': 2.0.0-rc.13
 
-  '@solidjs/diagnostics@2.0.0-rc.13(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)(vitest@5.0.1)':
+  '@solidjs/diagnostics@2.0.0-rc.13(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)(vitest@5.0.1)':
     dependencies:
       '@solidjs/signals': 2.0.0-rc.13
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
     optionalDependencies:
       vitest: 5.0.1(@types/node@26.6.4)(@vitest/browser-preview@5.0.1)(@vitest/ui@5.0.1)(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(jsdom@30.1.2(@noble/hashes@2.4.0))
 
-  '@solidjs/meta@1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solidjs/meta@1.0.0-next.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@solidjs/prerender@0.2.0(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(prerender-crawler@0.2.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1)))':
+  '@solidjs/prerender@0.2.0(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(prerender-crawler@0.2.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1)))':
     dependencies:
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       prerender-crawler: 0.2.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))
 
-  '@solidjs/router@2.0.0-next.35(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(filesystem-routing@0.4.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(supports-color@10.2.2))(solid-js@2.0.0-rc.13)':
+  '@solidjs/router@2.0.0-next.35(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(filesystem-routing@0.4.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(supports-color@10.2.2))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
     optionalDependencies:
       filesystem-routing: 0.4.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(supports-color@10.2.2)
 
   '@solidjs/signals@2.0.0-rc.13': {}
 
-  '@solidjs/start-devtools@1.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solidjs/start-devtools@1.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
-  '@solidjs/testing-library@1.0.0-beta.3(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@solidjs/testing-library@1.0.0-beta.3(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       '@testing-library/dom': 10.4.2
       solid-js: 2.0.0-rc.13
 
-  '@solidjs/vite-plugin@3.0.0-next.47(@solidjs/start-devtools@1.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13))(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(@testing-library/jest-dom@7.0.1(@testing-library/dom@10.4.2)(vitest@5.0.1))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(solid-js@2.0.0-rc.13)(supports-color@10.2.2)':
+  '@solidjs/vite-plugin@3.0.0-next.47(@solidjs/start-devtools@1.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13))(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(@testing-library/jest-dom@7.0.1(@testing-library/dom@10.4.2)(vitest@5.0.1))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(solid-js@2.0.0-rc.13)(supports-color@10.2.2)':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@babel/core': 7.29.7(supports-color@10.2.2)
       '@solidjs/babel-plugin': 2.0.0-rc.13(@babel/core@7.29.7(supports-color@10.2.2))
       '@solidjs/compiler': 2.0.0-rc.13
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       '@types/babel__core': 7.20.5
       merge-anything: 5.1.7
       solid-js: 2.0.0-rc.13
       vite: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1)'
       vitefu: 1.1.3(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))
     optionalDependencies:
-      '@solidjs/start-devtools': 1.0.0-next.5(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
+      '@solidjs/start-devtools': 1.0.0-next.5(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
       '@testing-library/jest-dom': 7.0.1(@testing-library/dom@10.4.2)(vitest@5.0.1)
     transitivePeerDependencies:
       - '@tsrx/core'
       - supports-color
 
-  '@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13)':
+  '@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13)':
     dependencies:
-      seroval: 1.6.8
-      seroval-plugins: 1.6.8(seroval@1.6.8)
+      seroval: 1.6.7
+      seroval-plugins: 1.6.7(seroval@1.6.7)
       solid-js: 2.0.0-rc.13
 
   '@speed-highlight/core@1.2.24': {}
@@ -8199,9 +8209,9 @@ snapshots:
 
   '@transloadit/prettier-bytes@2.0.0': {}
 
-  '@trev.zip/solid-toast@1.2.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
+  '@trev.zip/solid-toast@1.2.2(@solidjs/web@2.0.0-rc.15(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)':
     dependencies:
-      '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
+      '@solidjs/web': 2.0.0-rc.15(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
 
   '@tybys/wasm-util@0.10.4':
@@ -10236,9 +10246,15 @@ snapshots:
 
   semver@7.8.5: {}
 
+  seroval-plugins@1.6.7(seroval@1.6.7):
+    dependencies:
+      seroval: 1.6.7
+
   seroval-plugins@1.6.8(seroval@1.6.8):
     dependencies:
       seroval: 1.6.8
+
+  seroval@1.6.7: {}
 
   seroval@1.6.8: {}
 
