@@ -2,7 +2,8 @@ import { For } from "solid-js";
 import { css } from "styled-system/css";
 import Brand from "../landing/Brand";
 import { alternatives, comparisons } from "../guides/pages";
-import { audiences, features } from "../marketing/content";
+import { audiences } from "../marketing/audiences";
+import { features } from "../marketing/features";
 import { supportEmail } from "./support";
 
 const columns = [

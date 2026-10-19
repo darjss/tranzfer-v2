@@ -1,48 +1,52 @@
 # Agent guide
 
-Make the smallest direct change. Use inferred types and named exports. New abstractions, helpers and test files need user approval. Keep `any` and casting wrappers out of application code.
+- NEVER write unit tests after you write code.
+- Highly prefer E2E tests as the sole testing mechanism. Use them to verify complex features work. At the end of E2E tests, produce a verifiable and repeatable artifact.
+- If you must test a system in isolation, FIRST write all the ways it could fail, THEN write the code.
+
+Unit tests written after the code restate it: they always pass, catch almost nothing and break on every refactor. Here E2E means the suite in `e2e/` that runs against a deployed stack, including each PR's preview. A case added to an existing service or component test counts as an isolated test.
+
+Make the smallest direct change. Use inferred types and named exports. New abstractions, helpers and test files need user approval. Keep `any` and casting wrappers out of application code. Lint enforces most of the code rules; its messages say what to use instead.
 
 ## Read for the task
 
-- Solid components or reactivity: [.agents/skills/solidjs-v2/SKILL.md](.agents/skills/solidjs-v2/SKILL.md). Check installed Solid docs and types. For any reactivity change, follow "Reactivity changes" below.
-- Effect workflows or layers: [.agents/skills/effect/SKILL.md](.agents/skills/effect/SKILL.md). Installed package types take precedence over examples.
-- Writing or reviewing any code (errors, unknown data, types, tests, run edges): [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
-- Local serving: [.agents/skills/portless/SKILL.md](.agents/skills/portless/SKILL.md), then `vp run dev`.
-- Product scope: [docs/VISION.md](docs/VISION.md). Plans, prices and limits: [docs/PRODUCT.md](docs/PRODUCT.md). Product judgment and tone: [docs/SOUL.md](docs/SOUL.md).
-- Upload, resume, download or cancellation: [docs/RELIABILITY.md](docs/RELIABILITY.md). Measured gate results: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
-- Tests, scenarios or lint guardrails: [docs/TESTING.md](docs/TESTING.md). Remaining work: [docs/plan/03-testing-and-guardrails.md](docs/plan/03-testing-and-guardrails.md).
-- Tool choices: [docs/STACK.md](docs/STACK.md). Code placement and request scope: [docs/STRUCTURE.md](docs/STRUCTURE.md). Effect reads in Solid: [docs/SOLID-EFFECT-BINDING.md](docs/SOLID-EFFECT-BINDING.md).
-- Traces, with log lines as span events: Axiom, described in the STACK.md observability lines. Never put a URL, query string, cookie, email or link token in a span attribute or log. Planned but not built: PostHog and Sentry, and other deferred tools in the STACK.md "Later" list.
-- Next milestone: [docs/plan/01-foundation.md](docs/plan/01-foundation.md). Optional follow-up: [docs/plan/02-pre-upload-readiness.md](docs/plan/02-pre-upload-readiness.md).
-- External precedent: `~/dev/tranzfer2-references/README.md`. Those checkouts can use different prereleases; verify syntax locally.
+- Solid: the `solidjs-v2` skill. Effect: the `effect` skill. Panda: the `panda-css` skill. Installed types beat the skills.
+- Library docs, installed source paths, renamed APIs and known pitfalls: [docs/LIBRARIES.md](docs/LIBRARIES.md). Read it before you search `node_modules` or the web.
+- Writing or reviewing code: [docs/CONVENTIONS.md](docs/CONVENTIONS.md). Placement and request scope: [docs/STRUCTURE.md](docs/STRUCTURE.md). Effect reads in Solid: [docs/SOLID-EFFECT-BINDING.md](docs/SOLID-EFFECT-BINDING.md). Tools: [docs/STACK.md](docs/STACK.md).
+- Product scope: [docs/VISION.md](docs/VISION.md). Plans, prices, limits: [docs/PRODUCT.md](docs/PRODUCT.md). Judgment and tone: [docs/SOUL.md](docs/SOUL.md).
+- Upload, resume, download, cancel: [docs/RELIABILITY.md](docs/RELIABILITY.md) and [docs/BENCHMARKS.md](docs/BENCHMARKS.md). Tests and scenarios: [docs/TESTING.md](docs/TESTING.md).
+- Remaining work: [docs/plan/](docs/plan/), starting with `01-foundation.md` and `deslop/00-index.md`.
+- Local serving: the `portless` skill, then `vp run dev`.
+- External precedent: `~/dev/tranzfer2-references/README.md`. Those checkouts use other prereleases; verify syntax locally.
+- Never put a URL, query string, cookie, email or link token in a span attribute or log. Traces go to Axiom (STACK.md).
 
 ## Change and verify
 
-- Use `vp` for package and project commands. After changes run `vp check`, `vp run test`, and the relevant `vp run build`. Report missing tests or blocked checks as such.
-- Reactivity changes (components, memos, stores, actions): dev builds run with Solid diagnostics on (`diagnostics: true` in `apps/web/vite.config.ts`). Treat every code as a defect and never allowlist one you haven't understood. Prove the change with a `captureArtifact` test from `@solidjs/diagnostics` next to the component (see `apps/web/src/dashboard/dashboard.test.tsx` and [docs/TESTING.md](docs/TESTING.md)): `toHaveNoDiagnostics()` plus a re-run budget. Full repair guide: `apps/web/node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md` (about 6k tokens, search it by code). Loop guide: `apps/web/node_modules/@solidjs/diagnostics/skills/agent-loops/SKILL.md`. Most codes come down to:
-  - `STRICT_READ_UNTRACKED`, `PENDING_ASYNC_UNTRACKED_READ`: a reactive read outside a tracking scope (destructured props, component body). Read it in JSX, a memo or an effect's compute half; `untrack()` if a one-time snapshot is the intent.
-  - `REACTIVE_WRITE_IN_OWNED_SCOPE`, `ACTION_CALLED_IN_OWNED_SCOPE`: a write, `refresh()` or action call during a component body or memo. Move it to an event handler or effect callback.
-  - `FLUSH_IN_ACTION`, `FLUSH_IN_EFFECT_CALLBACK`: delete the `flush()`. In tests, call `flush()` before reading the DOM.
-  - `NO_OWNER_EFFECT`, `NO_OWNER_CLEANUP`: create effects and `onCleanup` under a component or `createRoot`.
-  - `UNSTABLE_MEMO_OUTPUT`: the memo returns fresh but equal objects. Return stable references or pass `equals`.
-  - `HOT_SCOPE_*`, `HUGE_FAN_OUT`: a hot signal or one shared value read by many rows. Derive a slower value, or keep the answer in a store keyed by id.
-  - `EFFECT_WRITES_OWN_SOURCE`, `EFFECT_RELAY_TEAR`: an effect that writes derived state. Use `createMemo`.
-  - `IMMUTABLE_UPDATE_IN_STORE`, `UNSTABLE_LIST_IDENTITY`: mutate the store draft, or `reconcile(data, "id")`, and key `<For>` by a stable id.
-  - `ASYNC_WATERFALL`: read every async source before using any, so they start together.
-  - `SILENT_HOLD`, `LONG_HOLD`: add feedback with `isPending`, `latest` or an optimistic write. Never remove the hold; past 500 ms show a `Loading` fallback.
-- Keep lint enabled. An exception needs user approval, a file-scoped override and a one-line reason.
+- In a new worktree run `vp install` first; it generates `styled-system` and the route types. After changes run `vp check --quiet`, `vp run test` and the relevant `vp run build`, unpiped, or with `set -o pipefail`: the exit code is the verdict. Report missing tests or blocked checks as such.
+- Reactivity changes: dev builds report Solid diagnostics. Treat every code as a defect and never allowlist one you haven't understood. Read the codes while you exercise the change in `vp run dev`; common repairs are in LIBRARIES.md. If you cannot run the dev server (a worktree has no `.env`), say so.
+- Keep lint enabled. An exception needs user approval, a file-scoped override and a one-line reason. A new rule goes in at error with every hit fixed: custom rules in `tools/oxlint/anti-slop/tranzfer/`, each with a RuleTester test, the one exception to the test-file rule.
 - Comments explain runtime quirks and non-obvious constraints.
-- When a check fails, reproduce it on unchanged `origin/main` before blaming the current diff.
-- After the same step fails twice, stop and report the exact error and evidence.
-- The API Worker's resources and bindings live in `apps/api` (`resources.ts`, `index.ts`); `infra/alchemy.run.ts` composes the stack. Each resource has one definition.
-- Deploy only from the main checkout, after build and plan review. Leave generated `apps/web/file-routes.d.ts` unstaged.
-- Staging lives at staging.tranzfer.app and deploys from the `dev` branch via CI; `main` deploys production. Manual staging deploy: `vp run --filter @tranzfer/infra deploy:staging`. Sign in with `POST /api/auth/staging-login`.
-- Each same-repo PR deploys its own stack, stage `pr-<number>`, at `https://pr-<number>.tranzfer.app` and runs the e2e suite against it; closing the PR destroys it (`.github/workflows/preview.yml`). Use it to check your work on a real deployment. Only `production`, `staging`, `pr-<number>` and local `dev_<user>` stages boot; anything else fails the deploy.
-- Delegate well-scoped implementation and verification to `run_subagent` swe-2 profiles (`subagent_general` for write work, `subagent_explore` for read-only); parallel agents get scratchpad worktrees under `~/dev/scratchpad/tranzfer2`.
-- Worker `name` props stay unset: Alchemy derives stage-scoped names, and an explicit name makes every stage overwrite one worker.
+- Verify by running, not by reading. Quote counts from command output. Reproduce a failing check on unchanged `origin/dev` before blaming the diff, and a review-bot finding before fixing it.
+- After the same step fails twice, stop and report the exact error. Cap a spike on a prerelease (Solid, Effect, Alchemy, Panda, drizzle-kit) at 30 minutes, then report a minimal repro.
+- Never read `.env*` or print secrets. Pass them through the environment (`node --env-file`).
+- Migrations: rebase on `origin/dev`, then `cd packages/db && vp run generate --name <slug>`. If `vp exec drizzle-kit check` reports a fork after a merge, `git rm -r` yours and generate again. Never edit `snapshot.json`.
+- The API Worker's resources and bindings live in `apps/api` (`resources.ts`, `index.ts`); `infra/alchemy.run.ts` composes the stack. A rate limit is one row in `bindingLimits` (`apps/api/src/rate-limiter.ts`); one the client sees also goes in `rateLimits` (contracts) and the web `tooMany` copy. Worker `name` props stay unset: an explicit name once let staging overwrite production's Workers.
+
+## Deploys
+
+- Deploy only from the main checkout, after build and plan review. From a worktree, push and check the PR preview.
+- Each same-repo PR deploys stage `pr-<number>` at `https://pr-<number>.tranzfer.app` and runs the e2e suite there. `dev` deploys staging.tranzfer.app (sign in with `POST /api/auth/staging-login`); `main` deploys production.
+- A worktree can still plan a preview: `ALCHEMY_STAGE=pr-0 POLAR_SANDBOX_ACCESS_TOKEN=x TEST_LOGIN_KEY=<32+ chars> vp run --filter @tranzfer/infra plan:preview`. Staging and production plans need the main checkout's `.env`.
+
+## Parallel work
+
+- At most 3 subagents at once, each in its own worktree under `~/dev/scratchpad/tranzfer2` on its own branch, committing and pushing after every green step so a killed agent leaves a branch. Reviewers get a shell and the check to run: read-only reviewers approved bugs that one with a shell caught.
+- Never `rm`, `git clean`, `git stash` or `git checkout <branch>` in a checkout another thread may use, and never `pkill -f`; stop only the PID you started.
+- Wait for CI with one backgrounded `gh pr checks <number> --watch --interval 60`. Read a failure once with `gh run view <id> --log-failed`.
+- Local pages: `agent-browser`, with its own `--session` per agent. Dash shells with a 30 s limit: wrap bash syntax in `bash -c` and start servers with `setsid nohup ... &`.
 
 ## Keep the record useful
 
-Docs hold standing decisions. Package manifests and configuration hold versions and commands. Commits, PRs and issues hold investigation, failures and progress.
+Docs hold standing decisions. Manifests and configuration hold versions and commands. Commits, PRs and issues hold investigation and progress. When a mistake repeats, make it a lint rule, a type or a check before you write prose about it.
 
 Update a rule when a decision changes and cite the PR. Plan files contain remaining work; delete finished items and empty files. Before retrying a rejected approach, search recent commits and merged PRs for the reason.

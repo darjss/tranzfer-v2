@@ -1,76 +1,24 @@
 import type { Delivery, DeliveryId } from "@tranzfer/contracts";
-import * as Exit from "effect/Exit";
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  Match,
-  Show,
-  Switch,
-  useContext,
-} from "solid-js";
+import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 
 import PhXBold from "~icons/ph/x-bold";
 
-import { appError } from "../api/errors";
-import { RuntimeContext } from "../api/solid-effect";
 import { Button } from "../ui/Button";
-import { transfers } from "../uploads/store";
-import { Uploads } from "../uploads/uploads";
 import { liveDelivery } from "./deliveries";
+import { DeliveryFiles } from "./DeliveryFiles";
+import { bytes, etaAt, fromNow, kindWords, sentAt, speedAt, untilDate } from "./format";
 import {
-  bytes,
-  etaAt,
-  files,
-  fromNow,
-  kindWords,
-  sentAt,
-  speedAt,
-  transferStatus,
-  untilDate,
-} from "./format";
-import type { Kind } from "./format";
-import { CopyLink, KindIcon, kindText, LinkPassword, Progress } from "./parts";
+  CopyLink,
+  KindIcon,
+  kindText,
+  LinkPassword,
+  Progress,
+  sheetBlock,
+  sheetHeading,
+} from "./parts";
+import { ResumeUpload } from "./ResumeUpload";
 import "./dashboard.css";
-
-const block = css({
-  borderColor: "line",
-  borderTopWidth: "1px",
-  px: { base: "5", sm: "7" },
-  py: "6",
-});
-const heading = css({ fontWeight: "semibold", textStyle: "sm" });
-
-const fileKind = {
-  Active: "moving",
-  Cancelled: "cancelled",
-  Complete: "ready",
-  Elsewhere: "elsewhere",
-  Failed: "failed",
-  Interrupted: "interrupted",
-  NeedsFile: "needsFile",
-} satisfies Record<ReturnType<typeof transferStatus>["_tag"], Kind>;
-
-const resumeProblem = (
-  problem: "changed" | "gone" | "policy" | "unreadable" | "unknown",
-  name: string,
-) => {
-  if (problem === "unknown") {
-    return `"${name}" isn't one of the files this delivery is waiting for.`;
-  }
-  if (problem === "changed") {
-    return `"${name}" has changed since you sent it, so we won't continue with it.`;
-  }
-  if (problem === "unreadable") {
-    return `"${name}" couldn't be read. Pick it again.`;
-  }
-  if (problem === "gone") {
-    return `"${name}" can't continue because its partial upload is gone from storage. Cancel and send it again.`;
-  }
-  return `"${name}" was started by an older version of Tranzfer and can't continue. Cancel and send it again.`;
-};
 
 function Details(props: {
   cancel: (deliveryId: DeliveryId) => Promise<string | undefined>;
@@ -78,43 +26,10 @@ function Details(props: {
   online: boolean;
   setPassword: (deliveryId: DeliveryId, password: string | null) => Promise<string | undefined>;
 }) {
-  const runtime = useContext(RuntimeContext);
   const live = liveDelivery(props);
   const [confirming, setConfirming] = createSignal(false);
   const [problem, setProblem] = createSignal<string>();
-  const [resumeProblems, setResumeProblems] = createSignal<readonly string[]>([]);
-  const [checking, setChecking] = createSignal<{ checked: number; total: number }>();
   const shareable = () => props.delivery.status === "open" || props.delivery.status === "ready";
-  // Folder picks matter only when a transfer actually sits in one.
-  const hasNestedPaths = () =>
-    props.delivery.transfers.some((transfer) => transfer.path.includes("/"));
-  let resumeFiles: HTMLInputElement | undefined;
-  let resumeFolder: HTMLInputElement | undefined;
-
-  const resumePicked = async (input: HTMLInputElement) => {
-    const picked = [...(input.files ?? [])];
-    input.value = "";
-    if (picked.length === 0) {
-      return;
-    }
-    const { delivery } = props;
-    // Verifying a reselected file hashes every stored part, so a big file can
-    // hold the pick for minutes; the block must say why it is waiting.
-    setChecking({ checked: 0, total: 0 });
-    const exit = await runtime.runPromiseExit(
-      Uploads.use((uploads) =>
-        uploads.resume(delivery, picked, (progress) => {
-          setChecking(progress);
-        }),
-      ),
-    );
-    setChecking(undefined);
-    setResumeProblems(
-      Exit.isSuccess(exit)
-        ? exit.value.map(({ name, problem: tag }) => resumeProblem(tag, name))
-        : [appError(exit.cause).message],
-    );
-  };
 
   // The action moves the delivery to cancelled at once; only a failure
   // comes back here, and the optimistic move reverts on its own.
@@ -130,7 +45,7 @@ function Details(props: {
 
   return (
     <>
-      <section class={cx(block, css({ borderTopWidth: "0", pt: "2" }))}>
+      <section class={cx(sheetBlock, css({ borderTopWidth: "0", pt: "2" }))}>
         <div class={css({ alignItems: "center", display: "flex", gap: "3" })}>
           <KindIcon kind={live.kind()} />
           <p class={cx(css({ fontWeight: "semibold" }), kindText(live.kind()))}>
@@ -196,89 +111,14 @@ function Details(props: {
         </p>
       </section>
 
-      <Show when={live.roll().needsFile}>
-        <section class={block}>
-          <h3 class={heading}>Continue the upload</h3>
-          <p class={css({ color: "ink/80", mt: "2", textStyle: "sm" })}>
-            {bytes(live.roll().confirmed)} already uploaded.
-          </p>
-          <div class={css({ display: "flex", flexWrap: "wrap", gap: "2.5", mt: "3" })}>
-            <Button
-              disabled={checking() !== undefined}
-              onClick={() => {
-                resumeFiles?.click();
-              }}
-              size="sm"
-            >
-              Choose files
-            </Button>
-            <Show when={hasNestedPaths()}>
-              <Button
-                disabled={checking() !== undefined}
-                onClick={() => {
-                  resumeFolder?.click();
-                }}
-                size="sm"
-                variant="outline"
-              >
-                Choose folder
-              </Button>
-            </Show>
-          </div>
-          <Show when={checking()}>
-            {(progress) => (
-              <p
-                class={css({
-                  color: "mut",
-                  fontVariantNumeric: "tabular-nums",
-                  mt: "2.5",
-                  textStyle: "sm",
-                })}
-                role="status"
-              >
-                {progress().total === 0
-                  ? "Checking the file against the parts already uploaded…"
-                  : `Checking ${bytes(progress().checked)} of ${bytes(progress().total)} you already sent`}
-              </p>
-            )}
-          </Show>
-          <input
-            class={css({ display: "none" })}
-            multiple
-            onChange={(event) => {
-              void resumePicked(event.currentTarget);
-            }}
-            ref={(element) => {
-              resumeFiles = element;
-            }}
-            type="file"
-          />
-          <Show when={hasNestedPaths()}>
-            <input
-              class={css({ display: "none" })}
-              onChange={(event) => {
-                void resumePicked(event.currentTarget);
-              }}
-              ref={(element) => {
-                resumeFolder = element;
-              }}
-              type="file"
-              webkitdirectory=""
-            />
-          </Show>
-          <Show when={resumeProblems().length > 0}>
-            <ul
-              class={css({ color: "rust", listStyle: "none", mt: "3", textStyle: "sm" })}
-              role="alert"
-            >
-              <For each={resumeProblems()}>{(message) => <li>{message}</li>}</For>
-            </ul>
-          </Show>
-        </section>
-      </Show>
+      <ResumeUpload
+        confirmed={live.roll().confirmed}
+        delivery={props.delivery}
+        needsFile={live.roll().needsFile}
+      />
 
-      <section class={block}>
-        <h3 class={heading}>Link</h3>
+      <section class={sheetBlock}>
+        <h3 class={sheetHeading}>Link</h3>
         <div
           class={css({
             alignItems: "center",
@@ -323,115 +163,10 @@ function Details(props: {
         </Show>
       </section>
 
-      <section class={block}>
-        <h3 class={heading}>
-          Files{" "}
-          <span class={css({ color: "mut", fontFamily: "mono", fontWeight: "normal" })}>
-            {files(props.delivery.transfers.length)}
-          </span>
-        </h3>
-        <ul class={css({ display: "grid", listStyle: "none", mt: "2" })}>
-          <For each={props.delivery.transfers}>
-            {(transfer) => {
-              const status = createMemo(() => transferStatus(transfer, transfers[transfer.id]));
-              const kind = () => fileKind[status()._tag];
-              return (
-                <li
-                  class={css({
-                    alignItems: "center",
-                    borderBottomWidth: "1px",
-                    borderColor: "line/70",
-                    columnGap: "3",
-                    display: "grid",
-                    gridTemplateColumns: "[auto minmax(0,1fr) auto]",
-                    py: "2.5",
-                  })}
-                >
-                  <KindIcon class={css({ boxSize: "6" })} kind={kind()} />
-                  <div class={css({ minW: "0" })}>
-                    <p
-                      class={css({ fontFamily: "mono", fontSize: "13", truncate: true })}
-                      title={transfer.path}
-                    >
-                      {transfer.path}
-                    </p>
-                    <Switch>
-                      <Match when={status()._tag === "Active" ? transfers[transfer.id] : undefined}>
-                        {(progress) => (
-                          <Progress
-                            class={css({ mt: "1.5" })}
-                            confirmed={progress().confirmed}
-                            inFlight={progress().inFlight}
-                            kind="moving"
-                            label={`${transfer.path} upload`}
-                            total={transfer.size}
-                          />
-                        )}
-                      </Match>
-                      <Match when={status()._tag === "Failed" ? transfers[transfer.id] : undefined}>
-                        {(progress) => (
-                          <p class={css({ color: "rust", fontSize: "13", mt: "0.5" })}>
-                            {appError(progress().error).message}
-                          </p>
-                        )}
-                      </Match>
-                      <Match
-                        when={status()._tag === "NeedsFile" ? transfers[transfer.id] : undefined}
-                      >
-                        {(progress) => (
-                          <Show
-                            when={progress().error !== undefined}
-                            fallback={
-                              <p class={cx(css({ fontSize: "13", mt: "0.5" }), kindText(kind()))}>
-                                {kindWords[kind()].label}
-                              </p>
-                            }
-                          >
-                            <p class={css({ color: "rust", fontSize: "13", mt: "0.5" })}>
-                              {appError(progress().error).message}
-                            </p>
-                          </Show>
-                        )}
-                      </Match>
-                      <Match when={status()._tag !== "Complete"}>
-                        <p class={cx(css({ fontSize: "13", mt: "0.5" }), kindText(kind()))}>
-                          {kindWords[kind()].label}
-                        </p>
-                      </Match>
-                    </Switch>
-                  </div>
-                  <div class={css({ alignItems: "center", display: "flex", gap: "3" })}>
-                    <Show when={status()._tag === "Failed"}>
-                      <Button
-                        onClick={() => {
-                          runtime.runFork(Uploads.use((uploads) => uploads.retry(transfer.id)));
-                        }}
-                        size="sm"
-                        variant="outline"
-                      >
-                        Retry
-                      </Button>
-                    </Show>
-                    <span
-                      class={css({
-                        color: "mut",
-                        fontFamily: "mono",
-                        fontSize: "13",
-                        fontVariantNumeric: "tabular-nums",
-                      })}
-                    >
-                      {bytes(transfer.size)}
-                    </span>
-                  </div>
-                </li>
-              );
-            }}
-          </For>
-        </ul>
-      </section>
+      <DeliveryFiles transfers={props.delivery.transfers} />
 
       <Show when={shareable()}>
-        <section class={cx(block, css({ pb: "10" }))}>
+        <section class={cx(sheetBlock, css({ pb: "10" }))}>
           <Show
             when={confirming()}
             fallback={
@@ -583,7 +318,18 @@ export function DeliverySheet(props: {
                   {delivery().title}
                 </h2>
                 <p class={css({ color: "mut", fontFamily: "mono", fontSize: "13", mt: "1.5" })}>
-                  sent {sentAt(delivery().createdAt)} · kept {delivery().retentionDays}{" "}
+                  <Show
+                    when={delivery().uploader}
+                    fallback={<>sent {sentAt(delivery().createdAt)}</>}
+                  >
+                    {(uploader) => (
+                      <>
+                        received {sentAt(delivery().createdAt)} from {uploader().name}
+                        <Show when={uploader().email}>{(email) => <> ({email()})</>}</Show>
+                      </>
+                    )}
+                  </Show>{" "}
+                  · kept {delivery().retentionDays}{" "}
                   {delivery().retentionDays === 1 ? "day" : "days"} after upload
                 </p>
               </div>

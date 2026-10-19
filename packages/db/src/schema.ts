@@ -1,3 +1,4 @@
+import { EmailStatus, StoredDeliveryStatus, TransferState } from "@tranzfer/contracts";
 import type {
   DeliveryId,
   PaidPlanId,
@@ -6,6 +7,7 @@ import type {
   RetentionDays,
   SubscriptionStatus,
   TransferId,
+  UserId,
 } from "@tranzfer/contracts";
 import { sql } from "drizzle-orm";
 import {
@@ -18,19 +20,25 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+// D1 stamps rows in integer milliseconds. This is the only place that spells the
+// clock; every default and the plan code's comparisons import it.
+export const nowMs = sql`(cast(unixepoch('subsecond') * 1000 as integer))`;
+
+const timestamps = {
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).default(nowMs).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(nowMs)
+    .$onUpdate(() => new Date())
+    .notNull(),
+};
+
 export const user = sqliteTable("user", {
-  id: text("id").primaryKey(),
+  id: text("id").$type<UserId>().primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
   image: text("image"),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .$onUpdate(() => new Date())
-    .notNull(),
+  ...timestamps,
 });
 
 // One row per account creation a client IP was allowed, for the
@@ -45,21 +53,39 @@ export const signup = sqliteTable(
   (table) => [index("signup_ip_createdAt_idx").on(table.ip, table.createdAt)],
 );
 
+// One row per counted link password or access code attempt, right or wrong.
+// `key` is the link id for an unlock and the user id for a code; `ip` is set
+// for an unlock only. A row lands only while its windows are under the limits,
+// in the same statement that counts them (apps/api/src/attempts.ts).
+export const attempt = sqliteTable(
+  "attempt",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    kind: text("kind", { enum: ["code", "unlock"] }).notNull(),
+    key: text("key").notNull(),
+    ip: text("ip"),
+    createdAt: timestamps.createdAt,
+  },
+  (table) => [
+    index("attempt_kind_key_createdAt_idx").on(table.kind, table.key, table.createdAt),
+    index("attempt_kind_ip_createdAt_idx").on(table.kind, table.ip, table.createdAt),
+  ],
+);
+
 export const session = sqliteTable(
   "session",
   {
     id: text("id").primaryKey(),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     token: text("token").notNull().unique(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(nowMs).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" })
       .$onUpdate(() => new Date())
       .notNull(),
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
     userId: text("user_id")
+      .$type<UserId>()
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
   },
@@ -73,6 +99,7 @@ export const account = sqliteTable(
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
     userId: text("user_id")
+      .$type<UserId>()
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     accessToken: text("access_token"),
@@ -86,9 +113,7 @@ export const account = sqliteTable(
     }),
     scope: text("scope"),
     password: text("password"),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(nowMs).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" })
       .$onUpdate(() => new Date())
       .notNull(),
@@ -103,13 +128,7 @@ export const verification = sqliteTable(
     identifier: text("identifier").notNull(),
     value: text("value").notNull(),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .$onUpdate(() => new Date())
-      .notNull(),
+    ...timestamps,
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
@@ -123,6 +142,7 @@ export const fileRequest = sqliteTable(
   {
     id: text("id").$type<RequestId>().primaryKey(),
     ownerId: text("owner_id")
+      .$type<UserId>()
       .notNull()
       .references(() => user.id),
     title: text("title").notNull(),
@@ -136,9 +156,7 @@ export const fileRequest = sqliteTable(
     // the owner's space limits it.
     maxBytes: integer("max_bytes"),
     closedAt: integer("closed_at", { mode: "timestamp_ms" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(nowMs).notNull(),
   },
   (table) => [index("file_request_ownerId_createdAt_idx").on(table.ownerId, table.createdAt)],
 );
@@ -149,6 +167,7 @@ export const delivery = sqliteTable(
     id: text("id").$type<DeliveryId>().primaryKey(),
     // No cascade: account deletion needs an R2 object cleanup path first.
     senderId: text("sender_id")
+      .$type<UserId>()
       .notNull()
       .references(() => user.id),
     title: text("title").notNull(),
@@ -161,9 +180,7 @@ export const delivery = sqliteTable(
       .references(() => fileRequest.id),
     uploaderName: text("uploader_name"),
     uploaderEmail: text("uploader_email"),
-    status: text("status", { enum: ["open", "ready", "cancelled"] })
-      .default("open")
-      .notNull(),
+    status: text("status", { enum: StoredDeliveryStatus.literals }).default("open").notNull(),
     retentionDays: integer("retention_days").$type<RetentionDays>().notNull(),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
     // Set once the sweeper has removed a cancelled or expired delivery's objects.
@@ -171,13 +188,7 @@ export const delivery = sqliteTable(
     // Set when the sender clears an ended delivery off the dashboard. The row
     // stays so the sweeper still purges it and its link still reads as ended.
     clearedAt: integer("cleared_at", { mode: "timestamp_ms" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .$onUpdate(() => new Date())
-      .notNull(),
+    ...timestamps,
   },
   (table) => [
     index("delivery_senderId_createdAt_idx").on(table.senderId, table.createdAt),
@@ -198,18 +209,10 @@ export const transfer = sqliteTable(
     size: integer("size").notNull(),
     contentType: text("content_type"),
     sourceModifiedAt: integer("source_modified_at", { mode: "timestamp_ms" }).notNull(),
-    state: text("state", { enum: ["uploading", "finalizing", "complete", "cancelled"] })
-      .default("uploading")
-      .notNull(),
+    state: text("state", { enum: TransferState.literals }).default("uploading").notNull(),
     etag: text("etag"),
     completedAt: integer("completed_at", { mode: "timestamp_ms" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .$onUpdate(() => new Date())
-      .notNull(),
+    ...timestamps,
   },
   (table) => [
     index("transfer_deliveryId_idx").on(table.deliveryId),
@@ -229,9 +232,10 @@ export const link = sqliteTable(
     // The recipient's password, as `pbkdf2-sha256$<iterations>$<salt>$<hash>`
     // (apps/api/src/passwords.ts). Null means anyone with the link gets in.
     passwordHash: text("password_hash"),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
+    // Page loads that showed the recipient the files (`SharedLinks.open`).
+    openCount: integer("open_count").default(0).notNull(),
+    lastOpenedAt: integer("last_opened_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(nowMs).notNull(),
   },
   (table) => [index("link_deliveryId_idx").on(table.deliveryId)],
 );
@@ -262,6 +266,7 @@ export const download = sqliteTable(
 // state, so it is a cache of Polar and never the source of truth.
 export const subscription = sqliteTable("subscription", {
   userId: text("user_id")
+    .$type<UserId>()
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
   plan: text("plan").$type<PlanId>().notNull(),
@@ -271,7 +276,7 @@ export const subscription = sqliteTable("subscription", {
   currentPeriodEnd: integer("current_period_end", { mode: "timestamp_ms" }),
   cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }).default(false).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .default(nowMs)
     .$onUpdate(() => new Date())
     .notNull(),
 });
@@ -290,9 +295,7 @@ export const accessCode = sqliteTable(
     uses: integer("uses").default(0).notNull(),
     // Redeemable until then; grants already made keep their own end.
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(nowMs).notNull(),
   },
   (table) => [check("access_code_uses_within_max", sql`${table.uses} <= ${table.maxUses}`)],
 );
@@ -303,6 +306,7 @@ export const planGrant = sqliteTable(
   "plan_grant",
   {
     userId: text("user_id")
+      .$type<UserId>()
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     code: text("code")
@@ -310,9 +314,7 @@ export const planGrant = sqliteTable(
       .references(() => accessCode.code),
     plan: text("plan").$type<PaidPlanId>().notNull(),
     endsAt: integer("ends_at", { mode: "timestamp_ms" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(nowMs).notNull(),
   },
   (table) => [primaryKey({ columns: [table.userId, table.code] })],
 );
@@ -327,10 +329,10 @@ export const planInterest = sqliteTable(
     email: text("email").notNull(),
     plan: text("plan").$type<PaidPlanId>().notNull(),
     // Set when the sign-up came from a signed-in account.
-    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
+    userId: text("user_id")
+      .$type<UserId>()
+      .references(() => user.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(nowMs).notNull(),
     notifyQueuedAt: integer("notify_queued_at", { mode: "timestamp_ms" }),
     notifiedAt: integer("notified_at", { mode: "timestamp_ms" }),
   },
@@ -353,9 +355,7 @@ export const deliveryEmail = sqliteTable(
       .$type<DeliveryId>()
       .notNull()
       .references(() => delivery.id),
-    status: text("status", { enum: ["queued", "sent", "failed"] })
-      .default("queued")
-      .notNull(),
+    status: text("status", { enum: EmailStatus.literals }).default("queued").notNull(),
     // Cloudflare's error code, or `held` / `lost`. Never the address.
     errorCode: text("error_code"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),

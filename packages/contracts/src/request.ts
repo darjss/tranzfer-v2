@@ -9,17 +9,21 @@ import {
   TransferId,
 } from "./delivery";
 import { EmailAddress } from "./interest";
+import { LinkToken } from "./link";
 
 export const RequestId = Schema.String.check(Schema.isMinLength(1)).pipe(Schema.brand("RequestId"));
 export type RequestId = typeof RequestId.Type;
 
 // A delivery made through a request is titled "<title> from <name>", and a
 // delivery title holds 200, so these two leave room for the joining word.
-export const RequestTitle = Schema.Trim.check(Schema.isBetweenLength(1, 120));
-export const UploaderName = Schema.Trim.check(Schema.isBetweenLength(1, 60));
+export const maxRequestTitleLength = 120;
+export const maxUploaderNameLength = 60;
+export const RequestTitle = Schema.Trim.check(Schema.isBetweenLength(1, maxRequestTitleLength));
+export const UploaderName = Schema.Trim.check(Schema.isBetweenLength(1, maxUploaderNameLength));
 
 /** Plain text for the uploader. Empty means none. */
-export const RequestInstructions = Schema.Trim.check(Schema.isMaxLength(1000));
+export const maxInstructionsLength = 1000;
+export const RequestInstructions = Schema.Trim.check(Schema.isMaxLength(maxInstructionsLength));
 
 export const NewFileRequest = Schema.Struct({
   instructions: RequestInstructions,
@@ -29,7 +33,7 @@ export const NewFileRequest = Schema.Struct({
   retentionDays: RetentionDays,
   title: RequestTitle,
 });
-export interface NewFileRequest extends Schema.Schema.Type<typeof NewFileRequest> {}
+export type NewFileRequest = typeof NewFileRequest.Type;
 
 export const FileRequestStatus = Schema.Literals(["open", "closed", "expired"]);
 export type FileRequestStatus = typeof FileRequestStatus.Type;
@@ -50,7 +54,7 @@ export const FileRequest = Schema.Struct({
   /** Uploads that were not cancelled. */
   uploads: Schema.Int,
 });
-export interface FileRequest extends Schema.Schema.Type<typeof FileRequest> {}
+export type FileRequest = typeof FileRequest.Type;
 
 /** What the uploader sees before choosing files. */
 export const OpenedRequest = Schema.Struct({
@@ -59,7 +63,7 @@ export const OpenedRequest = Schema.Struct({
   ownerName: Schema.String,
   title: Schema.String,
 });
-export interface OpenedRequest extends Schema.Schema.Type<typeof OpenedRequest> {}
+export type OpenedRequest = typeof OpenedRequest.Type;
 
 /**
  * One upload session through a request. The uploader picks every id, as a
@@ -72,9 +76,9 @@ export const NewRequestUpload = Schema.Struct({
   files: NewDelivery.fields.files,
   id: DeliveryId,
   name: UploaderName,
-  token: Schema.String,
+  token: LinkToken,
 });
-export interface NewRequestUpload extends Schema.Schema.Type<typeof NewRequestUpload> {}
+export type NewRequestUpload = typeof NewRequestUpload.Type;
 
 /**
  * A delivery as the uploader sees it: its own files and their state, and not
@@ -86,16 +90,16 @@ export const RequestUpload = Schema.Struct({
   title: Schema.String,
   transfers: Schema.Array(Transfer),
 });
-export interface RequestUpload extends Schema.Schema.Type<typeof RequestUpload> {}
+export type RequestUpload = typeof RequestUpload.Type;
 
 /** Delivery ids the uploader's browser remembers; only this request's come back. */
 export const RequestUploadsPayload = Schema.Struct({
   deliveryIds: Schema.Array(DeliveryId).check(Schema.isMaxLength(50)),
-  token: Schema.String,
+  token: LinkToken,
 });
 
 export const RequestTransferPayload = Schema.Struct({
-  token: Schema.String,
+  token: LinkToken,
   transferId: TransferId,
 });
 

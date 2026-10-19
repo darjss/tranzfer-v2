@@ -4,7 +4,7 @@ Use the existing directory tree as the file inventory. Add a package only for a 
 
 - `packages/contracts` owns the wire API: one file per domain with its schemas, branded ids and tagged errors, plus the RPC group. Errors carry data, not copy; the UI owns the words. It must not import handlers, database code or Worker bindings.
 - `packages/db` owns schema, migrations and `Database`: drizzle's Effect driver over D1, with `batch` as the only atomic unit. `@tranzfer/db/testing` gives tests a fresh migrated local D1.
-- The top level of `apps/api/src` owns the rules, one domain per file: `Deliveries`, `Transfers`, `SharedLinks`, `Billing` and `Plans` (the plan that sets a user's limits, and access codes) services, the `Storage` port, link tokens and the sweeper. `rpc.ts` is transport only: read the principal, call a service.
+- The top level of `apps/api/src` owns the rules, one domain per file: `Deliveries`, `Transfers`, `SharedLinks`, `FileRequests`, `Billing` and `Plans` (the plan that sets a user's limits, and access codes) services, the `Storage` port, link tokens and the sweeper. `rpc.ts` is transport only: read the principal, call a service.
 - `apps/api/src/infrastructure` owns everything Cloudflare or Alchemy: R2 storage, Better Auth, the stage, Polar access, Axiom telemetry and the browser trace relay. Stage checks live here and nowhere else.
 - `apps/web/src/routes` owns page and HTTP route entry points. `api` owns clients and the Solid bridge. `ui` owns reused presentation. Keep feature state beside its consumers.
 - `infra/alchemy.run.ts` composes the stack. `infra/polar-provider.ts` holds the Alchemy providers for Polar products and webhook endpoints. The API Worker's resources and bindings live in `apps/api/src/resources.ts` and `index.ts`.
@@ -19,7 +19,7 @@ Database failures are defects (`dieOnDatabaseError` at each service method). Sto
 
 Never capture a request, principal or response headers in an isolate-wide singleton.
 
-Browser RPC posts to exactly `/rpc`, forwarded by the web Worker to the API binding. SSR creates a request-specific client with incoming cookies and outgoing response headers. See [the bridge contract](SOLID-EFFECT-BINDING.md).
+Browser RPC posts to exactly `/rpc`, forwarded by the web Worker to the API binding. Server rendering never calls the API (PR #184). See [the bridge contract](SOLID-EFFECT-BINDING.md).
 
 ## Adding an operation
 

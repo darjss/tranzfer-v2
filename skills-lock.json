@@ -5,19 +5,13 @@
       "source": "kitlangton/skills",
       "sourceType": "github",
       "skillPath": "skills/effect/SKILL.md",
-      "computedHash": "f4e0cfeee135a1569fc9e511c26d74fcd29d5ce03bc8066aea268fc87a88019e"
-    },
-    "effect-ts": {
-      "source": "Effect-TS/skills",
-      "sourceType": "github",
-      "skillPath": "skills/effect-ts/SKILL.md",
-      "computedHash": "6bdb9b95aa83071eca2f67ae947b7d398a22e9e6e08f6cfa35de9516b03efa6e"
+      "computedHash": "d88417dca5f22fcc80b03ebd4096dfa6113a50cc6bb574bf53f75248cd321e35"
     },
     "solidjs-v2": {
       "source": "khmm12/solidjs-v2-skills",
       "sourceType": "github",
       "skillPath": "skills/solidjs-v2/SKILL.md",
-      "computedHash": "a48e63cb7ff9f4c6463f3bfdc2bf06d1d273bbc1882decf4e67065102af23411"
+      "computedHash": "d924aa92e53b1d2b379559e33802a061e095688519ac575582d9cefbd7f73917"
     }
   }
 }

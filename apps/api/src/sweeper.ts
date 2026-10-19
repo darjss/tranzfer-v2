@@ -1,15 +1,18 @@
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 
+import { Attempts } from "./attempts";
 import { Billing } from "./billing";
-import { Deliveries } from "./deliveries";
 import { Emails } from "./emails";
+import { pruneSignups } from "./infrastructure/auth";
+import { Interest } from "./interest";
+import { purgeEnded } from "./purge";
 import { Transfers } from "./transfers";
 
 // One step's failure must not cancel the others; the next minute retries it.
 // Interruption (isolate shutdown) still propagates. The cause can carry SQL
 // parameters, so only the step and the error's name are logged.
-const isolated = (step: string, effect: Effect.Effect<number>) =>
+const isolated = <R>(step: string, effect: Effect.Effect<number, never, R>) =>
   effect.pipe(
     Effect.catchCauseIf(
       (cause) => !Cause.hasInterruptsOnly(cause),
@@ -25,21 +28,33 @@ const isolated = (step: string, effect: Effect.Effect<number>) =>
 
 /** Background upkeep the requests can't be trusted to finish. Every step is idempotent. */
 export const sweep = Effect.gen(function* sweep() {
-  const deliveries = yield* Deliveries;
   const transfers = yield* Transfers;
   const billing = yield* Billing;
   const emails = yield* Emails;
-  const [recovered, purged, reconciled, announced, lost] = yield* Effect.all(
-    [
-      isolated("recoverFinalizing", transfers.recoverFinalizing),
-      isolated("purgeEnded", deliveries.purgeEnded),
-      isolated("reconcileStale", billing.reconcileStale),
-      isolated("sendOpenings", emails.sendOpenings),
-      isolated("failLost", emails.failLost),
-    ],
-    { concurrency: 4 },
-  );
-  if (recovered + purged + reconciled + announced + lost > 0) {
-    yield* Effect.logInfo("sweep", { announced, lost, purged, reconciled, recovered });
+  const interest = yield* Interest;
+  const attempts = yield* Attempts;
+  const [recovered, purged, reconciled, announced, lost, pruned, prunedAttempts] =
+    yield* Effect.all(
+      [
+        isolated("recoverFinalizing", transfers.recoverFinalizing),
+        isolated("purgeEnded", purgeEnded),
+        isolated("reconcileStale", billing.reconcileStale),
+        isolated("sendOpenings", interest.sendOpenings),
+        isolated("failLost", emails.failLost),
+        isolated("pruneSignups", pruneSignups),
+        isolated("pruneAttempts", attempts.prune),
+      ],
+      { concurrency: 4 },
+    );
+  if (recovered + purged + reconciled + announced + lost + pruned + prunedAttempts > 0) {
+    yield* Effect.logInfo("sweep", {
+      announced,
+      lost,
+      pruned,
+      prunedAttempts,
+      purged,
+      reconciled,
+      recovered,
+    });
   }
 }).pipe(Effect.withSpan("sweep"));

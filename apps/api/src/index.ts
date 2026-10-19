@@ -1,4 +1,4 @@
-import { Api, plans, rateLimits } from "@tranzfer/contracts";
+import { Api, plans } from "@tranzfer/contracts";
 import type { PaidPlanId } from "@tranzfer/contracts";
 import { Database } from "@tranzfer/db";
 import { Random, RuntimeContext } from "alchemy";
@@ -8,25 +8,29 @@ import { sql } from "drizzle-orm";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Record from "effect/Record";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as Schema from "effect/Schema";
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
 import * as RpcServer from "effect/rpc/RpcServer";
 
+import { Attempts } from "./attempts";
 import { Billing, InvalidWebhook } from "./billing";
 import { Deliveries } from "./deliveries";
-import { Emails } from "./emails";
+import { Emails, sendWelcome } from "./emails";
 import { FileRequests } from "./file-requests";
+import { Interest } from "./interest";
 import { LinkTokens } from "./link-tokens";
 import { Plans } from "./plans";
+import { RateLimiter, bindingLimits } from "./rate-limiter";
 import { ApiHandlers, AuthenticatedLive } from "./rpc";
 import { SharedLinks } from "./shared-links";
 import { Storage } from "./storage";
 import { sweep } from "./sweeper";
-import { SigningRate, Transfers } from "./transfers";
-import { Auth, makeAuth } from "./infrastructure/auth";
-import { emailAllowlist, Mail, makeMail } from "./infrastructure/email";
+import { Transfers } from "./transfers";
+import { Auth } from "./infrastructure/auth";
+import { emailAllowlist, Mail } from "./infrastructure/email";
 import { PolarProduct, PolarWebhook, paidPlansOpen, polarAccess } from "./infrastructure/polar";
 import { filesStorage, lazy } from "./infrastructure/r2";
 import { deployStage, stageName } from "./infrastructure/stage";
@@ -45,6 +49,7 @@ export default ApiWorker.make(
     compatibility: { date: "2026-09-08" },
     dev: { port: 8787, strictPort: true },
     main: import.meta.url,
+    placement: { mode: "smart" },
   },
   Effect.gen(function* impl() {
     // This effect also runs at deploy time, when no binding exists, so the D1
@@ -102,140 +107,82 @@ export default ApiWorker.make(
     // Rate-limit namespaces are account-wide, so every stage shares the
     // counters and the key carries the stage name.
     const stageKey = yield* stageName;
-    const limiter = (client: Cloudflare.RateLimitClient) => (key: string) =>
-      client.limit({ key: `${stageKey}:${key}` }).pipe(
-        Effect.map(({ success }) => success),
-        // A limiter outage must not lock anyone out.
-        Effect.catchTag("RateLimitError", (error) =>
-          Effect.logWarning("rate limit check failed", error.message).pipe(Effect.as(true)),
+    const rateLimitClients = yield* Effect.all(
+      Record.map(bindingLimits, ({ binding, namespaceId, rule }) =>
+        Cloudflare.RateLimit(binding, {
+          namespaceId,
+          simple: { limit: rule.limit, period: rule.windowSeconds },
+        }).asEffect(),
+      ),
+    );
+    const rateLimiter = Layer.succeed(
+      RateLimiter,
+      RateLimiter.make((name, key) =>
+        rateLimitClients[name].limit({ key: `${stageKey}:${key}` }).pipe(
+          Effect.map(({ success }) => success),
+          // A limiter outage must not lock anyone out.
+          Effect.catchTag("RateLimitError", (error) =>
+            Effect.logWarning("rate limit check failed", error.message).pipe(Effect.as(true)),
+          ),
+          Effect.provide(RuntimeContext.phantom),
         ),
-        Effect.provide(RuntimeContext.phantom),
-      );
-    const authRequests = yield* Cloudflare.RateLimit("AUTH_REQUESTS", {
-      namespaceId: 1001,
-      simple: {
-        limit: rateLimits.authRequests.limit,
-        period: rateLimits.authRequests.windowSeconds,
-      },
-    });
-    const uploadSigning = yield* Cloudflare.RateLimit("UPLOAD_SIGNING", {
-      namespaceId: 1002,
-      simple: {
-        limit: rateLimits.uploadSigning.limit,
-        period: rateLimits.uploadSigning.windowSeconds,
-      },
-    });
-
-    const codeRedemptions = yield* Cloudflare.RateLimit("CODE_REDEMPTIONS", {
-      namespaceId: 1003,
-      simple: {
-        limit: rateLimits.codeRedemptions.limit,
-        period: rateLimits.codeRedemptions.windowSeconds,
-      },
-    });
-
-    const interestSignups = yield* Cloudflare.RateLimit("INTEREST_SIGNUPS", {
-      namespaceId: 1004,
-      simple: {
-        limit: rateLimits.interestSignups.limit,
-        period: rateLimits.interestSignups.windowSeconds,
-      },
-    });
-
-    const emailRequests = yield* Cloudflare.RateLimit("EMAIL_REQUESTS", {
-      namespaceId: 1005,
-      simple: {
-        limit: rateLimits.emailRequests.limit,
-        period: rateLimits.emailRequests.windowSeconds,
-      },
-    });
-
-    const passwordAttemptsPerIp = yield* Cloudflare.RateLimit("PASSWORD_ATTEMPTS_IP", {
-      namespaceId: 1006,
-      simple: {
-        limit: rateLimits.passwordAttemptsPerIp.limit,
-        period: rateLimits.passwordAttemptsPerIp.windowSeconds,
-      },
-    });
-
-    const passwordAttemptsPerLink = yield* Cloudflare.RateLimit("PASSWORD_ATTEMPTS_LINK", {
-      namespaceId: 1007,
-      simple: {
-        limit: rateLimits.passwordAttemptsPerLink.limit,
-        period: rateLimits.passwordAttemptsPerLink.windowSeconds,
-      },
-    });
-
-    // File requests count uploader calls three ways, each with its own
-    // namespace: per client IP, per request, and new uploads per client IP.
-    const portalCallsPerIp = yield* Cloudflare.RateLimit("PORTAL_CALLS_PER_IP", {
-      namespaceId: 1008,
-      simple: {
-        limit: rateLimits.portalCallsPerIp.limit,
-        period: rateLimits.portalCallsPerIp.windowSeconds,
-      },
-    });
-    const portalCallsPerRequest = yield* Cloudflare.RateLimit("PORTAL_CALLS_PER_REQUEST", {
-      namespaceId: 1009,
-      simple: {
-        limit: rateLimits.portalCallsPerRequest.limit,
-        period: rateLimits.portalCallsPerRequest.windowSeconds,
-      },
-    });
-    const portalUploadsPerIp = yield* Cloudflare.RateLimit("PORTAL_UPLOADS_PER_IP", {
-      namespaceId: 1010,
-      simple: {
-        limit: rateLimits.portalUploadsPerIp.limit,
-        period: rateLimits.portalUploadsPerIp.windowSeconds,
-      },
-    });
+      ),
+    );
 
     // Sends through Cloudflare Email Sending as hello@tranzfer.app. The
     // domain is onboarded on the account, so any recipient is allowed.
     const email = yield* Cloudflare.Email.Send(yield* Cloudflare.Email.SendEmail("EMAIL"));
-    const mail = makeMail(stage, email, yield* emailAllowlist);
     const execution = yield* Cloudflare.WorkerExecutionContext;
 
     const isolate = yield* Layer.build(
       Layer.mergeAll(
         yield* filesStorage,
         LinkTokens.layer((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom))),
-        Layer.effect(Auth, makeAuth(stage, handle, limiter(authRequests))),
-        Layer.succeed(SigningRate, SigningRate.of({ allow: limiter(uploadSigning) })),
-        Layer.succeed(Mail, mail),
+        Auth.layer(stage, handle, sendWelcome),
+        Mail.layer(stage, email, yield* emailAllowlist),
         RpcSerialization.layerJson,
-      ),
+      ).pipe(Layer.provideMerge(rateLimiter)),
     );
 
     // A D1 client belongs to one invocation, so the services over it are
     // rebuilt per request (and per cron run) with a fresh memo map.
     const database = Layer.unwrap(Effect.map(handle, Database.fromD1));
     const domain = Layer.mergeAll(
-      SharedLinks.layer({
-        allowIp: limiter(passwordAttemptsPerIp),
-        allowLink: limiter(passwordAttemptsPerLink),
-      }),
+      SharedLinks.layer,
       billing,
       Emails.layer({
-        allowDeliveryEmail: limiter(emailRequests),
-        allowInterest: limiter(interestSignups),
         appUrl: origin,
         // Runs after the response, kept alive by the request's waitUntil.
         background: (effect) =>
           execution.waitUntil(effect).pipe(Effect.provide(RuntimeContext.phantom)),
       }),
-      FileRequests.layer({
-        callsPerIp: limiter(portalCallsPerIp),
-        callsPerRequest: limiter(portalCallsPerRequest),
-        uploadsPerIp: limiter(portalUploadsPerIp),
-      }).pipe(Layer.provideMerge(Transfers.layer)),
+      FileRequests.layer.pipe(Layer.provideMerge(Transfers.layer)),
+      Interest.layer({ appUrl: origin }),
     ).pipe(
       Layer.provideMerge(Deliveries.layer),
-      Layer.provideMerge(Plans.layer(limiter(codeRedemptions))),
+      Layer.provideMerge(Plans.layer),
+      Layer.provideMerge(Attempts.layer),
       Layer.provideMerge(database),
     );
     const perInvocation = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(Effect.provide(domain, { local: true }), Effect.provideContext(isolate));
+
+    // SameSite=Lax keeps cookies off cross-site POSTs, but staging and every
+    // pr-<n> preview are same-site with production and run unmerged branches.
+    // Browsers always send Origin and Sec-Fetch-Site on a fetch POST; the e2e
+    // client, curl and the service binding send neither and pass.
+    const sameSiteGuard = <E, R>(
+      handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
+    ) =>
+      Effect.gen(function* guard() {
+        const { headers } = yield* HttpServerRequest.HttpServerRequest;
+        const site = headers["sec-fetch-site"];
+        return site === "cross-site" ||
+          site === "same-site" ||
+          (headers.origin !== undefined && headers.origin !== origin)
+          ? HttpServerResponse.empty({ status: 403 })
+          : yield* handler;
+      });
 
     yield* Cloudflare.Workers.cron("* * * * *", () => perInvocation(sweep));
 
@@ -264,8 +211,10 @@ export default ApiWorker.make(
         "POST",
         "/rpc",
         perInvocation(
-          Effect.flatten(RpcServer.toHttpEffect(Api)).pipe(
-            Effect.provide(Layer.mergeAll(ApiHandlers, AuthenticatedLive), { local: true }),
+          sameSiteGuard(
+            Effect.flatten(RpcServer.toHttpEffect(Api)).pipe(
+              Effect.provide(Layer.mergeAll(ApiHandlers, AuthenticatedLive), { local: true }),
+            ),
           ),
         ),
       ),
@@ -290,7 +239,11 @@ export default ApiWorker.make(
         ),
       ),
       HttpRouter.add("GET", "/health", perInvocation(health)),
-      HttpRouter.add("POST", "/api/telemetry/traces", relayTraces(yield* relayConfig)),
+      HttpRouter.add(
+        "POST",
+        "/api/telemetry/traces",
+        relayTraces(yield* relayConfig).pipe(Effect.provideContext(isolate)),
+      ),
     );
     const handle_ = yield* routes.pipe(
       Layer.provide(HttpServer.layerServices),

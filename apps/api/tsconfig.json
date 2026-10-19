@@ -20,7 +20,9 @@
           "effect/observability",
           "effect/rpc",
           "effect/sql",
-          "@effect/sql-d1"
+          "@effect/sql-d1",
+          "@effect/vitest",
+          "@effect/platform-node"
         ]
       }
     ]

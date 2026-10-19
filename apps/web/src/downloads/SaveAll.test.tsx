@@ -7,6 +7,9 @@ import {
   Authenticated,
   CurrentPrincipal,
   LinkLocked,
+  LinkToken,
+  UnlockToken,
+  UserId,
   WrongPassword,
 } from "@tranzfer/contracts";
 import type { SharedDelivery } from "@tranzfer/contracts";
@@ -89,7 +92,8 @@ const makeDisk = () => {
 };
 
 // A link with a password: the right one trades for this unlock, and only it opens the link.
-const UNLOCK = "unlock-token";
+const UNLOCK = UnlockToken.make("unlock-token");
+const TOKEN = LinkToken.make("token");
 
 const makeWorld = (options: { locked?: boolean } = {}) => {
   const reports: string[] = [];
@@ -106,14 +110,14 @@ const makeWorld = (options: { locked?: boolean } = {}) => {
           CreateDelivery: () => Effect.die("unused"),
           CreateFileRequest: () => Effect.die("unused"),
           CreateRequestUpload: () => Effect.die("unused"),
-          Deliveries: () => Effect.die("unused"),
-          DeliveryEmails: () => Effect.die("unused"),
-          FileRequests: () => Effect.succeed([]),
           FinalizeRequestTransfer: () => Effect.die("unused"),
           FinalizeTransfer: () => Effect.die("unused"),
           GetBilling: () => Effect.die("unused"),
+          GetMe: () => Effect.die("unused"),
           JoinInterest: () => Effect.die("unused"),
-          Me: () => Effect.die("unused"),
+          ListDeliveries: () => Effect.die("unused"),
+          ListDeliveryEmails: () => Effect.die("unused"),
+          ListFileRequests: () => Effect.succeed([]),
           OpenBillingPortal: () => Effect.die("unused"),
           OpenFileRequest: () => Effect.die("unused"),
           OpenLink: ({ unlock }) =>
@@ -150,7 +154,7 @@ const makeWorld = (options: { locked?: boolean } = {}) => {
           effect.pipe(
             Effect.provideService(CurrentPrincipal, {
               email: "s@test",
-              id: "s",
+              id: UserId.make("s"),
               image: null,
               name: "Sender",
             }),
@@ -163,10 +167,12 @@ const makeWorld = (options: { locked?: boolean } = {}) => {
     Uploads,
     Uploads.of({
       cancel: () => Effect.die("unused"),
+      recoverRequest: () => Effect.succeed([]),
       restore: () => Effect.void,
       resume: () => Effect.succeed([]),
       retry: () => Effect.die("unused"),
       send: () => Effect.die("unused"),
+      sendToRequest: () => Effect.die("unused"),
     }),
   );
   const request = Layer.succeed(
@@ -214,7 +220,7 @@ describe("SaveAll", () => {
       const { opens, reports, reportUnlocks, runtime } = makeWorld({ locked });
       render(() => (
         <RuntimeContext value={runtime}>
-          <SaveAll delivery={delivery} token="token" unlock={unlock} />
+          <SaveAll access={{ token: TOKEN, unlock }} delivery={delivery} />
         </RuntimeContext>
       ));
 
@@ -248,11 +254,11 @@ describe("SaveAll", () => {
       });
       expect(new Set(opens)).toEqual(new Set([unlock]));
       expect(new Set(reportUnlocks)).toEqual(new Set([unlock]));
-      expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
+      expect(artifact).toHaveNoDiagnostics();
       // Idle to saving to done flips the three panes' hidden bindings. Every progress report
       // (start and end of each file) re-runs only the counts, the current path
       // and the bar: 28 runs, plus room for one throttled byte report.
-      assertBudget(artifact, { allow: [], maxReruns: 32, maxWastedRuns: 0 });
+      assertBudget(artifact, { maxReruns: 32, maxWastedRuns: 0 });
       await runtime.dispose();
     },
   );
@@ -262,7 +268,10 @@ describe("SaveAll", () => {
     const { reports, runtime } = makeWorld({ locked: true });
     render(() => (
       <RuntimeContext value={runtime}>
-        <SaveAll delivery={delivery} token="token" unlock="an-old-unlock" />
+        <SaveAll
+          access={{ token: TOKEN, unlock: UnlockToken.make("an-old-unlock") }}
+          delivery={delivery}
+        />
       </RuntimeContext>
     ));
     screen.getByRole("button", { name: "Download all" }).click();
@@ -275,7 +284,7 @@ describe("SaveAll", () => {
     const { runtime } = makeWorld();
     render(() => (
       <RuntimeContext value={runtime}>
-        <SaveAll delivery={delivery} token="token" unlock={undefined} />
+        <SaveAll access={{ token: TOKEN }} delivery={delivery} />
       </RuntimeContext>
     ));
     flush();
@@ -293,7 +302,7 @@ describe("SaveAll", () => {
             unlocked.push(unlock);
           }}
           senderName="Sender"
-          token="token"
+          token={TOKEN}
         />
       </RuntimeContext>
     ));
@@ -318,7 +327,7 @@ describe("SaveAll", () => {
       },
       { scenario: "unlock-form" },
     );
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME", "OPTIMISTIC_REVERTED"] });
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
     await runtime.dispose();
   });
 
@@ -392,7 +401,7 @@ describe("SaveAll", () => {
       },
       { scenario: "previews" },
     );
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME"] });
+    expect(artifact).toHaveNoDiagnostics();
     // The browser fetched nothing through the app, and the sender heard nothing.
     expect(fetched).not.toHaveBeenCalled();
     expect(reports).toEqual([]);
@@ -403,7 +412,7 @@ describe("SaveAll", () => {
     const { opens, reports, reportUnlocks, runtime } = makeWorld({ locked: true });
     render(() => (
       <RuntimeContext value={runtime}>
-        <LinkPage token="token" />
+        <LinkPage token={TOKEN} />
       </RuntimeContext>
     ));
     const { artifact } = await captureArtifact(
@@ -433,7 +442,7 @@ describe("SaveAll", () => {
     );
     expect(reports).toEqual([]);
     expect(reportUnlocks).toEqual([]);
-    expect(artifact).toHaveNoDiagnostics({ allow: ["HOT_SCOPE_TIME", "OPTIMISTIC_REVERTED"] });
+    expect(artifact).toHaveNoDiagnostics({ allow: ["OPTIMISTIC_REVERTED"] });
     await runtime.dispose();
   });
 });

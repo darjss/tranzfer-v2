@@ -1,32 +1,38 @@
-import { DeliveryNotShareable, plans, RateLimited, rateLimits } from "@tranzfer/contracts";
+import {
+  DeliveryNotShareable,
+  emailHeld,
+  emailLost,
+  plans,
+  RateLimited,
+  rateLimits,
+} from "@tranzfer/contracts";
 import type {
   Delivery,
   DeliveryEmail,
   DeliveryId,
   DeliveryNotFound,
-  PaidPlanId,
+  Principal,
+  UserId,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { Deliveries, secondsUntilRoom } from "./deliveries";
+import { secondsUntilRoom } from "./attempts";
+import { Deliveries } from "./deliveries";
 import { Mail } from "./infrastructure/email";
-
-// Opening emails per sweep. At one sweep a minute a list of a few hundred
-// goes out within the hour and stays inside the account's daily sending quota.
-const OPENINGS_PER_SWEEP = 20;
+import { RateLimiter } from "./rate-limiter";
 
 // A delivery email still queued after this long lost its send to a dead
 // isolate; the sweep marks it failed.
 const LOST_AFTER_MS = 10 * 60 * 1000;
 
 const GB = 1000 ** 3;
-const space = (bytes: number) =>
+export const space = (bytes: number) =>
   bytes >= 1000 * GB ? `${bytes / (1000 * GB)} TB` : `${bytes / GB} GB`;
 
 const link = (url: string) => `<a href="${url}" style="color:#2f5bd3">${url}</a>`;
@@ -38,7 +44,7 @@ const page = (paragraphs: readonly string[]) =>
 
 // The text is the email; the HTML is the same paragraphs with live links.
 // Paragraphs hold only our own copy and URLs, so nothing needs escaping.
-const message = (subject: string, paragraphs: readonly string[]) => ({
+export const message = (subject: string, paragraphs: readonly string[]) => ({
   html: page(paragraphs.map((paragraph) => paragraph.replaceAll(/https:\/\/\S*[^\s.,]/gu, link))),
   subject,
   text: paragraphs.join("\n\n"),
@@ -64,14 +70,18 @@ const expiryFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
+// Cuts by code point, so an emoji is never split.
+const clip = (text: string, max: number) => Array.from(text).slice(0, max).join("");
+
 // The sender's name, title and note are theirs. The text keeps them as typed,
-// the HTML escapes them, and the download link is the only link.
+// the HTML escapes them, and the download link is the only link. The name is
+// cut to 60 characters in the subject and body, the title to 100 in the subject.
 const deliveryMessage = (
   sender: { readonly email: string; readonly name: string },
   delivery: Delivery,
   url: string,
 ) => {
-  const name = sender.name.replaceAll(/\s+/gu, " ").trim() || sender.email;
+  const name = clip(sender.name.replaceAll(/\s+/gu, " ").trim(), 60) || sender.email;
   const title = delivery.title.replaceAll(/\s+/gu, " ");
   const fileCount = delivery.transfers.length;
   const total = delivery.transfers.reduce((sum, transfer) => sum + transfer.size, 0);
@@ -86,7 +96,7 @@ const deliveryMessage = (
   const html = (paragraph: string) => escapeHtml(paragraph).replaceAll("\n", "<br>");
   return {
     html: page([...before.map(html), `Download: ${link(escapeHtml(url))}`, ...after.map(html)]),
-    subject: `${name} sent you ${title}`,
+    subject: `${name} sent you ${clip(title, 100)}`,
     text: [...before, `Download: ${url}`, ...after].join("\n\n"),
   };
 };
@@ -117,74 +127,10 @@ export const sendWelcome = Effect.fn("Emails.welcome")(function* sendWelcome(
   );
 });
 
-const onTheList = (plan: PaidPlanId, appUrl: string) =>
-  message(`You're on the list for ${plans[plan].name}`, [
-    "Hi,",
-    `${plans[plan].name} isn't open yet. We'll email you once, the day it opens, and that's the only email you'll get about it.`,
-    `Until then, Free has every feature with less space and shorter links. You can start at ${appUrl}/sign-in`,
-    "If you didn't ask for this, reply and we'll take you off the list.",
-    "Tranzfer",
-  ]);
-
-const planOpen = (plan: PaidPlanId, appUrl: string) =>
-  message(`${plans[plan].name} is open`, [
-    "Hi,",
-    `You asked us to tell you when ${plans[plan].name} opened. It's open today.`,
-    `${plans[plan].name} is $${plans[plan].monthlyUsd} a month for ${space(plans[plan].activeBytes)} of transfer space and links that last up to ${plans[plan].maxRetentionDays} days. Every plan has the whole product, so the money buys room and time and nothing else.`,
-    `You can pick it at ${appUrl}/pricing`,
-    "That was the one email we promised, so you won't hear from us about this again.",
-    "Tranzfer",
-  ]);
-
-const waitingFor = (plan: PaidPlanId) =>
-  and(eq(schema.planInterest.plan, plan), isNull(schema.planInterest.notifiedAt));
-
-/**
- * Queues the "plan is open" email for everyone on a plan's list who hasn't
- * had it; the sweep sends the queue (`Emails.sendOpenings`). Rows already
- * queued keep their place. With `dryRun` it only counts. Run by
- * `interest:notify` against a stage's database.
- */
-export const queueOpenings = Effect.fn("Emails.queueOpenings")(function* queueOpenings(
-  plan: PaidPlanId,
-  options: { readonly dryRun: boolean },
-) {
-  const { db } = yield* Database;
-  const [row] = yield* db
-    .select({ people: count() })
-    .from(schema.planInterest)
-    .where(waitingFor(plan));
-  const waiting = row?.people ?? 0;
-  if (options.dryRun) {
-    return { queued: 0, waiting };
-  }
-  const queued = yield* db
-    .update(schema.planInterest)
-    .set({ notifyQueuedAt: new Date(yield* Clock.currentTimeMillis) })
-    .where(and(waitingFor(plan), isNull(schema.planInterest.notifyQueuedAt)))
-    .returning({ id: schema.planInterest.id });
-  return { queued: queued.length, waiting };
-}, dieOnDatabaseError);
-
-/** The interest list and the emails Tranzfer sends on its own. */
+/** The emails Tranzfer sends about deliveries. */
 export class Emails extends Context.Service<
   Emails,
   {
-    /**
-     * Puts the address on a plan's list and sends the confirmation. Asking
-     * again changes nothing and sends nothing. A failed send is logged, not
-     * returned: the sign-up stands.
-     */
-    readonly joinInterest: (
-      input: { readonly email: string; readonly plan: PaidPlanId; readonly userId: string | null },
-      ip: string,
-    ) => Effect.Effect<{ readonly email: string }, RateLimited>;
-    /**
-     * Sends the "plan is open" email to rows `interest:notify` queued. A
-     * failed send leaves the row unqueued and unnotified, so running the
-     * command again retries it. Returns how many it claimed.
-     */
-    readonly sendOpenings: Effect.Effect<number>;
     /**
      * Emails the link of the sender's ready delivery to each distinct
      * address, one email each, with replies to the sender. Returns a queued
@@ -192,7 +138,7 @@ export class Emails extends Context.Service<
      * and each row settles to `sent` or `failed`. Nothing keeps the address.
      */
     readonly sendDelivery: (
-      sender: { readonly email: string; readonly id: string; readonly name: string },
+      sender: Principal,
       input: { readonly deliveryId: DeliveryId; readonly recipients: readonly string[] },
     ) => Effect.Effect<
       readonly DeliveryEmail[],
@@ -200,23 +146,16 @@ export class Emails extends Context.Service<
     >;
     /** The sender's latest 50 emails for a delivery, newest first. */
     readonly deliveryEmails: (
-      senderId: string,
+      senderId: UserId,
       deliveryId: DeliveryId,
     ) => Effect.Effect<readonly DeliveryEmail[]>;
     /** Marks delivery emails stuck queued as failed. Returns how many. */
     readonly failLost: Effect.Effect<number>;
   }
 >()("tranzfer/Emails") {
-  /**
-   * `allowInterest` counts one interest sign-up for an IP, true while under
-   * `interestSignups`. `allowDeliveryEmail` counts one send request for a user,
-   * true while under `emailRequests`. `background` runs an effect after the
-   * response, like the request's waitUntil.
-   */
+  /** `background` runs an effect after the response, like the request's waitUntil. */
   static readonly layer = (options: {
     readonly appUrl: string;
-    readonly allowDeliveryEmail: (userId: string) => Effect.Effect<boolean>;
-    readonly allowInterest: (ip: string) => Effect.Effect<boolean>;
     readonly background: (effect: Effect.Effect<void>) => Effect.Effect<void>;
   }) =>
     Layer.effect(
@@ -225,14 +164,30 @@ export class Emails extends Context.Service<
         const { db } = yield* Database;
         const mail = yield* Mail;
         const deliveries = yield* Deliveries;
+        const limiter = yield* RateLimiter;
 
         // Rows for `count` new emails, or none when either daily cap lacks
         // room for all of them. The statement that counts is the one that
         // inserts, so racing sends can't pass a cap.
-        const reserve = (senderId: string, deliveryId: DeliveryId, needed: number, now: number) => {
+        const reserve = (senderId: UserId, deliveryId: DeliveryId, needed: number, now: number) => {
           const since = new Date(now - rateLimits.emailsPerDay.windowSeconds * 1000);
-          const mine = sql`(select count(*) from ${schema.deliveryEmail} inner join ${schema.delivery} on ${schema.delivery.id} = ${schema.deliveryEmail.deliveryId} where ${and(eq(schema.delivery.senderId, senderId), gt(schema.deliveryEmail.createdAt, since))})`;
-          const everyone = sql`(select count(*) from ${schema.deliveryEmail} where ${gt(schema.deliveryEmail.createdAt, since)})`;
+          const mine = db.$count(
+            schema.deliveryEmail,
+            and(
+              gt(schema.deliveryEmail.createdAt, since),
+              inArray(
+                schema.deliveryEmail.deliveryId,
+                db
+                  .select({ id: schema.delivery.id })
+                  .from(schema.delivery)
+                  .where(eq(schema.delivery.senderId, senderId)),
+              ),
+            ),
+          );
+          const everyone = db.$count(
+            schema.deliveryEmail,
+            gt(schema.deliveryEmail.createdAt, since),
+          );
           return db
             .insert(schema.deliveryEmail)
             .select((qb) =>
@@ -258,7 +213,7 @@ export class Emails extends Context.Service<
 
         // How long until the cap that refused has room for `needed` more.
         const refusal = Effect.fn("Emails.refusal")(function* refusal(
-          senderId: string,
+          senderId: UserId,
           needed: number,
           now: number,
         ) {
@@ -318,7 +273,7 @@ export class Emails extends Context.Service<
 
         return Emails.of({
           deliveryEmails: Effect.fn("Emails.deliveryEmails")(function* deliveryEmails(
-            senderId: string,
+            senderId: UserId,
             deliveryId: DeliveryId,
           ) {
             yield* Effect.annotateCurrentSpan("delivery.id", deliveryId);
@@ -344,7 +299,7 @@ export class Emails extends Context.Service<
             const now = yield* Clock.currentTimeMillis;
             const lost = yield* db
               .update(schema.deliveryEmail)
-              .set({ errorCode: "lost", status: "failed" })
+              .set({ errorCode: emailLost, status: "failed" })
               .where(
                 and(
                   eq(schema.deliveryEmail.status, "queued"),
@@ -355,39 +310,8 @@ export class Emails extends Context.Service<
             return lost.length;
           }).pipe(dieOnDatabaseError, Effect.withSpan("Emails.failLost")),
 
-          joinInterest: Effect.fn("Emails.joinInterest")(function* joinInterest(input, ip) {
-            if (!(yield* options.allowInterest(ip))) {
-              return yield* new RateLimited({
-                limit: "interestSignups",
-                retryAfterSeconds: rateLimits.interestSignups.windowSeconds,
-              });
-            }
-            const email = input.email.toLowerCase();
-            const added = yield* db
-              .insert(schema.planInterest)
-              .values({ email, plan: input.plan, userId: input.userId })
-              .onConflictDoNothing()
-              .returning({ id: schema.planInterest.id });
-            yield* Effect.annotateCurrentSpan({
-              "interest.new": added.length > 0,
-              "interest.plan": input.plan,
-            });
-            if (added.length > 0) {
-              yield* mail.send({ to: email, ...onTheList(input.plan, options.appUrl) }).pipe(
-                Effect.annotateSpans("mail.kind", "interest"),
-                Effect.catchTag("MailError", () => Effect.void),
-              );
-            }
-            return { email };
-          }, dieOnDatabaseError),
-
           sendDelivery: Effect.fn("Emails.sendDelivery")(function* sendDelivery(sender, input) {
-            if (!(yield* options.allowDeliveryEmail(sender.id))) {
-              return yield* new RateLimited({
-                limit: "emailRequests",
-                retryAfterSeconds: rateLimits.emailRequests.windowSeconds,
-              });
-            }
+            yield* limiter.check("emailRequests", sender.id);
             yield* Effect.annotateCurrentSpan("delivery.id", input.deliveryId);
             const delivery = yield* deliveries.owned(sender.id, input.deliveryId);
             if (delivery.status !== "ready") {
@@ -417,7 +341,7 @@ export class Emails extends Context.Service<
                     Effect.map((result) =>
                       result === "sent"
                         ? ({ code: null, status: "sent" } as const)
-                        : ({ code: "held", status: "failed" } as const),
+                        : ({ code: emailHeld, status: "failed" } as const),
                     ),
                     Effect.catchTag("MailError", ({ code }) =>
                       Effect.succeed({ code, status: "failed" } as const),
@@ -436,50 +360,6 @@ export class Emails extends Context.Service<
             );
             return rows;
           }, dieOnDatabaseError),
-
-          sendOpenings: Effect.gen(function* sendOpenings() {
-            const now = new Date(yield* Clock.currentTimeMillis);
-            const claimed = yield* db
-              .update(schema.planInterest)
-              .set({ notifiedAt: now })
-              .where(
-                inArray(
-                  schema.planInterest.id,
-                  db
-                    .select({ id: schema.planInterest.id })
-                    .from(schema.planInterest)
-                    .where(
-                      and(
-                        isNotNull(schema.planInterest.notifyQueuedAt),
-                        isNull(schema.planInterest.notifiedAt),
-                      ),
-                    )
-                    .orderBy(asc(schema.planInterest.id))
-                    .limit(OPENINGS_PER_SWEEP),
-                ),
-              )
-              .returning({
-                email: schema.planInterest.email,
-                id: schema.planInterest.id,
-                plan: schema.planInterest.plan,
-              });
-            yield* Effect.annotateCurrentSpan("emails.claimed", claimed.length);
-            yield* Effect.forEach(
-              claimed,
-              (row) =>
-                mail.send({ to: row.email, ...planOpen(row.plan, options.appUrl) }).pipe(
-                  Effect.annotateSpans("mail.kind", "opening"),
-                  Effect.catchTag("MailError", () =>
-                    db
-                      .update(schema.planInterest)
-                      .set({ notifiedAt: null, notifyQueuedAt: null })
-                      .where(eq(schema.planInterest.id, row.id)),
-                  ),
-                ),
-              { concurrency: 5, discard: true },
-            );
-            return claimed.length;
-          }).pipe(dieOnDatabaseError, Effect.withSpan("Emails.sendOpenings")),
         });
       }),
     );

@@ -29,11 +29,14 @@ import { DeliveryEmail, DeliveryNotShareable, SendDeliveryEmailPayload } from ".
 import { InterestJoined, JoinInterestPayload } from "./interest";
 import {
   DownloadEvent,
+  LinkAccess,
   LinkExpired,
   LinkLocked,
   LinkNotFound,
   LinkNotReady,
   LinkPassword,
+  LinkToken,
+  passwordLength,
   SharedDelivery,
   Unlocked,
   WrongPassword,
@@ -60,20 +63,20 @@ import {
   UploadClosed,
 } from "./upload";
 
+// Error lists the owner's calls share with the token-bound uploader's.
+const createErrors = [DeliveryConflict, DeliveryRefused, RateLimited] as const;
+const transferErrors = [DeliveryNotFound, InvalidUpload, UploadClosed] as const;
+const finalizeErrors = [...transferErrors, NotUploaded, StorageUnavailable] as const;
+const requestErrors = [RateLimited, RequestNotFound] as const;
+
 export class Api extends RpcGroup.make(
-  Rpc.make("Me", { error: Unauthorized, success: Principal }).middleware(Authenticated),
+  Rpc.make("GetMe", { error: Unauthorized, success: Principal }).middleware(Authenticated),
   Rpc.make("CreateDelivery", {
-    error: Schema.Union([
-      DeliveryConflict,
-      DeliveryRefused,
-      OverPlanLimit,
-      RateLimited,
-      RetentionNotInPlan,
-    ]),
+    error: Schema.Union([...createErrors, OverPlanLimit, RetentionNotInPlan]),
     payload: NewDelivery,
     success: Delivery,
   }).middleware(Authenticated),
-  Rpc.make("Deliveries", { success: Schema.Array(Delivery) }).middleware(Authenticated),
+  Rpc.make("ListDeliveries", { success: Schema.Array(Delivery) }).middleware(Authenticated),
   Rpc.make("CancelDelivery", {
     error: DeliveryNotFound,
     payload: Schema.Struct({ deliveryId: DeliveryId }),
@@ -99,7 +102,7 @@ export class Api extends RpcGroup.make(
   }).middleware(Authenticated),
   // Owner only; the delivery must be ready and unexpired. Answers at once with
   // one queued row per distinct address, in request order; the mail goes out in
-  // the background and `DeliveryEmails` reports how each one ended.
+  // the background and `ListDeliveryEmails` reports how each one ended.
   Rpc.make("SendDeliveryEmail", {
     error: Schema.Union([DeliveryNotFound, DeliveryNotShareable, RateLimited]),
     payload: SendDeliveryEmailPayload,
@@ -107,28 +110,22 @@ export class Api extends RpcGroup.make(
   }).middleware(Authenticated),
   // The sender's latest 50 emails for a delivery, newest first. Someone else's
   // delivery reads as none.
-  Rpc.make("DeliveryEmails", {
+  Rpc.make("ListDeliveryEmails", {
     payload: Schema.Struct({ deliveryId: DeliveryId }),
     success: Schema.Array(DeliveryEmail),
   }).middleware(Authenticated),
   Rpc.make("SignUpload", {
-    error: Schema.Union([DeliveryNotFound, InvalidUpload, RateLimited, UploadClosed]),
+    error: Schema.Union([...transferErrors, RateLimited]),
     payload: SignUploadPayload,
     success: SignedUrl,
   }).middleware(Authenticated),
   Rpc.make("FinalizeTransfer", {
-    error: Schema.Union([
-      DeliveryNotFound,
-      InvalidUpload,
-      NotUploaded,
-      StorageUnavailable,
-      UploadClosed,
-    ]),
+    error: Schema.Union(finalizeErrors),
     payload: Schema.Struct({ transferId: TransferId }),
     success: Delivery,
   }).middleware(Authenticated),
   // File requests: links the owner hands to people without an account.
-  Rpc.make("FileRequests", { success: Schema.Array(FileRequest) }).middleware(Authenticated),
+  Rpc.make("ListFileRequests", { success: Schema.Array(FileRequest) }).middleware(Authenticated),
   Rpc.make("CreateFileRequest", {
     error: RetentionNotInPlan,
     payload: NewFileRequest,
@@ -143,47 +140,27 @@ export class Api extends RpcGroup.make(
   // The uploader's side is public: the token is the credential. Each call
   // counts against the caller's IP and the request.
   Rpc.make("OpenFileRequest", {
-    error: Schema.Union([RateLimited, RequestNotFound]),
-    payload: Schema.Struct({ token: Schema.String }),
+    error: Schema.Union(requestErrors),
+    payload: Schema.Struct({ token: LinkToken }),
     success: OpenedRequest,
   }),
   Rpc.make("CreateRequestUpload", {
-    error: Schema.Union([
-      DeliveryConflict,
-      DeliveryRefused,
-      RateLimited,
-      RequestFull,
-      RequestNotFound,
-    ]),
+    error: Schema.Union([...createErrors, RequestFull, RequestNotFound]),
     payload: NewRequestUpload,
     success: RequestUpload,
   }),
   Rpc.make("SignRequestUpload", {
-    error: Schema.Union([
-      DeliveryNotFound,
-      InvalidUpload,
-      RateLimited,
-      RequestNotFound,
-      UploadClosed,
-    ]),
+    error: Schema.Union([...transferErrors, ...requestErrors]),
     payload: SignRequestUploadPayload,
     success: SignedUrl,
   }),
   Rpc.make("FinalizeRequestTransfer", {
-    error: Schema.Union([
-      DeliveryNotFound,
-      InvalidUpload,
-      NotUploaded,
-      RateLimited,
-      RequestNotFound,
-      StorageUnavailable,
-      UploadClosed,
-    ]),
+    error: Schema.Union([...finalizeErrors, ...requestErrors]),
     payload: RequestTransferPayload,
     success: RequestUpload,
   }),
   Rpc.make("RequestUploads", {
-    error: Schema.Union([RateLimited, RequestNotFound]),
+    error: Schema.Union(requestErrors),
     payload: RequestUploadsPayload,
     success: Schema.Array(RequestUpload),
   }),
@@ -212,15 +189,17 @@ export class Api extends RpcGroup.make(
   // show its files or sign their URLs.
   Rpc.make("OpenLink", {
     error: Schema.Union([LinkExpired, LinkLocked, LinkNotFound, LinkNotReady]),
-    payload: Schema.Struct({ token: Schema.String, unlock: Schema.optional(Schema.String) }),
+    // `pageLoad` is set by the recipient page when it opens, and only then does
+    // the sender's tally grow. A download click re-opens for fresh URLs too.
+    payload: Schema.Struct({ ...LinkAccess.fields, pageLoad: Schema.optional(Schema.Boolean) }),
     success: SharedDelivery,
   }),
   // Public. Counted per client IP and per link, right and wrong passwords alike.
   Rpc.make("UnlockLink", {
     error: Schema.Union([LinkNotFound, RateLimited, WrongPassword]),
     payload: Schema.Struct({
-      password: Schema.String.check(Schema.isMaxLength(128)),
-      token: Schema.String,
+      password: Schema.String.check(Schema.isMaxLength(passwordLength.max)),
+      token: LinkToken,
     }),
     success: Unlocked,
   }),
@@ -228,10 +207,9 @@ export class Api extends RpcGroup.make(
   // unlock, records nothing and says nothing.
   Rpc.make("ReportDownload", {
     payload: Schema.Struct({
+      ...LinkAccess.fields,
       event: DownloadEvent,
       path: Schema.String,
-      token: Schema.String,
-      unlock: Schema.optional(Schema.String),
     }),
   }),
 ) {}

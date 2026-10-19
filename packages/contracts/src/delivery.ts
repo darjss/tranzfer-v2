@@ -21,6 +21,10 @@ export const maxFiles = 1000;
 export const maxNameBytes = 255;
 export const maxPathBytes = 1024;
 export const maxTitleLength = 200;
+export const maxNoteLength = 500;
+
+/** The last name in a delivery path: the file name, without its folders. */
+export const basename = (path: string) => path.split("/").at(-1) ?? path;
 
 // This package's lib has no TextEncoder. A lone surrogate counts 3, as its
 // replacement character encodes.
@@ -43,7 +47,7 @@ const byteLength = (text: string) => {
 export const DeliveryTitle = Schema.Trim.check(Schema.isBetweenLength(1, maxTitleLength));
 
 /** A short message for the recipient, shown as plain text. Empty means none. */
-export const DeliveryNote = Schema.Trim.check(Schema.isMaxLength(500));
+export const DeliveryNote = Schema.Trim.check(Schema.isMaxLength(maxNoteLength));
 
 export const NewFile = Schema.Struct({
   contentType: Schema.NullOr(Schema.String.check(Schema.isMaxLength(255))),
@@ -53,7 +57,7 @@ export const NewFile = Schema.Struct({
   path: Schema.String,
   size: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
-export interface NewFile extends Schema.Schema.Type<typeof NewFile> {}
+export type NewFile = typeof NewFile.Type;
 
 /**
  * The sender picks every id, so a retried create is a replay rather than a
@@ -73,9 +77,12 @@ export const NewDelivery = Schema.Struct({
   retentionDays: RetentionDays,
   title: DeliveryTitle,
 });
-export interface NewDelivery extends Schema.Schema.Type<typeof NewDelivery> {}
+export type NewDelivery = typeof NewDelivery.Type;
 
-export const DeliveryStatus = Schema.Literals(["open", "ready", "cancelled", "expired"]);
+/** What the delivery table stores. `expired` is derived on read from `expiresAt`. */
+export const StoredDeliveryStatus = Schema.Literals(["open", "ready", "cancelled"]);
+
+export const DeliveryStatus = Schema.Literals([...StoredDeliveryStatus.literals, "expired"]);
 export type DeliveryStatus = typeof DeliveryStatus.Type;
 
 export const TransferState = Schema.Literals(["uploading", "finalizing", "complete", "cancelled"]);
@@ -88,7 +95,7 @@ export const Transfer = Schema.Struct({
   size: Schema.Int,
   state: TransferState,
 });
-export interface Transfer extends Schema.Schema.Type<typeof Transfer> {}
+export type Transfer = typeof Transfer.Type;
 
 /**
  * What the recipient's browser has reported, for the sender only. Bytes go
@@ -100,7 +107,7 @@ export const DeliveryDownload = Schema.Struct({
   lastAt: Schema.DateFromString,
   startedAt: Schema.DateFromString,
 });
-export interface DeliveryDownload extends Schema.Schema.Type<typeof DeliveryDownload> {}
+export type DeliveryDownload = typeof DeliveryDownload.Type;
 
 /** Who sent a delivery that came in through a request link. Email is optional. */
 export const DeliveryUploader = Schema.Struct({
@@ -114,8 +121,12 @@ export const Delivery = Schema.Struct({
   expiresAt: Schema.NullOr(Schema.DateFromString),
   hasPassword: Schema.Boolean,
   id: DeliveryId,
+  /** When the link last showed its files to someone; null until it has. */
+  lastOpenedAt: Schema.NullOr(Schema.DateFromString),
   link: Schema.String,
   note: Schema.String,
+  /** How many times the link showed its files. Download clicks and refused loads don't count. */
+  openCount: Schema.Int,
   retentionDays: RetentionDays,
   status: DeliveryStatus,
   title: Schema.String,
@@ -123,7 +134,7 @@ export const Delivery = Schema.Struct({
   /** Null for a delivery the owner sent. */
   uploader: Schema.NullOr(DeliveryUploader),
 });
-export interface Delivery extends Schema.Schema.Type<typeof Delivery> {}
+export type Delivery = typeof Delivery.Type;
 
 /** The id is taken by a delivery or transfer whose contents differ from this request. */
 export class DeliveryConflict extends Schema.TaggedError<DeliveryConflict>()(
@@ -137,6 +148,14 @@ export class DeliveryNotFound extends Schema.TaggedError<DeliveryNotFound>()(
   {},
 ) {}
 
+export const DeliveryRefusal = Schema.TaggedUnion({
+  DuplicatePath: { path: Schema.String },
+  NameTooLong: { bytes: Schema.Int, max: Schema.Int, name: Schema.String },
+  PathTooLong: { bytes: Schema.Int, max: Schema.Int, path: Schema.String },
+  PathUnsafe: { path: Schema.String },
+  TooManyFiles: { count: Schema.Int, max: Schema.Int },
+});
+
 /**
  * The files can't be sent as picked, and sending again won't change that. The
  * reason carries the numbers; `checkFiles` is the one place that decides it.
@@ -144,13 +163,7 @@ export class DeliveryNotFound extends Schema.TaggedError<DeliveryNotFound>()(
  * folder name. `DuplicatePath`: two paths that differ only by case.
  */
 export class DeliveryRefused extends Schema.TaggedError<DeliveryRefused>()("DeliveryRefused", {
-  reason: Schema.Union([
-    Schema.TaggedStruct("TooManyFiles", { count: Schema.Int, max: Schema.Int }),
-    Schema.TaggedStruct("NameTooLong", { bytes: Schema.Int, max: Schema.Int, name: Schema.String }),
-    Schema.TaggedStruct("PathTooLong", { bytes: Schema.Int, max: Schema.Int, path: Schema.String }),
-    Schema.TaggedStruct("PathUnsafe", { path: Schema.String }),
-    Schema.TaggedStruct("DuplicatePath", { path: Schema.String }),
-  ]),
+  reason: DeliveryRefusal,
 }) {}
 
 // Bidirectional controls reorder how a name displays. Zero-width joiners stay: emoji and several scripts need them.
@@ -158,7 +171,7 @@ const bidiControl = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
 
 const firstRefusal = (files: readonly { readonly path: string }[]) => {
   if (files.length > maxFiles) {
-    return { _tag: "TooManyFiles", count: files.length, max: maxFiles } as const;
+    return DeliveryRefusal.cases.TooManyFiles.make({ count: files.length, max: maxFiles });
   }
   const seen = new Set<string>();
   for (const { path } of files) {
@@ -168,24 +181,24 @@ const firstRefusal = (files: readonly { readonly path: string }[]) => {
       /\p{Cc}/u.test(path) ||
       bidiControl.test(path)
     ) {
-      return { _tag: "PathUnsafe", path } as const;
+      return DeliveryRefusal.cases.PathUnsafe.make({ path });
     }
     for (const name of path.split("/")) {
       if (name === "" || name === "." || name === "..") {
-        return { _tag: "PathUnsafe", path } as const;
+        return DeliveryRefusal.cases.PathUnsafe.make({ path });
       }
       const bytes = byteLength(name);
       if (bytes > maxNameBytes) {
-        return { _tag: "NameTooLong", bytes, max: maxNameBytes, name } as const;
+        return DeliveryRefusal.cases.NameTooLong.make({ bytes, max: maxNameBytes, name });
       }
     }
     const bytes = byteLength(path);
     if (bytes > maxPathBytes) {
-      return { _tag: "PathTooLong", bytes, max: maxPathBytes, path } as const;
+      return DeliveryRefusal.cases.PathTooLong.make({ bytes, max: maxPathBytes, path });
     }
     // Case-variant paths would collide on the recipient's disk.
     if (seen.has(path.toLowerCase())) {
-      return { _tag: "DuplicatePath", path } as const;
+      return DeliveryRefusal.cases.DuplicatePath.make({ path });
     }
     seen.add(path.toLowerCase());
   }

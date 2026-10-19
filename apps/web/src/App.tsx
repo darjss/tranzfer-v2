@@ -2,12 +2,12 @@ import { clientOnly, getRequestEvent, isServer } from "@solidjs/web";
 import * as Layer from "effect/Layer";
 import { Loading } from "solid-js";
 
-import { serverLayer } from "./api/binding";
 import { WebLayer } from "./api/client";
 import { onUnexpectedFailure, reportFailure } from "./api/errors";
 import { createRuntime, RuntimeContext } from "./api/solid-effect";
 import { Router } from "./router";
 import { Uploads } from "./uploads/uploads";
+import { UploadSpans } from "./uploads/spans";
 // Self-hosted, so the first paint waits on no third-party stylesheet.
 import "@fontsource-variable/archivo/wght.css";
 import "@fontsource-variable/archivo/wght-italic.css";
@@ -30,15 +30,12 @@ export default function App() {
   if (event !== undefined && host !== "tranzfer.app" && host !== "localhost") {
     event.response.headers.set("X-Robots-Tag", "noindex");
   }
-  const api = isServer
-    ? serverLayer(
-        event?.request.headers.get("cookie") ?? null,
-        event?.response.headers ?? new Headers(),
-      )
-    : WebLayer;
-  // Uploads stays in the SSR runtime so both share one type; it touches
-  // nothing browser-only until the first upload.
-  const runtime = createRuntime(Uploads.layer.pipe(Layer.provideMerge(api)));
+  // API reads run in the browser only; every page that reads is clientOnly.
+  // The server builds the same runtime but never runs it, and layers build
+  // on first use, so nothing browser-only executes in workerd.
+  const runtime = createRuntime(
+    Uploads.layer.pipe(Layer.provideMerge(UploadSpans.layer), Layer.provideMerge(WebLayer)),
+  );
   if (!isServer) {
     // A message that says "Something went wrong" carries a reference; this
     // is the report that reference points to.

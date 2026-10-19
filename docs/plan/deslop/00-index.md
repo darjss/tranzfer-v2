@@ -1,0 +1,86 @@
+# Tranzfer deslop audit: plan index
+
+Written against `origin/dev` at commit `0a61bc5` (2026-10-12). Each plan is self-contained: problem with `file:line` evidence, target design, steps with verification, scope, STOP conditions. Gates in every plan: `vp check --quiet`, `vp run test`, and `vp run --filter @tranzfer/web build` when web code changes. **No plan creates a test file**, except a RuleTester test for each custom lint rule.
+
+Plan numbers are identifiers, not an order. Run them by wave. Plans in the same wave touch different files unless the "Conflicts" column says otherwise. Line numbers drift: re-find each `file:line` before editing.
+
+Done and deleted: 17 (#142), 01 (#144), 08 (#145), 18 (#146), 11 (#147), 03 (#165), 02 (#166), 22 (#167), 24 (#168), 20 (#173), 23 (#175), 09 (#176), 13 (#177), 25 (#180), 21 (#181), 04 (#185), 14 (#184), 05 (#186), 15 (#188), 07 (#187), 06 (#189), 16 (#198), 10 (#174, kept), 12 (rejected, #203), 19 (#202).
+
+## Every plan ships its constraint
+
+A cleanup PR also adds the lint rule, type or check that stops the pattern coming back, at `error`, with zero remaining hits. Custom rules live in `tools/oxlint/anti-slop/tranzfer/` (a third plugin next to `effect/`), each with a RuleTester test. Built-in rules (`no-restricted-imports`, `max-lines`, focused tests, `no-console` in tests) go straight into `lint.config.ts`.
+
+## Owner decisions (2026-10-13)
+
+- 22: send waitlist confirmation mail only to signed-in users; store anonymous joins without mailing them.
+- 21: make the attempt counters exact and fail closed now; no lockout redesign.
+- 24: take `--yes` off `destroy`, retain production D1 and R2, keep separate staging and production `CLOUDFLARE_API_TOKEN` environment secrets.
+- 19: do step 1 now (delete oversized objects at finalize). Step 2 (signed length) shipped after a preview e2e run, 2026-10-18 (#202).
+- 14: delete the SSR API client unless `docs/plan/01-foundation.md` needs a server-side API read.
+- 10 and 12 (2026-10-18): keep Smart Placement without measuring it, and no D1 read replication. A Worker placed next to the primary gains nothing from a replica, and replicas cost a bookmark cookie, a cast and stale-read bugs (#203, closed).
+
+## Order of execution
+
+No plans open.
+
+Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale).
+
+## What can run in parallel
+
+- All of wave A in parallel. Overlaps are small: 17 and 01 both touch `deliveries.ts` (different functions: 17 `place` line 517 and `removeObjects` line 281; 01 `purgeEnded`); 11 and 23 both add one option to the `BetterAuth({...})` call in `infrastructure/auth.ts` (merge order: 11 then 23).
+- Web plans (08, 09, 14, 25) and API plans do not share files except `apps/web/src/api/errors.ts` (09 adds a branch, 13 adds one line to `tooMany`, 18 edits one string).
+- `packages/contracts` is touched by 05, 06, 13, 17, 18, 22, 25; each edit is local, but rebase before opening the PR.
+
+## Dependencies, with the reason
+
+- 09 after 08: both edit `retry()` in `uploads.ts` (08 adds one statement).
+- 07 after 04: both change `Emails.layer` options (04 deletes the limiter parameters).
+- 21 soft on 04: if 04 landed, remove two rows from `bindingLimits` instead of two binding blocks; soft on 01 for the `isolated` sweep helper.
+
+## Top findings (all vetted against the code)
+
+1. Database errors reach the browser with SQL text and bound values (`RpcServer` encodes `Die` defects; `drizzle` `EffectDrizzleQueryError.message` includes `params`): `packages/db/src/database.ts:70-72`, `apps/api/src/index.ts:267`. Plan 17.
+2. A network blip on the recipient page replaces the file list with "This link doesn't work.": `apps/web/src/routes/d/[token].tsx:323-342`. Plan 08.
+3. Public waitlist can exhaust the shared 1,000/day sending quota: `apps/api/src/emails.ts:356-380`, `packages/contracts/src/billing.ts:62`. Plan 22.
+4. Password brute-force protection is an approximate, per-location, fail-open counter: `apps/api/src/shared-links.ts` `unlock`, `apps/api/src/index.ts:105-113`. Plan 21.
+5. One failing sweep step cancels the other four, and 20 un-purgeable deliveries block all later purges: `apps/api/src/sweeper.ts:14-23`, `apps/api/src/deliveries.ts:676-693`. Plan 01.
+6. `vp run destroy` targets production with `--yes`; production D1 has no retention: `infra/package.json`, `apps/api/src/resources.ts:20`. Plan 24.
+7. Six different ways to inject a rate-limit binding, ten copy-pasted binding blocks: `apps/api/src/index.ts:114-191`. Plan 04.
+8. `uploads.ts` keeps one transfer's state in six parallel maps and cleans them in three hand-copied places: `apps/web/src/uploads/uploads.ts:284-299,411-423`. Plan 09.
+9. Presigned PUT/part URLs do not pin the body length, so stored bytes can exceed what was declared and charged: `apps/api/src/infrastructure/r2.ts:30-60`. Plan 19.
+
+## Findings considered and rejected (so nobody re-audits them)
+
+- **Typed constraint errors from D1.** The database layer classifies every driver failure as `UnknownError` (`@effect/sql-d1` `D1Client.ts:34-35`), so a typed unique/foreign-key error is not available. The existing "decide from what landed" re-read after a failed batch (`deliveries.ts:488-520`, `plans.ts:269-276`) is the correct design. Left alone.
+- **`dieOnDatabaseError` as policy.** Decided in `docs/STRUCTURE.md`. Kept; plan 17 only changes what the defect carries.
+- **OOP or class-heavy code.** None found. Every class is a `Context.Service`, a tagged error, `Api` (RpcGroup) or `ApiWorker`. No manager/factory/inheritance patterns. The one non-idiom is that seven services restate their method signatures in a hand-written interface (see next item).
+- **Hand-written service interfaces** (`Deliveries`, `Transfers`, `FileRequests`, `SharedLinks`, `Emails`, `Plans`, `Billing`; about 300 lines, against `docs/CONVENTIONS.md` "Types come from values"). They carry the error contract and the doc comments, and the RPC layer already checks handler error types. Not worth the churn; amend the CONVENTIONS sentence (one service has several implementations only for `Storage`, `Mail`, `RateLimiter`) instead. Revisit if plan 06 leaves the unions duplicated.
+- **`Deliveries` (806 lines) is long but deep.** `place` is the atomic admission core. Only the file-request rules (plan 15) and the sweeper step are worth moving.
+- **Mutation seam in the web.** Sixteen `runPromiseExit` sites repeat `Exit.isFailure(exit) ? appError(exit.cause).message : undefined` (`dashboard/deliveries.ts` x8, `billing.ts`, `Unlock.tsx`, `SaveAll.tsx`, `Pricing.tsx`, `DeliverySheet.tsx`, `routes/d/[token].tsx`). `docs/SOLID-EFFECT-BINDING.md` says to add a mutation helper when real callers need one; the helper would be one line. Optional, speculative.
+- **Token domain separation** (a delivery token and a request token are both `HMAC(id)` of one key): ids are disjoint random values, no exploit found. Changing the format invalidates every shared link. Noted in `apps/api/src/link-tokens.ts`.
+- **Casts and `any`.** Only one assertion outside `as const` in application code (`r2.ts:24`, with a SAFETY comment). No `any`, `@ts-*`, non-null `!`, or `JSON.parse`. Type safety is strong; plan 05 and plan 03 close the remaining gaps (unbranded ids, duplicated enums).
+- **Plan ladder encoded three times in the web** (`upgradeFrom`, `unlockedBy`, `planThatFits`): they answer three different questions and two derive from `plans`. Not a finding. The real layering issue, `api/errors.ts` importing `bytes` from `dashboard/format` and `paidPlansOpen` from `ui/support`, is minor.
+- **Five identical `cloudflare:workers` forwarder route files.** Pass-through but trivial; leave.
+- **Staging login gate.** Production never registers the plugin; unknown stage names die; key compared with `timingSafeEqual`. Correct.
+- **Webhook verification.** Standard Webhooks, constant-time, 5-minute window, state rebuilt from Polar. Correct.
+
+## Worth investigating, no plan yet (LOW confidence or product questions)
+
+- API Worker reachable on its own workers.dev URL (`infra/alchemy.run.ts:67` returns `api.url`): disable it or require a header from the web Worker. Check first whether the URL is enabled.
+- `Transfers.settle` is list-then-abort, with no size recheck after Complete (`transfers.ts:162-176`); narrow, hard to time. Plan 19 shrinks it.
+- `X-Amz-Expires` can be fractional (`r2.ts` `Duration.toSeconds(ttl)` unrounded): R2 accepts it today.
+- Concurrent Polar webhooks race on an unconditional upsert (`billing.ts:253-257`); small window; guard with `updatedAt`.
+- Link secret has no key id or rotation (`index.ts:54`); losing Alchemy state invalidates all links.
+- Double-click on "Yes, start over" opens the file picker twice (`dashboard/Board.tsx:61-70`); cosmetic.
+- `JoinInterest` is public but still lists `AuthenticationUnavailable` and `Unauthorized`, and `apps/web/src/landing/Pricing.tsx` branches on `Unauthorized`. Dropping them is a contract change that touches the pricing page.
+- Uppy ships on every page (`App.tsx:9` static import, `codeSplitting: false`); unmeasured.
+
+## Direction (options, not problems)
+
+1. **Revoke and rotate a link.** `link.revokedAt` is read at `shared-links.ts:92,187,225` and written nowhere; there is no way to cut off one leaked link without cancelling the whole delivery. The read side is done.
+2. **The file-request uploader page.** The API for file requests shipped (PR #130, `FileRequests` + 4 token-bound RPCs) and generates `/r/<token>` links, but `apps/web/src/routes` has no `r` route. Every day it sits, the API surface is untested by a client.
+3. **SSR reads: decided no** (#184). Reads run in the browser; the SSR client is deleted. A page that needs a server read later must forward `cf-connecting-ip` and the cookie (`docs/SOLID-EFFECT-BINDING.md`).
+
+## Not audited
+
+Marketing, guides, compare, legal and landing content in `apps/web/src` (except where they share code); `e2e/` and `bench/` contents; the Polar and Alchemy provider code in `infra/`; `docs/design/` prototypes; dependency upgrades beyond `pnpm audit`. Nothing was executed against staging or production. Effect and Drizzle behavior was read from the installed sources under `/home/orc/dev/tranzfer2/node_modules/.pnpm`.

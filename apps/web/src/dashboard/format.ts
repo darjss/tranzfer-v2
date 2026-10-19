@@ -1,4 +1,6 @@
+import { emailHeld, emailLost } from "@tranzfer/contracts";
 import type { Delivery, DeliveryEmail, Transfer } from "@tranzfer/contracts";
+import * as Data from "effect/Data";
 import * as Match from "effect/Match";
 
 import type { TransferProgress } from "../uploads/store";
@@ -61,6 +63,12 @@ export const downloadWords = (delivery: Delivery) => {
     : `${download.filesSaved} of ${files(total)} downloaded, last ${when(download.lastAt)}`;
 };
 
+/** How often the link showed its files, and when it last did. */
+export const openedWords = (delivery: Delivery) =>
+  delivery.lastOpenedAt === null
+    ? "Not opened yet"
+    : `Opened ${delivery.openCount === 1 ? "once" : `${delivery.openCount} times`}, last ${when(delivery.lastOpenedAt)}`;
+
 /** An email this page asked for, with the address it typed. The server keeps none. */
 export interface Emailed extends DeliveryEmail {
   readonly to: string;
@@ -80,10 +88,10 @@ export const emailWords = (row: Emailed) => {
   if (row.errorCode === bounced) {
     return "Not sent, this address bounced before";
   }
-  if (row.errorCode === "held") {
+  if (row.errorCode === emailHeld) {
     return "Not sent, this site only emails approved addresses";
   }
-  if (row.errorCode === "lost") {
+  if (row.errorCode === emailLost) {
     return "Not sent, it didn't finish. Try again";
   }
   return "Not sent, the mail server refused it";
@@ -136,38 +144,36 @@ export const etaAt = (bytesLeft: number, bytesPerSecond: number) => {
   return `about ${hours} h ${minutes - hours * 60} min`;
 };
 
-export const totalSize = (delivery: Delivery) =>
+export const totalSize = (delivery: Pick<Delivery, "transfers">) =>
   delivery.transfers.reduce((total, transfer) => total + transfer.size, 0);
 
 // What one file shows. The server state wins; local progress only speaks
 // for a transfer this tab still owns. needsFile is a transfer this tab can
 // continue once the file is picked again; Interrupted means this browser
 // holds no record at all, so only cancel and resend remains.
-type TransferStatus =
-  | { readonly _tag: "Active"; readonly progress: TransferProgress }
-  | { readonly _tag: "Cancelled" }
-  | { readonly _tag: "Complete" }
-  | { readonly _tag: "Elsewhere"; readonly progress: TransferProgress }
-  | { readonly _tag: "Failed"; readonly progress: TransferProgress }
-  | { readonly _tag: "Interrupted" }
-  | { readonly _tag: "NeedsFile"; readonly progress: TransferProgress };
+type TransferStatus = Data.TaggedEnum<{
+  Active: { readonly progress: TransferProgress };
+  Cancelled: object;
+  Complete: object;
+  Elsewhere: { readonly progress: TransferProgress };
+  Failed: { readonly progress: TransferProgress };
+  Interrupted: object;
+  NeedsFile: { readonly progress: TransferProgress };
+}>;
+
+const { Active, Cancelled, Complete, Elsewhere, Failed, Interrupted, NeedsFile } =
+  Data.taggedEnum<TransferStatus>();
 
 export const transferStatus = (transfer: Transfer, local: TransferProgress | undefined) =>
   Match.value({ progress: local, state: transfer.state }).pipe(
     Match.withReturnType<TransferStatus>(),
-    Match.when({ state: "complete" }, () => ({ _tag: "Complete" })),
-    Match.when({ state: "cancelled" }, () => ({ _tag: "Cancelled" })),
-    Match.when({ progress: { phase: "failed" } }, ({ progress }) => ({ _tag: "Failed", progress })),
-    Match.when({ progress: { phase: "elsewhere" } }, ({ progress }) => ({
-      _tag: "Elsewhere",
-      progress,
-    })),
-    Match.when({ progress: { phase: "needsFile" } }, ({ progress }) => ({
-      _tag: "NeedsFile",
-      progress,
-    })),
-    Match.when({ progress: Match.defined }, ({ progress }) => ({ _tag: "Active", progress })),
-    Match.orElse(() => ({ _tag: "Interrupted" })),
+    Match.when({ state: "complete" }, () => Complete()),
+    Match.when({ state: "cancelled" }, () => Cancelled()),
+    Match.when({ progress: { phase: "failed" } }, ({ progress }) => Failed({ progress })),
+    Match.when({ progress: { phase: "elsewhere" } }, ({ progress }) => Elsewhere({ progress })),
+    Match.when({ progress: { phase: "needsFile" } }, ({ progress }) => NeedsFile({ progress })),
+    Match.when({ progress: Match.defined }, ({ progress }) => Active({ progress })),
+    Match.orElse(() => Interrupted()),
   );
 
 const idle = {
@@ -212,7 +218,7 @@ const addTransfer = (roll: Rollup, transfer: Transfer, local: TransferProgress |
   });
 
 export const rollup = (
-  delivery: Delivery,
+  delivery: Pick<Delivery, "transfers">,
   progressOf: (transferId: string) => TransferProgress | undefined,
 ) => {
   let roll = idle;

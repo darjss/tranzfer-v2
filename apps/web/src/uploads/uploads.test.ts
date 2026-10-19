@@ -7,9 +7,11 @@ import {
   NotUploaded,
   RateLimited,
   TransferId,
+  UploadRequest,
 } from "@tranzfer/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as Tracer from "effect/Tracer";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -21,14 +23,13 @@ import { appError } from "../api/errors";
 import { retryTransport } from "../api/retry";
 import { fingerprint } from "./recovery";
 import { makeUploadSpans } from "./spans";
+import { chosenFiles, deliveryTitle } from "./files";
 import {
-  chosenFiles,
-  deliveryTitle,
   isTransientUploadError,
   putAlreadyLanded,
   retryWhileNotUploaded,
   toUploadRequest,
-} from "./uploads";
+} from "./transport";
 import { verifyParts } from "./verify";
 
 const file = (name: string, relativePath = "") =>
@@ -167,11 +168,16 @@ const s3ServiceError = (status: number) =>
 describe("isTransientUploadError", () => {
   it("transient_upload_errors_are_network_expiry_throttling_and_5xx", () => {
     expect(
-      isTransientUploadError(Object.assign(new Error("x"), { code: "NETWORK", name: "DV" })),
+      isTransientUploadError(Object.assign(new Error("x"), { code: "NETWORK", name: "DV" }), 0),
     ).toBe(true);
     for (const status of [403, 408, 429, 500, 503]) {
-      expect(isTransientUploadError(s3ServiceError(status))).toBe(true);
+      expect(isTransientUploadError(s3ServiceError(status), 0)).toBe(true);
     }
+    expect(isTransientUploadError(s3ServiceError(503), 5)).toBe(true);
+  });
+
+  it("a_403_that_survives_a_fresh_signature_is_a_refusal", () => {
+    expect(isTransientUploadError(s3ServiceError(403), 1)).toBe(false);
   });
 
   it("an_existing_object_under_a_guarded_put_is_a_412_to_reconcile", () => {
@@ -181,39 +187,33 @@ describe("isTransientUploadError", () => {
   });
 
   it("remote_gone_and_refusals_stay_final", () => {
-    expect(isTransientUploadError(s3ServiceError(404))).toBe(false);
-    expect(isTransientUploadError(s3ServiceError(400))).toBe(false);
-    expect(isTransientUploadError(new Error("plain"))).toBe(false);
+    expect(isTransientUploadError(s3ServiceError(404), 0)).toBe(false);
+    expect(isTransientUploadError(s3ServiceError(400), 0)).toBe(false);
+    expect(isTransientUploadError(new Error("plain"), 0)).toBe(false);
     // @ts-expect-error runtime garbage reaches the guard untyped.
-    expect(isTransientUploadError("network down")).toBe(false);
+    expect(isTransientUploadError("network down", 0)).toBe(false);
   });
 });
 
 describe("signing", () => {
   it("signs_uploads_but_never_aborts", () => {
-    expect(toUploadRequest({ key: "k", method: "POST" })).toEqual({ _tag: "Create" });
-    expect(toUploadRequest({ key: "k", method: "PUT", partNumber: 3, uploadId: "u" })).toEqual({
-      _tag: "Part",
-      partNumber: 3,
-      uploadId: "u",
-    });
-    expect(toUploadRequest({ key: "k", method: "GET", uploadId: "u" })).toEqual({
-      _tag: "List",
-      uploadId: "u",
-    });
+    expect(toUploadRequest({ key: "k", method: "POST" })).toEqual(
+      UploadRequest.cases.Create.make({}),
+    );
+    expect(toUploadRequest({ key: "k", method: "PUT", partNumber: 3, uploadId: "u" })).toEqual(
+      UploadRequest.cases.Part.make({ partNumber: 3, uploadId: "u" }),
+    );
+    expect(toUploadRequest({ key: "k", method: "GET", uploadId: "u" })).toEqual(
+      UploadRequest.cases.List.make({ uploadId: "u" }),
+    );
     // A continued ListParts page carries its marker into the signed request.
     expect(
       toUploadRequest({ key: "k", method: "GET", partNumberMarker: 1000, uploadId: "u" }),
-    ).toEqual({
-      _tag: "List",
-      partNumberMarker: 1000,
-      uploadId: "u",
-    });
-    expect(toUploadRequest({ key: "k", method: "POST", uploadId: "u" })).toEqual({
-      _tag: "Complete",
-      uploadId: "u",
-    });
-    expect(toUploadRequest({ key: "k", method: "PUT" })).toEqual({ _tag: "Put" });
+    ).toEqual(UploadRequest.cases.List.make({ partNumberMarker: 1000, uploadId: "u" }));
+    expect(toUploadRequest({ key: "k", method: "POST", uploadId: "u" })).toEqual(
+      UploadRequest.cases.Complete.make({ uploadId: "u" }),
+    );
+    expect(toUploadRequest({ key: "k", method: "PUT" })).toEqual(UploadRequest.cases.Put.make({}));
     expect(toUploadRequest({ key: "k", method: "DELETE", uploadId: "u" })).toBeNull();
   });
 });
@@ -370,7 +370,7 @@ describe("upload spans", () => {
               ended.push({
                 attributes: this.attributes,
                 name: this.name,
-                parent: this.parent._tag === "Some" ? this.parent.value.spanId : undefined,
+                parent: Option.isSome(this.parent) ? this.parent.value.spanId : undefined,
               });
             }
           })(options),

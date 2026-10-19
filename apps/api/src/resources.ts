@@ -2,6 +2,7 @@ import * as Alchemy from "alchemy";
 import * as Axiom from "alchemy/Axiom";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Output from "alchemy/Output";
+import { retain } from "alchemy/RemovalPolicy";
 import { Stage } from "alchemy/Stage";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -12,6 +13,11 @@ import { isPreviewStage, ownsAxiom, stageName } from "./infrastructure/stage";
 
 const DAY_SECONDS = 24 * 60 * 60;
 
+// Production data survives a destroy or a removed declaration: Alchemy drops
+// its state row and never calls the provider's delete. Previews and staging
+// stay disposable.
+const retainInProduction = retain(Effect.map(stageName, (stage) => stage === "production"));
+
 // Stateful resources run live even under `alchemy dev` (Alchemy.remote()).
 // Stack state lives in the shared Cloudflare state store, so an emulated
 // D1 under one checkout's infra/.alchemy/local drifts from the migrations
@@ -21,7 +27,7 @@ export const App = Cloudflare.D1.Database("App", {
   // Resolved against process.cwd() by the provider, which is infra/ for
   // dev/plan/deploy.
   migrations: { dir: "../packages/db/migrations", table: "drizzle_migrations" },
-}).pipe(Alchemy.remote());
+}).pipe(Alchemy.remote(), retainInProduction);
 
 export const Files = Cloudflare.R2.Bucket("Files", {
   cors: [
@@ -53,9 +59,9 @@ export const Files = Cloudflare.R2.Bucket("Files", {
       id: "abort-incomplete-multipart",
     },
     {
-      // Backstop only. No app-level expiry sweep exists yet (planned in
-      // docs/plan/01-foundation.md), so objects can outlive retention until
-      // this fires. It must outlive max retention (14 days from finalization)
+      // Backstop only. The sweeper's `purgeEnded` deletes a
+      // delivery's objects within minutes of it ending; this catches anything
+      // it missed. It must outlive max retention (14 days from finalization)
       // plus open/upload time, so objects under a live link are never deleted
       // early.
       deleteObjectsTransition: { condition: { maxAge: 30 * DAY_SECONDS, type: "Age" } },
@@ -63,7 +69,7 @@ export const Files = Cloudflare.R2.Bucket("Files", {
       prefix: "d/",
     },
   ],
-}).pipe(Alchemy.remote());
+}).pipe(Alchemy.remote(), retainInProduction);
 
 // Axiom names are org-wide, so production and staging each get their own
 // dataset and token. Previews reference staging's (see ownsAxiom). Traces only:

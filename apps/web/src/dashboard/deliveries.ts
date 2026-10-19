@@ -23,7 +23,7 @@ import { transfers } from "../uploads/store";
 import { untilFree } from "../uploads/tabs";
 import { retryTransport } from "../api/retry";
 import { Uploads } from "../uploads/uploads";
-import type { ChosenFile } from "../uploads/uploads";
+import type { ChosenFile } from "../uploads/files";
 import { bytes, emailSummary, kindOf, rollup, totalSize, untilDate } from "./format";
 import type { Emailed } from "./format";
 
@@ -40,35 +40,20 @@ export interface Finished {
 }
 
 /**
- * The sender's deliveries and the actions that change them. Each action
- * resolves to a problem to show, or undefined when it went through.
+ * Reads a list of deliveries again when something it shows may have settled:
+ * a transfer this tab finished, one another tab stopped sending, or one the
+ * server was finalizing. Shared by the owner's board and an uploader's page.
  */
-export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServices, never>) => {
-  // The server list, overlaid by the actions below: a sent delivery shows up
-  // and a cancelled one moves to Ended the moment it happens, then the
-  // re-read reconciles.
-  const [deliveries, setDeliveries] = createOptimisticStore<Delivery[]>(
-    () =>
-      runEffect(
-        ApiClient.use((api) =>
-          // A dropped read right after a big upload used to swap the whole
-          // page for the error card; transport failures retry first.
-          retryTransport(api.Deliveries()).pipe(
-            // Every read rebuilds what this tab can still recover.
-            Effect.tap((list) => Uploads.use((uploads) => uploads.restore(list))),
-            Effect.map((list) => [...list]),
-          ),
-        ),
-      ),
-    [],
-    { key: "id" },
-  );
+export const rereadWhenSettled = (
+  list: readonly Pick<Delivery, "transfers">[],
+  reread: () => void,
+) => {
   // A transfer finishing locally changes its delivery on the server.
   createEffect(
     () => Object.values(transfers).filter((progress) => progress.phase === "done").length,
     (done, before) => {
       if (before !== undefined && done > before) {
-        void refresh(deliveries);
+        reread();
       }
     },
   );
@@ -85,7 +70,7 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
       const abort = new AbortController();
       const readWhenFree = async (transferId: string) => {
         if (await untilFree(transferId, abort.signal)) {
-          void refresh(deliveries);
+          reread();
         }
       };
       for (const transferId of ids === "" ? [] : ids.split(",")) {
@@ -100,13 +85,13 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
   // Complete, or the sweeper); poll until none are left so it lands as done.
   createEffect(
     () =>
-      deliveries.some((delivery) =>
+      list.some((delivery) =>
         delivery.transfers.some((transfer) => transfer.state === "finalizing"),
       ),
     (stuck) => {
       const timer = stuck
         ? setInterval(() => {
-            void refresh(deliveries);
+            reread();
           }, 10_000)
         : undefined;
       return () => {
@@ -114,6 +99,35 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
       };
     },
   );
+};
+
+/**
+ * The sender's deliveries and the actions that change them. Each action
+ * resolves to a problem to show, or undefined when it went through.
+ */
+export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServices, never>) => {
+  // The server list, overlaid by the actions below: a sent delivery shows up
+  // and a cancelled one moves to Ended the moment it happens, then the
+  // re-read reconciles.
+  const [deliveries, setDeliveries] = createOptimisticStore<Delivery[]>(
+    () =>
+      runEffect(
+        ApiClient.use((api) =>
+          // A dropped read right after a big upload used to swap the whole
+          // page for the error card; transport failures retry first.
+          retryTransport(api.ListDeliveries()).pipe(
+            // Every read rebuilds what this tab can still recover.
+            Effect.tap((list) => Uploads.use((uploads) => uploads.restore(list))),
+            Effect.map((list) => [...list]),
+          ),
+        ),
+      ),
+    [],
+    { key: "id" },
+  );
+  rereadWhenSettled(deliveries, () => {
+    void refresh(deliveries);
+  });
   // The server flips a delivery to ready only after every file has finalized,
   // so this is the finished moment, not progress reaching 100%.
   const [finished, setFinished] = createSignal<readonly Finished[]>([]);
@@ -285,7 +299,7 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
   // onSignedOut, so the poller stops.
   const readEmails = async (deliveryId: string, onSignedOut: () => void) => {
     const exit = await runtime.runPromiseExit(
-      ApiClient.use((api) => api.DeliveryEmails({ deliveryId: DeliveryId.make(deliveryId) })),
+      ApiClient.use((api) => api.ListDeliveryEmails({ deliveryId: DeliveryId.make(deliveryId) })),
     );
     if (Exit.isFailure(exit)) {
       if (appError(exit.cause).tag === "Unauthorized") {
@@ -394,7 +408,10 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
 };
 
 /** A delivery's live state: server status plus whatever this tab is uploading. */
-export const liveDelivery = (source: { readonly delivery: Delivery; readonly online: boolean }) => {
+export const liveDelivery = (source: {
+  readonly delivery: Pick<Delivery, "status" | "transfers">;
+  readonly online: boolean;
+}) => {
   const roll = createMemo(() => rollup(source.delivery, (id) => transfers[id]), {
     name: "Row.roll",
   });

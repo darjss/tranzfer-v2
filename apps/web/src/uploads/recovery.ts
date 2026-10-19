@@ -25,7 +25,7 @@ export const RecoveryRecord = Schema.Struct({
   uploadId: Schema.optional(Schema.String),
   version: Schema.Literal(1),
 });
-export interface RecoveryRecord extends Schema.Schema.Type<typeof RecoveryRecord> {}
+export type RecoveryRecord = typeof RecoveryRecord.Type;
 
 // The store is created on first use, never at import: routes import this
 // module through Uploads during SSR, where indexedDB does not exist.
@@ -45,13 +45,12 @@ export const remember = (records: readonly RecoveryRecord[]) =>
     );
   }).pipe(Effect.catch(warn("remember")));
 
-export const readAll = () =>
-  Effect.tryPromise(async () => await values<unknown>(idb())).pipe(
-    Effect.map((rows) =>
-      Arr.filterMap(rows, (row) => Schema.decodeUnknownResult(RecoveryRecord)(row)),
-    ),
-    Effect.catch((error) => warn("readAll")(error).pipe(Effect.as([]))),
-  );
+export const readAll = Effect.tryPromise(async () => await values<unknown>(idb())).pipe(
+  Effect.map((rows) =>
+    Arr.filterMap(rows, (row) => Schema.decodeUnknownResult(RecoveryRecord)(row)),
+  ),
+  Effect.catch((error) => warn("readAll")(error).pipe(Effect.as([]))),
+);
 
 // A missing record stays missing: writing only the new field would store a
 // record the decoder then drops.

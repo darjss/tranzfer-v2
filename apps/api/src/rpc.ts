@@ -8,6 +8,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import type { Headers as HttpHeaders } from "effect/http/Headers";
 import * as HttpEffect from "effect/http/HttpEffect";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
@@ -16,32 +17,36 @@ import { Auth, clientIp } from "./infrastructure/auth";
 import { Deliveries } from "./deliveries";
 import { Emails } from "./emails";
 import { FileRequests } from "./file-requests";
+import { Interest } from "./interest";
 import { Plans } from "./plans";
 import { SharedLinks } from "./shared-links";
 import { Transfers } from "./transfers";
+
+// The signed-in caller, or Unauthorized. A renewed session cookie rides on the response.
+const signedIn = (auth: Auth["Service"], headers: HttpHeaders) =>
+  auth.session(new Headers(headers)).pipe(
+    Effect.tapError(() => Effect.logError("session lookup failed")),
+    Effect.mapError(() => new AuthenticationUnavailable()),
+    Effect.tap(({ cookies }) =>
+      HttpEffect.appendPreResponseHandler((_request, response) =>
+        Effect.succeed(HttpServerResponse.mergeCookies(response, cookies)),
+      ),
+    ),
+    Effect.flatMap(({ principal }) =>
+      Option.match(principal, {
+        onNone: () => Effect.fail(new Unauthorized()),
+        onSome: (user) => Effect.as(Effect.annotateCurrentSpan("user.id", user.id), user),
+      }),
+    ),
+  );
 
 export const AuthenticatedLive = Layer.effect(
   Authenticated,
   Effect.gen(function* makeAuthenticated() {
     const auth = yield* Auth;
     return Authenticated.of((effect, { headers }) =>
-      auth.session(new Headers(headers)).pipe(
-        Effect.tapError(() => Effect.logError("session lookup failed")),
-        Effect.mapError(() => new AuthenticationUnavailable()),
-        Effect.tap(({ cookies }) =>
-          HttpEffect.appendPreResponseHandler((_request, response) =>
-            Effect.succeed(HttpServerResponse.mergeCookies(response, cookies)),
-          ),
-        ),
-        Effect.flatMap(({ principal }) =>
-          Option.match(principal, {
-            onNone: () => Effect.fail(new Unauthorized()),
-            onSome: (value) =>
-              Effect.annotateCurrentSpan("user.id", value.id).pipe(
-                Effect.andThen(effect.pipe(Effect.provideService(CurrentPrincipal, value))),
-              ),
-          }),
-        ),
+      Effect.flatMap(signedIn(auth, headers), (user) =>
+        Effect.provideService(effect, CurrentPrincipal, user),
       ),
     );
   }),
@@ -56,6 +61,7 @@ export const ApiHandlers = Api.toLayer(
     const billing = yield* Billing;
     const userPlans = yield* Plans;
     const emails = yield* Emails;
+    const interest = yield* Interest;
     const requests = yield* FileRequests;
     const auth = yield* Auth;
     const sender = Effect.map(CurrentPrincipal, ({ id }) => id);
@@ -68,47 +74,37 @@ export const ApiHandlers = Api.toLayer(
         Effect.flatMap(sender, (id) => requests.close(id, requestId)),
       CreateDelivery: (input) => Effect.flatMap(sender, (id) => deliveries.create(id, input)),
       CreateFileRequest: (input) => Effect.flatMap(sender, (id) => requests.create(id, input)),
-      CreateRequestUpload: (input, { headers }) =>
-        requests.receive(input, clientIp(new Headers(headers))),
-      Deliveries: () => Effect.flatMap(sender, deliveries.list),
-      DeliveryEmails: ({ deliveryId }) =>
-        Effect.flatMap(sender, (id) => emails.deliveryEmails(id, deliveryId)),
-      FileRequests: () => Effect.flatMap(sender, requests.list),
+      CreateRequestUpload: (input, { headers }) => requests.receive(input, clientIp(headers)),
       FinalizeRequestTransfer: ({ token, transferId }, { headers }) =>
-        requests.finalize(token, clientIp(new Headers(headers)), transferId),
+        requests.finalize(token, clientIp(headers), transferId),
       FinalizeTransfer: ({ transferId }) =>
         Effect.flatMap(sender, (id) => transfers.finalize(id, transferId)),
       GetBilling: () => Effect.flatMap(sender, billing.summary),
+      GetMe: () => Effect.service(CurrentPrincipal),
       // Without an email the signed-in account's address is used, so a
       // signed-in visitor joins in one click.
       JoinInterest: ({ email, plan }, { headers }) =>
         Effect.gen(function* joinInterest() {
           const who =
             email === undefined
-              ? yield* auth.session(new Headers(headers)).pipe(
-                  Effect.mapError(() => new AuthenticationUnavailable()),
-                  Effect.flatMap(({ principal }) =>
-                    Option.match(principal, {
-                      onNone: () => Effect.fail(new Unauthorized()),
-                      onSome: (user) =>
-                        Effect.annotateCurrentSpan("user.id", user.id).pipe(
-                          Effect.as({ email: user.email, userId: user.id }),
-                        ),
-                    }),
-                  ),
-                )
+              ? yield* Effect.map(signedIn(auth, headers), (user) => ({
+                  email: user.email,
+                  userId: user.id,
+                }))
               : { email, userId: null };
-          return yield* emails.joinInterest({ ...who, plan }, clientIp(new Headers(headers)));
+          return yield* interest.join({ ...who, plan }, clientIp(headers));
         }),
-      Me: () => Effect.service(CurrentPrincipal),
+      ListDeliveries: () => Effect.flatMap(sender, deliveries.list),
+      ListDeliveryEmails: ({ deliveryId }) =>
+        Effect.flatMap(sender, (id) => emails.deliveryEmails(id, deliveryId)),
+      ListFileRequests: () => Effect.flatMap(sender, requests.list),
       OpenBillingPortal: () => Effect.flatMap(sender, billing.portal),
-      OpenFileRequest: ({ token }, { headers }) =>
-        requests.open(token, clientIp(new Headers(headers))),
-      OpenLink: ({ token, unlock }) => links.open(token, unlock),
+      OpenFileRequest: ({ token }, { headers }) => requests.open(token, clientIp(headers)),
+      OpenLink: ({ pageLoad, token, unlock }) => links.open(token, unlock, pageLoad),
       RedeemCode: ({ code }) => Effect.flatMap(sender, (id) => userPlans.redeem(id, code)),
       ReportDownload: ({ event, path, token, unlock }) => links.report(token, path, event, unlock),
       RequestUploads: ({ deliveryIds, token }, { headers }) =>
-        requests.uploads(token, clientIp(new Headers(headers)), deliveryIds),
+        requests.uploads(token, clientIp(headers), deliveryIds),
       SendDeliveryEmail: (input) =>
         Effect.flatMap(Effect.service(CurrentPrincipal), (user) =>
           emails.sendDelivery(user, input),
@@ -116,13 +112,13 @@ export const ApiHandlers = Api.toLayer(
       SetLinkPassword: ({ deliveryId, password }) =>
         Effect.flatMap(sender, (id) => deliveries.setPassword(id, deliveryId, password)),
       SignRequestUpload: ({ key, request, token }, { headers }) =>
-        requests.sign(token, clientIp(new Headers(headers)), key, request),
+        requests.sign(token, clientIp(headers), key, request),
       SignUpload: ({ key, request }) =>
         Effect.flatMap(sender, (id) => transfers.sign(id, key, request)),
       StartCheckout: ({ plan }) =>
         Effect.flatMap(Effect.service(CurrentPrincipal), (user) => billing.checkout(user, plan)),
       UnlockLink: ({ password, token }, { headers }) =>
-        links.unlock(token, password, clientIp(new Headers(headers))),
+        links.unlock(token, password, clientIp(headers)),
       UpdateDelivery: ({ deliveryId, note, title }) =>
         Effect.flatMap(sender, (id) => deliveries.update(id, deliveryId, { note, title })),
     });

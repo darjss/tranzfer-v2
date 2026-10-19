@@ -1,11 +1,16 @@
-import type { SharedFile } from "@tranzfer/contracts";
+import { basename } from "@tranzfer/contracts";
+import type { LinkAccess, SharedFile } from "@tranzfer/contracts";
 import * as Data from "effect/Data";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Schedule from "effect/Schedule";
+import * as Predicate from "effect/Predicate";
 
 import { ApiClient } from "../api/client";
-import { retryTransport, untilOnline } from "../api/retry";
+import {
+  MAX_TRANSPORT_RETRIES,
+  retryTransport,
+  transportSchedule,
+  untilOnline,
+} from "../api/retry";
 
 // The parts of the File System Access API a save touches. A picked folder
 // satisfies them; so does the in-memory folder the tests use.
@@ -61,10 +66,7 @@ const network = <A>(path: string, run: (signal: AbortSignal) => Promise<A>) =>
 // most half the file, and the copying adds up to less than one file size.
 const CHECKPOINT = 256 * 1024 * 1024;
 const PARALLEL_FILES = 3;
-const RETRY_CAP = Duration.seconds(30);
-const MAX_RETRIES = 40;
 
-const basename = (path: string) => path.split("/").at(-1) ?? path;
 const parent = (path: string) => path.split("/").slice(0, -1).join("/");
 
 // One at a time, so parallel files never race to create the same folder.
@@ -203,7 +205,8 @@ const writeFile = Effect.fn("SaveFolder.write")(function* writeFile(
 });
 
 const isTransient = (error: { readonly _tag: string }) =>
-  error._tag === "RpcClientError" || (error instanceof SaveStopped && error.reason === "network");
+  Predicate.isTagged(error, "RpcClientError") ||
+  (error instanceof SaveStopped && error.reason === "network");
 
 /**
  * Saves every file of a shared delivery into a picked folder, recreating its
@@ -211,7 +214,7 @@ const isTransient = (error: { readonly _tag: string }) =>
  */
 export const saveFolder = Effect.fn("SaveFolder.save")(function* saveFolder(
   root: Folder,
-  link: { readonly token: string; readonly unlock: string | undefined },
+  link: LinkAccess,
   report: (progress: { bytes: number; current: string; files: number }) => void,
 ) {
   const api = yield* ApiClient;
@@ -242,7 +245,9 @@ export const saveFolder = Effect.fn("SaveFolder.save")(function* saveFolder(
   // Tells the sender, and never holds the save up: a lost report only leaves
   // the sender's count low, and picking the same folder again reports it anew.
   const tell = (path: string, event: "saved" | "started") =>
-    api.ReportDownload({ event, path, ...link }).pipe(Effect.ignore, Effect.forkDetach);
+    api
+      .ReportDownload({ event, path, ...link })
+      .pipe(Effect.ignore({ log: true }), Effect.forkDetach);
 
   const saveOne = Effect.fn("SaveFolder.file")(function* saveOne(file: SharedFile) {
     progress.current = file.path;
@@ -266,10 +271,8 @@ export const saveFolder = Effect.fn("SaveFolder.save")(function* saveFolder(
         isTransient(error) ? untilOnline.pipe(Effect.andThen(open)) : Effect.void,
       ),
       Effect.retry({
-        schedule: Schedule.exponential("1 second").pipe(
-          Schedule.modifyDelay(({ duration }) => Effect.succeed(Duration.min(duration, RETRY_CAP))),
-        ),
-        times: MAX_RETRIES,
+        schedule: transportSchedule,
+        times: MAX_TRANSPORT_RETRIES,
         while: isTransient,
       }),
     );

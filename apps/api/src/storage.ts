@@ -20,7 +20,12 @@ export interface StoredObject {
 export class Storage extends Context.Service<
   Storage,
   {
-    readonly signUpload: (key: string, request: UploadRequest) => Effect.Effect<SignedUrl>;
+    /** A `contentLength` is signed, so storage refuses a body of any other length. */
+    readonly signUpload: (
+      key: string,
+      request: UploadRequest,
+      contentLength: number | undefined,
+    ) => Effect.Effect<SignedUrl>;
     readonly signDownload: (
       key: string,
       filename: string,

@@ -1,5 +1,7 @@
 import * as Schema from "effect/Schema";
 
+import { LinkToken } from "./link";
+
 const MIB = 1024 * 1024;
 const MAX_PARTS = 10_000;
 
@@ -22,32 +24,32 @@ export const isSinglePut = (size: number) => partCount(size) <= 1;
  * `isSinglePut`) is a single `Put`, signed to only create the object, never
  * replace it. Aborts are not here: cancel is server-side.
  */
-export const UploadRequest = Schema.Union([
-  Schema.TaggedStruct("Put", {}),
-  Schema.TaggedStruct("Create", {}),
-  Schema.TaggedStruct("Part", {
-    partNumber: Schema.Int.check(Schema.isBetween({ maximum: MAX_PARTS, minimum: 1 })),
-    uploadId: Schema.String,
-  }),
-  Schema.TaggedStruct("List", {
+export const UploadRequest = Schema.TaggedUnion({
+  Complete: { uploadId: Schema.String },
+  Create: {},
+  List: {
     // ListParts pages at 1,000 parts; the marker continues to the next page.
     partNumberMarker: Schema.optional(
       Schema.Int.check(Schema.isBetween({ maximum: MAX_PARTS, minimum: 0 })),
     ),
     uploadId: Schema.String,
-  }),
-  Schema.TaggedStruct("Complete", { uploadId: Schema.String }),
-]);
+  },
+  Part: {
+    partNumber: Schema.Int.check(Schema.isBetween({ maximum: MAX_PARTS, minimum: 1 })),
+    uploadId: Schema.String,
+  },
+  Put: {},
+});
 export type UploadRequest = typeof UploadRequest.Type;
 
 /** Uppy signs by object key; the server resolves the transfer from it. */
 export const SignUploadPayload = Schema.Struct({ key: Schema.String, request: UploadRequest });
-export interface SignUploadPayload extends Schema.Schema.Type<typeof SignUploadPayload> {}
+export type SignUploadPayload = typeof SignUploadPayload.Type;
 
 /** The same, from an uploader with no account: the request's token is the credential. */
 export const SignRequestUploadPayload = Schema.Struct({
   ...SignUploadPayload.fields,
-  token: Schema.String,
+  token: LinkToken,
 });
 
 /** `headers` are part of the signature; the request must send them as given. */
@@ -56,7 +58,7 @@ export const SignedUrl = Schema.Struct({
   headers: Schema.Record(Schema.String, Schema.String),
   url: Schema.String,
 });
-export interface SignedUrl extends Schema.Schema.Type<typeof SignedUrl> {}
+export type SignedUrl = typeof SignedUrl.Type;
 
 /** The request or the stored object does not fit the transfer. */
 export class InvalidUpload extends Schema.TaggedError<InvalidUpload>()("InvalidUpload", {}) {}

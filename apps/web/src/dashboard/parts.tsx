@@ -16,6 +16,7 @@ import PhLockBold from "~icons/ph/lock-bold";
 import PhWifiSlashBold from "~icons/ph/wifi-slash-bold";
 import PhXBold from "~icons/ph/x-bold";
 
+import { passwordLength } from "@tranzfer/contracts";
 import type { Delivery, DeliveryId } from "@tranzfer/contracts";
 
 import { Button } from "../ui/Button";
@@ -191,13 +192,11 @@ const swap = css({
   transitionTimingFunction: "[cubic-bezier(0.2,0,0,1)]",
 });
 
-/** Copies the delivery's public link and says so, in place and to screen readers. */
-export function CopyLink(props: {
-  class?: string;
-  disabled?: boolean;
-  link: string;
-  variant: "fill" | "quiet";
-}) {
+/**
+ * Copies `text()` and holds "copied" or "failed" for 1.8 s. Call it in a
+ * component, which clears the timer when it unmounts.
+ */
+export const createCopy = (text: () => string) => {
   const [state, setState] = createSignal<"idle" | "copied" | "failed">("idle");
   let timer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => {
@@ -205,7 +204,7 @@ export function CopyLink(props: {
   });
   const copy = async () => {
     const copied = await navigator.clipboard
-      .writeText(`${location.origin}${props.link}`)
+      .writeText(text())
       .then(() => true)
       .catch(() => false);
     setState(copied ? "copied" : "failed");
@@ -214,6 +213,17 @@ export function CopyLink(props: {
       setState("idle");
     }, 1800);
   };
+  return { copy, state };
+};
+
+/** Copies the delivery's public link and says so, in place and to screen readers. */
+export function CopyLink(props: {
+  class?: string;
+  disabled?: boolean;
+  link: string;
+  variant: "fill" | "quiet";
+}) {
+  const { copy, state } = createCopy(() => `${location.origin}${props.link}`);
   return (
     <>
       <button
@@ -264,6 +274,14 @@ export function CopyLink(props: {
     </>
   );
 }
+
+export const sheetBlock = css({
+  borderColor: "line",
+  borderTopWidth: "1px",
+  px: { base: "5", sm: "7" },
+  py: "6",
+});
+export const sheetHeading = css({ fontWeight: "semibold", textStyle: "sm" });
 
 export const fieldLabel = css({ color: "mut", display: "grid", fontSize: "13", gap: "1" });
 export const field = css({
@@ -368,12 +386,12 @@ export function LinkPassword(props: {
           }}
         >
           <label class={fieldLabel}>
-            Password for the recipient, 8 to 128 characters
+            Password for the recipient, {passwordLength.min} to {passwordLength.max} characters
             <input
               autocomplete="off"
               class={field}
-              maxlength={128}
-              minlength={8}
+              maxlength={passwordLength.max}
+              minlength={passwordLength.min}
               name="password"
               onInput={(event) => {
                 setPassword(event.currentTarget.value);
@@ -388,7 +406,7 @@ export function LinkPassword(props: {
             message.
           </p>
           <div class={css({ display: "flex", gap: "2" })}>
-            <Button disabled={password().length < 8} size="xs" type="submit">
+            <Button disabled={password().length < passwordLength.min} size="xs" type="submit">
               Save password
             </Button>
             <Button

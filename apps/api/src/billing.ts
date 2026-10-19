@@ -1,5 +1,6 @@
 import * as Polar from "@distilled.cloud/polar";
-import { BillingUnavailable, plans } from "@tranzfer/contracts";
+import { webhooks } from "@polar-sh/sdk/2026-10";
+import { BillingUnavailable, UserId, plans } from "@tranzfer/contracts";
 import type {
   BillingSummary,
   PaidPlanId,
@@ -15,12 +16,10 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import { Base64 } from "effect/encoding";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
-import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
@@ -34,15 +33,10 @@ export class InvalidWebhook extends Data.TaggedError("InvalidWebhook")<{
   readonly reason: "disabled" | "headers" | "payload" | "signature" | "timestamp";
 }> {}
 
-// Standard Webhooks allows five minutes of clock skew either way.
-const TOLERANCE_SECONDS = 300;
-
 /**
- * Checks a Polar delivery against Standard Webhooks. The HMAC key is the
- * base64 after the secret's `whsec_` prefix: Polar signs that way for every
- * endpoint created since 2026-09-08 (polarsource/polar
- * `server/polar/webhook/constants.py`), and ours are all newer.
- * `subtle.verify` compares in constant time.
+ * Checks a Polar delivery with the Polar SDK, which knows both ways Polar
+ * derives the HMAC key from a secret and allows five minutes of clock skew
+ * either way. Returns the parsed event.
  */
 export const verifyWebhook = Effect.fn("Billing.verifyWebhook")(function* verifyWebhook(
   secret: Redacted.Redacted,
@@ -51,52 +45,33 @@ export const verifyWebhook = Effect.fn("Billing.verifyWebhook")(function* verify
 ) {
   const id = headers["webhook-id"];
   const timestamp = headers["webhook-timestamp"];
-  const signatures = headers["webhook-signature"];
-  if (id === undefined || timestamp === undefined || signatures === undefined) {
+  const signature = headers["webhook-signature"];
+  if (id === undefined || timestamp === undefined || signature === undefined) {
     return yield* new InvalidWebhook({ reason: "headers" });
   }
-  const sentAt = Number(timestamp);
-  const now = (yield* Clock.currentTimeMillis) / 1000;
-  if (!Number.isFinite(sentAt) || Math.abs(now - sentAt) > TOLERANCE_SECONDS) {
-    return yield* new InvalidWebhook({ reason: "timestamp" });
-  }
-  const keyBytes = yield* Effect.orDie(
-    Effect.fromResult(Base64.decode(Redacted.value(secret).replace(/^whsec_/u, ""))),
-  );
-  const encoder = new TextEncoder();
-  const key = yield* Effect.promise(
-    async () =>
-      await crypto.subtle.importKey("raw", keyBytes, { hash: "SHA-256", name: "HMAC" }, false, [
-        "verify",
-      ]),
-  );
-  const signed = encoder.encode(`${id}.${timestamp}.${body}`);
-  // The header holds space-separated `v1,<base64>` entries, one per active secret.
-  const candidates = signatures.split(" ").flatMap((entry) => {
-    const [version, signature] = entry.split(",", 2);
-    if (version !== "v1" || signature === undefined) {
-      return [];
-    }
-    return Result.match(Base64.decode(signature), {
-      onFailure: () => [],
-      onSuccess: (bytes) => [bytes],
-    });
+  // The SDK reports a bad delivery by throwing. Its messages are the only way
+  // to tell a stale or malformed timestamp from a bad signature.
+  return yield* Effect.tryPromise({
+    catch: (error) => {
+      if (error instanceof webhooks.PolarWebhookVerificationError) {
+        const stale = /^(?:Message timestamp|Invalid signature headers)/u.test(error.message);
+        return new InvalidWebhook({ reason: stale ? "timestamp" : "signature" });
+      }
+      return new InvalidWebhook({ reason: "payload" });
+    },
+    try: async () =>
+      await webhooks.validateEvent(
+        body,
+        { "webhook-id": id, "webhook-signature": signature, "webhook-timestamp": timestamp },
+        Redacted.value(secret),
+      ),
   });
-  const matches = yield* Effect.forEach(
-    candidates,
-    (candidate) =>
-      Effect.promise(async () => await crypto.subtle.verify("HMAC", key, candidate, signed)),
-    { concurrency: "unbounded" },
-  );
-  return yield* matches.includes(true)
-    ? Effect.void
-    : Effect.fail(new InvalidWebhook({ reason: "signature" }));
 });
 
 // Subscription events embed their customer; the external id is our user id.
 const WebhookEvent = Schema.Struct({
   data: Schema.Struct({
-    customer: Schema.Struct({ external_id: Schema.NullOr(Schema.String) }),
+    customer: Schema.Struct({ external_id: Schema.NullOr(UserId) }),
   }),
 });
 
@@ -110,14 +85,14 @@ const highestFirst = ["studio", "pro", "starter"] as const;
 export class Billing extends Context.Service<
   Billing,
   {
-    readonly summary: (userId: string) => Effect.Effect<BillingSummary>;
+    readonly summary: (userId: UserId) => Effect.Effect<BillingSummary>;
     /** A subscriber changes plans in the portal; checkout would start a second subscription. */
     readonly checkout: (
       user: Principal,
       plan: PaidPlanId,
     ) => Effect.Effect<{ readonly url: string }, BillingUnavailable>;
     readonly portal: (
-      userId: string,
+      userId: UserId,
     ) => Effect.Effect<{ readonly url: string }, BillingUnavailable>;
     /** Refetches Polar state for rows past their period end. Returns how many it tried. */
     readonly reconcileStale: Effect.Effect<number>;
@@ -174,9 +149,9 @@ export class Billing extends Context.Service<
           onSome: (polar) => polar.products,
         });
 
-        const row = (userId: string) => db.query.subscription.findFirst({ where: { userId } });
+        const row = (userId: UserId) => db.query.subscription.findFirst({ where: { userId } });
 
-        const portal = Effect.fn("Billing.portal")(function* portal(userId: string) {
+        const portal = Effect.fn("Billing.portal")(function* portal(userId: UserId) {
           const session = yield* viaPolar(
             Polar.customerSessionsCreate({
               body: { external_customer_id: userId, return_url: `${options.appUrl}/deliveries` },
@@ -194,7 +169,7 @@ export class Billing extends Context.Service<
          * canceled until its paid period ends. Revoked, unpaid, paused and
          * incomplete ones grant nothing. A comp row is never overwritten.
          */
-        const reconcile = Effect.fn("Billing.reconcile")(function* reconcile(userId: string) {
+        const reconcile = Effect.fn("Billing.reconcile")(function* reconcile(userId: UserId) {
           yield* Effect.annotateCurrentSpan("user.id", userId);
           const current = yield* row(userId);
           if (current?.status === "comp") {
@@ -322,9 +297,9 @@ export class Billing extends Context.Service<
 
           reconcileStale: reconcileStale(),
 
-          summary: Effect.fn("Billing.summary")(function* summary(userId: string) {
+          summary: Effect.fn("Billing.summary")(function* summary(userId: UserId) {
             if (Option.exists(options.polar, (polar) => polar.reconcileOnRead)) {
-              yield* Effect.ignore(reconcile(userId));
+              yield* Effect.ignore(reconcile(userId), { log: true });
             }
             const current = yield* row(userId);
             const { grantEndsAt, plan } = yield* userPlans.current(userId);
@@ -348,10 +323,10 @@ export class Billing extends Context.Service<
               onNone: () => Effect.fail(new InvalidWebhook({ reason: "disabled" })),
               onSome: (polar) => polar.webhookSecret,
             });
-            yield* verifyWebhook(secret, headers, body);
-            const event = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(WebhookEvent))(
-              body,
-            ).pipe(Effect.mapError(() => new InvalidWebhook({ reason: "payload" })));
+            const verified = yield* verifyWebhook(secret, headers, body);
+            const event = yield* Schema.decodeUnknownEffect(WebhookEvent)(verified).pipe(
+              Effect.mapError(() => new InvalidWebhook({ reason: "payload" })),
+            );
             const userId = event.data.customer.external_id;
             if (userId === null) {
               return;

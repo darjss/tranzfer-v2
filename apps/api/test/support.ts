@@ -1,5 +1,5 @@
-import { DeliveryId, rateLimits, TransferId } from "@tranzfer/contracts";
-import type { NewDelivery, NewFile, RetentionDays } from "@tranzfer/contracts";
+import { DeliveryId, TransferId, UserId } from "@tranzfer/contracts";
+import type { NewDelivery, NewFile, RetentionDays, SignedUrl } from "@tranzfer/contracts";
 import { Database, schema } from "@tranzfer/db";
 import { testDatabase } from "@tranzfer/db/testing";
 import * as Effect from "effect/Effect";
@@ -7,14 +7,16 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 
+import { Attempts } from "../src/attempts";
 import { Deliveries } from "../src/deliveries";
 import { FileRequests } from "../src/file-requests";
 import { LinkTokens } from "../src/link-tokens";
 import { Plans } from "../src/plans";
+import { bindingLimits, RateLimiter } from "../src/rate-limiter";
 import { SharedLinks } from "../src/shared-links";
 import { Storage } from "../src/storage";
 import type { StoredObject } from "../src/storage";
-import { SigningRate, Transfers } from "../src/transfers";
+import { Transfers } from "../src/transfers";
 
 /** Object storage as a map; tests put objects the way a browser upload would. */
 export const makeMemoryStorage = () => {
@@ -38,10 +40,10 @@ export const makeMemoryStorage = () => {
         }),
       signDownload: (key) =>
         Effect.succeed({ expiresAt: new Date(0), headers: {}, url: `memory://get/${key}` }),
-      signUpload: (key, request) =>
-        Effect.succeed({
+      signUpload: (key, request, contentLength) =>
+        Effect.succeed<SignedUrl>({
           expiresAt: new Date(0),
-          headers: {},
+          headers: contentLength === undefined ? {} : { "content-length": String(contentLength) },
           url: `memory://${request._tag}/${key}`,
         }),
     }),
@@ -49,39 +51,28 @@ export const makeMemoryStorage = () => {
   return { layer, objects, purged, sealed };
 };
 
-/** A rate-limit binding as a count per key that never resets. */
-const counting = (limit: number) => {
+/** Rate-limit bindings as a count per limit and key that never resets. */
+const countingLimiter = Layer.sync(RateLimiter, () => {
   const counts = new Map<string, number>();
-  return (key: string) =>
+  return RateLimiter.make((name, key) =>
     Effect.sync(() => {
-      const count = (counts.get(key) ?? 0) + 1;
-      counts.set(key, count);
-      return count <= limit;
-    });
-};
+      const count = (counts.get(`${name}:${key}`) ?? 0) + 1;
+      counts.set(`${name}:${key}`, count);
+      return count <= bindingLimits[name].rule.limit;
+    }),
+  );
+});
 
 /** The domain over a fresh migrated local D1 and the given storage. */
 export const domainLayer = (storage: Layer.Layer<Storage>) =>
   Layer.mergeAll(
-    Layer.suspend(() =>
-      SharedLinks.layer({
-        allowIp: counting(rateLimits.passwordAttemptsPerIp.limit),
-        allowLink: counting(rateLimits.passwordAttemptsPerLink.limit),
-      }),
-    ),
-    FileRequests.layer({
-      callsPerIp: counting(rateLimits.portalCallsPerIp.limit),
-      callsPerRequest: counting(rateLimits.portalCallsPerRequest.limit),
-      uploadsPerIp: counting(rateLimits.portalUploadsPerIp.limit),
-    }).pipe(Layer.provideMerge(Transfers.layer)),
+    SharedLinks.layer,
+    FileRequests.layer.pipe(Layer.provideMerge(Transfers.layer)),
   ).pipe(
-    Layer.provideMerge(
-      Layer.sync(SigningRate, () =>
-        SigningRate.of({ allow: counting(rateLimits.uploadSigning.limit) }),
-      ),
-    ),
+    Layer.provideMerge(countingLimiter),
     Layer.provideMerge(Deliveries.layer),
-    Layer.provideMerge(Plans.layer(counting(rateLimits.codeRedemptions.limit))),
+    Layer.provideMerge(Plans.layer),
+    Layer.provideMerge(Attempts.layer),
     Layer.provideMerge(
       LinkTokens.layer(Effect.succeed(Redacted.make("test-link-secret-0123456789abcdef"))),
     ),
@@ -89,10 +80,13 @@ export const domainLayer = (storage: Layer.Layer<Storage>) =>
     Layer.provideMerge(testDatabase),
   );
 
-export const addUser = (id: string, name = "Sender") =>
-  Effect.flatMap(Effect.service(Database), ({ db }) =>
-    db.insert(schema.user).values({ email: `${id}@test`, id, name }),
-  ).pipe(Effect.orDie);
+/** Inserts a user and returns its id. */
+export const addUser = (id: string, name = "Sender") => {
+  const userId = UserId.make(id);
+  return Effect.flatMap(Effect.service(Database), ({ db }) =>
+    db.insert(schema.user).values({ email: `${id}@test`, id: userId, name }),
+  ).pipe(Effect.as(userId), Effect.orDie);
+};
 
 export const newFile = (path: string, size: number): NewFile => ({
   contentType: null,

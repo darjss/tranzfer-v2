@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "@solidjs/router";
 import { clientOnly } from "@solidjs/web";
 import { AccessCodeInput, defaultRetentionDays, PaidPlanId, plans } from "@tranzfer/contracts";
 import type { RetentionDays } from "@tranzfer/contracts";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
   configureClientErrors,
@@ -25,17 +26,21 @@ import { Board } from "../dashboard/Board";
 import { goToCheckout, goToPortal } from "../dashboard/billing";
 import { createDeliveries } from "../dashboard/deliveries";
 import { DeliverySheet } from "../dashboard/DeliverySheet";
+import { Requests } from "../dashboard/Requests";
+import { createRequests } from "../dashboard/requests";
 import { SendCard } from "../dashboard/SendCard";
 import { SendDoneList } from "../dashboard/SendDone";
 import { TopBar } from "../dashboard/TopBar";
 import { inkStrokes } from "../landing/notebook";
 import { online, wireWindow } from "../uploads/store";
-import { chosenFiles, getDroppedFiles } from "../uploads/uploads";
+import { chosenFiles, getDroppedFiles } from "../uploads/files";
 import { bytes } from "../dashboard/format";
 import { button } from "../ui/Button";
 import { paidPlansOpen } from "../ui/support";
 import DashboardLoading from "../dashboard/DashboardLoading";
 import "../dashboard/dashboard.css";
+
+const REQUEST_POLL_MS = 15_000;
 
 const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
 
@@ -133,7 +138,7 @@ const DeliveriesPage = () => {
     };
   });
 
-  const me = createMemo(() => runEffect(ApiClient.use((api) => api.Me())));
+  const me = createMemo(() => runEffect(ApiClient.use((api) => api.GetMe())));
   const {
     billing,
     cancel,
@@ -151,6 +156,23 @@ const DeliveriesPage = () => {
     setPassword,
     update,
   } = createDeliveries(runtime);
+  const { close: closeRequest, create: createRequest, requests } = createRequests(runtime);
+  // While a request is open, people may be uploading into it. Their deliveries
+  // reach this page only by being read, so read both lists now and then.
+  createEffect(
+    () => requests.some((request) => request.status === "open"),
+    (listening) => {
+      const timer = listening
+        ? setInterval(() => {
+            void refresh(deliveries);
+            void refresh(requests);
+          }, REQUEST_POLL_MS)
+        : undefined;
+      return () => {
+        clearInterval(timer);
+      };
+    },
+  );
   const selected = () => {
     const id = searchParams.d;
     return id === undefined ? undefined : deliveries.find((delivery) => delivery.id === id);
@@ -204,7 +226,7 @@ const DeliveriesPage = () => {
   // link can carry one while paid plans are closed; it is dropped.
   onSettled(() => {
     const plan = Schema.decodeUnknownOption(PaidPlanId)(searchParams.plan);
-    if (plan._tag === "Some") {
+    if (Option.isSome(plan)) {
       setSearchParams({ plan: undefined });
       if (paidPlansOpen) {
         void upgrade(plan.value);
@@ -216,7 +238,7 @@ const DeliveriesPage = () => {
   // address first so a reload doesn't try it again.
   onSettled(() => {
     const code = Schema.decodeUnknownOption(AccessCodeInput)(searchParams.code);
-    if (code._tag === "Some") {
+    if (Option.isSome(code)) {
       setSearchParams({ code: undefined });
       void redeem(code.value);
     }
@@ -507,6 +529,12 @@ const DeliveriesPage = () => {
                   sendAgain={() => {
                     filesInput?.click();
                   }}
+                />
+                <Requests
+                  billing={billing()}
+                  close={closeRequest}
+                  create={createRequest}
+                  requests={requests}
                 />
               </div>
             </main>

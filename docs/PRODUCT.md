@@ -28,7 +28,7 @@ Huge transfers that recover instead of restart. A 100 to 500 GB project survives
 | Pro     | $29/mo | 1 TB                  | up to 14 days | working creatives             |
 | Studio  | $69/mo | 3 TB                  | up to 14 days | heavy users and small studios |
 
-Every plan gets the whole product: large uploads, resume, folders, links, progress and history. Paid plans buy capacity and retention, nothing else. Don't promise teams, branding, request links or enterprise features before they exist.
+Every plan gets the whole product: large uploads, resume, folders, links, progress and history. Paid plans buy capacity and retention, nothing else. Don't promise teams, branding or enterprise features before they exist.
 
 ## When paid plans open
 
@@ -40,7 +40,7 @@ A closed stage:
 - fails checkout and the billing portal with `BillingUnavailable` reason `notOpen`, and rejects Polar webhooks
 - builds the web with `VITE_PAID_PLANS_OPEN=false`: pricing keeps the prices and each paid plan offers "Tell me when it opens", the dashboard shows no upgrade or Manage billing, and a `?plan=` from sign-in doesn't start a checkout
 
-"Tell me when it opens" puts the visitor on that plan's interest list (`plan_interest`, one row per address and plan) through the public `JoinInterest` RPC. A signed-in visitor joins in one click with their account's address; anyone else types one. Each new row gets one "You're on the list" email. Asking again changes nothing and sends nothing.
+"Tell me when it opens" puts the visitor on that plan's interest list (`plan_interest`, one row per address and plan) through the public `JoinInterest` RPC. A signed-in visitor joins in one click with their account's address; anyone else types one. Each new row from a signed-in visitor gets one "You're on the list" email. A typed address is stored and gets nothing until the plan opens, because anyone can type anyone's address. Asking again changes nothing and sends nothing.
 
 To open production once Polar clears verification:
 
@@ -90,13 +90,13 @@ A new delivery that would push active space past the plan's limit is refused bef
 Tranzfer sends four emails, all from `Tranzfer <hello@tranzfer.app>`, as plain text with a simple HTML copy. Replies go to support@tranzfer.app, except on the last one:
 
 - A welcome when an account is created, with what Free gives and how to send the first file. Better Auth's user-created hook hands it to the request's `waitUntil`, so sign-up never waits on it, and a failed send is logged and dropped.
-- "You're on the list" when someone joins a plan's interest list.
+- "You're on the list" when a signed-in visitor joins a plan's interest list.
 - "Pro is open" (or Starter, Studio) once per person, queued by `interest:notify` above.
-- A sender's own delivery link, from "Email it" on the finished-send card. The subject is "<sender name> sent you <title>" and Reply-To is the sender's account email. The body has the note, file count, size, the expiry in UTC and the link. No tracking pixel, and the sender's text is escaped in the HTML.
+- A sender's own delivery link, from "Email it" on the finished-send card. The subject is "<sender name> sent you <title>", with the name cut to 60 characters and the title to 100, and Reply-To is the sender's account email. The body has the note, file count, size, the expiry in UTC and the link. No tracking pixel, and the sender's text is escaped in the HTML.
 
 ### Emailing a delivery
 
-`SendDeliveryEmail` takes a ready, unexpired delivery you own and 1 to 10 addresses, and sends one email per distinct address. It answers at once with a `queued` row per address. The mail goes out in the Worker's `waitUntil`, and each row settles to `sent` or `failed`. `DeliveryEmails` reads them back, and the page polls every 2 seconds until none is queued.
+`SendDeliveryEmail` takes a ready, unexpired delivery you own and 1 to 10 addresses, and sends one email per distinct address. It answers at once with a `queued` row per address. The mail goes out in the Worker's `waitUntil`, and each row settles to `sent` or `failed`. `ListDeliveryEmails` reads them back, and the page polls every 2 seconds until none is queued.
 
 `sent` means Cloudflare took the message. Nothing says it reached an inbox, and the card says so. The card says "bounced" only for `E_RECIPIENT_SUPPRESSED`, Cloudflare's code for an address it has on its bounce list. Staging and previews report an address off the allowlist as `failed` with code `held`.
 
@@ -105,6 +105,22 @@ Tranzfer sends four emails, all from `Tranzfer <hello@tranzfer.app>`, as plain t
 The API Worker sends through Cloudflare Email Sending's `send_email` binding. `tranzfer.app` is the onboarded sending domain, so any recipient works; the account quota is 1,000 a day. Logs and spans carry Cloudflare's error code, never an address.
 
 Only production emails anyone. Staging and previews email only the addresses in `EMAIL_ALLOWLIST` (comma-separated, a GitHub variable on the staging environment) and log the rest, so test sign-ups and copied lists never reach real people. Local `alchemy dev` binds Alchemy's email simulator, which writes `.eml` files under `.alchemy/local/email` and delivers nothing. `Mail` in `apps/api/src/infrastructure/email.ts` holds the rule.
+
+## File requests
+
+A file request is a link a signed-in user hands to someone without an account. The uploader opens `/r/<token>`, sees the owner's name, the request's title and instructions, types their own name (required) and an email (optional), picks files or a folder, and uploads into the owner's space. It is the receiving side of a delivery, not a drive: no branding, no custom form fields, no integrations.
+
+The owner sets a title (up to 120 characters), instructions (up to 1,000), how long it stays open (1, 3, 7 or 14 days, within the plan's link lifetime) and an optional size cap for everything the link receives. Making one needs no plan; Free has it. The dashboard lists them with uploads and bytes received, a Copy link button, and Close.
+
+- Each upload session is one delivery owned by the request's owner, titled "<request title> from <uploader name>". It lands on the owner's board like any delivery, can be shared, edited or cancelled, and shows who sent it. It is kept for the request's days after it finishes, or the plan's maximum if the plan has dropped since.
+- It counts against the owner's active transfer space, and the Free plan's delivery caps count it too. The uploader is never told how much space the owner has. When the owner's space or the request's size cap has no room, the create is refused before any byte moves, and the uploader reads "no room" with no numbers.
+- The check is part of the statement that inserts the delivery: the owner's limits, the request being open and unexpired, and the cap (the declared bytes of the request's deliveries that weren't cancelled) all hold when uploads race. Like every delivery, declared sizes are checked at finalize, not while bytes move.
+- The token is `<request id>.<hmac>`, signed with the link-token key. The id is random and 16 bytes, so a request token never opens a delivery link and the reverse. Closing sets `closed_at`, expiry passes `expires_at`, and either makes the token read as unknown on every call, signing and finalizing included. Uploads already in stay on the owner's board. Transfers already waiting to finish still finish through the sweeper.
+- An uploader can reach only deliveries of their request that they name by id. Ids are random and the browser keeps them, so another uploader through the same link sees nothing of theirs. The uploader never receives the owner's delivery link.
+- Uploads use the same engine and resume guarantees as the owner's: refresh recovery, fingerprint and part checks on re-pick, Web Locks between tabs. The browser records the delivery ids, and on reload it reads them back through the token and asks for the same files again.
+- The uploader has no account, so there is no cancel for them. The owner can cancel from the board, and an upload left open for 7 days ends like any other.
+
+Rate limits for the uploader's calls are in the table below. They hold for every owner, paid or not, because the uploader's IP and the request are what they count.
 
 ## Rate limits
 
@@ -123,8 +139,12 @@ Limits stop one person or bot from flooding sign-up, sign-in or the Free plan. T
 | Delivery emails         | all senders | all   | 800 a day             |
 | Link password attempts  | client IP   | all   | 10 a minute           |
 | Link password attempts  | link        | all   | 5 a minute            |
+| File request calls      | client IP   | all   | 600 a minute          |
+| File request calls      | request     | all   | 1,200 a minute        |
+| New file request upload | client IP   | all   | 10 a minute           |
+| Browser telemetry       | client IP   | all   | 120 a minute          |
 
-Sign-in covers every `/api/auth` request, Google's start and callback and the staging login included. An IPv6 client counts by its /64. Cancelled deliveries count toward the delivery cap, so create-and-cancel can't loop. A part is at least 64 MiB, so 20 signing requests a second is faster than a gigabit line needs. Paid, comp and code-granted plans have no delivery or signing cap. Code attempts count wrong and right codes alike, so nobody can guess codes quickly. Password attempts count the same way, so a link takes at most 7,200 guesses a day however many networks they come from. A delivery email counts per address, failed ones included, and a send needing more room than is left is refused whole. The account-wide 800 a day keeps delivery emails under Cloudflare's 1,000 a day quota and leaves room for the welcome and interest emails.
+Sign-in covers every `/api/auth` request, Google's start and callback and the staging login included. An IPv6 client counts by its /64. Cancelled deliveries count toward the delivery cap, so create-and-cancel can't loop. A part is at least 64 MiB, so 20 signing requests a second is faster than a gigabit line needs. Every call an uploader makes through a request link counts, bad tokens included, so tokens can't be guessed quickly; signing through a request spends those limits and never the owner's own signing rate. Paid, comp and code-granted plans have no delivery or signing cap. Code attempts count wrong and right codes alike, so nobody can guess codes quickly. Password attempts count the same way, so a link takes at most 7,200 guesses a day however many networks they come from. Both are counted exactly in D1 (`Attempts` in `apps/api/src/attempts.ts`): the statement that counts the window also records the attempt, so parallel tries can't pass a cap, a refused attempt isn't counted, and a database error refuses the attempt. The sweeper deletes the rows once no window counts them. The other one-minute and ten-second limits use Cloudflare's rate-limit binding. It keeps a separate counter on each Cloudflare machine, and a new connection can land on another one, so a client that opens many connections gets several times the limit (measured on staging: 150 parallel sign-in requests passed a cap of 30, while one keep-alive connection was refused at request 31). These limits stop floods, not guessing, and they let requests through when the binding fails. A delivery email counts per address, failed ones included, and a send needing more room than is left is refused whole. The account-wide 800 a day keeps delivery emails under Cloudflare's 1,000 a day quota and leaves room for the welcome and interest emails. Browser telemetry is the app's own trace upload, about 12 requests a minute from one tab, so 120 leaves room for several tabs behind one network.
 
 ## Cost guardrail
 

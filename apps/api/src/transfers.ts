@@ -4,6 +4,7 @@ import {
   isSinglePut,
   NotUploaded,
   partCount,
+  partSize,
   RateLimited,
   rateLimits,
   StorageUnavailable,
@@ -16,9 +17,10 @@ import type {
   SignedUrl,
   TransferId,
   UploadRequest,
+  UserId,
 } from "@tranzfer/contracts";
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, exists, inArray, ne, notExists, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -26,9 +28,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 
 import { Deliveries, UPLOAD_WINDOW } from "./deliveries";
 import { Plans } from "./plans";
+import { RateLimiter } from "./rate-limiter";
 import { Storage } from "./storage";
 import type { StoredObject } from "./storage";
 
@@ -41,32 +45,6 @@ const RECOVER_BATCH = 50;
 
 type Transfer = typeof schema.transfer.$inferSelect;
 
-// The stored object must be exactly what the sender declared.
-const verify = (transfer: Transfer, object: Option.Option<StoredObject>) =>
-  Match.value(object).pipe(
-    Match.when(Option.isNone, () => Effect.fail(new NotUploaded())),
-    Match.when(
-      (found) => Option.isSome(found) && found.value.size !== transfer.size,
-      (found) =>
-        Effect.logError("uploaded size does not match", {
-          expected: transfer.size,
-          found: Option.map(found, ({ size }) => size),
-          transferId: transfer.id,
-        }).pipe(Effect.andThen(Effect.fail(new InvalidUpload()))),
-    ),
-    Match.orElse((found) => Effect.succeed(found.value)),
-  );
-
-/**
- * Counts signing requests per sender. Cloudflare's rate-limit binding in the
- * Worker, set to `rateLimits.uploadSigning`; it answers whether this request
- * still fits.
- */
-export class SigningRate extends Context.Service<
-  SigningRate,
-  { readonly allow: (senderId: string) => Effect.Effect<boolean> }
->()("tranzfer/SigningRate") {}
-
 /** Upload signing and completion for a sender's transfers. */
 export class Transfers extends Context.Service<
   Transfers,
@@ -76,13 +54,13 @@ export class Transfers extends Context.Service<
      * file request sign, and the owner's own signing rate is not spent.
      */
     readonly sign: (
-      senderId: string,
+      senderId: UserId,
       key: string,
       request: UploadRequest,
       requestId?: RequestId,
     ) => Effect.Effect<SignedUrl, DeliveryNotFound | InvalidUpload | RateLimited | UploadClosed>;
     readonly finalize: (
-      senderId: string,
+      senderId: UserId,
       transferId: TransferId,
       requestId?: RequestId,
     ) => Effect.Effect<
@@ -99,11 +77,47 @@ export class Transfers extends Context.Service<
       const { db } = yield* Database;
       const deliveries = yield* Deliveries;
       const plans = yield* Plans;
-      const signingRate = yield* SigningRate;
+      const limiter = yield* RateLimiter;
       const storage = yield* Storage;
 
+      /**
+       * The stored object must be exactly what the sender declared. Signed
+       * URLs do not pin the body length, so a wrong size is deleted, and a
+       * `finalizing` transfer goes back to `uploading`: with the key free, a
+       * correct upload can start again.
+       */
+      const verify = (transfer: Transfer, object: Option.Option<StoredObject>) =>
+        Match.value(object).pipe(
+          Match.when(Option.isNone, () => Effect.fail(new NotUploaded())),
+          Match.when(
+            (found) => Option.isSome(found) && found.value.size !== transfer.size,
+            (found) =>
+              Effect.logError("uploaded size does not match", {
+                expected: transfer.size,
+                found: Option.map(found, ({ size }) => size),
+                transferId: transfer.id,
+              }).pipe(
+                // Object keys end in a UUID, so the key as prefix touches no other file.
+                Effect.andThen(storage.purge(transfer.objectKey, [transfer.objectKey])),
+                Effect.andThen(
+                  db
+                    .update(schema.transfer)
+                    .set({ state: "uploading" })
+                    .where(
+                      and(
+                        eq(schema.transfer.id, transfer.id),
+                        eq(schema.transfer.state, "finalizing"),
+                      ),
+                    ),
+                ),
+                Effect.andThen(Effect.fail(new InvalidUpload())),
+              ),
+          ),
+          Match.orElse((found) => Effect.succeed(found.value)),
+        );
+
       const owned = (
-        senderId: string,
+        senderId: UserId,
         where: { id: TransferId } | { objectKey: string },
         requestId?: RequestId,
       ) =>
@@ -193,15 +207,30 @@ export class Transfers extends Context.Service<
               and(
                 deliveryId === undefined ? undefined : eq(schema.delivery.id, deliveryId),
                 eq(schema.delivery.status, "open"),
-                sql`EXISTS (SELECT 1 FROM transfer WHERE transfer.delivery_id = ${schema.delivery.id})`,
-                sql`NOT EXISTS (SELECT 1 FROM transfer WHERE transfer.delivery_id = ${schema.delivery.id} AND transfer.state != 'complete')`,
+                exists(
+                  db
+                    .select({ one: sql`1` })
+                    .from(schema.transfer)
+                    .where(eq(schema.transfer.deliveryId, schema.delivery.id)),
+                ),
+                notExists(
+                  db
+                    .select({ one: sql`1` })
+                    .from(schema.transfer)
+                    .where(
+                      and(
+                        eq(schema.transfer.deliveryId, schema.delivery.id),
+                        ne(schema.transfer.state, "complete"),
+                      ),
+                    ),
+                ),
               ),
             ),
         );
 
       return Transfers.of({
         finalize: Effect.fn("Transfers.finalize")(function* finalize(
-          senderId: string,
+          senderId: UserId,
           transferId: TransferId,
           requestId?: RequestId,
         ) {
@@ -282,7 +311,7 @@ export class Transfers extends Context.Service<
         }).pipe(Effect.withSpan("Transfers.recoverFinalizing"), dieOnDatabaseError),
 
         sign: Effect.fn("Transfers.sign")(function* sign(
-          senderId: string,
+          senderId: UserId,
           key: string,
           request: UploadRequest,
           requestId?: RequestId,
@@ -295,7 +324,7 @@ export class Transfers extends Context.Service<
           // request is held to the portal limits instead (FileRequests).
           if (
             requestId === undefined &&
-            !(yield* signingRate.allow(senderId)) &&
+            !(yield* limiter.allow("uploadSigning", senderId)) &&
             (yield* plans.current(senderId)).plan === "free"
           ) {
             return yield* new RateLimited({
@@ -315,7 +344,7 @@ export class Transfers extends Context.Service<
             "transfer.state": transfer.state,
             "upload.request": request._tag,
           });
-          if (request._tag === "Part") {
+          if (Predicate.isTagged(request, "Part")) {
             yield* Effect.annotateCurrentSpan("upload.part_number", request.partNumber);
           }
           if (transfer.delivery.status !== "open") {
@@ -363,7 +392,18 @@ export class Transfers extends Context.Service<
               multipart && partNumber <= partCount(transfer.size) ? Effect.void : invalid,
             Put: () => (isSinglePut(transfer.size) ? markFinalizing : invalid),
           });
-          return yield* storage.signUpload(key, request);
+          // R2 refuses a body of any other length than the signed one, so the
+          // bytes stored are the bytes declared and charged at create. Every
+          // part is partSize long except a short last one.
+          const each = partSize(transfer.size);
+          const contentLength = Match.value(request).pipe(
+            Match.tag("Put", () => transfer.size),
+            Match.tag("Part", ({ partNumber }) =>
+              Math.min(each, transfer.size - (partNumber - 1) * each),
+            ),
+            Match.orElse(() => undefined),
+          );
+          return yield* storage.signUpload(key, request, contentLength);
         }, dieOnDatabaseError),
       });
     }),
