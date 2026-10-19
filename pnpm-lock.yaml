@@ -335,8 +335,8 @@ importers:
         specifier: 1.0.0-next.2
         version: 1.0.0-next.2(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(solid-js@2.0.0-rc.13)
       '@solidjs/router':
-        specifier: 2.0.0-next.35
-        version: 2.0.0-next.35(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(filesystem-routing@0.4.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(supports-color@10.2.2))(solid-js@2.0.0-rc.13)
+        specifier: 2.0.0-next.40
+        version: 2.0.0-next.40(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(filesystem-routing@0.4.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(supports-color@10.2.2))(solid-js@2.0.0-rc.13)
       '@solidjs/web':
         specifier: 'catalog:'
         version: 2.0.0-rc.13(solid-js@2.0.0-rc.13)
@@ -3321,12 +3321,12 @@ packages:
       '@solidjs/web': '>=2.0.0-rc.6'
       prerender-crawler: '>=0.1.0'
 
-  '@solidjs/router@2.0.0-next.35':
-    resolution: {integrity: sha512-6+frAz9M2vrLSz+2hr51++nzGyxt3+nCo08dY3PkdieSOwDutAXdfSXj681FqTOvffv8kPDF5tdRqPUoLbKhlQ==}
+  '@solidjs/router@2.0.0-next.40':
+    resolution: {integrity: sha512-aBxaV3GHxBn2F3i3rIe3JaEztiLWtZhRC6UI8qJGenaT2GSh6jSF3LTuLvXY5KoMjBgoxzl7Uu4XQ034yII6vg==}
     peerDependencies:
-      '@solidjs/web': ^2.0.0-rc.13
+      '@solidjs/web': ^2.0.0-rc.15
       filesystem-routing: '>=0.4.0'
-      solid-js: ^2.0.0-rc.13
+      solid-js: ^2.0.0-rc.15
     peerDependenciesMeta:
       filesystem-routing:
         optional: true
@@ -8117,7 +8117,7 @@ snapshots:
       '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
       prerender-crawler: 0.2.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))
 
-  '@solidjs/router@2.0.0-next.35(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(filesystem-routing@0.4.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(supports-color@10.2.2))(solid-js@2.0.0-rc.13)':
+  '@solidjs/router@2.0.0-next.40(@solidjs/web@2.0.0-rc.13(solid-js@2.0.0-rc.13))(filesystem-routing@0.4.0(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(supports-color@10.2.2))(solid-js@2.0.0-rc.13)':
     dependencies:
       '@solidjs/web': 2.0.0-rc.13(solid-js@2.0.0-rc.13)
       solid-js: 2.0.0-rc.13
