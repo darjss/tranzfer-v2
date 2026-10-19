@@ -32,7 +32,7 @@ const staticPages = [
   ...contentPages("guides"),
   ...contentPages("alternatives"),
   ...contentPages("compare"),
-  // One per entry in src/marketing/content.ts.
+  // One per entry in src/marketing/features.ts and audiences.ts.
   ...["send-large-files", "resume", "folders", "share-links", "dashboard", "privacy"].map(
     (slug) => `/features/${slug}`,
   ),
@@ -44,13 +44,46 @@ const staticPages = [
   "/llms-full.txt",
 ];
 
-// Sitemap lastmod: when the page sources last changed, not when the build ran.
-// The production deploy checks out full history so this stays accurate there.
-const lastmod = execFileSync(
-  "git",
-  ["log", "-1", "--format=%cI", "--", "src", "content", "../../packages/contracts/src"],
-  { cwd: import.meta.dirname, encoding: "utf-8" },
-).trim();
+// Sitemap lastmod: when the files that make a page last changed, not when the
+// build ran. Shared layout and app code are left out, so an upload fix doesn't
+// re-date every page. The production deploy checks out full history.
+const lastCommit = (paths: string[]) =>
+  execFileSync("git", ["log", "-1", "--format=%cI", "--", ...paths], {
+    cwd: import.meta.dirname,
+    encoding: "utf-8",
+  }).trim();
+
+const billing = "../../packages/contracts/src/billing.ts";
+const pageData = new Map([
+  ["/", ["src/routes/index.tsx", "src/landing", billing]],
+  ["/ai", ["src/routes/ai.tsx", "src/marketing/ai.ts"]],
+  ["/guides", ["src/routes/guides/index.tsx", "content"]],
+  [
+    "/pricing",
+    [
+      "src/routes/pricing.tsx",
+      "src/landing/Pricing.tsx",
+      "src/marketing/PriceCalculator.tsx",
+      billing,
+    ],
+  ],
+  ["/tools/upload-time-calculator", ["src/routes/tools/upload-time-calculator.tsx", "src/tools"]],
+]);
+
+const pageSources = (path: string) => {
+  const [section = "", slug] = path.slice(1).split("/");
+  if (section === "features") return ["src/marketing/features.ts"];
+  if (section === "for") return ["src/marketing/audiences.ts"];
+  if (slug !== undefined && ["alternatives", "compare", "guides"].includes(section)) {
+    return [`content/${section}/${slug}.md`];
+  }
+  return pageData.get(path) ?? [`src/routes${path}.tsx`];
+};
+
+const lastmod = (path: string) => {
+  const date = lastCommit(pageSources(path));
+  return date === "" ? {} : { lastmod: date };
+};
 
 const envFlag = (value: string | undefined) => value !== undefined && value !== "";
 
@@ -94,7 +127,9 @@ export default defineConfig({
       autoSubfolderIndex: false,
       crawlLinks: false,
       emitPages: (p) => staticPages.includes(p),
-      integrations: [sitemap({ entry: () => ({ lastmod }), hostname: "https://tranzfer.app" })],
+      integrations: [
+        sitemap({ entry: (page) => lastmod(page.path), hostname: "https://tranzfer.app" }),
+      ],
       mode: "hybrid",
       pages: staticPages,
     }),
