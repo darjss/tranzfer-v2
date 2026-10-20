@@ -17,20 +17,20 @@ minimumReleaseAgeExclude:
   - "@solidjs/*"
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0
-  vite-plus: 1.0.0
+  vite-plus: 1.3.0
   solid-js: 2.0.0-rc.13
   "@solidjs/web": 2.0.0-rc.13
   "@solidjs/diagnostics": 2.0.0-rc.13
-  effect: 4.0.4
-  "@effect/platform-node": 4.0.4
-  "@effect/vitest": 4.0.4
-  "@effect/sql-d1": 4.0.4
-  "@effect/sql-sqlite-do": 4.0.4
+  effect: 4.0.5
+  "@effect/platform-node": 4.0.5
+  "@effect/vitest": 4.0.5
+  "@effect/sql-d1": 4.0.5
+  "@effect/sql-sqlite-do": 4.0.5
   # vite-plus 1.0.0 bundles vitest 5.0.1. A second copy splits the test runner.
-  vitest: 5.0.1
+  vitest: 5.0.5
   typescript: 7.0.2
-  "@types/node": 26.6.4
-  "@cloudflare/workers-types": 5.20261006.1
+  "@types/node": 26.6.5
+  "@cloudflare/workers-types": 5.20261016.1
   drizzle-orm: 1.0.0-rc.5-ab785fc
   drizzle-kit: 1.0.0-rc.5-ab785fc
 overrides:
