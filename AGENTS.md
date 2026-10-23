@@ -10,7 +10,7 @@ Make the smallest direct change. Use inferred types and named exports. New abstr
 
 ## Read for the task
 
-- Solid: the `solidjs-v2` skill. Effect: the `effect` skill. Panda: the `panda-css` skill. Installed types beat the skills.
+- Solid: the `solidjs-v2` skill. Effect: the `effect` skill. Panda: the `panda-css` skill. Alchemy: the `alchemy` skill. Installed types beat the skills.
 - Library docs, installed source paths, renamed APIs and known pitfalls: [docs/LIBRARIES.md](docs/LIBRARIES.md). Read it before you search `node_modules` or the web.
 - Writing or reviewing code: [docs/CONVENTIONS.md](docs/CONVENTIONS.md). Placement and request scope: [docs/STRUCTURE.md](docs/STRUCTURE.md). Effect reads in Solid: [docs/SOLID-EFFECT-BINDING.md](docs/SOLID-EFFECT-BINDING.md). Tools: [docs/STACK.md](docs/STACK.md).
 - Product scope: [docs/VISION.md](docs/VISION.md). Plans, prices, limits: [docs/PRODUCT.md](docs/PRODUCT.md). Judgment and tone: [docs/SOUL.md](docs/SOUL.md).
