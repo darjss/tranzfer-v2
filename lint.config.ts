@@ -277,6 +277,15 @@ export const lintConfig = (
       },
       ...effectOverride,
       {
+        // Config, not process.env: Alchemy binds only the Config a Worker reads
+        // at deploy, and a Config failure stays in the error channel.
+        files: ["apps/*/src/**", "packages/*/src/**", "e2e/src/**"],
+        rules: {
+          "effecttsgo/process-env": "error",
+          "effecttsgo/process-env-in-effect": "error",
+        },
+      },
+      {
         files: ["apps/api/src/**", "packages/db/src/**"],
         rules: {
           "tranzfer/no-count-subquery-string": "error",

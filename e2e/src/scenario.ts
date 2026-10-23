@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -152,7 +153,7 @@ export const scenario = (
               chromium,
               cpu: cpus()[0]?.model ?? "unknown",
               ramGb: Math.round(totalmem() / 1024 ** 3),
-              revision: process.env.GIT_COMMIT ?? "unknown",
+              revision: yield* Config.String("GIT_COMMIT").pipe(Config.withDefault("unknown")),
             },
             error: failed ? Cause.pretty(exit.cause) : null,
             manual: yield* Ref.get(interventions),
