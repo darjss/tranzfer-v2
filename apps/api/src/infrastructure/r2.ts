@@ -234,12 +234,10 @@ export const r2Storage = (binding: BucketCredentials) =>
     }),
   );
 
-// Binding values resolve per invocation, never at deploy time.
-export const lazy = <A>(value: Effect.Effect<A, never, RuntimeContext>) =>
-  value.pipe(Effect.provide(RuntimeContext.phantom));
-
 /** The Files bucket and S3 credentials scoped to it, as a Storage layer. */
 export const filesStorage = Effect.gen(function* filesStorage() {
   const credentials = yield* Cloudflare.R2.S3Credentials(Files, { access: "read-write" });
-  return r2Storage(lazy(credentials));
+  // The Storage layer is built at cold start, so its type can't carry the
+  // RuntimeContext marker. The credentials are read only per request.
+  return r2Storage(credentials.pipe(Effect.provide(RuntimeContext.phantom)));
 });

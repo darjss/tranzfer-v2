@@ -21,7 +21,6 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { RateLimiter } from "../rate-limiter";
 import { Ingest, Traces } from "../resources";
 import { clientIp } from "./auth";
-import { lazy } from "./r2";
 import { deployStage, stageName } from "./stage";
 
 // The HTTP facts worth keeping. The host stays in `server.address`.
@@ -229,11 +228,11 @@ export const relayConfig = Effect.gen(function* relayConfig() {
     client,
     origin,
     target: {
-      dataset: lazy(yield* traces.name),
+      dataset: yield* traces.name,
       environment,
       stage: yield* stageName,
-      token: lazy(yield* token.token),
-      url: lazy(yield* traces.otelTracesEndpoint),
+      token: yield* token.token,
+      url: yield* traces.otelTracesEndpoint,
       version: yield* gitSha,
     },
   };
