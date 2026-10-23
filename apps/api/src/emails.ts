@@ -17,6 +17,7 @@ import type {
 import { Database, dieOnDatabaseError, schema } from "@tranzfer/db";
 import { and, desc, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import * as Arr from "effect/Array";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -355,7 +356,12 @@ export class Emails extends Context.Service<
                 { concurrency: 5, discard: true },
               ).pipe(
                 dieOnDatabaseError,
-                Effect.catchCause(() => Effect.logError("delivery emails not settled")),
+                Effect.catchCause((cause) => {
+                  const error = Cause.squash(cause);
+                  return Effect.logError("delivery emails not settled", {
+                    error: error instanceof Error ? error.name : "unknown",
+                  });
+                }),
               ),
             );
             return rows;
