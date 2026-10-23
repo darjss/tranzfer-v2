@@ -18,6 +18,7 @@ import {
 import { ApiClient } from "../api/client";
 import { appError } from "../api/errors";
 import { runEffect } from "../api/solid-effect";
+import { createPoll } from "./poll";
 import type { AppServices } from "../api/solid-effect";
 import { transfers } from "../uploads/store";
 import { untilFree } from "../uploads/tabs";
@@ -83,21 +84,15 @@ export const rereadWhenSettled = (
   );
   // A server-side finalizing transfer settles on its own (this tab's lost
   // Complete, or the sweeper); poll until none are left so it lands as done.
-  createEffect(
+  createPoll(
     () =>
       list.some((delivery) =>
         delivery.transfers.some((transfer) => transfer.state === "finalizing"),
       ),
-    (stuck) => {
-      const timer = stuck
-        ? setInterval(() => {
-            reread();
-          }, 10_000)
-        : undefined;
-      return () => {
-        clearInterval(timer);
-      };
+    () => {
+      reread();
     },
+    { everyMs: 10_000 },
   );
 };
 
@@ -337,33 +332,18 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
   };
   // The sweeper marks a row lost after 10 minutes, so a poll that keeps
   // failing stops after 30 tries (a minute) instead of running that long.
-  createEffect(
+  createPoll(
     () =>
       Object.entries(emailed)
         .filter(([, rows]) => rows.some((row) => row.status === "queued"))
         .map(([deliveryId]) => deliveryId)
-        .join(","),
-    (waiting) => {
-      let tries = 0;
-      const timer =
-        waiting === ""
-          ? undefined
-          : setInterval(() => {
-              tries += 1;
-              if (tries > 30) {
-                clearInterval(timer);
-                return;
-              }
-              for (const deliveryId of waiting.split(",")) {
-                void readEmails(deliveryId, () => {
-                  clearInterval(timer);
-                });
-              }
-            }, 2000);
-      return () => {
-        clearInterval(timer);
-      };
+        .join(",") || false,
+    (waiting, stop) => {
+      for (const deliveryId of waiting.split(",")) {
+        void readEmails(deliveryId, stop);
+      }
     },
+    { everyMs: 2000, tries: 30 },
   );
 
   const [redeeming, setRedeeming] = createOptimistic(false);
