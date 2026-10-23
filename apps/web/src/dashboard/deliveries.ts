@@ -40,6 +40,37 @@ export interface Finished {
 }
 
 /**
+ * Calls `tick` every `ms` while `active` returns anything but false, at most
+ * `tries` times. A new value starts the count over; `stop` ends it early.
+ */
+export const createPoll = <T>(
+  active: () => T | false,
+  ms: number,
+  tick: (value: T, stop: () => void) => void,
+  tries = Infinity,
+) => {
+  createEffect(active, (value) => {
+    if (value === false) {
+      return undefined;
+    }
+    let count = 0;
+    const timer = setInterval(() => {
+      count += 1;
+      if (count > tries) {
+        clearInterval(timer);
+        return;
+      }
+      tick(value, () => {
+        clearInterval(timer);
+      });
+    }, ms);
+    return () => {
+      clearInterval(timer);
+    };
+  });
+};
+
+/**
  * Reads a list of deliveries again when something it shows may have settled:
  * a transfer this tab finished, one another tab stopped sending, or one the
  * server was finalizing. Shared by the owner's board and an uploader's page.
@@ -83,20 +114,14 @@ export const rereadWhenSettled = (
   );
   // A server-side finalizing transfer settles on its own (this tab's lost
   // Complete, or the sweeper); poll until none are left so it lands as done.
-  createEffect(
+  createPoll(
     () =>
       list.some((delivery) =>
         delivery.transfers.some((transfer) => transfer.state === "finalizing"),
       ),
-    (stuck) => {
-      const timer = stuck
-        ? setInterval(() => {
-            reread();
-          }, 10_000)
-        : undefined;
-      return () => {
-        clearInterval(timer);
-      };
+    10_000,
+    () => {
+      reread();
     },
   );
 };
@@ -337,33 +362,21 @@ export const createDeliveries = (runtime: ManagedRuntime.ManagedRuntime<AppServi
   };
   // The sweeper marks a row lost after 10 minutes, so a poll that keeps
   // failing stops after 30 tries (a minute) instead of running that long.
-  createEffect(
-    () =>
-      Object.entries(emailed)
+  createPoll(
+    () => {
+      const waiting = Object.entries(emailed)
         .filter(([, rows]) => rows.some((row) => row.status === "queued"))
         .map(([deliveryId]) => deliveryId)
-        .join(","),
-    (waiting) => {
-      let tries = 0;
-      const timer =
-        waiting === ""
-          ? undefined
-          : setInterval(() => {
-              tries += 1;
-              if (tries > 30) {
-                clearInterval(timer);
-                return;
-              }
-              for (const deliveryId of waiting.split(",")) {
-                void readEmails(deliveryId, () => {
-                  clearInterval(timer);
-                });
-              }
-            }, 2000);
-      return () => {
-        clearInterval(timer);
-      };
+        .join(",");
+      return waiting === "" ? false : waiting;
     },
+    2000,
+    (waiting, stop) => {
+      for (const deliveryId of waiting.split(",")) {
+        void readEmails(deliveryId, stop);
+      }
+    },
+    30,
   );
 
   const [redeeming, setRedeeming] = createOptimistic(false);

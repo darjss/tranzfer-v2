@@ -24,7 +24,7 @@ import { appError, reportFailure, supportRef, traceIdOf } from "../api/errors";
 import { runEffect, RuntimeContext } from "../api/solid-effect";
 import { Board } from "../dashboard/Board";
 import { goToCheckout, goToPortal } from "../dashboard/billing";
-import { createDeliveries } from "../dashboard/deliveries";
+import { createDeliveries, createPoll } from "../dashboard/deliveries";
 import { DeliverySheet } from "../dashboard/DeliverySheet";
 import { Requests } from "../dashboard/Requests";
 import { createRequests } from "../dashboard/requests";
@@ -159,18 +159,12 @@ const DeliveriesPage = () => {
   const { close: closeRequest, create: createRequest, requests } = createRequests(runtime);
   // While a request is open, people may be uploading into it. Their deliveries
   // reach this page only by being read, so read both lists now and then.
-  createEffect(
+  createPoll(
     () => requests.some((request) => request.status === "open"),
-    (listening) => {
-      const timer = listening
-        ? setInterval(() => {
-            void refresh(deliveries);
-            void refresh(requests);
-          }, REQUEST_POLL_MS)
-        : undefined;
-      return () => {
-        clearInterval(timer);
-      };
+    REQUEST_POLL_MS,
+    () => {
+      void refresh(deliveries);
+      void refresh(requests);
     },
   );
   const selected = () => {
@@ -246,24 +240,13 @@ const DeliveriesPage = () => {
 
   // The webhook can land a moment after the checkout redirect, so read the
   // plan again until it changes or a few tries pass.
-  createEffect(
+  createPoll(
     () => searchParams.checkout === "success" && billing().plan === "free",
-    (waiting) => {
-      let tries = 0;
-      const timer = waiting
-        ? setInterval(() => {
-            tries += 1;
-            if (tries > 15) {
-              clearInterval(timer);
-              return;
-            }
-            void refresh(billing);
-          }, 2000)
-        : undefined;
-      return () => {
-        clearInterval(timer);
-      };
+    2000,
+    () => {
+      void refresh(billing);
     },
+    15,
   );
 
   // Back from checkout once the new plan is in: say so once, then drop the
