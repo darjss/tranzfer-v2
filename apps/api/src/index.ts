@@ -32,7 +32,7 @@ import { Transfers } from "./transfers";
 import { Auth } from "./infrastructure/auth";
 import { emailAllowlist, Mail } from "./infrastructure/email";
 import { PolarProduct, PolarWebhook, paidPlansOpen, polarAccess } from "./infrastructure/polar";
-import { filesStorage, lazy } from "./infrastructure/r2";
+import { filesStorage } from "./infrastructure/r2";
 import { deployStage, stageName } from "./infrastructure/stage";
 import { relayConfig, relayTraces, telemetry } from "./infrastructure/telemetry";
 import { App } from "./resources";
@@ -55,7 +55,6 @@ export default ApiWorker.make(
     // This effect also runs at deploy time, when no binding exists, so the D1
     // handle and every secret stay lazy until an invocation reads them.
     const d1 = yield* Cloudflare.D1.QueryDatabase(App);
-    const handle = d1.raw.pipe(Effect.provide(RuntimeContext.phantom));
     const linkSecret = yield* Random("LinkSecret");
 
     const { origin } = yield* Config.schema(Schema.URLFromString, "APP_URL");
@@ -74,9 +73,9 @@ export default ApiWorker.make(
         return {
           access: yield* polarAccess,
           products: Effect.all({
-            pro: lazy(yield* products.pro.id),
-            starter: lazy(yield* products.starter.id),
-            studio: lazy(yield* products.studio.id),
+            pro: yield* products.pro.id,
+            starter: yield* products.starter.id,
+            studio: yield* products.studio.id,
           }),
           // Local stages have no URL Polar can reach, so they get no endpoint
           // and read Polar directly instead.
@@ -84,20 +83,18 @@ export default ApiWorker.make(
           webhookSecret:
             stage === "dev"
               ? Effect.fail(new InvalidWebhook({ reason: "disabled" }))
-              : lazy(
-                  yield* (yield* PolarWebhook("PolarWebhook", {
-                    events: [
-                      "subscription.created",
-                      "subscription.active",
-                      "subscription.updated",
-                      "subscription.canceled",
-                      "subscription.uncanceled",
-                      "subscription.revoked",
-                      "subscription.past_due",
-                    ],
-                    url: `${origin}/api/polar/webhook`,
-                  })).secret,
-                ),
+              : yield* (yield* PolarWebhook("PolarWebhook", {
+                  events: [
+                    "subscription.created",
+                    "subscription.active",
+                    "subscription.updated",
+                    "subscription.canceled",
+                    "subscription.uncanceled",
+                    "subscription.revoked",
+                    "subscription.past_due",
+                  ],
+                  url: `${origin}/api/polar/webhook`,
+                })).secret,
         };
       }),
       paidPlansOpen,
@@ -137,8 +134,10 @@ export default ApiWorker.make(
     const isolate = yield* Layer.build(
       Layer.mergeAll(
         yield* filesStorage,
-        LinkTokens.layer((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom))),
-        Auth.layer(stage, handle, sendWelcome),
+        LinkTokens.layer(yield* linkSecret.text),
+        // Built at cold start, so its type can't carry the RuntimeContext
+        // marker. Auth reads the handle only per request.
+        Auth.layer(stage, d1.raw.pipe(Effect.provide(RuntimeContext.phantom)), sendWelcome),
         Mail.layer(stage, email, yield* emailAllowlist),
         RpcSerialization.layerJson,
       ).pipe(Layer.provideMerge(rateLimiter)),
@@ -146,7 +145,7 @@ export default ApiWorker.make(
 
     // A D1 client belongs to one invocation, so the services over it are
     // rebuilt per request (and per cron run) with a fresh memo map.
-    const database = Layer.unwrap(Effect.map(handle, Database.fromD1));
+    const database = Layer.unwrap(Effect.map(d1.raw, Database.fromD1));
     const domain = Layer.mergeAll(
       SharedLinks.layer,
       billing,
