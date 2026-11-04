@@ -56,7 +56,10 @@ export default function Privacy() {
         <li>
           <strong>Product usage.</strong> Events like a sign-up, a new delivery or a link being
           opened go to PostHog in the US, keyed by your account id. They carry counts, sizes and
-          plan names, never emails, file names or links.
+          plan names, never emails, file names or links. Your browser also sends PostHog the pages
+          you view, error reports, and session replays that hide all text and everything you type.
+          Link addresses lose their key before they leave your browser. PostHog keeps a random id
+          for your browser in local storage, not in a cookie.
         </li>
         <li>
           <strong>Emails you send.</strong> When you email a link, we send it to the addresses you
@@ -122,7 +125,8 @@ export default function Privacy() {
           <strong>Axiom</strong> stores the diagnostics described above.
         </li>
         <li>
-          <strong>PostHog</strong> stores the product usage events described above.
+          <strong>PostHog</strong> stores the product usage, page views, error reports and session
+          replays described above.
         </li>
       </ul>
       <p>We don't sell your data, and we don't use advertising or third-party tracking cookies.</p>

@@ -1,6 +1,6 @@
 import { maxAccessCodeLength, plans } from "@tranzfer/contracts";
 import type { BillingSummary, PaidPlanId, Principal } from "@tranzfer/contracts";
-import { Show } from "solid-js";
+import { createEffect, Show } from "solid-js";
 import { css, cx } from "styled-system/css";
 
 import PhSignOutBold from "~icons/ph/sign-out-bold";
@@ -22,6 +22,8 @@ const signOut = async () => {
     toaster.warning({ title: "We couldn't sign you out. Try again." });
     return;
   }
+  const { analytics } = await import("../api/posthog");
+  analytics?.reset();
   window.location.assign("/");
 };
 
@@ -48,6 +50,14 @@ export function TopBar(props: {
   send: () => void;
   upgrade: (plan: PaidPlanId) => void;
 }) {
+  // Joins this browser's PostHog events to the server's, which use the same
+  // id. No person properties: the email and name stay out of PostHog.
+  createEffect(
+    () => props.principal.id,
+    (id) => {
+      void import("../api/posthog").then(({ analytics }) => analytics?.identify(id));
+    },
+  );
   let codeInput: HTMLInputElement | undefined;
   // The redeem action toasts either way; on success the menu gets out of the way.
   const apply = async (form: HTMLFormElement) => {

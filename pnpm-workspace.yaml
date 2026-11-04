@@ -47,5 +47,6 @@ allowBuilds:
   "@parcel/watcher": false
   msgpackr-extract: false
   workerd: true
+  core-js: false
 patchedDependencies:
   "@uppy/aws-s3@6.2.2": patches/@uppy__aws-s3@6.2.2.patch
