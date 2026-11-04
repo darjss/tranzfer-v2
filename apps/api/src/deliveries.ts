@@ -31,6 +31,7 @@ import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 
+import { Analytics } from "./analytics";
 import { downloadsOf, loadDelivery, toView } from "./delivery-views";
 import type { DeliveryRow } from "./delivery-views";
 import { LinkTokens, newLinkId } from "./link-tokens";
@@ -176,6 +177,7 @@ export class Deliveries extends Context.Service<
   static readonly layer = Layer.effect(
     Deliveries,
     Effect.gen(function* makeDeliveries() {
+      const analytics = yield* Analytics;
       const { batch, db } = yield* Database;
       const userPlans = yield* Plans;
       const storage = yield* Storage;
@@ -482,7 +484,12 @@ export class Deliveries extends Context.Service<
               requestedDays: input.retentionDays,
             });
           }
-          return yield* insert(senderId, plan, input);
+          const delivery = yield* insert(senderId, plan, input);
+          yield* analytics.capture("delivery_created", senderId, {
+            bytes: input.files.reduce((total, file) => total + file.size, 0),
+            files: input.files.length,
+          });
+          return delivery;
         }, dieOnDatabaseError),
         list: Effect.fn("Deliveries.list")(function* list(senderId: UserId) {
           const rows = yield* db.query.delivery.findMany({

@@ -48,6 +48,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
+import { Analytics } from "./analytics";
 import { Deliveries } from "./deliveries";
 import { LinkTokens, newLinkId } from "./link-tokens";
 import { Plans } from "./plans";
@@ -135,6 +136,7 @@ export class FileRequests extends Context.Service<
   static readonly layer = Layer.effect(
     FileRequests,
     Effect.gen(function* makeFileRequests() {
+      const analytics = yield* Analytics;
       const { db } = yield* Database;
       const deliveries = yield* Deliveries;
       const tokens = yield* LinkTokens;
@@ -322,6 +324,7 @@ export class FileRequests extends Context.Service<
           if (created === undefined) {
             return yield* Effect.die(new Error(`Request ${id} was not inserted`));
           }
+          yield* analytics.capture("file_request_created", ownerId, {});
           return yield* viewOne(created);
         }, dieOnDatabaseError),
 
@@ -349,6 +352,8 @@ export class FileRequests extends Context.Service<
         open: Effect.fn("FileRequests.open")(function* open(token: LinkToken, ip: string) {
           const request = yield* live(token, ip);
           yield* Effect.annotateCurrentSpan("request.id", request.id);
+          // The portal calls this once per page load; there is no open counter.
+          yield* analytics.capture("link_opened", request.ownerId, { kind: "request" });
           return OpenedRequest.make({
             expiresAt: request.expiresAt,
             instructions: request.instructions,

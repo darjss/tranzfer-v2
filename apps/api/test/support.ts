@@ -7,6 +7,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 
+import { Analytics } from "../src/analytics";
 import { Attempts } from "../src/attempts";
 import { Deliveries } from "../src/deliveries";
 import { FileRequests } from "../src/file-requests";
@@ -77,6 +78,7 @@ export const domainLayer = (storage: Layer.Layer<Storage>) =>
       LinkTokens.layer(Effect.succeed(Redacted.make("test-link-secret-0123456789abcdef"))),
     ),
     Layer.provideMerge(storage),
+    Layer.provideMerge(Layer.succeed(Analytics, Analytics.of({ capture: () => Effect.void }))),
     Layer.provideMerge(testDatabase),
   );
 
