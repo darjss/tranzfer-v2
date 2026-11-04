@@ -23,6 +23,7 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import { Analytics } from "./analytics";
 import { Deliveries } from "./deliveries";
 import { polarClient } from "./infrastructure/polar";
 import type { polarAccess } from "./infrastructure/polar";
@@ -73,6 +74,7 @@ const WebhookEvent = Schema.Struct({
   data: Schema.Struct({
     customer: Schema.Struct({ external_id: Schema.NullOr(UserId) }),
   }),
+  type: Schema.String,
 });
 
 // Stale rows reconciled per sweep, and the pause before a row is tried again.
@@ -123,6 +125,7 @@ export class Billing extends Context.Service<
     Layer.effect(
       Billing,
       Effect.gen(function* makeBilling() {
+        const analytics = yield* Analytics;
         const { db } = yield* Database;
         const deliveries = yield* Deliveries;
         const userPlans = yield* Plans;
@@ -231,6 +234,7 @@ export class Billing extends Context.Service<
             .insert(schema.subscription)
             .values({ userId, ...next })
             .onConflictDoUpdate({ set: next, target: schema.subscription.userId });
+          return next.plan;
         }, dieOnDatabaseError);
 
         /** Rows whose paid period has ended are the ones a lost webhook would strand. */
@@ -339,7 +343,11 @@ export class Billing extends Context.Service<
               return;
             }
             yield* Effect.annotateCurrentSpan("user.id", userId);
-            yield* reconcile(userId);
+            const plan = yield* reconcile(userId);
+            // Polar sends subscription.active once, when a subscription starts granting.
+            if (event.type === "subscription.active" && plan !== undefined && plan !== "free") {
+              yield* analytics.capture("subscription_started", userId, { plan });
+            }
           }),
         });
       }),
