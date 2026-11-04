@@ -7,7 +7,7 @@ export default function Privacy() {
       path="/privacy"
       title="Privacy policy"
       description="What Tranzfer stores about you and your files, which companies process it for us, how long each piece is kept, and how to get a copy or have it deleted."
-      updated="18 October 2026"
+      updated="4 November 2026"
     >
       <p>
         Tranzfer keeps as little about you as it can and deletes files when their delivery ends.
@@ -52,6 +52,11 @@ export default function Privacy() {
           <strong>Link opens.</strong> How many times your link showed its files and when it last
           did, so your dashboard can show it was opened. We keep a count and one time per link, not
           a record of each visit, and no name or IP address.
+        </li>
+        <li>
+          <strong>Product usage.</strong> Events like a sign-up, a new delivery or a link being
+          opened go to PostHog in the US, keyed by your account id. They carry counts, sizes and
+          plan names, never emails, file names or links.
         </li>
         <li>
           <strong>Emails you send.</strong> When you email a link, we send it to the addresses you
@@ -115,6 +120,9 @@ export default function Privacy() {
         </li>
         <li>
           <strong>Axiom</strong> stores the diagnostics described above.
+        </li>
+        <li>
+          <strong>PostHog</strong> stores the product usage events described above.
         </li>
       </ul>
       <p>We don't sell your data, and we don't use advertising or third-party tracking cookies.</p>

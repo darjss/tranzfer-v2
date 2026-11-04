@@ -23,6 +23,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
+import { Analytics } from "./analytics";
 import { Attempts } from "./attempts";
 import { isExpired } from "./delivery-views";
 import { LinkTokens } from "./link-tokens";
@@ -70,6 +71,7 @@ export class SharedLinks extends Context.Service<
   static readonly layer = Layer.effect(
     SharedLinks,
     Effect.gen(function* makeSharedLinks() {
+      const analytics = yield* Analytics;
       const attempts = yield* Attempts;
       const { db } = yield* Database;
       const tokens = yield* LinkTokens;
@@ -165,6 +167,7 @@ export class SharedLinks extends Context.Service<
               .update(schema.link)
               .set({ lastOpenedAt: new Date(now), openCount: sql`${schema.link.openCount} + 1` })
               .where(eq(schema.link.id, link.id));
+            yield* analytics.capture("link_opened", delivery.senderId, { kind: "delivery" });
           }
           return {
             expiresAt: delivery.expiresAt,
@@ -192,12 +195,13 @@ export class SharedLinks extends Context.Service<
           const link = yield* db.query.link.findFirst({
             columns: { id: true, passwordHash: true },
             where: { id: linkId.value },
+            with: { delivery: { columns: { senderId: true } } },
           });
           if (link === undefined || !(yield* isOpen(link, unlock))) {
             return;
           }
           const now = new Date(yield* Clock.currentTimeMillis);
-          yield* db
+          const recorded = yield* db
             .insert(schema.download)
             .select((qb) =>
               qb
@@ -229,7 +233,12 @@ export class SharedLinks extends Context.Service<
                 savedAt: sql`coalesce(${schema.download.savedAt}, excluded.saved_at)`,
               },
               target: schema.download.transferId,
-            });
+            })
+            .returning({ startedAt: schema.download.startedAt });
+          // A conflict keeps the first start, so only a file's first report returns this one's.
+          if (recorded.some(({ startedAt }) => startedAt.getTime() === now.getTime())) {
+            yield* analytics.capture("delivery_downloaded", link.delivery.senderId, {});
+          }
         }, dieOnDatabaseError),
 
         unlock: Effect.fn("SharedLinks.unlock")(function* unlock(

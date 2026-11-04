@@ -30,6 +30,7 @@ import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 
+import { Analytics } from "./analytics";
 import { Deliveries, UPLOAD_WINDOW } from "./deliveries";
 import { Plans } from "./plans";
 import { RateLimiter } from "./rate-limiter";
@@ -74,6 +75,7 @@ export class Transfers extends Context.Service<
   static readonly layer = Layer.effect(
     Transfers,
     Effect.gen(function* makeTransfers() {
+      const analytics = yield* Analytics;
       const { db } = yield* Database;
       const deliveries = yield* Deliveries;
       const plans = yield* Plans;
@@ -225,7 +227,8 @@ export class Transfers extends Context.Service<
                     ),
                 ),
               ),
-            ),
+            )
+            .returning({ id: schema.delivery.id }),
         );
 
       return Transfers.of({
@@ -259,8 +262,17 @@ export class Transfers extends Context.Service<
               ),
             );
           }
-          yield* markReady(transfer.deliveryId);
-          return yield* deliveries.view(transfer.deliveryId);
+          const readied = yield* markReady(transfer.deliveryId);
+          const delivery = yield* deliveries.view(transfer.deliveryId);
+          // Only the finalize that flipped the delivery to ready reports it.
+          if (readied.length > 0) {
+            yield* analytics.capture("upload_completed", senderId, {
+              bytes: delivery.transfers.reduce((total, file) => total + file.size, 0),
+              files: delivery.transfers.length,
+              kind: requestId === undefined ? "delivery" : "request",
+            });
+          }
+          return delivery;
         }, dieOnDatabaseError),
 
         recoverFinalizing: Effect.gen(function* recoverFinalizing() {

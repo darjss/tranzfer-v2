@@ -15,6 +15,7 @@ import * as Schema from "effect/Schema";
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
 import * as RpcServer from "effect/rpc/RpcServer";
 
+import { Analytics } from "./analytics";
 import { Attempts } from "./attempts";
 import { Billing, InvalidWebhook } from "./billing";
 import { Deliveries } from "./deliveries";
@@ -133,15 +134,26 @@ export default ApiWorker.make(
     // domain is onboarded on the account, so any recipient is allowed.
     const email = yield* Cloudflare.Email.Send(yield* Cloudflare.Email.SendEmail("EMAIL"));
     const execution = yield* Cloudflare.WorkerExecutionContext;
+    // Runs after the response, kept alive by the request's waitUntil.
+    const background = (effect: Effect.Effect<void>) =>
+      execution.waitUntil(effect).pipe(Effect.provide(RuntimeContext.phantom));
 
     const isolate = yield* Layer.build(
       Layer.mergeAll(
         yield* filesStorage,
         LinkTokens.layer((yield* linkSecret.text).pipe(Effect.provide(RuntimeContext.phantom))),
-        Auth.layer(stage, handle, sendWelcome),
+        Auth.layer(stage, handle, (user, appUrl) =>
+          Effect.andThen(
+            Analytics.use((analytics) => analytics.capture("signed_up", user.id, {})),
+            sendWelcome(user.email, appUrl),
+          ),
+        ),
         Mail.layer(stage, email, yield* emailAllowlist),
         RpcSerialization.layerJson,
-      ).pipe(Layer.provideMerge(rateLimiter)),
+      ).pipe(
+        Layer.provideMerge(rateLimiter),
+        Layer.provideMerge(Analytics.layer({ background, stage })),
+      ),
     );
 
     // A D1 client belongs to one invocation, so the services over it are
@@ -150,12 +162,7 @@ export default ApiWorker.make(
     const domain = Layer.mergeAll(
       SharedLinks.layer,
       billing,
-      Emails.layer({
-        appUrl: origin,
-        // Runs after the response, kept alive by the request's waitUntil.
-        background: (effect) =>
-          execution.waitUntil(effect).pipe(Effect.provide(RuntimeContext.phantom)),
-      }),
+      Emails.layer({ appUrl: origin, background }),
       FileRequests.layer.pipe(Layer.provideMerge(Transfers.layer)),
       Interest.layer({ appUrl: origin }),
     ).pipe(
