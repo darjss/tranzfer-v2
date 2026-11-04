@@ -28,6 +28,7 @@ import type * as HttpServerError from "effect/http/HttpServerError";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
+import type { Analytics } from "../analytics";
 import { secondsUntilRoom } from "../attempts";
 import { RateLimiter } from "../rate-limiter";
 import type { Mail } from "./email";
@@ -48,7 +49,7 @@ export const clientIp = (headers: HttpHeaders) =>
 // request runs Better Auth inside its own store, so a callback reaches the
 // services and abort signal of the request that triggered it.
 const authRequests = new AsyncLocalStorage<{
-  readonly context: Context.Context<Database | Mail>;
+  readonly context: Context.Context<Analytics | Database | Mail>;
   readonly signal: AbortSignal;
 }>();
 
@@ -58,7 +59,9 @@ const authRequests = new AsyncLocalStorage<{
  * triggered it. To make Better Auth answer with an error, fail with its
  * `APIError`; any other failure rejects as a defect.
  */
-export const runAuthCallback = async <A, E>(effect: Effect.Effect<A, E, Database | Mail>) => {
+export const runAuthCallback = async <A, E>(
+  effect: Effect.Effect<A, E, Analytics | Database | Mail>,
+) => {
   const current = authRequests.getStore();
   if (current === undefined) {
     throw new APIError("SERVICE_UNAVAILABLE", {
@@ -187,7 +190,7 @@ export class Auth extends Context.Service<
     readonly fetch: Effect.Effect<
       HttpServerResponse.HttpServerResponse,
       HttpServerError.HttpServerError | HttpBody.HttpBodyError,
-      Database | HttpServerRequest.HttpServerRequest | Mail | Scope.Scope
+      Analytics | Database | HttpServerRequest.HttpServerRequest | Mail | Scope.Scope
     >;
     readonly session: (
       headers: Headers,
@@ -199,12 +202,16 @@ export class Auth extends Context.Service<
 >()("tranzfer/Auth") {
   /**
    * `authRequests` is checked per client IP before Better Auth sees a request.
-   * `welcome` is the domain's sign-up email, passed in so auth never imports a domain module.
+   * `signedUp` runs for each new account (the welcome email, the sign-up event), passed
+   * in so auth never imports a domain module.
    */
   static readonly layer = (
     stage: "production" | "staging" | "dev",
     d1: Effect.Effect<D1Database>,
-    welcome: (email: string, appUrl: string) => Effect.Effect<void, never, Mail>,
+    signedUp: (
+      user: { readonly email: string; readonly id: UserId },
+      appUrl: string,
+    ) => Effect.Effect<void, never, Analytics | Mail>,
   ) =>
     Layer.effect(
       Auth,
@@ -238,7 +245,9 @@ export class Auth extends Context.Service<
                 // email, and the welcome never fails.
                 after: async (user, context) => {
                   await context?.context.runInBackgroundOrAwait(
-                    runAuthCallback(welcome(user.email, origin)),
+                    runAuthCallback(
+                      signedUp({ email: user.email, id: UserId.make(user.id) }, origin),
+                    ),
                   );
                 },
                 // New accounts per client IP. A creation outside a request has no
@@ -295,7 +304,7 @@ export class Auth extends Context.Service<
             }
             const native = yield* instance.auth.pipe(Effect.provide(RuntimeContext.phantom));
             const web = yield* HttpServerRequest.toWeb(request).pipe(Effect.orDie);
-            const context = yield* Effect.context<Database | Mail>();
+            const context = yield* Effect.context<Analytics | Database | Mail>();
             // Better Auth answers API errors as responses; it rejects only on defects.
             const response = yield* Effect.promise(
               async (signal) =>
