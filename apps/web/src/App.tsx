@@ -37,6 +37,8 @@ export default function App() {
     Uploads.layer.pipe(Layer.provideMerge(UploadSpans.layer), Layer.provideMerge(WebLayer)),
   );
   if (!isServer) {
+    // Its own chunk, off the first paint; it starts itself on tranzfer.app.
+    void import("./api/posthog");
     // A message that says "Something went wrong" carries a reference; this
     // is the report that reference points to.
     onUnexpectedFailure((cause, traceId) => {
