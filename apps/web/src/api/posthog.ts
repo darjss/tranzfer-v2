@@ -16,6 +16,17 @@ const decodeProperties = Schema.decodeSync(
 );
 const scrubbed = (properties: Properties) => decodeProperties(scrub(JSON.stringify(properties)));
 
+// Replay keeps the layout and none of the words. File names sit in title and
+// aria-label, and in the query of each signed download URL.
+const wordAttributes = new Set(["alt", "aria-label", "download", "placeholder", "title", "value"]);
+const urlAttributes = new Set(["action", "href", "poster", "src"]);
+const maskAttribute = (name: string, value: string) => {
+  if (wordAttributes.has(name)) {
+    return "*";
+  }
+  return urlAttributes.has(name) ? scrub(value).replace(/\?.*/su, "") : scrub(value);
+};
+
 const host = location.hostname;
 const live = host === "tranzfer.app" || host.endsWith(".tranzfer.app");
 
@@ -53,7 +64,7 @@ if (live) {
     person_profiles: "identified_only",
     session_recording: {
       maskAllInputs: true,
-      maskAttributeFn: (_name, value) => scrub(value),
+      maskAttributeFn: maskAttribute,
       // Also masks the page URLs replay records: meta events, $url_changed, $pageview.
       maskCapturedNetworkRequestFn: (request) => ({ ...request, name: scrub(request.name) }),
       maskTextSelector: "*",
