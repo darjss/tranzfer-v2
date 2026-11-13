@@ -9,6 +9,8 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import type { deployStage } from "./stage";
+
 /** Cloudflare refused or failed the send. `code` is theirs, like `E_RECIPIENT_SUPPRESSED`. */
 export class MailError extends Data.TaggedError("MailError")<{ readonly code: string }> {}
 
@@ -57,7 +59,7 @@ export class Mail extends Context.Service<
    * only `allowlist` and log the rest. Logs never carry the address.
    */
   static readonly layer = (
-    stage: "production" | "staging" | "dev",
+    stage: Effect.Success<typeof deployStage>,
     client: Cloudflare.Email.SendClient,
     allowlist: ReadonlySet<string>,
   ) =>
