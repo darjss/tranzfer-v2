@@ -1,4 +1,5 @@
 import type { Api } from "@tranzfer/contracts";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -37,11 +38,10 @@ export class Target extends Context.Service<
   static readonly layer = Layer.effect(
     Target,
     Effect.gen(function* target() {
-      const baseUrl = process.env.E2E_BASE_URL ?? "https://staging.tranzfer.app";
-      const key = process.env.TEST_LOGIN_KEY;
-      if (key === undefined) {
-        return yield* Effect.die(new Error("TEST_LOGIN_KEY is required for the staging target"));
-      }
+      const baseUrl = yield* Config.String("E2E_BASE_URL").pipe(
+        Config.withDefault("https://staging.tranzfer.app"),
+      );
+      const key = yield* Config.String("TEST_LOGIN_KEY");
       const cookie = yield* Effect.promise(async () => await stagingLogin(baseUrl, key));
       const api = yield* apiClient(baseUrl, cookie);
       const anon = yield* apiClient(baseUrl);
